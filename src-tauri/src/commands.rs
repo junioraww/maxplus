@@ -1,8 +1,9 @@
+use crate::stores::{load_sync_state, save_sync_state};
 use crate::state::AppState;
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use rumax::{Error, models::{Identity, FetchHistoryOptions}};
-use tauri::State;
+use tauri::{AppHandle, State};
 
 fn p(s: String) -> Result<u64, Value> {
     s.parse().map_err(|_| Error::Other("Invalid ID".into()).to_json())
@@ -90,22 +91,45 @@ pub async fn init(
 }
 
 #[tauri::command]
-pub async fn sync_client(state: State<'_, AppState>) -> Result<Value, Value> {
-    let r = match state.client.sync().await {
-        Ok(r) => r,
+pub async fn sync_client(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    account_id: u64,
+) -> Result<Value, Value> {
+    let initial_sync_state = load_sync_state(&app, account_id).unwrap_or_default();
+
+    let (sync_resp, sync2_opt, new_sync_state) = match state.client.sync(initial_sync_state).await {
+        Ok(res) => res,
         Err(e) => return Err(e.to_json()),
     };
 
-    if let Some(id) = r
-        .payload
-        .pointer("/profile/contact/id")
-        .and_then(|v| v.as_u64())
-    {
-        state.client.set_user_id(id).await;
-        state.client.spawn_telemetry_task().await;
+    let user_id = sync2_opt
+    .as_ref()
+    .and_then(|r| r.payload.pointer("/profile/contact/id"))
+    .or_else(|| sync_resp.payload.pointer("/profile/contact/id"))
+    .and_then(|id| id.as_u64());
+
+    let user_id = match user_id {
+        Some(id) => id,
+        None => return Err(json!({ "error": "User ID not found in sync response" })),
+    };
+
+    state.client.set_user_id(user_id).await;
+    state.client.spawn_telemetry_task().await;
+
+    if let Err(e) = save_sync_state(&app, account_id, &new_sync_state) {
+        return Err(json!({ "error": format!("Failed to save sync state: {}", e) }));
     }
 
-    Ok(r.payload)
+    let mut final_payload = sync_resp.payload;
+
+    if let Some(sync2) = sync2_opt {
+        if let (Value::Object(ref mut map1), Value::Object(map2)) = (&mut final_payload, sync2.payload) {
+            map1.extend(map2);
+        }
+    }
+
+    Ok(final_payload)
 }
 
 #[tauri::command]

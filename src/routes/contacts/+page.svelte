@@ -29,9 +29,9 @@
   const contactStores = writable([]);
 
   $: if (showAll) {
-    getCachedContacts().then(ids => {
+    getCachedContacts().then(contacts => {
       contactStores.set(
-        ids.map(id => getContact(id))
+        contacts.map(contact => getContact(contact.id))
       );
     });
   } else {

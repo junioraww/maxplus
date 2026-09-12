@@ -8,6 +8,18 @@ import {
 const settingsCache = {};
 const chatsCache = {};
 
+export const loadChats = async () => {
+  const account = await getCurrentAccount();
+
+  return invoke("load_chats", { account: account.id });
+}
+
+export const saveChats = async (chats) => {
+  const account = await getCurrentAccount();
+
+  return invoke("save_chats", { account: account.id, chats });
+}
+
 export const getChatSettings = chatId => {
   if (settingsCache[chatId])
     return settingsCache[chatId].store;
@@ -28,7 +40,7 @@ export const getChatSettings = chatId => {
       "get_chat_settings",
       {
         account: Number(account.id),
-                              chatId: Number(chatId)
+        chatId: Number(chatId)
       }
     );
 

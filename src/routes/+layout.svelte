@@ -1,5 +1,6 @@
 <script>
   import { onBackButtonPress } from "@tauri-apps/api/app";
+  import { listen } from "@tauri-apps/api/event";
   import { invoke } from "@tauri-apps/api/core";
   import { onMount, setContext } from "svelte";
   import { browser } from '$app/environment';
@@ -7,6 +8,7 @@
   import { page } from "$app/stores";
   import { type } from "@tauri-apps/plugin-os";
 
+  import { add as addLog } from '$lib/stores/logs.js';
   import { showAlert } from '$lib/utils/alert.js';
   import Alerts from '$components/main/Alerts.svelte';
   import Loading from "$components/effects/Loading.svelte";
@@ -23,6 +25,10 @@
   setContext("onBack", onBack);
 
   onMount(async () => {
+    listen("max", async (event) => {
+      addLog(event.payload);
+    });
+
     const system = type();
 
     if (system === "ios") {

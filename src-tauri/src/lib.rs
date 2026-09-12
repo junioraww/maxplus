@@ -116,6 +116,8 @@ pub fn run() {
             stores::get_contact,
             stores::set_contact,
             stores::get_contacts,
+            stores::save_chats,
+            stores::load_chats,
             stores::get_chat_settings,
             stores::set_chat_settings,
             stores::load_messages,

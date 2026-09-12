@@ -174,6 +174,10 @@ impl Paths {
         self.chats().join(id.to_string())
     }
 
+    fn info(&self, chat: i64) -> PathBuf {
+        self.chat(chat).join("info")
+    }
+
     fn settings(&self, chat: i64) -> PathBuf {
         self.chat(chat).join("settings")
     }
@@ -192,6 +196,10 @@ impl Paths {
 
     fn cache_file(&self, name: &str) -> PathBuf {
         self.cache_files().join(name)
+    }
+
+    pub fn sync_state(&self) -> PathBuf {
+        self.root.join("sync_state")
     }
 }
 
@@ -240,6 +248,61 @@ pub fn get_contacts(
     .into_iter()
     .filter_map(|x| storage.load(x))
     .collect())
+}
+
+#[tauri::command]
+pub fn save_chats(
+    app: AppHandle,
+    account: u64,
+    chats: Vec<Value>,
+) -> Result<(), String> {
+    let key = crypto_key(&app, account);
+    let storage = Storage::new(key);
+    let paths = Paths::new(&app, account);
+
+    for chat in chats {
+        let chat_id = chat.get("id").and_then(|v| {
+            v.as_i64()
+            .or_else(|| v.as_str().and_then(|s| s.parse::<i64>().ok()))
+        });
+
+        if let Some(id) = chat_id {
+            let path = paths.info(id);
+            storage.save(path, &chat)?;
+        }
+    }
+
+    Ok(())
+}
+
+#[tauri::command]
+pub fn load_chats(
+    app: AppHandle,
+    account: u64,
+) -> Result<Vec<Value>, String> {
+    let key = crypto_key(&app, account);
+    let storage = Storage::new(key);
+    let paths = Paths::new(&app, account);
+
+    let mut chat_ids: Vec<i64> = Storage::list(paths.chats())
+    .into_iter()
+    .filter(|p| p.is_dir())
+    .filter_map(|p| {
+        p.file_name()?
+        .to_str()?
+        .parse::<i64>()
+        .ok()
+    })
+    .collect();
+
+    chat_ids.sort();
+
+    let chats = chat_ids
+    .into_iter()
+    .filter_map(|id| storage.load(paths.info(id)))
+    .collect();
+
+    Ok(chats)
 }
 
 #[tauri::command]
@@ -1179,4 +1242,23 @@ pub async fn write_file_bytes(path: String, content: Vec<u8>) -> Result<(), Stri
     tokio::fs::write(path, content)
     .await
     .map_err(|e| e.to_string())
+}
+
+pub fn load_sync_state<T: serde::de::DeserializeOwned>(
+    app: &AppHandle,
+    account: u64,
+) -> Option<T> {
+    let key = crypto_key(app, account);
+    let val = Storage::new(key).load(Paths::new(app, account).sync_state())?;
+    serde_json::from_value(val).ok()
+}
+
+pub fn save_sync_state<T: serde::Serialize>(
+    app: &AppHandle,
+    account: u64,
+    state: &T,
+) -> Result<(), String> {
+    let key = crypto_key(app, account);
+    let val = serde_json::to_value(state).map_err(|e| e.to_string())?;
+    Storage::new(key).save(Paths::new(app, account).sync_state(), &val)
 }

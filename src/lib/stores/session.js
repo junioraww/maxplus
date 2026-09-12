@@ -1,6 +1,10 @@
 import { writable, get as getStoreValue, readable } from "svelte/store";
-import API, { currentSessionChats } from "$lib/stores/api";
 import { goto } from "$app/navigation";
+
+import API, { currentSessionChats } from "$lib/stores/api";
+import {
+  saveChats,
+} from "$lib/stores/messages";
 
 const data = writable({
   openedChats: [],
@@ -40,12 +44,16 @@ export async function openChat(chatId/*,  messageId */) { // TODO
         return alert("Не удалось получить информацию о чате.\nВозможно, чат закрыт.");
       }
 
-      Caching.cacheChat(response.chats[0]);
+      const info = response.chats[0];
 
-      if (!chat) {
-        console.error("Чат не найден");
-        return;
-      }
+       // TODO Optimize
+      currentSessionChats.update(chats => {
+        const idx = chats.findIndex(x => x.id === info.id);
+        if (idx !== -1) chats.splice(idx, 1);
+        chats.push(info);
+      });
+
+      await saveChats([ info ]);
     }
 
     console.log('Opening chat', chatId);

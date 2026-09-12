@@ -5,7 +5,10 @@
   import { tick } from "svelte";
 
   import { handleReaction } from "$components/ChatWindow/actions";
-  import { cacheChat } from "$lib/utils/caching";
+  import { currentSessionChats } from "$lib/stores/api";
+  import {
+    saveChats,
+  } from "$lib/stores/messages";
   import API from "$lib/stores/api";
 
   export let activeAt;
@@ -69,7 +72,14 @@
   async function handlePinMessage() {
     const response = await $API.pinMessage(chat.id, activeAt.msg.id);
 
-    cacheChat(response.chat);
+    // TODO Optimize
+    currentSessionChats.update(chats => {
+      const idx = chats.findIndex(x => x.id === chat.id);
+      if (idx !== -1) chats.splice(idx, 1);
+      chats.push(chat);
+    });
+
+    await saveChats([ chat ]);
 
     dispatch("close", {});
     if (onBack.dropout) delete onBack["dropout"];

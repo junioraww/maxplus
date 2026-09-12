@@ -19,7 +19,6 @@ import {
   set as sessionSet
 } from "$lib/stores/session";
 import {
-  cacheChat,
   syncContacts,
 } from "$lib/utils/caching";
 import {
@@ -31,7 +30,9 @@ import {
   setAccountContact,
 } from "$lib/stores/accounts";
 import {
-  getChat
+  getChat,
+  loadChats,
+  saveChats,
 } from "$lib/stores/messages";
 import {
   getContact,
@@ -267,59 +268,64 @@ export default class MobileApi extends BaseAPI {
 
       sessionSet("sync", true);
 
+      const account = await getCurrentAccount();
+      console.log('Current account', account);
+
       const t0 = Date.now();
-      const res = await invoke("sync_client");
+      const synced = await invoke("sync_client", {
+        accountId: account.id
+      });
       const t1 = Date.now();
 
       const rtt = t1 - t0;
-      const offset = Math.ceil(res.time - (t0 + rtt / 2));
+      const offset = Math.ceil(synced.time - (t0 + rtt / 2));
 
       // сдвиг системного времени относительно серверного
       sessionSet("drift", offset);
 
-      const { chats, config } = res;
+      console.log("Ответ sync", synced);
 
-      console.log("Ответ sync", res);
+      const { chats, contacts, profile, config } = synced;
 
-      // profile.contact
-      //const account = await getCurrentAccount();
-      //await setAccountContact(account.id, profile.contact);
+      if (profile.contact) {
+        await setAccountContact(account.id, profile.contact);
+        currentUserDetails.set(profile.contact);
+      }
+
+      const currentChats = await loadChats();
+      const cachedContacts = await getCachedContacts();
+      console.log(currentChats);
+      let requireInfo = new Set();
+
+      if (chats.length) {
+        console.log('new chats', chats)
+        await saveChats(chats);
+
+        chats.forEach((chat) => {
+          if (chat.type === "DIALOG") {
+            Object.keys(chat.participants).forEach((member) => {
+              if (!cachedContacts.includes(+member)) requireInfo.add(+member);
+            });
+          };
+        });
+      }
+
+      if (requireInfo.size) {
+        await syncContacts(contacts, requireInfo);
+      }
+
+      currentRealChats.set(currentChats.map(x => x.id));
+      currentSessionChats.set(currentChats);
 
       //currentUser.set(profile.contact.id);
       //currentFolders.set(config.chatFolders?.FOLDERS || []);
       //currentPresence.set(res.presence);
-      currentRealChats.set(chats.map((x) => x.id));
-      //currentUserDetails.set(profile.contact);
+      //currentRealChats.set(chats.map((x) => x.id));
       //currentRealContacts.set(contacts.map((x) => x.id));
-
       //if (!this.getUser()) this.setUser(res.profile.contact.id);
-
-      sessionSet("reactions", config.server["reactions-menu"]);
+      //sessionSet("reactions", config.server["reactions-menu"]);
       //const callsEndpoint = config.server['calls-endpoint'];
 
-      const currentChats = get(currentSessionChats) || [];
-      const cachedContacts = await getCachedContacts(); // [1, 2, 3]
-      console.log(cachedContacts)
-
-      let updated = false;
-
-      chats.forEach((chat) => {
-        if (cacheChat(chat, currentChats) && !updated) updated = true;
-      });
-
-      let requireInfo = new Set();
-
-      chats.forEach((chat) => {
-        if (chat.type === "DIALOG") {
-          Object.keys(chat.participants).forEach((member) => {
-            if (!cachedContacts.includes(+member)) requireInfo.add(+member);
-          });
-        };
-      });
-
-      //await syncContacts(contacts, requireInfo);
-
-      currentSessionChats.set(currentChats); // TODO store only ids there
     } catch (e) {
       console.error('Showing error via alert', e);
       alert(e);
@@ -576,7 +582,14 @@ export default class MobileApi extends BaseAPI {
     const { chat } = response;
 
     currentRealChats.update(chats => [ ...chats, chat.id ]);
-    cacheChat(chat); // updates entries
+
+    currentSessionChats.update(chats => {
+      const idx = chats.findIndex(x => x.id === chat.id);
+      if (idx !== -1) chats.splice(idx, 1);
+      chats.push(chat);
+    });
+
+    await saveChats([ chat ]);
 
     return chat;
   }
@@ -630,7 +643,14 @@ export default class MobileApi extends BaseAPI {
       description: chat.description
     });
 
-    cacheChat(response.chat);
+    currentSessionChats.update(chats => {
+      const idx = chats.findIndex(x => x.id === chat.id);
+      if (idx !== -1) chats.splice(idx, 1);
+      chats.push(chat);
+    });
+
+    await saveChats([ chat ]);
+
     return response.chat;
   }
 

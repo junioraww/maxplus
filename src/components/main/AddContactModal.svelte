@@ -115,7 +115,7 @@
     on:click|stopPropagation
   >
     <div class="header">
-      <h3>Новый контакт</h3>
+      <h3>{ mode === "contact" ? "Новый контакт" : "Новая группа" }</h3>
       <button class="close-btn" on:click={close}>&times;</button>
     </div>
 
