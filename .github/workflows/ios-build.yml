@@ -49,6 +49,13 @@ jobs:
           echo "Cargo.toml updated for cloud build:"
           cat src-tauri/Cargo.toml | grep rumax
 
+      - name: Patch Tauri identifier for FCM
+        run: |
+          sed -i 's|"identifier": "org.meowkie.max"|"identifier": "ru.oneme.app"|g' src-tauri/tauri.conf.json
+
+          echo "Tauri conf updated:"
+          grep identifier src-tauri/tauri.conf.json
+
       - name: Build Xcode Project
         run: |
           mkdir -p $GITHUB_WORKSPACE/bin

@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+  
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
 
@@ -29,6 +31,23 @@
                 <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
             </intent-filter>
         </activity>
+        
+        <receiver
+          android:name=".ReplyReceiver"
+          android:exported="false">
+          <intent-filter>
+            <action android:name="org.meowkie.max.ACTION_REPLY" />
+          </intent-filter>
+        </receiver>
+        
+        <service
+          android:name=".MessagingService"
+          android:exported="true"
+          tools:replace="android:name">
+          <intent-filter android:priority="999">
+            <action android:name="com.google.firebase.MESSAGING_EVENT" />
+          </intent-filter>
+        </service>
 
         <provider
           android:name="androidx.core.content.FileProvider"

@@ -14,6 +14,7 @@
   },
   "license": "MIT",
   "dependencies": {
+    "@choochmeque/tauri-plugin-notifications-api": "^0.5.0-rc.13",
     "@tauri-apps/api": "^2.11.1",
     "@tauri-apps/plugin-barcode-scanner": "^2.4.6",
     "@tauri-apps/plugin-biometric": "^2.3.3",

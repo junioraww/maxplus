@@ -39,6 +39,9 @@ import {
   updateContact,
   getCachedContacts,
 } from "$lib/stores/contacts";
+import {
+  suggestNotifications
+} from "$lib/utils/notifications";
 
 import BaseAPI from "./BaseApi";
 
@@ -57,10 +60,6 @@ export default class MobileApi extends BaseAPI {
 
   constructor(token) {
     super(token);
-  }
-
-  _telemetry() {
-    /* Telemetry implemented in rust code */
   }
 
   async startListener() {
@@ -98,6 +97,7 @@ export default class MobileApi extends BaseAPI {
     });
   }
 
+  /* media processing after upload */
   waitForProcessing(id) {
     return new Promise(resolve => {
       this.notify[id] = (() => {
@@ -326,6 +326,7 @@ export default class MobileApi extends BaseAPI {
       //sessionSet("reactions", config.server["reactions-menu"]);
       //const callsEndpoint = config.server['calls-endpoint'];
 
+      suggestNotifications();
     } catch (e) {
       console.error('Showing error via alert', e);
       alert(e);
