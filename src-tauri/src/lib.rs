@@ -1,5 +1,6 @@
 mod commands;
 mod files;
+mod notifications;
 mod state;
 mod stores;
 mod video;
@@ -17,7 +18,7 @@ pub fn run() {
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_os::init())
-        .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_notifications::init())
         .plugin(tauri_plugin_opener::init());
 
     #[cfg(any(target_os = "android", target_os = "ios"))]

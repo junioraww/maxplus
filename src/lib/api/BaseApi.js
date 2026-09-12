@@ -1,9 +1,5 @@
 // prettier-ignore
 export default class API {
-    constructor(token) {
-        this._telemetry();
-    }
-
     connect() { throw "connect: Unimplemented" }
     logout() { throw "logout: Unimplemented" }
     getSessions() { throw "getSessions: Unimplemented" }

@@ -132,13 +132,17 @@ pub async fn sync_client(
     Ok(final_payload)
 }
 
+
+
 #[tauri::command]
 pub async fn set_token(state: State<'_, AppState>, token: String) -> Result<String, String> {
     state.client.set_token(token).await;
     Ok("Set".into())
 }
 
+// TODO implement / remove
 #[tauri::command]
 pub async fn get_video_secret(secret: tauri::State<'_, String>) -> Result<String, String> {
     Ok(secret.inner().clone())
 }
+

@@ -15,46 +15,51 @@ val tauriProperties = Properties().apply {
 }
 
 android {
-    compileSdk = 35
+    compileSdk = 36
     namespace = "org.meowkie.max"
     defaultConfig {
         manifestPlaceholders["usesCleartextTraffic"] = "false"
         applicationId = "org.meowkie.max"
         minSdk = 28
-        targetSdk = 35
+        targetSdk = 36
         versionCode = tauriProperties.getProperty("tauri.android.versionCode", "1").toInt()
         versionName = tauriProperties.getProperty("tauri.android.versionName", "1.0")
     }
-	signingConfigs {
-    create("release") {
-      
-      val isCI = System.getenv("CI") == "true"
-      
-      if (isCI) { // github actions
-        val storeFilePath = System.getenv("ANDROID_KEYSTORE")
+    
+    buildFeatures {
+      buildConfig = true
+    }
+    
+    signingConfigs {
+      create("release") {
+        val isCI = System.getenv("CI") == "true"
         
-        keyAlias = System.getenv("ANDROID_KEY_ALIAS")
-        keyPassword = System.getenv("ANDROID_KEY_PASSWORD")
-        storePassword = System.getenv("ANDROID_KEYSTORE_PASSWORD")
-        storeFile = file(storeFilePath)
-        
-      } else { // using local keystore
-        val keystorePropertiesFile = rootProject.file("keystore.properties")
-        val keystoreProperties = Properties()
-        
-        if (keystorePropertiesFile.exists()) {
-          keystorePropertiesFile.inputStream().use {
-            keystoreProperties.load(it)
+        if (isCI) { // github actions
+          val storeFilePath = System.getenv("ANDROID_KEYSTORE")
+          
+          keyAlias = System.getenv("ANDROID_KEY_ALIAS")
+          keyPassword = System.getenv("ANDROID_KEY_PASSWORD")
+          storePassword = System.getenv("ANDROID_KEYSTORE_PASSWORD")
+          storeFile = file(storeFilePath)
+          
+        } else { // using local keystore
+          val keystorePropertiesFile = rootProject.file("keystore.properties")
+          val keystoreProperties = Properties()
+          
+          if (keystorePropertiesFile.exists()) {
+            keystorePropertiesFile.inputStream().use {
+              keystoreProperties.load(it)
+            }
           }
+          
+          keyAlias = keystoreProperties["keyAlias"] as String
+          keyPassword = keystoreProperties["password"] as String
+          storePassword = keystoreProperties["password"] as String
+          storeFile = file(keystoreProperties["storeFile"] as String)
         }
-        
-        keyAlias = keystoreProperties["keyAlias"] as String
-        keyPassword = keystoreProperties["password"] as String
-        storePassword = keystoreProperties["password"] as String
-        storeFile = file(keystoreProperties["storeFile"] as String)
       }
     }
-	}
+	
     buildTypes {
         getByName("debug") {
             manifestPlaceholders["usesCleartextTraffic"] = "true"
@@ -77,9 +82,11 @@ android {
             )
         }
     }
+    
     kotlinOptions {
         jvmTarget = "1.8"
     }
+    
     buildFeatures {
         buildConfig = true
     }
@@ -93,9 +100,17 @@ dependencies {
     implementation("androidx.webkit:webkit:1.6.1")
     implementation("androidx.appcompat:appcompat:1.6.1")
     implementation("com.google.android.material:material:1.8.0")
+    implementation("com.google.firebase:firebase-messaging:23.4.1")
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test.ext:junit:1.1.4")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.5.0")
 }
+
+/*configurations.all {
+  resolutionStrategy {
+    force("org.jetbrains.kotlin:kotlin-stdlib:1.9.0")
+      force("org.jetbrains.kotlin:kotlin-stdlib-jdk8:1.9.0")
+  }
+}*/
 
 apply(from = "tauri.build.gradle.kts")

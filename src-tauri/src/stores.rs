@@ -1262,3 +1262,35 @@ pub fn save_sync_state<T: serde::Serialize>(
     let val = serde_json::to_value(state).map_err(|e| e.to_string())?;
     Storage::new(key).save(Paths::new(app, account).sync_state(), &val)
 }
+
+#[cfg(target_os = "android")]
+pub fn get_background_creds(
+    app_dir: &str,
+    account_id: u64,
+) -> Option<(String, rumax::models::Identity)> {
+    let root = std::path::PathBuf::from(app_dir);
+    let accounts_path = root.join("accounts");
+
+    let storage = Storage::new(None);
+    let store = storage.load(&accounts_path)?;
+
+    let account_info = store.get("accounts")?
+        .as_array()?
+        .iter()
+        .find(|x| x.get("id").and_then(|id| id.as_u64()) == Some(account_id))?;
+
+    if !account_info.get("encryption").unwrap_or(&Value::Null).is_null() {
+        eprintln!("Push: Аккаунт {} зашифрован. Отправка из фона невозможна без ключа.", account_id);
+        return None;
+    }
+
+    let meta_path = root.join("data").join(account_id.to_string()).join("meta");
+    let meta = storage.load(&meta_path)?;
+
+    let token = meta.get("token")?.as_str()?.to_string();
+    let device = meta.get("device")?.clone();
+
+    let identity: rumax::models::Identity = serde_json::from_value(device).ok()?;
+
+    Some((token, identity))
+}
