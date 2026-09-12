@@ -2,10 +2,13 @@
   import { onBackButtonPress } from "@tauri-apps/api/app";
   import { invoke } from "@tauri-apps/api/core";
   import { onMount, setContext } from "svelte";
+  import { browser } from '$app/environment';
   import { fade } from "svelte/transition";
   import { page } from "$app/stores";
   import { type } from "@tauri-apps/plugin-os";
 
+  import { showAlert } from '$lib/utils/alert.js';
+  import Alerts from '$components/main/Alerts.svelte';
   import Loading from "$components/effects/Loading.svelte";
   import ProfileModal from "$components/ProfileModal.svelte";
   import DevSettings from "$components/main/dev/Settings.svelte";
@@ -48,6 +51,8 @@
       });
     }
   });
+
+  if (browser) window.alert = showAlert;
 </script>
 
 {#if $Session.devSettings}
@@ -75,6 +80,8 @@
 {:else}
   <Loading/>
 {/if}
+
+<Alerts />
 
 <style>
   main {

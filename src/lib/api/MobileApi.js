@@ -1,7 +1,8 @@
-import { invoke } from "$lib/utils/invoke";
 import { listen } from "@tauri-apps/api/event";
-import BaseAPI from "./BaseApi";
+import { goto } from "$app/navigation";
 import { get } from "svelte/store";
+
+import { invoke } from "$lib/utils/invoke";
 import {
   currentUser,
   currentUserDetails,
@@ -37,7 +38,8 @@ import {
   updateContact,
   getCachedContacts,
 } from "$lib/stores/contacts";
-import { goto } from "$app/navigation";
+
+import BaseAPI from "./BaseApi";
 
 export default class MobileApi extends BaseAPI {
   resolve_sync = null;
@@ -129,6 +131,8 @@ export default class MobileApi extends BaseAPI {
       token: account.meta.token,
       identity: account.meta.device,
     });
+
+    console.log(response);
 
     if (response.success) {
       sessionSet("connected", true);
@@ -273,7 +277,7 @@ export default class MobileApi extends BaseAPI {
       // сдвиг системного времени относительно серверного
       sessionSet("drift", offset);
 
-      const { profile, chats, contacts, config } = res;
+      const { chats, config } = res;
 
       console.log("Ответ sync", res);
 
@@ -282,7 +286,7 @@ export default class MobileApi extends BaseAPI {
       //await setAccountContact(account.id, profile.contact);
 
       //currentUser.set(profile.contact.id);
-      currentFolders.set(config.chatFolders?.FOLDERS || []);
+      //currentFolders.set(config.chatFolders?.FOLDERS || []);
       //currentPresence.set(res.presence);
       currentRealChats.set(chats.map((x) => x.id));
       //currentUserDetails.set(profile.contact);

@@ -1,9 +1,10 @@
 import { invoke as tauriInvoke } from "@tauri-apps/api/core";
+import { get } from "svelte/store";
+
 import {
   error as logError,
   add as addLog,
 } from "$lib/stores/logs";
-import { get } from "svelte/store";
 import API from "$lib/stores/api";
 import {
   removeAccount,
@@ -48,7 +49,6 @@ let recentAlert = 0;
 
 async function restart(text, command, args) {
   if (recentAlert < Date.now() - 5000) {
-    console.log('Showing alert before restart...', text)
     alert(text);
   }
   recentAlert = Date.now();
