@@ -1,5 +1,6 @@
 <script>
   import { invoke, convertFileSrc } from "@tauri-apps/api/core";
+  import { platform } from "@tauri-apps/plugin-os";
   import { tick } from "svelte";
 
   import { scrollToBottom } from "$lib/utils/scroll.js";
@@ -19,6 +20,12 @@
   let attaches = [];
   let elements = [];
 
+  let textareaEl;
+  let lines = 0;
+
+  const currentPlatform = platform();
+  const isMobile = currentPlatform === "android" || currentPlatform === "ios";
+
   async function onSend(event) {
     if (!newMessage.trim() && !attaches.length) return;
     const textToSend = newMessage;
@@ -26,7 +33,10 @@
 
     newMessage = "";
     await tick();
-    autoResize(event);
+
+    if (textareaEl) {
+      textareaEl.style.height = "auto";
+    }
 
     const _attaches = [];
     const _elements = [];
@@ -65,14 +75,12 @@
     }
   }
 
-  let lines = 0;
+  function autoResize() {
+    if (!textareaEl) return;
 
-  async function autoResize(e) {
-    const el = e.target;
-
-    let newLines = (el.value.match(/\n/g) || []).length + 1;
-    if (newLines < lines) el.style.height = "auto";
-    else el.style.height = el.scrollHeight + "px";
+    let newLines = (textareaEl.value.match(/\n/g) || []).length + 1;
+    if (newLines < lines) textareaEl.style.height = "auto";
+    else textareaEl.style.height = textareaEl.scrollHeight + "px";
 
     lines = newLines;
   }
@@ -187,15 +195,16 @@
 
     <div class="input-container">
       <textarea
+        bind:this={textareaEl}
         id="textarea-{chat.id}"
         rows="1"
         placeholder="Сообщение"
         bind:value={newMessage}
         on:input={autoResize}
         on:keydown={async (e) => {
-          if (e.key === "Enter" && !e.shiftKey) {
+          if (e.key === "Enter" && !e.shiftKey && !isMobile) {
             e.preventDefault();
-            await onSend(e);
+            await onSend();
           }
         }}
       ></textarea>

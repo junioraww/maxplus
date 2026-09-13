@@ -2,11 +2,9 @@ import {
   registerForPushNotifications,
   isPermissionGranted,
   requestPermission,
-  onNotificationReceived,
   sendNotification as pluginSendNotification,
   createChannel,
   channels,
-  removeChannel,
   Importance,
   Visibility
 } from '@choochmeque/tauri-plugin-notifications-api';
@@ -20,8 +18,10 @@ import Session from "$lib/stores/session";
 import API from "$lib/stores/api";
 import { get } from "svelte/store";
 
+export const MESSAGES_CHANNEL_ID = 'MESSAGES_CHANNEL_ID';
+
 let granted = false;
-let currentOs;
+let currentOs = null;
 
 export async function suggestNotifications() {
   let permissionGranted = await isPermissionGranted();
@@ -32,23 +32,49 @@ export async function suggestNotifications() {
   }
 
   granted = permissionGranted;
+  return granted;
+}
+
+async function ensureMessagesChannel() {
+  if (currentOs !== 'android') return;
+
+  try {
+    const channelList = await channels();
+    if (!channelList.some(c => c.id === MESSAGES_CHANNEL_ID)) {
+      await createChannel({
+        id: MESSAGES_CHANNEL_ID,
+        name: "Сообщения",
+        description: "Входящие сообщения чатов",
+        importance: Importance.High,
+        visibility: Visibility.Private,
+        vibration: true
+      });
+    }
+  } catch (e) {
+    console.error("Push: Ошибка создания канала уведомлений:", e);
+  }
 }
 
 export async function setupPushNotifications() {
+  if (!currentOs) currentOs = type();
+
   if (!granted) await suggestNotifications();
   if (!granted) return;
 
-  if (!currentOs) currentOs = type();
-
   if (currentOs === 'android') {
+    await ensureMessagesChannel();
+
     try {
       const fcmToken = await registerForPushNotifications();
       console.log('Push: получен FCM токен:', fcmToken);
 
-      await get(API).call(22, {
-        pushToken: fcmToken,
-        pushOptions: 0
-      });
+      if (fcmToken) {
+        await get(API).call(22, {
+          pushToken: fcmToken,
+          pushOptions: 0
+        });
+        console.log('Push: токен успешно зарегистрирован на сервере');
+      }
     } catch (error) {
       console.error("Push: Ошибка регистрации пуш-уведомлений:", error);
     }
@@ -58,53 +84,39 @@ export async function setupPushNotifications() {
 }
 
 export async function newMessage(chatId, chat, contact, message) {
-  if (get(Session).openedChats.some(idx => idx === chatId)) return; // chat opened
-  // TODO notification settings
+  if (get(Session).openedChats?.some(idx => idx === chatId)) return;
 
   let avatarLocalPath = null;
+  const chatInfo = chat?.getInfo ? chat.getInfo() : (chat || {});
+  const title = chatInfo.title || contact?.names?.[0]?.name || "Новое сообщение";
 
-  const chatInfo = chat.getInfo();
-
-  const avatarUrl = chat.baseUrl || contact?.avatar;
+  const avatarUrl = chat?.baseUrl || contact?.avatar;
   if (avatarUrl) {
     avatarLocalPath = await getLocalFilePath(avatarUrl);
   } else {
-    console.log(chatInfo);
     avatarLocalPath = await getFallbackAvatarLocalPath(
-      chatInfo.id || contact?.id,
-      chatInfo.title || contact?.names[0].name,
+      chatInfo.id || contact?.id || chatId,
+      title
     );
   }
 
+  const notificationId = Number(BigInt(chatId) & 0x7fffffffn);
+
   const entry = {
-    title: null,
-    body: message,
+    id: notificationId,
+    title: title,
+    body: typeof message === 'string' ? message : (message?.text || "Новое сообщение"),
     icon: avatarLocalPath,
     largeIcon: avatarLocalPath,
   };
 
-  if (chatInfo.title) entry.title = chatInfo.title;
-  else if (contact) entry.title = contact.names[0].name;
-
-  console.log(entry);
+  if (!currentOs) currentOs = type();
 
   if (currentOs === 'android') {
-    const channelList = await channels();
-
-    console.log(channelList);
-
-    if (!channels.some(c => c.id === chatId + "")) {
-      await createChannel({
-        id: chatId + "",
-        name: title,
-        description: "New message notifications",
-        importance: Importance.High
-      });
-    }
-
+    await ensureMessagesChannel();
     await sendNotification({
       ...entry,
-      channelId: chatId + ""
+      channelId: MESSAGES_CHANNEL_ID
     });
   } else {
     await sendNotification(entry);
@@ -113,6 +125,9 @@ export async function newMessage(chatId, chat, contact, message) {
 
 export async function sendNotification(data) {
   if (!granted) return;
-
-  pluginSendNotification(data);
+  try {
+    await pluginSendNotification(data);
+  } catch (e) {
+    console.error("Failed to display notification:", e);
+  }
 }

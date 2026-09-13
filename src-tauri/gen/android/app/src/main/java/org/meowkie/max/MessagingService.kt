@@ -9,24 +9,23 @@ class MessagingService : FirebaseMessagingService() {
   override fun onMessageReceived(message: RemoteMessage) {
     super.onMessageReceived(message)
     
+    if (AppState.isAppAlive) {
+      return
+    }
+    
     val data = message.data
     if (data.isEmpty()) return
       
-      try {
-        if (data.containsKey("chat_id") && data.containsKey("account_id")) {
-          val account = data["account_id"]?.toInt() ?: return
-          val chatId = data["chat_id"]?.toInt() ?: return
-          val mid = data["mid"]?.toInt()
-          
-          val text = data["text"] ?: "Новое сообщение" 
-          
-          val payloadJson = JSONObject(data as Map<*, *>).toString()
-          
-          showNotificationWithReply(this, payloadJson, chatId, account, mid)
-        }
-      } catch (e: Exception) {
-        e.printStackTrace()
-      }
+    val chatId = (data["mc"] ?: data["chat_id"])?.toLongOrNull() ?: return
+      
+    val notifier = NotificationHelper(this)
+    val type = data["type"]
+    
+    when {
+      type == "edit" || data.containsKey("edit") -> notifier.handleEditMessage(data)
+      type == "delete" || data.containsKey("delete") -> notifier.handleRemoveMessage(data)
+      else -> notifier.handleIncomingMessage(data)
+    }
   }
   
   override fun onNewToken(token: String) {
