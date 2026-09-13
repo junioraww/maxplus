@@ -77,7 +77,6 @@ async function generateInitialsImageBuffer(id, name, type = "USER") {
     ctx.textBaseline = "middle";
     ctx.fillText(initials, size / 2, size / 2 + (size * 0.05));
 
-    // Конвертация в Blob -> ArrayBuffer
     const blob = await canvas.convertToBlob({ type: "image/png" });
     return await blob.arrayBuffer();
 }
