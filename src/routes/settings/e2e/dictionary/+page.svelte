@@ -79,7 +79,7 @@
         src={ downloading ? "/icons/reload.svg" : "/icons/crypto.svg" }
         class:spin={downloading}
         class="icon"/>
-        <div class="text">Слов: <b>{ data ? (data.dict8?.length + data.dict16?.length) : 0 }</b></div>
+        <div class="text">Слов: <b>{ data?.dict8 ? (data.dict8?.length + data.dict16?.length) : 0 }</b></div>
       </div>
     {/await}
   </div>

@@ -168,7 +168,7 @@
     transition:fly={{ x: 380, duration: 300, opacity: 1, easing: cubicOut }}
   >
     <div class="peer-id">
-      ID {formatId(userId || chatIdd)}
+      ID {formatId(userId || chatId)}
     </div>
 
     <div class="header-controls">
