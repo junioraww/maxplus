@@ -63,13 +63,16 @@ export async function newMessage(chatId, chat, contact, message) {
 
   let avatarLocalPath = null;
 
+  const chatInfo = chat.getInfo();
+
   const avatarUrl = chat.baseUrl || contact?.avatar;
   if (avatarUrl) {
     avatarLocalPath = await getLocalFilePath(avatarUrl);
   } else {
+    console.log(chatInfo);
     avatarLocalPath = await getFallbackAvatarLocalPath(
-      chat.id || contact.id,
-      chat.title || contact.names[0].name,
+      chatInfo.id || contact?.id,
+      chatInfo.title || contact?.names[0].name,
     );
   }
 
@@ -80,7 +83,7 @@ export async function newMessage(chatId, chat, contact, message) {
     largeIcon: avatarLocalPath,
   };
 
-  if (chat.title) entry.title = chat.title;
+  if (chatInfo.title) entry.title = chatInfo.title;
   else if (contact) entry.title = contact.names[0].name;
 
   console.log(entry);

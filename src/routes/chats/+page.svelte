@@ -1,10 +1,13 @@
 <script>
   import { fly } from "svelte/transition";
+  import { onDestroy } from 'svelte';
+
   import ChatItem from "$components/chats/ChatItem.svelte";
   import FolderTabs from "$components/chats/FolderTabs.svelte";
   import AddContactBtn from "$components/main/AddContactBtn.svelte";
   import Search from "$components/main/Search.svelte";
   import FolderEditModal from "$components/chats/FolderEditModal.svelte";
+
   import { escapeHtml } from "$lib/utils/text.js";
   import { debounce } from "$lib/utils/debounce.js";
   import { openChat } from "$lib/stores/session.js";
@@ -232,6 +235,49 @@
     const { result: msgResult } = await $API.searchMsg(search);
     searchMsg = msgResult;
   }
+
+  const unsubscribers = new Map();
+
+  $: if ($currentSessionChats) {
+    $currentSessionChats.forEach((chat) => {
+      if (!unsubscribers.has(chat.id)) {
+        const { receivedMessage } = getChat(chat.id);
+        let initialSkip = true;
+
+        const unsub = receivedMessage.subscribe((msg) => {
+          // Пропускаем начальное значение при первой подписке
+          if (initialSkip) {
+            initialSkip = false;
+            return;
+          }
+          if (!msg) return;
+
+          currentSessionChats.update((chats) => {
+            const index = chats.findIndex((c) => c.id === chat.id);
+            if (index === -1) return chats;
+
+            const updatedChat = {
+              ...chats[index],
+              lastMessage: msg,
+              lastEventTime: msg.time || Date.now(),
+              newMessages: (chats[index].newMessages || 0) + 1,
+            };
+
+            const next = [...chats];
+            next.splice(index, 1);
+            return [updatedChat, ...next];
+          });
+        });
+
+        unsubscribers.set(chat.id, unsub);
+      }
+    });
+  }
+
+  onDestroy(() => {
+    unsubscribers.forEach(unsub => unsub());
+    unsubscribers.clear();
+  });
 
   let showFolderModal = false;
   let folderToEdit = null;
