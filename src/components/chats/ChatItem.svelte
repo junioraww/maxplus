@@ -16,6 +16,10 @@
     openChat,
     get as sessionGet
   } from "$lib/stores/session";
+  import {
+    getChat
+  } from "$lib/stores/messages";
+
   import Avatar from "$components/main/Avatar.svelte";
 
   export let chat;
@@ -37,7 +41,9 @@
       ? "Избранное"
       : chat.title || $contact?.names?.[0]?.name || "Без названия";
 
-  $: shownMessage = replace?.message || chat.lastMessage;
+  $: cachedChat = getChat(chat.id);
+  $: receivedMessage = cachedChat.receivedMessage;
+  $: shownMessage = replace?.message || $receivedMessage || chat.lastMessage;
   $: attaches = getAttachText(chat, shownMessage);
 
   currentSessionChats.subscribe(chats => {

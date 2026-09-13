@@ -1,15 +1,25 @@
-import { writable } from "svelte/store";
+import { writable, get } from "svelte/store";
 import { invoke } from "@tauri-apps/api/core";
 
 import {
-  getCurrentAccount
+  getCurrentAccount,
 } from "$lib/stores/accounts";
+import {
+  currentSessionChats,
+} from "$lib/stores/api";
+import {
+  get as sessionGet,
+} from "$lib/stores/session";
+
+// TODO перенести currentSessionChats сюда
 
 const settingsCache = {};
 const chatsCache = {};
 
 export const loadChats = async () => {
   const account = await getCurrentAccount();
+
+  // TODO caching?
 
   return invoke("load_chats", { account: account.id });
 }
@@ -65,12 +75,13 @@ export const getChat = chatId => {
   if (chatsCache[chatId])
     return chatsCache[chatId];
 
-  const chatInfo = writable(undefined);
+  // TODO this must be store used in currentSessionChats (so make currentSessionChats usual array!)
+  //const chatInfo = writable(undefined);
 
   const receivedMessage = writable(null);
 
   const entry = {
-    chatInfo,
+    getInfo: () => get(currentSessionChats).find(chat => chat.id === Number(chatId)),
     receivedMessage,
     updateMessages: async messages => {
       const account = await getCurrentAccount();

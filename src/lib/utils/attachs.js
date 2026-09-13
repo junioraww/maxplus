@@ -1,4 +1,4 @@
-import { escapeHtml } from "$lib/utils/text.js";
+import { escapeHtml } from "$lib/utils/text";
 
 // prettier-ignore
 export function getAttachText(chat, msg) {

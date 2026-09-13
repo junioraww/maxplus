@@ -2,7 +2,7 @@ use crate::stores::{load_sync_state, save_sync_state};
 use crate::state::AppState;
 use serde_json::{json, Value};
 use std::collections::HashMap;
-use rumax::{Error, models::{Identity, FetchHistoryOptions}};
+use rumax::{Error, TelemetryChat, models::{Identity, FetchHistoryOptions}};
 use tauri::{AppHandle, State};
 
 fn p(s: String) -> Result<u64, Value> {
@@ -49,6 +49,7 @@ delegate_cmd!(leave_group(chat_id: i64) => leave_group(chat_id));
 delegate_cmd!(change_group_profile(chat_id: i64, title: Option<String>, description: Option<String>) => change_group_profile(chat_id, title, description));
 delegate_cmd!(fetch_history(chat_id: i64, options: Option<FetchHistoryOptions>) => fetch_history(chat_id, options));
 delegate_cmd!(refresh_invite_link(chat_id: i64) => refresh_invite_link(chat_id));
+delegate_cmd!(sync_contacts() => sync_contacts());
 
 delegate_cmd!(add_reaction(chat_id: i64, message_id: String, reaction: String) => add_reaction(chat_id, p(message_id)?, reaction));
 delegate_cmd!(remove_reaction(chat_id: i64, message_id: String) => remove_reaction(chat_id, p(message_id)?));
@@ -130,6 +131,12 @@ pub async fn sync_client(
     }
 
     Ok(final_payload)
+}
+
+#[tauri::command]
+pub async fn set_chats_for_telemetry(state: State<'_, AppState>, chats: Vec<TelemetryChat>) -> Result<String, String> {
+    state.client.set_telemetry_chats(chats).await;
+    Ok("Set".into())
 }
 
 
