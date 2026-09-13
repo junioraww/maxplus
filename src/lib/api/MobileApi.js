@@ -40,8 +40,15 @@ import {
   getCachedContacts,
 } from "$lib/stores/contacts";
 import {
-  suggestNotifications
+  getContactAsync,
+} from "$lib/utils/caching";
+import {
+  setupPushNotifications,
+  newMessage
 } from "$lib/utils/notifications";
+import {
+  getMessagePreview
+} from "$lib/utils/text";
 
 import BaseAPI from "./BaseApi";
 
@@ -63,8 +70,6 @@ export default class MobileApi extends BaseAPI {
   }
 
   async startListener() {
-    if (this.unlisten) this.unlisten();
-
     this.unlisten = await listen("max", async (event) => {
       const { payload } = event;
 
@@ -86,8 +91,36 @@ export default class MobileApi extends BaseAPI {
         // TODO event handler
         const message = response.payload.message;
         message.chatId = response.payload.chatId;
+
         const chat = getChat(message.chatId);
-        chat.receivedMessage.set(message);
+        chat.updateMessages([ message ]);
+
+        /* получено новое сообщение */
+        if (message.status !== "EDITED") {
+          chat.receivedMessage.set(message);
+
+          const info = chat.getInfo();
+
+          if (info.type === "DIALOG") {
+            const contact = await getContactAsync(message.chatId ^ get(currentUser));
+
+            console.log(get(contact));
+
+            newMessage(
+              message.chatId,
+              chat,
+              get(contact),
+              getMessagePreview(message)
+            );
+          } else {
+            newMessage(
+              message.chatId,
+              chat,
+              null,
+              getMessagePreview(message)
+            );
+          }
+        }
       } else if (opc == 129) {
         // typing
       } else if (opc === 136) {
@@ -285,6 +318,8 @@ export default class MobileApi extends BaseAPI {
 
       console.log("Ответ sync", synced);
 
+      if (synced.text) return null;
+
       const { chats, contacts, profile, config } = synced;
 
       if (profile.contact) {
@@ -292,9 +327,7 @@ export default class MobileApi extends BaseAPI {
         currentUserDetails.set(profile.contact);
       }
 
-      const currentChats = await loadChats();
       const cachedContacts = await getCachedContacts();
-      console.log(currentChats);
       let requireInfo = new Set();
 
       if (chats.length) {
@@ -314,8 +347,15 @@ export default class MobileApi extends BaseAPI {
         await syncContacts(contacts, requireInfo);
       }
 
+      const currentChats = await loadChats();
       currentRealChats.set(currentChats.map(x => x.id));
       currentSessionChats.set(currentChats);
+
+      const telemetrySetupResp = await invoke("set_chats_for_telemetry", {
+        chats: currentChats.map(c => ({ chatId: c.id, chatType: c.type }))
+      });
+
+      console.log('Set chats for telemetry', telemetrySetupResp);
 
       //currentUser.set(profile.contact.id);
       //currentFolders.set(config.chatFolders?.FOLDERS || []);
@@ -326,7 +366,8 @@ export default class MobileApi extends BaseAPI {
       //sessionSet("reactions", config.server["reactions-menu"]);
       //const callsEndpoint = config.server['calls-endpoint'];
 
-      suggestNotifications();
+      //await suggestNotifications();
+      setupPushNotifications();
     } catch (e) {
       console.error('Showing error via alert', e);
       alert(e);
@@ -335,6 +376,11 @@ export default class MobileApi extends BaseAPI {
     } finally {
       this.resolve_sync();
       console.log("Синхронизация завершена!");
+
+      const response = await invoke("sync_contacts");
+      console.log(response);
+      currentRealContacts.set(response.contacts.map(c => c.id));
+      response.contacts.forEach(c => updateContact(c)); // TODO don't update if values the same
 
       const calls = await this.getCalls();
       currentSessionCalls.set(calls);

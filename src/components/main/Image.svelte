@@ -1,12 +1,5 @@
 <script>
-  import { fetch } from '@tauri-apps/plugin-http';
-  import { convertFileSrc } from '@tauri-apps/api/core';
-
-  import {
-    getCachedFile,
-    setCachedFile
-  } from "$lib/stores/cache";
-  import { getCurrentAccount } from "$lib/stores/accounts";
+  import { getAssetUrl } from "$lib/utils/images";
 
   let { src, alt = "", ...props } = $props();
 
@@ -15,7 +8,6 @@
 
   $effect(() => {
     let cancelled = false;
-    let url = null;
 
     async function load() {
       error = false;
@@ -23,32 +15,12 @@
 
       if (!src) return;
 
-      try {
-        const account = await getCurrentAccount();
-        let path = await getCachedFile(account.id, src);
+      const url = await getAssetUrl(src);
 
-        if (!path) {
-          const response = await fetch(src, {
-            method: "GET"
-          });
-
-          if (!response.ok) {
-            throw new Error(`HTTP ${response.status}`);
-          }
-
-          const buffer = await response.arrayBuffer();
-          path = await setCachedFile(account.id, src, new Uint8Array(buffer));
-        }
-
-        url = convertFileSrc(path);
-
-        if (!cancelled) {
+      if (!cancelled) {
+        if (url) {
           localUrl = url;
-        }
-      } catch (e) {
-        console.error(e);
-
-        if (!cancelled) {
+        } else {
           error = true;
         }
       }
@@ -58,10 +30,6 @@
 
     return () => {
       cancelled = true;
-
-      if (url) {
-        URL.revokeObjectURL(url);
-      }
     };
   });
 </script>

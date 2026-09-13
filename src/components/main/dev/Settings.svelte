@@ -38,6 +38,17 @@
       <div
         on:click={() => {
           sessionSet("devSettings", false);
+          goto("/settings/logs?from=/?card=3");
+        }}
+        class="button"
+      >
+        <a>Сетевые логи</a>
+      </div>
+    </div>
+    <div class="group">
+      <div
+        on:click={() => {
+          sessionSet("devSettings", false);
           goto("/");
         }}
         class="button"

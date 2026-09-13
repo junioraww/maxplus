@@ -20,7 +20,10 @@
 
     if (call.chatType === "CHAT") {
       const chat = $currentSessionChats.find(x => x.id === call.chatId);
+      if (!chat) return null;
+
       const c = contacts[call.message.sender];
+
       return {
         name: chat.title,
         avatar: chat.avatar || chat.baseUrl || c?.avatar,
@@ -34,7 +37,7 @@
       avatar: c?.avatar,
       duration
     };
-  }) || [];
+  })?.filter(x => x) || [];
 
   const formatSeconds = s => `${`${s / 60 | 0}`.padStart(2, 0)}:${`${s % 60}`.padStart(2, 0)}`;
 </script>
@@ -138,7 +141,7 @@
     position: fixed;
     height: 50px;
     width: 50px;
-    bottom: calc(85px + env(safe-area-inset-bottom));
+    bottom: calc(20px + env(safe-area-inset-bottom));
     right: 25px;
     border-radius: 60px;
     display: flex;

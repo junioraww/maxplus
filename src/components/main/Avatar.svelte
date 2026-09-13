@@ -1,12 +1,7 @@
 <script>
-  import { writable } from "svelte/store";
+  import { getContact } from "$lib/utils/caching";
+  import { getAvatarPlaceholder, getInitials } from "$lib/utils/images";
 
-  import {
-    currentUser
-  } from "$lib/stores/api";
-  import {
-    getContact
-  } from "$lib/utils/caching";
   import Image from "$components/main/Image.svelte";
 
   export let size;
@@ -29,36 +24,9 @@
 
   $: avatarUrl = chat?.avatar || $contact?.avatar || $contact?.baseUrl;
 
-  function getAvatarPlaceholder(id) {
-    const colors = [
-      "#e17076",
-      "#7bc862",
-      "#65aadd",
-      "#a695e7",
-      "#ee7aae",
-      "#6ec9cb",
-    ];
-
-    if (chat?.type === "CHAT") {
-      const x = -id % colors.length;
-      const y = -Math.floor(id + id / 2) % colors.length;
-      return `linear-gradient(135deg, ${colors[x]}, ${colors[y]})`;
-    }
-
-    return colors[Math.abs(id) % colors.length];
-  }
-
-  function getInitials(name) {
-    if (!name) return "";
-    return name
-      .split(" ")
-      .slice(0, 2)
-      .map((n) => n[0])
-      .join("")
-      .toUpperCase();
-  }
-
   const imageStyle = `width: 100%; height: 100%; border-radius: 50%; object-fit: cover;`;
+
+  // TODO cache and use avatar initials (since notifications only use local images)
 </script>
 
 <div class="avatar-wrapper" style="width: {size}px; height: {size}px; {style}">

@@ -2,14 +2,15 @@
   import { onBackButtonPress } from "@tauri-apps/api/app";
   import { listen } from "@tauri-apps/api/event";
   import { invoke } from "@tauri-apps/api/core";
-  import { onMount, setContext } from "svelte";
+  import { onMount, onDestroy, setContext } from "svelte";
   import { browser } from '$app/environment';
   import { fade } from "svelte/transition";
   import { page } from "$app/stores";
   import { type } from "@tauri-apps/plugin-os";
 
-  import { add as addLog } from '$lib/stores/logs.js';
-  import { showAlert } from '$lib/utils/alert.js';
+  import API from '$lib/stores/api';
+  import { add as addLog } from '$lib/stores/logs';
+  import { showAlert } from '$lib/utils/alert';
   import Alerts from '$components/main/Alerts.svelte';
   import Loading from "$components/effects/Loading.svelte";
   import ProfileModal from "$components/ProfileModal.svelte";
@@ -17,7 +18,7 @@
   import AddContactModal from "$components/main/AddContactModal.svelte";
   import DevicesSettings from "$components/main/devices/Settings.svelte";
 
-  import Session from "$lib/stores/session.js";
+  import Session from "$lib/stores/session";
 
   let settings;
   const onBack = {};
@@ -56,6 +57,10 @@
         else if (onBack.settings) onBack.settings();
       });
     }
+  });
+
+  onDestroy(() => {
+    $API.unlisten();
   });
 
   if (browser) window.alert = showAlert;
