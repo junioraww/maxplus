@@ -2,7 +2,7 @@
   import { fetch } from '@tauri-apps/plugin-http';
   import { download } from '@tauri-apps/plugin-upload';
   import { convertFileSrc } from '@tauri-apps/api/core';
-  import { open, save } from "@tauri-apps/plugin-dialog";
+  import { save } from "@tauri-apps/plugin-dialog";
   import { onDestroy } from 'svelte';
 
   import {

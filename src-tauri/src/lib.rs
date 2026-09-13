@@ -102,6 +102,9 @@ pub fn run() {
             files::download,
             files::upload,
             files::pick,
+            files::read_file,
+            files::write_file_string,
+            files::write_file_bytes,
             stores::accounts_get,
             stores::accounts_add,
             stores::account_get,
@@ -133,9 +136,6 @@ pub fn run() {
             stores::get_dictionary_url,
             stores::get_device,
             stores::save_device,
-            stores::read_file,
-            stores::write_file_string,
-            stores::write_file_bytes,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

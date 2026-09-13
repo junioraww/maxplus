@@ -141,34 +141,34 @@ jobs:
       - name: Upload arm64 APK
         uses: actions/upload-artifact@v4
         with:
-          name: maxplus-android-arm64
+          name: maxplus-debug-android-arm64
           path: |
             src-tauri/gen/android/app/build/outputs/apk/arm64/debug/*.apk
 
       - name: Upload armeabi-v7a APK
         uses: actions/upload-artifact@v4
         with:
-          name: maxplus-android-arm
+          name: maxplus-debug-android-arm
           path: |
             src-tauri/gen/android/app/build/outputs/apk/arm/debug/*.apk
 
       - name: Upload x86 APK
         uses: actions/upload-artifact@v4
         with:
-          name: x86-apk
+          name: x86-debug-apk
           path: |
             src-tauri/gen/android/app/build/outputs/apk/x86/debug/*.apk
 
       - name: Upload x86_64 APK
         uses: actions/upload-artifact@v4
         with:
-          name: x86_64-apk
+          name: x86_64-debug-apk
           path: |
             src-tauri/gen/android/app/build/outputs/apk/x86_64/debug/*.apk
 
       - name: Upload universal APK
         uses: actions/upload-artifact@v4
         with:
-          name: universal-apk
+          name: universal-debug-apk
           path: |
             src-tauri/gen/android/app/build/outputs/apk/universal/debug/*.apk

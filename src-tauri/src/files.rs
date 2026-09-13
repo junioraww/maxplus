@@ -134,6 +134,7 @@ pub async fn pick(
         let mime_filter: Vec<&str> = match r#type.as_deref() {
             Some("PHOTO") => vec!["image/*"],
             Some("VIDEO") => vec!["video/*"],
+            Some("JSON") => vec!["application/json"],
             _ => vec!["*/*"],
         };
 
@@ -200,6 +201,7 @@ pub async fn pick(
         let dialog = match r#type.as_deref() {
             Some("PHOTO") => dialog.add_filter("Изображения", &["png", "jpeg", "jpg", "gif", "webp", "bmp"]),
             Some("VIDEO") => dialog.add_filter("Видео", &["mp4", "avi", "mov", "mvk"]),
+            Some("JSON") => dialog.add_filter("Конфиг", &["json"]),
             _ => dialog,
         };
 
@@ -220,4 +222,26 @@ pub async fn pick(
             "mime_type": mime_type
         }))
     }
+}
+
+// TODO !!! currently unsafe, add wrappers
+#[tauri::command]
+pub async fn read_file(path: String) -> Result<Vec<u8>, String> {
+    tokio::fs::read(path)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn write_file_string(path: String, content: String) -> Result<(), String> {
+    tokio::fs::write(path, content)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn write_file_bytes(path: String, content: Vec<u8>) -> Result<(), String> {
+    tokio::fs::write(path, content)
+        .await
+        .map_err(|e| e.to_string())
 }

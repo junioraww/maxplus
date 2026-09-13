@@ -1,5 +1,5 @@
 <script>
-  import { open, save } from "@tauri-apps/plugin-dialog";
+  import { save } from "@tauri-apps/plugin-dialog";
   import { join, appDataDir } from '@tauri-apps/api/path';
   import { invoke } from "@tauri-apps/api/core";
   import { fade } from "svelte/transition";
@@ -110,20 +110,12 @@
   }
 
   async function importDevice() {
-    const path = await open({
-      multiple: false,
-      directory: false,
-      filters: [
-        {
-          name: "Конфиг девайса (.json)",
-          extensions: ["json"],
-        },
-      ],
-    });
+    const select = await invoke("pick", { type: "JSON" })
 
-    if (!path) return;
+    if (!select) return;
 
-    const data = await readFile(path);
+    console.log('Reading file:', select);
+    const data = await readFile(select.uri);
     const text = new TextDecoder("utf-8").decode(data);
 
     let json;

@@ -1222,28 +1222,6 @@ pub fn set_dictionary_url(
     Storage::new(None).save(&path, &store)
 }
 
-// TODO !!! currently unsafe, add wrappers
-#[tauri::command]
-pub async fn read_file(path: String) -> Result<Vec<u8>, String> {
-    tokio::fs::read(path)
-    .await
-    .map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-pub async fn write_file_string(path: String, content: String) -> Result<(), String> {
-    tokio::fs::write(path, content)
-    .await
-    .map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-pub async fn write_file_bytes(path: String, content: Vec<u8>) -> Result<(), String> {
-    tokio::fs::write(path, content)
-    .await
-    .map_err(|e| e.to_string())
-}
-
 pub fn load_sync_state<T: serde::de::DeserializeOwned>(
     app: &AppHandle,
     account: u64,

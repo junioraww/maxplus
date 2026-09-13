@@ -149,6 +149,7 @@ import { goto } from "$app/navigation";
         console.error(e);
       }
     } else {
+      // TODO для мобильных: возможность выбрать фото
       const image = await open({
         multiple: false,
         directory: false,

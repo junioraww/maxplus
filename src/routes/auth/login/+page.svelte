@@ -1,5 +1,4 @@
 <script>
-  import { open } from "@tauri-apps/plugin-dialog";
   import { invoke } from "@tauri-apps/api/core";
   import { goto } from "$app/navigation";
 
@@ -48,21 +47,12 @@
   const readFile = path => invoke("read_file", { path });
 
   async function importAccount() {
-    console.log(1)
-    const path = await open({
-      multiple: false,
-      directory: false,
-      filters: [
-        {
-          name: "Аккаунт с токеном (.json)",
-          extensions: ["json"],
-        },
-      ],
-    });
+    const select = await invoke("pick", { type: "JSON" }); // TODO implement this type on Rust side
 
-    if (!path) return;
+    if (!select) return;
 
-    const data = await readFile(path);
+    console.log('Reading file:', select);
+    const data = await readFile(select.uri);
     const text = new TextDecoder().decode(new Uint8Array(data));
 
     let json;
