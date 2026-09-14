@@ -13,6 +13,7 @@
   import Avatar from "$components/main/Avatar.svelte";
   import Reactions from "$components/ChatWindow/Reactions.svelte";
   import Attachments from "$components/ChatWindow/Attachments.svelte";
+  import InlineKeyboard from "$components/ChatWindow/InlineKeyboard.svelte";
 
   const dispatch = createEventDispatcher();
 
@@ -88,6 +89,8 @@
     chat.type !== "CHANNEL" &&
     (!isMe || innerWidth > 500) &&
     !isSystem;
+
+  $: inlineKeyboardAttach = msg.attaches?.find(x => x._type === "INLINE_KEYBOARD");
 </script>
 
 <svelte:window bind:innerWidth={innerWidth} />
@@ -106,7 +109,8 @@
     {/if}
   </div>
 
-  <div class={"message-bubble " + (column ? "column" : "row")}>
+  <div class="message-bubble-container">
+    <div class={"message-bubble " + (column ? "column" : "row")}>
     <div class="direction">
       <div class="text">
         {#if linkedMsg}
@@ -235,6 +239,11 @@
       </div>
     </div>
   </div>
+
+  {#if inlineKeyboardAttach}
+    <InlineKeyboard {chat} {msg} attach={inlineKeyboardAttach} />
+  {/if}
+</div>
 </div>
 
 <style>
@@ -261,13 +270,31 @@
     margin: 0 12px 0 9px;
   }
 
+  .message-bubble-container {
+    display: flex;
+    flex-direction: column;
+    max-width: 80%;
+    min-width: 100px;
+    margin-right: 10px;
+    position: relative;
+    width: fit-content;
+  }
+
+  .message-row.is-me {
+    justify-content: flex-end;
+  }
+
+  .message-row.is-me .message-bubble-container {
+    align-items: flex-end;
+  }
+
   .message-bubble {
     color: #fff;
     padding: 8px 4px 8px 12px;
     border-radius: 16px 16px 16px 0;
-    margin-right: 10px;
     min-width: 100px;
-    max-width: 80%;
+    width: 100%;
+    box-sizing: border-box;
     font-size: 13px;
     position: relative;
   }
