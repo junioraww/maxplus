@@ -2,11 +2,20 @@
   import { switchEnc } from "$components/ChatWindow/e2e";
   import { fade, fly, scale } from "svelte/transition";
   import { dict } from '$lib/crypto/text-codec';
+  import API from "$lib/stores/api";
+  import { isChatMuted } from "$lib/utils/notifications";
 
   export let chat;
   export let messages;
   export let shown;
   export let chatSettings;
+
+  $: muted = isChatMuted(chat);
+
+  async function toggleMute() {
+    const nextDDU = muted ? 0 : -1;
+    await $API.setChatMute(chat.id, nextDDU);
+  }
 
   let saveTimeout;
   let showPassword = false;
@@ -179,6 +188,15 @@
           >
             { $chatSettings.reader ? "Включить" : "Отключить" }
           </button>
+      </div>
+      <div class="row">
+        <div class="row-title">Уведомления</div>
+        <button
+          class="row-action"
+          on:click={toggleMute}
+        >
+          { muted ? "Включить" : "Отключить" }
+        </button>
       </div>
       <div class="row">
         <div class="row-title">

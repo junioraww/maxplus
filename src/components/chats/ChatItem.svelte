@@ -19,6 +19,7 @@
   import {
     getChat
   } from "$lib/stores/messages";
+  import { isChatMuted } from "$lib/utils/notifications";
 
   import Avatar from "$components/main/Avatar.svelte";
 
@@ -35,6 +36,9 @@
     chat.type === "DIALOG" ? $currentUser ^ chat.id : null;
 
   $: contact = getContact(peerId);
+
+  $: muted = isChatMuted(chat);
+  $: isBot = chat?.options?.includes("BOT") || $contact?.options?.includes("BOT");
 
   $: title =
     chat.id === 0
@@ -127,8 +131,20 @@
 
   <div class="content">
     <div class="row top">
-      <span class="name">{title}</span>
+      <span class="name">
+        {#if isBot}
+          <img src="icons/bot.svg" class="bot-badge-icon" alt="" />
+        {/if}
+        {title}
+      </span>
       <div class="meta">
+        {#if muted}
+          <svg class="muted-icon" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
+            <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
+            <line x1="2" y1="2" x2="22" y2="22"></line>
+          </svg>
+        {/if}
         {#if isMe}
           <span class="status-icon" class:read={isRead}>
             {isRead ? "✓✓" : "✓"}
@@ -152,7 +168,7 @@
         {/if}
       </p>
       {#if unread > 0}
-        <div class="badge" style={unread >= 99 ? "width: 26px;" : ""}>
+        <div class="badge" class:muted style={unread >= 99 ? "width: 26px;" : ""}>
           {unread > 99 ? "99+" : unread}
         </div>
       {/if}
@@ -260,5 +276,26 @@
     justify-content: center;
     margin-left: 8px;
     flex-shrink: 0;
+  }
+
+  .badge.muted {
+    background-color: #4b4b56;
+    color: #bbb;
+  }
+
+  .bot-badge-icon {
+    width: 14px;
+    height: 14px;
+    margin-right: 4px;
+    vertical-align: -2px;
+    display: inline-block;
+    opacity: 0.85;
+  }
+
+  .muted-icon {
+    opacity: 0.5;
+    margin-right: 2px;
+    display: inline-block;
+    vertical-align: -1px;
   }
 </style>

@@ -1,4 +1,3 @@
-// prettier-ignore
 export default class API {
     connect() { throw "connect: Unimplemented" }
     logout() { throw "logout: Unimplemented" }
@@ -8,11 +7,11 @@ export default class API {
     setPassword() { throw "setPassword: Unimplemented" }
 
     _telemetry() { throw "_telemetry: Unimplemented" }
-    
+
     startAuth() { throw "startAuth: Unimplemented" }
     login() { throw "login: Unimplemented" }
     register() { throw "register: Unimplemented" }
-    
+
     sync() { throw "sync: Unimplemented" }
     getFolders() { throw "getFolders: Unimplemented" }
     getMessages() { throw "getMessages: Unimplemented" }
@@ -35,7 +34,14 @@ export default class API {
     joinChannel() { throw "joinChannel: Unimplemented" }
     deleteChatForAll() { throw "deleteChatForAll: Unimplemented" }
     updateChatProfile() { throw "updateChatProfile: Unimplemented" }
-    
+
+    sendButtonCallback() { throw "sendButtonCallback: Unimplemented" }
+    sendBotStart() { throw "sendBotStart: Unimplemented" }
+    getBotInfo() { throw "getBotInfo: Unimplemented" }
+    getChatBotCommands() { throw "getChatBotCommands: Unimplemented" }
+    suspendBot() { throw "suspendBot: Unimplemented" }
+    setChatMute() { throw "setChatMute: Unimplemented" }
+
     onCall() { throw "onCall: Unimplemented" }
     onMessage() { throw "onMessage: Unimplemented" }
 

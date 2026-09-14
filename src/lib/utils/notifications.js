@@ -9,6 +9,7 @@ import {
   Visibility
 } from '@choochmeque/tauri-plugin-notifications-api';
 import { type } from '@tauri-apps/plugin-os';
+import { writable, get } from "svelte/store";
 
 import {
   getLocalFilePath,
@@ -16,9 +17,41 @@ import {
 } from "$lib/utils/images";
 import Session from "$lib/stores/session";
 import API from "$lib/stores/api";
-import { get } from "svelte/store";
 
 export const MESSAGES_CHANNEL_ID = 'MESSAGES_CHANNEL_ID';
+
+const NOTIFICATIONS_STORAGE_KEY = 'maxplus_client_notifications_enabled';
+
+const initialEnabled = typeof localStorage !== 'undefined'
+  ? localStorage.getItem(NOTIFICATIONS_STORAGE_KEY) !== 'false'
+  : true;
+
+export const clientNotificationsEnabled = writable(initialEnabled);
+
+export function isClientNotificationsEnabled() {
+  return get(clientNotificationsEnabled);
+}
+
+export function setClientNotificationsEnabled(enabled) {
+  clientNotificationsEnabled.set(enabled);
+  if (typeof localStorage !== 'undefined') {
+    localStorage.setItem(NOTIFICATIONS_STORAGE_KEY, enabled ? 'true' : 'false');
+  }
+}
+
+export function toggleClientNotifications() {
+  const current = isClientNotificationsEnabled();
+  setClientNotificationsEnabled(!current);
+  return !current;
+}
+
+export function isChatMuted(chat) {
+  if (!chat) return false;
+  const ddu = chat.dontDisturbUntil;
+  if (ddu === undefined || ddu === null || ddu === 0) return false;
+  if (ddu === -1) return true;
+  return Number(ddu) > Date.now();
+}
 
 let granted = false;
 let currentOs = null;
@@ -51,7 +84,7 @@ async function ensureMessagesChannel() {
       });
     }
   } catch (e) {
-    console.error("Push: Ошибка создания канала уведомлений:", e);
+    console.error("Push error:", e);
   }
 }
 
@@ -66,24 +99,22 @@ export async function setupPushNotifications() {
 
     try {
       const fcmToken = await registerForPushNotifications();
-      console.log('Push: получен FCM токен:', fcmToken);
 
       if (fcmToken) {
         await get(API).call(22, {
           pushToken: fcmToken,
           pushOptions: 0
         });
-        console.log('Push: токен успешно зарегистрирован на сервере');
       }
     } catch (error) {
-      console.error("Push: Ошибка регистрации пуш-уведомлений:", error);
+      console.error("Push error:", error);
     }
-  } else {
-    console.log(`Push: Регистрация FCM пропущена. Текущая ОС: ${currentOs}`);
   }
 }
 
 export async function newMessage(chatId, chat, contact, message) {
+  if (!isClientNotificationsEnabled()) return;
+  if (isChatMuted(chat)) return;
   if (get(Session).openedChats?.some(idx => idx === chatId)) return;
 
   let avatarLocalPath = null;
@@ -124,6 +155,7 @@ export async function newMessage(chatId, chat, contact, message) {
 }
 
 export async function sendNotification(data) {
+  if (!isClientNotificationsEnabled()) return;
   if (!granted) return;
   try {
     await pluginSendNotification(data);

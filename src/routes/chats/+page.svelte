@@ -26,6 +26,7 @@
     getContact,
     updateContact
   } from "$lib/stores/contacts";
+  import { isChatMuted } from "$lib/utils/notifications";
 
   let localFolders = [];
   $: if ($currentFolders) {
@@ -129,8 +130,15 @@
     // clearSelection();
   }
 
-  function muteNotifications() {
-    alert("Настройки уведомлений для выбранных чатов");
+  async function muteNotifications() {
+    if (!selectedChats.size) return;
+    const allSelected = Array.from(selectedChats).map(id => $currentSessionChats?.find(c => c.id === id)).filter(Boolean);
+    const anyMuted = allSelected.some(c => isChatMuted(c));
+    const targetDDU = anyMuted ? 0 : -1;
+    for (const chat of allSelected) {
+      await $API.setChatMute(chat.id, targetDDU);
+    }
+    clearSelection();
   }
 
   function downloadSelected() {

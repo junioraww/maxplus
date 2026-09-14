@@ -429,6 +429,59 @@ export default class MobileApi extends BaseAPI {
     return await invoke("delete_message", { chatId, messageId, forMe });
   }
 
+  async sendButtonCallback(chatId, messageId, callbackId, payload) {
+    await this.synchronized;
+    return await invoke("send_button_callback", {
+      chatId,
+      messageId: messageId.toString(),
+      callbackId,
+      payload: payload ?? null,
+    });
+  }
+
+  async sendBotStart(chatId, startPayload) {
+    await this.synchronized;
+    return await invoke("send_bot_start", {
+      chatId,
+      startPayload: startPayload ?? null,
+    });
+  }
+
+  async getBotInfo(botId) {
+    await this.synchronized;
+    return await invoke("get_bot_info", { botId });
+  }
+
+  async getChatBotCommands(chatId) {
+    await this.synchronized;
+    return await invoke("get_chat_bot_commands", { chatId });
+  }
+
+  async suspendBot(botId) {
+    await this.synchronized;
+    return await invoke("suspend_bot", { botId });
+  }
+
+  async setChatMute(chatId, dontDisturbUntil) {
+    await this.synchronized;
+    const res = await invoke("set_chat_mute", { chatId, dontDisturbUntil });
+    let updatedChat = null;
+    currentSessionChats.update((chats) => {
+      if (!chats) return chats;
+      return chats.map((c) => {
+        if (c.id === chatId) {
+          updatedChat = { ...c, dontDisturbUntil };
+          return updatedChat;
+        }
+        return c;
+      });
+    });
+    if (updatedChat) {
+      await saveChats([updatedChat]);
+    }
+    return res;
+  }
+
   async addContact(name, phone) {
     await this.synchronized;
     let oldContact;
