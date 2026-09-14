@@ -512,7 +512,7 @@
 
   $: cachedContact = chat.type === "DIALOG" ? getContact(avatarUserId) : writable(undefined);
   $: title = chat.id === 0 ? "Избранное" : (chat.title || $cachedContact?.names?.[0]?.name);
-  $: isBot = chat?.options?.includes("BOT") || $cachedContact?.options?.includes("BOT");
+  $: isBot = $cachedContact?.options?.includes("BOT");
 
   let botInfo = null;
   let botCommands = [];
@@ -634,7 +634,12 @@
     if (scrollElement) scrollElement.style.cursor = "grab";
     document.body.style.userSelect = "";
 
-    if (e.target.closest(".reply-block") || e.target.closest(".forward-block")) return;
+    if (
+      e.target.closest(".reply-block") ||
+      e.target.closest(".forward-block") ||
+      e.target.closest(".inline-keyboard") ||
+      e.target.closest(".inline-btn")
+    ) return;
 
     if (clicked) {
       const children = Object.values(visibleMessages);
@@ -681,6 +686,13 @@
   let justOpenedDropout = false;
 
   function selectMessage(e, msg) {
+    if (
+      e.target.closest(".reply-block") ||
+      e.target.closest(".forward-block") ||
+      e.target.closest(".inline-keyboard") ||
+      e.target.closest(".inline-btn")
+    ) return;
+
     const dx = Math.abs(e.clientX - clickStartPos.x);
     const dy = Math.abs(e.clientY - clickStartPos.y);
     if (dx > 5 || dy > 5) return;
