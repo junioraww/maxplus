@@ -64,6 +64,12 @@ delegate_cmd!(send_message(
     message: String,
     params: Option<HashMap<String, serde_json::Value>>
 ) => send_message(chat_id, message, params));
+delegate_cmd!(send_button_callback(chat_id: i64, message_id: String, callback_id: String, payload: Option<String>) => send_button_callback(chat_id, p(message_id)?, callback_id, payload));
+delegate_cmd!(send_bot_start(chat_id: i64, start_payload: Option<String>) => send_bot_start(chat_id, start_payload));
+delegate_cmd!(get_bot_info(bot_id: u64) => get_bot_info(bot_id));
+delegate_cmd!(get_chat_bot_commands(chat_id: i64) => get_chat_bot_commands(chat_id));
+delegate_cmd!(suspend_bot(bot_id: u64) => suspend_bot(bot_id));
+delegate_cmd!(set_chat_mute(chat_id: i64, dont_disturb_until: i64) => set_chat_mute(chat_id, dont_disturb_until));
 
 #[tauri::command]
 pub async fn init(
