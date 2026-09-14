@@ -4,6 +4,8 @@
 
   import Image from "$components/main/Image.svelte";
 
+  import API, { currentSessionChats } from "$lib/stores/api";
+
   export let size;
   export let selectionMode;
   export let isSelected;
@@ -22,11 +24,35 @@
         ? "Избранное"
         : chat.title || contact?.names?.[0]?.name || "Без названия";
 
-  $: avatarUrl = chat?.avatar || $contact?.avatar || $contact?.baseUrl;
+  $: avatarUrl =
+    chat?.avatar ||
+    chat?.baseIconUrl ||
+    chat?.iconUrl ||
+    chat?.baseRawIconUrl ||
+    chat?.baseUrl ||
+    $contact?.avatar ||
+    $contact?.baseUrl;
+
+  const fetchedChatIcons = new Set();
+
+  $: if (chat?.id && chat?.type !== "DIALOG" && !avatarUrl && !fetchedChatIcons.has(chat.id)) {
+    fetchedChatIcons.add(chat.id);
+    $API?.getChat?.(chat.id).then((res) => {
+      const serverChat = res?.chats?.[0];
+      if (serverChat) {
+        currentSessionChats.update((chats) => {
+          if (!chats) return chats;
+          const idx = chats.findIndex((c) => c.id === chat.id);
+          if (idx !== -1) {
+            chats[idx] = { ...chats[idx], ...serverChat };
+          }
+          return [...chats];
+        });
+      }
+    }).catch(() => {});
+  }
 
   const imageStyle = `width: 100%; height: 100%; border-radius: 50%; object-fit: cover;`;
-
-  // TODO cache and use avatar initials (since notifications only use local images)
 </script>
 
 <div class="avatar-wrapper" style="width: {size}px; height: {size}px; {style}">
