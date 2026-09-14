@@ -14,7 +14,7 @@
     botInfo?.description ||
     botInfo?.contact?.description ||
     contact?.description ||
-    "Этот бот поможет вам решать различные задачи прямо в чате."
+    "Этот бот поможет вам решать задачи прямо в чате."
   );
 
   let resolvedContactId = $derived(contactId || contact?.id);
