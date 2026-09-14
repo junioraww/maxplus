@@ -38,7 +38,7 @@
   $: contact = getContact(peerId);
 
   $: muted = isChatMuted(chat);
-  $: isBot = chat?.options?.includes("BOT") || $contact?.options?.includes("BOT");
+  $: isBot = $contact?.options?.includes("BOT") || chat?.options?.BOT === true || chat?.options?.IS_BOT === true;
 
   $: title =
     chat.id === 0
@@ -139,7 +139,7 @@
       </span>
       <div class="meta">
         {#if muted}
-          <svg class="muted-icon" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2">
+          <svg class="muted-icon" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="#8e8e93" stroke-width="2">
             <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
             <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
             <line x1="2" y1="2" x2="22" y2="22"></line>
@@ -293,7 +293,7 @@
   }
 
   .muted-icon {
-    opacity: 0.5;
+    opacity: 0.85;
     margin-right: 2px;
     display: inline-block;
     vertical-align: -1px;

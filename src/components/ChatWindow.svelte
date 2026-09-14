@@ -512,7 +512,7 @@
 
   $: cachedContact = chat.type === "DIALOG" ? getContact(avatarUserId) : writable(undefined);
   $: title = chat.id === 0 ? "Избранное" : (chat.title || $cachedContact?.names?.[0]?.name);
-  $: isBot = $cachedContact?.options?.includes("BOT");
+  $: isBot = $cachedContact?.options?.includes("BOT") || chat?.options?.BOT === true || chat?.options?.IS_BOT === true;
 
   let botInfo = null;
   let botCommands = [];
