@@ -7,6 +7,7 @@
   import { sendMessage } from "$components/ChatWindow/actions.js";
   import VideoPreview from "$components/ChatWindow/VideoPreview.svelte";
   import Reply from "$components/ChatWindow/input/Reply.svelte";
+  import BotCommandsMenu from "$components/ChatWindow/BotCommandsMenu.svelte";
   import API from "$lib/stores/api";
 
   export let replyTo;
@@ -15,10 +16,33 @@
   export let messages;
   export let attachesDropout;
   export let chatSettings;
+  export let botCommands = [];
 
   let newMessage = "";
   let attaches = [];
   let elements = [];
+  let showCommandsMenu = false;
+
+  $: commandFilter = newMessage.startsWith("/") ? newMessage : "";
+  $: hasSlash = newMessage.startsWith("/");
+  $: isMenuVisible = (showCommandsMenu || (hasSlash && botCommands.length > 0)) && botCommands.length > 0;
+
+  function handleSelectCommand(cmd) {
+    showCommandsMenu = false;
+    const name = (cmd.name || "").replace(/^\//, "");
+    newMessage = "/" + name;
+    onSend();
+  }
+
+  function handleWindowClick(e) {
+    if (
+      isMenuVisible &&
+      !e.target.closest(".bot-commands-menu") &&
+      !e.target.closest(".bot-cmd-btn")
+    ) {
+      showCommandsMenu = false;
+    }
+  }
 
   let textareaEl;
   let lines = 0;
@@ -175,7 +199,21 @@
   <Reply {chat} {messages} bind:replyTo />
 {/if}
 
+<svelte:window on:click={handleWindowClick} />
+
 <div class="input-area">
+  {#if isMenuVisible}
+    <BotCommandsMenu
+      commands={botCommands}
+      filter={commandFilter}
+      onSelect={handleSelectCommand}
+      onClose={() => {
+        showCommandsMenu = false;
+        if (newMessage === "/") newMessage = "";
+      }}
+    />
+  {/if}
+
   <div class="input-controls">
     <button class="button input-button" on:click={toggleAttachesDropout}>
       <img
@@ -202,12 +240,30 @@
         bind:value={newMessage}
         on:input={autoResize}
         on:keydown={async (e) => {
+          if (e.key === "Escape" && isMenuVisible) {
+            e.preventDefault();
+            showCommandsMenu = false;
+            if (newMessage === "/") newMessage = "";
+            return;
+          }
           if (e.key === "Enter" && !e.shiftKey && !isMobile) {
             e.preventDefault();
             await onSend();
           }
         }}
       ></textarea>
+
+      {#if botCommands.length > 0}
+        <button
+          class="bot-cmd-btn"
+          class:active={isMenuVisible}
+          type="button"
+          title="Команды бота"
+          on:click={() => (showCommandsMenu = !showCommandsMenu)}
+        >
+          <span class="slash-icon">/</span>
+        </button>
+      {/if}
 
       <button class="emoji-btn" type="button" on:click={() => {}}>
         <img src="icons/smile.svg" alt="smile" />
@@ -228,10 +284,47 @@
 
 <style>
   .input-area {
+    position: relative;
     padding: 8px 0;
     flex-shrink: 0;
     background-color: #1e2024;
     z-index: 5;
+  }
+
+  .bot-cmd-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 0;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0.65;
+    transition: opacity 0.2s, transform 0.15s, color 0.15s;
+    color: #aaa;
+    margin-bottom: 9px;
+    border-radius: 8px;
+    flex-shrink: 0;
+  }
+
+  .bot-cmd-btn:hover {
+    opacity: 1;
+    color: #248bfe;
+    background: rgba(36, 139, 254, 0.1);
+  }
+
+  .bot-cmd-btn.active {
+    opacity: 1;
+    color: #248bfe;
+  }
+
+  .slash-icon {
+    font-size: 19px;
+    font-weight: 700;
+    font-family: monospace, sans-serif;
+    line-height: 1;
   }
 
   .input-controls {

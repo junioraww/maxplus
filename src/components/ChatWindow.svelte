@@ -42,6 +42,7 @@
   import MediaViewer from "$components/ChatWindow/MediaViewer.svelte";
   import DateSeparator from "$components/ChatWindow/DateSeparator.svelte";
   import Input from "$components/ChatWindow/input/Input.svelte";
+  import BotStart from "$components/ChatWindow/BotStart.svelte";
   import Avatar from "$components/main/Avatar.svelte";
 
   export let chatId;
@@ -511,6 +512,73 @@
 
   $: cachedContact = chat.type === "DIALOG" ? getContact(avatarUserId) : writable(undefined);
   $: title = chat.id === 0 ? "Избранное" : (chat.title || $cachedContact?.names?.[0]?.name);
+  $: isBot = chat?.options?.includes("BOT") || $cachedContact?.options?.includes("BOT");
+
+  let botInfo = null;
+  let botCommands = [];
+  let botStarting = false;
+  let loadedBotTarget = null;
+
+  async function loadBotData(peerId, cId) {
+    try {
+      if (peerId) {
+        const info = await $API.getBotInfo(peerId);
+        if (info) {
+          botInfo = info;
+          if (Array.isArray(info.commands) && info.commands.length > 0) {
+            botCommands = info.commands;
+          }
+        }
+      }
+      if (botCommands.length === 0 && cId) {
+        const chatCmds = await $API.getChatBotCommands(cId);
+        if (chatCmds?.commands && Array.isArray(chatCmds.commands)) {
+          botCommands = chatCmds.commands;
+        }
+      }
+    } catch (e) {
+      console.error("loadBotData error:", e);
+    }
+  }
+
+  $: if (isBot && avatarUserId && avatarUserId !== loadedBotTarget) {
+    loadedBotTarget = avatarUserId;
+    loadBotData(avatarUserId, chat?.id);
+  } else if (!isBot && (chat?.type === "GROUP" || chat?.type === "CHAT") && chat?.id !== loadedBotTarget) {
+    loadedBotTarget = chat?.id;
+    loadBotData(null, chat?.id);
+  }
+
+  $: showBotStart = isBot && chat?.type === "DIALOG" && allRendered && $messages.length === 0;
+
+  async function handleBotStart() {
+    if (botStarting || !chat?.id) return;
+    botStarting = true;
+    try {
+      const response = await $API.sendBotStart(chat.id, "");
+      const message = response?.message;
+      if (message) {
+        message.status = 1;
+        chatCache.receivedMessage.set(message);
+        chatCache.updateMessages([message]);
+        messages.update((msgs) => {
+          if (msgs.some((m) => m.id === message.id)) return msgs;
+          return [...msgs, message];
+        });
+      } else {
+        await $API.sendMessage("/start", chat.id, { notify: true });
+      }
+    } catch (e) {
+      console.error("handleBotStart error:", e);
+      try {
+        await $API.sendMessage("/start", chat.id, { notify: true });
+      } catch (err) {
+        console.error("fallback /start error:", err);
+      }
+    } finally {
+      botStarting = false;
+    }
+  }
 
   onMount(async () => {
     setupResizeObserver();
@@ -837,7 +905,15 @@
     on:close={handleDropout}
   />
 
-  {#if chat.type !== "CHANNEL" && $chatSettings}
+  {#if showBotStart}
+    <BotStart
+      {botInfo}
+      contact={$cachedContact}
+      contactId={avatarUserId}
+      loading={botStarting}
+      onStart={handleBotStart}
+    />
+  {:else if chat.type !== "CHANNEL" && $chatSettings}
     <Input
       bind:replyTo
       bind:attachesDropout
@@ -845,6 +921,7 @@
       {chat}
       {messages}
       {chatSettings}
+      {botCommands}
     />
   {/if}
 
