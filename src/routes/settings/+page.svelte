@@ -30,6 +30,7 @@ import { goto } from "$app/navigation";
   import { currentUserDetails } from "$lib/stores/api";
   import Avatar from "$components/main/Avatar.svelte";
   import API, { currentUser } from "$lib/stores/api";
+  import { clientNotificationsEnabled, toggleClientNotifications } from "$lib/utils/notifications";
 
   let platform;
 
@@ -73,6 +74,12 @@ import { goto } from "$app/navigation";
         icon: "profile.svg",
         text: "Настроить профиль",
         action: () => goto("/settings/profile?from=/?card=3"),
+      },
+      {
+        icon: "bell.svg",
+        text: "Уведомления",
+        isToggle: true,
+        action: () => toggleClientNotifications(),
       },
       {
         icon: "crypto.svg",
@@ -225,19 +232,25 @@ import { goto } from "$app/navigation";
           <div on:click={btn.action} class="button">
             <img src={"icons/" + btn.icon} class="icon" />
             <a>{btn.text}</a>
-            <svg
-              width="40"
-              height="20"
-              viewBox="0 0 40 20"
-              xmlns="http://www.w3.org/2000/svg"
-            >
-              <polyline
-                points="30,3 38,10 30,17"
-                stroke="#999"
-                fill="none"
-                stroke-width="3"
-              />
-            </svg>
+            {#if btn.isToggle}
+              <div class="toggle-track" class:active={$clientNotificationsEnabled}>
+                <div class="toggle-thumb" class:active={$clientNotificationsEnabled}></div>
+              </div>
+            {:else}
+              <svg
+                width="40"
+                height="20"
+                viewBox="0 0 40 20"
+                xmlns="http://www.w3.org/2000/svg"
+              >
+                <polyline
+                  points="30,3 38,10 30,17"
+                  stroke="#999"
+                  fill="none"
+                  stroke-width="3"
+                />
+              </svg>
+            {/if}
           </div>
         {/each}
       </div>
@@ -325,5 +338,35 @@ import { goto } from "$app/navigation";
 
   .scanner-icon:hover {
     opacity: 1;
+  }
+
+  .toggle-track {
+    margin-left: auto;
+    width: 44px;
+    height: 24px;
+    background: #3a3a3c;
+    border-radius: 12px;
+    position: relative;
+    transition: background-color 0.2s ease;
+    flex-shrink: 0;
+  }
+
+  .toggle-track.active {
+    background: #248bfe;
+  }
+
+  .toggle-thumb {
+    width: 20px;
+    height: 20px;
+    background: white;
+    border-radius: 50%;
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .toggle-thumb.active {
+    transform: translateX(20px);
   }
 </style>
