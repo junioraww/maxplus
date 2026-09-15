@@ -78,8 +78,7 @@ import { goto } from "$app/navigation";
       {
         icon: "bell.svg",
         text: "Уведомления",
-        isToggle: true,
-        action: () => toggleClientNotifications(),
+        action: () => goto("/settings/notifications?from=/?card=3"),
       },
       {
         icon: "crypto.svg",
