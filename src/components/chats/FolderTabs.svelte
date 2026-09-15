@@ -100,7 +100,7 @@
           <span>{folder.title}</span>
         </button>
 
-        {#if isEditing}
+        {#if isEditing && folder.id !== 0}
           <button
             class="edit-icon"
             on:click|stopPropagation={() => dispatch("editFolder", folder)}
@@ -126,6 +126,16 @@
         {/if}
       </div>
     {/each}
+
+    {#if isEditing}
+      <button
+        class="add-tab-btn"
+        title="Добавить папку"
+        on:click|stopPropagation={() => dispatch("addFolder")}
+      >
+        +
+      </button>
+    {/if}
   </div>
 
   <button class="edit-btn" class:active={isEditing} on:click={toggleEditMode}>
@@ -270,5 +280,27 @@
     color: #007afd;
     font-weight: bold;
     font-size: 14px;
+  }
+
+  .add-tab-btn {
+    background: #282830;
+    border: 1px dashed #555;
+    color: #bbb;
+    padding: 6px 14px;
+    margin: 4px;
+    border-radius: 8px;
+    font-size: 18px;
+    line-height: 1;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.15s, color 0.15s, border-color 0.15s;
+  }
+
+  .add-tab-btn:hover {
+    background: #363642;
+    color: #fff;
+    border-color: #777;
   }
 </style>

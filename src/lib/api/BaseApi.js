@@ -14,6 +14,9 @@ export default class API {
 
     sync() { throw "sync: Unimplemented" }
     getFolders() { throw "getFolders: Unimplemented" }
+    updateFolder() { throw "updateFolder: Unimplemented" }
+    reorderFolders() { throw "reorderFolders: Unimplemented" }
+    deleteFolders() { throw "deleteFolders: Unimplemented" }
     getMessages() { throw "getMessages: Unimplemented" }
     sendMessage() { throw "sendMessage: Unimplemented" }
     pinMessage() { throw "pinMessage: Unimplemented" }

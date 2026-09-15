@@ -52,6 +52,17 @@ import {
 
 import BaseAPI from "./BaseApi";
 
+function sortFolders(folders, order) {
+  if (!folders || !Array.isArray(folders)) return [];
+  if (!order || !order.length) return [...folders];
+  const orderMap = new Map(order.map((id, index) => [id, index]));
+  return [...folders].sort((a, b) => {
+    const ai = orderMap.has(a.id) ? orderMap.get(a.id) : 999999;
+    const bi = orderMap.has(b.id) ? orderMap.get(b.id) : 999999;
+    return ai - bi;
+  });
+}
+
 export default class MobileApi extends BaseAPI {
   resolve_sync = null;
   /* TODO throw an error if sync takes > 10 sec?
@@ -126,6 +137,12 @@ export default class MobileApi extends BaseAPI {
       } else if (opc === 136) {
         const { videoId, fileId } = response.payload;
         this.notify[videoId || fileId]?.();
+      } else if (opc === 277) {
+        const p = response.payload;
+        if (p?.folders) {
+          const sorted = sortFolders(p.folders, p.foldersOrder || []);
+          currentFolders.set(sorted);
+        }
       }
     });
   }
@@ -357,10 +374,12 @@ export default class MobileApi extends BaseAPI {
 
       console.log('Set chats for telemetry', telemetrySetupResp);
 
-      //currentUser.set(profile.contact.id);
-      //currentFolders.set(config.chatFolders?.FOLDERS || []);
-      //currentPresence.set(res.presence);
-      //currentRealChats.set(chats.map((x) => x.id));
+      if (config?.chatFolders?.FOLDERS) {
+        const sorted = sortFolders(config.chatFolders.FOLDERS, config.chatFolders.foldersOrder || []);
+        currentFolders.set(sorted);
+      } else {
+        this.getFolders().catch(() => {});
+      }
       //currentRealContacts.set(contacts.map((x) => x.id));
       //if (!this.getUser()) this.setUser(res.profile.contact.id);
       //sessionSet("reactions", config.server["reactions-menu"]);
@@ -479,6 +498,57 @@ export default class MobileApi extends BaseAPI {
     if (updatedChat) {
       await saveChats([updatedChat]);
     }
+    return res;
+  }
+
+  async getFolders(folderSync = null) {
+    await this.synchronized;
+    const res = await invoke("get_folders", { folderSync });
+    if (res?.folders) {
+      const sorted = sortFolders(res.folders, res.foldersOrder || []);
+      currentFolders.set(sorted);
+      return sorted;
+    }
+    return [];
+  }
+
+  async updateFolder(folder) {
+    await this.synchronized;
+    const res = await invoke("update_folder", {
+      id: folder.id,
+      title: folder.title,
+      include: folder.include || [],
+      filters: folder.filters || [],
+      options: folder.options || [],
+      favorites: folder.favorites || []
+    });
+    if (res?.folders) {
+      const sorted = sortFolders(res.folders, res.foldersOrder || []);
+      currentFolders.set(sorted);
+    } else if (res?.folder) {
+      currentFolders.update(folders => {
+        const idx = folders.findIndex(f => f.id === res.folder.id);
+        if (idx !== -1) {
+          folders[idx] = res.folder;
+          return [...folders];
+        }
+        return [...folders, res.folder];
+      });
+    }
+    return res;
+  }
+
+  async reorderFolders(foldersOrder) {
+    await this.synchronized;
+    const res = await invoke("reorder_folders", { foldersOrder });
+    currentFolders.update(folders => sortFolders(folders, foldersOrder));
+    return res;
+  }
+
+  async deleteFolders(folderIds) {
+    await this.synchronized;
+    const res = await invoke("delete_folders", { folderIds });
+    currentFolders.update(folders => folders.filter(f => !folderIds.includes(f.id)));
     return res;
   }
 
