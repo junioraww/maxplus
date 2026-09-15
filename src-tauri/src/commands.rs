@@ -70,6 +70,11 @@ delegate_cmd!(get_bot_info(bot_id: u64) => get_bot_info(bot_id));
 delegate_cmd!(get_chat_bot_commands(chat_id: i64) => get_chat_bot_commands(chat_id));
 delegate_cmd!(suspend_bot(bot_id: u64) => suspend_bot(bot_id));
 delegate_cmd!(set_chat_mute(chat_id: i64, dont_disturb_until: i64) => set_chat_mute(chat_id, dont_disturb_until));
+delegate_cmd!(get_folders(folder_sync: Option<i64>) => get_folders(folder_sync));
+delegate_cmd!(get_folder_by_id(folder_ids: Vec<String>) => get_folder_by_id(folder_ids));
+delegate_cmd!(update_folder(id: String, title: String, include: Vec<i64>, filters: Vec<i64>, options: Vec<i64>, favorites: Vec<i64>) => update_folder(id, title, include, filters, options, favorites));
+delegate_cmd!(reorder_folders(folders_order: Vec<String>) => reorder_folders(folders_order));
+delegate_cmd!(delete_folders(folder_ids: Vec<String>) => delete_folders(folder_ids));
 
 #[tauri::command]
 pub async fn init(
