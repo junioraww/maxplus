@@ -15,6 +15,7 @@
     currentSessionChats,
     currentSessionCalls,
     currentRealChats,
+    currentRealContacts,
     currentlySyncing,
     currentFolders,
     currentUser,
@@ -146,38 +147,121 @@
     clearSelection();
   }
 
-  function getChatsForFolder(folder, allChats, realChats) {
-    if (!allChats) return [];
-    const Chats = realChats.map((id) =>
-      allChats.find((x) => x.id === id),
+  function chatMatchesFolder(chat, folder, myId, contactIds) {
+    if (folder.id === 0 || folder.title === "Все" || folder.id === "all.chat.folder") {
+      return true;
+    }
+
+    const include = folder.include || folder.includedChats || [];
+    if (include.includes(chat.id)) {
+      return true;
+    }
+
+    const filters = folder.filters || [];
+    if (!filters.length && !include.length) {
+      return false;
+    }
+
+    const isDialog = chat.type === "DIALOG" || chat.type === "private";
+    const isBot = chat?.options?.BOT === true || chat?.options?.IS_BOT === true || chat?.options?.includes?.("BOT");
+    const peerId = isDialog ? (chat.ownerId === myId ? chat.id : chat.ownerId) : null;
+    const isSelf = peerId != null && peerId === myId;
+    const isContact = isDialog && !isSelf && peerId != null && contactIds.has(peerId);
+
+    const typeFilters = filters.filter((f) => [8, 9, 3, 2, 10, 4, 13].includes(f));
+    if (typeFilters.length > 0) {
+      const matchesType = typeFilters.some((f) => {
+        switch (f) {
+          case 8:
+            return isDialog && !isBot && isContact;
+          case 9:
+            return isDialog && !isBot && !isSelf && !isContact;
+          case 3:
+            return chat.type === "CHAT" || chat.type === "GROUP" || chat.type === "group" || chat.type === "supergroup";
+          case 2:
+            return chat.type === "CHANNEL" || chat.type === "channel";
+          case 10:
+            return isBot;
+          case 4:
+            return isDialog;
+          default:
+            return false;
+        }
+      });
+      if (!matchesType) return false;
+    }
+
+    if (filters.includes(0) && !(chat.newMessages > 0)) return false;
+    if (filters.includes(1) && chat.newMessages > 0) return false;
+    if (filters.includes(7) && !isChatMuted(chat)) return false;
+    if (filters.includes(11) && isChatMuted(chat)) return false;
+
+    return typeFilters.length > 0 || include.includes(chat.id);
+  }
+
+  function getChatsForFolder(folder, allChats, realChats, myId, contactIds) {
+    if (!allChats || !realChats) return [];
+    const chats = realChats
+      .map((id) => allChats.find((x) => x.id === id))
+      .filter(Boolean);
+
+    const filtered = chats.filter((chat) =>
+      chatMatchesFolder(chat, folder, myId, contactIds)
     );
-    const filtered = Chats.filter((chat) => {
-      if (folder.title === "Все") return true;
-      if (folder.includedChats && folder.includedChats.includes(chat.id))
-        return true;
-      if (folder.status === "HIDDEN") return false;
-      if (
-        (!folder.filters || folder.filters.length === 0) &&
-        (!folder.includedChats || folder.includedChats.length === 0)
-      )
-        return false;
-      let matchesFilter = false;
-      if (folder.filters) {
-        if (folder.filters.includes("UNREAD") && chat.newMessages)
-          matchesFilter = true;
-        if (
-          folder.filters.includes("GROUPS") &&
-          (chat.type === "group" || chat.type === "supergroup")
-        )
-          matchesFilter = true;
-        if (folder.filters.includes("CONTACTS") && chat.type === "private")
-          matchesFilter = true;
-      }
-      return matchesFilter;
-    });
     return filtered.sort(
-      (a, b) => (b.lastEventTime || 0) - (a.lastEventTime || 0),
+      (a, b) => (b.lastEventTime || 0) - (a.lastEventTime || 0)
     );
+  }
+
+  $: contactIdSet = new Set($currentRealContacts || []);
+  $: folderChatsMap = new Map(
+    localFolders.map((folder) => [
+      folder.id,
+      getChatsForFolder(
+        folder,
+        $currentSessionChats,
+        $currentRealChats,
+        $currentUser,
+        contactIdSet
+      ),
+    ])
+  );
+
+  async function handleSaveFolder(folderData) {
+    try {
+      await $API.updateFolder(folderData);
+      showFolderModal = false;
+      folderToEdit = null;
+    } catch (e) {
+      console.error(e);
+      alert("Не удалось сохранить папку");
+    }
+  }
+
+  async function handleDeleteFolder(folderId) {
+    try {
+      await $API.deleteFolders([folderId]);
+      showFolderModal = false;
+      folderToEdit = null;
+      if (activeFolder?.id === folderId) {
+        activeFolder = localFolders[0];
+        activeFolderIndex = 0;
+      }
+    } catch (e) {
+      console.error(e);
+      alert("Не удалось удалить папку");
+    }
+  }
+
+  async function handleReorderFolders(event) {
+    const newFolders = event.detail;
+    localFolders = newFolders;
+    const order = newFolders.filter((f) => f.id !== 0).map((f) => f.id);
+    try {
+      await $API.reorderFolders(order);
+    } catch (e) {
+      console.error(e);
+    }
   }
 
   let scrollContainer;
@@ -407,9 +491,13 @@
     folders={localFolders}
     bind:activeFolder
     on:folderChange={onFolderTabClick}
-    on:reorder={(e) => (localFolders = e.detail)}
+    on:reorder={handleReorderFolders}
     on:editFolder={(e) => {
       folderToEdit = e.detail;
+      showFolderModal = true;
+    }}
+    on:addFolder={() => {
+      folderToEdit = { isNew: true };
       showFolderModal = true;
     }}
   />
@@ -476,7 +564,7 @@
             {#if $currentlySyncing && i === activeFolderIndex && (!$currentSessionChats || $currentSessionChats.length === 0)}
               <div class="state">Загрузка...</div>
             {:else}
-              {@const chats = getChatsForFolder(folder, $currentSessionChats, $currentRealChats)}
+              {@const chats = folderChatsMap.get(folder.id) || []}
 
               {#if chats.length === 0}
                 <div class="state">Нет чатов</div>
@@ -509,9 +597,8 @@
         showFolderModal = false;
         folderToEdit = null;
       }}
-      on:save={() => {
-        /* Save logic */
-      }}
+      on:save={(e) => handleSaveFolder(e.detail)}
+      on:delete={(e) => handleDeleteFolder(e.detail)}
     />
   {/if}
 </div>
