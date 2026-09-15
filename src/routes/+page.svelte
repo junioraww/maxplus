@@ -19,6 +19,14 @@
   ];
 
   let active = +$page.url.searchParams.get("card") || 2;
+  let mountedCards = new Set([active]);
+
+  $: {
+    if (!mountedCards.has(active)) {
+      mountedCards.add(active);
+      mountedCards = new Set(mountedCards);
+    }
+  }
 
   const openCard = ({ detail }) => {
     active = detail.index;
@@ -28,7 +36,9 @@
 <div class="container">
   {#each pages as page, index}
     <Card {index} {active}>
-      <svelte:component this={page.component}/>
+      {#if mountedCards.has(index)}
+        <svelte:component this={page.component}/>
+      {/if}
     </Card>
   {/each}
 
