@@ -513,6 +513,17 @@ export default class MobileApi extends BaseAPI {
   }
 
   async updateFolder(folder) {
+    currentFolders.update((folders) => {
+      const list = folders || [];
+      const idx = list.findIndex((f) => f.id === folder.id);
+      if (idx !== -1) {
+        const copy = [...list];
+        copy[idx] = { ...copy[idx], ...folder };
+        return copy;
+      }
+      return [...list, folder];
+    });
+
     await this.synchronized;
     const res = await invoke("update_folder", {
       id: folder.id,
