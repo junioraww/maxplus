@@ -19,6 +19,15 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 class NotificationHelper(private val ctx: Context) {
+  init {
+    try {
+      System.loadLibrary("maxplus_lib")
+    } catch (e: Throwable) {
+      e.printStackTrace()
+    }
+  }
+
+  private external fun isChatMutedNative(account: Int, chatId: Long, appDir: String): Boolean
   
   companion object {
     const val CHANNEL_ID = "MESSAGES_CHANNEL_ID"
@@ -53,12 +62,20 @@ class NotificationHelper(private val ctx: Context) {
   
   fun handleIncomingMessage(data: Map<String, String>) {
     val chatId = (data["mc"] ?: data["chat_id"])?.toLongOrNull() ?: return
+    val account = (data["c"] ?: data["account_id"])?.toIntOrNull() ?: 0
+
+    try {
+      if (isChatMutedNative(account, chatId, ctx.filesDir.absolutePath)) {
+        return
+      }
+    } catch (e: Throwable) {
+    }
+
     val mid = data["msgid"] ?: data["mid"] ?: ""
     val text = data["msg"] ?: data["body"] ?: data["text"] ?: "Сообщение"
     val senderId = data["suid"] ?: ""
     val senderName = data["userName"] ?: data["title"] ?: "Собеседник"
     val chatTitle = data["title"] ?: senderName
-    val account = (data["c"] ?: data["account_id"])?.toIntOrNull() ?: 0
     val ts = data["ctime"]?.toLongOrNull() ?: System.currentTimeMillis()
     
     ensureChannel()
@@ -117,7 +134,7 @@ class NotificationHelper(private val ctx: Context) {
       
       for (h in history) {
         val senderIdLong = h.senderId.toLongOrNull() ?: chatId
-        val avatarBitmap = AvatarHelper.getAvatar(ctx, senderIdLong, h.senderName)
+        val avatarBitmap = AvatarHelper.getAvatar(ctx, senderIdLong, h.senderName, null, account)
         val person = Person.Builder()
           .setName(h.senderName)
           .setKey(h.senderId)
@@ -136,10 +153,12 @@ class NotificationHelper(private val ctx: Context) {
         style.addMessage(textFormatted, h.ts, person)
       }
       
-      val chatAvatar = AvatarHelper.getAvatar(ctx, chatId, title)
+      val chatAvatar = AvatarHelper.getAvatar(ctx, chatId, title, null, account)
       
       val builder = NotificationCompat.Builder(ctx, CHANNEL_ID)
         .setSmallIcon(android.R.drawable.ic_dialog_email)
+        .setContentTitle(title)
+        .setContentText(newest.text)
         .setLargeIcon(chatAvatar)
         .setStyle(style)
         .setAutoCancel(true)

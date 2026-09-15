@@ -1245,30 +1245,53 @@ pub fn save_sync_state<T: serde::Serialize>(
 pub fn get_background_creds(
     app_dir: &str,
     account_id: u64,
-) -> Option<(String, rumax::models::Identity)> {
+) -> Option<(u64, u64, String, rumax::models::Identity)> {
     let root = std::path::PathBuf::from(app_dir);
     let accounts_path = root.join("accounts");
 
     let storage = Storage::new(None);
     let store = storage.load(&accounts_path)?;
+    let accounts = store.get("accounts")?.as_array()?;
 
-    let account_info = store.get("accounts")?
-        .as_array()?
+    let local_id = accounts
         .iter()
-        .find(|x| x.get("id").and_then(|id| id.as_u64()) == Some(account_id))?;
+        .find_map(|acc| {
+            let lid = acc.get("id")?.as_u64()?;
+            if lid == account_id {
+                return Some(lid);
+            }
+            let self_path = root.join("data").join(lid.to_string()).join("self");
+            if let Some(self_val) = storage.load(&self_path) {
+                if self_val.get("id").and_then(|id| id.as_u64()) == Some(account_id) {
+                    return Some(lid);
+                }
+            }
+            None
+        })
+        .or_else(|| store.get("current").and_then(|c| c.as_u64()))
+        .or_else(|| accounts.first().and_then(|a| a.get("id")?.as_u64()))?;
+
+    let account_info = accounts
+        .iter()
+        .find(|x| x.get("id").and_then(|id| id.as_u64()) == Some(local_id))?;
 
     if !account_info.get("encryption").unwrap_or(&Value::Null).is_null() {
-        eprintln!("Push: Аккаунт {} зашифрован. Отправка из фона невозможна без ключа.", account_id);
+        eprintln!("Push: Аккаунт {} зашифрован. Отправка из фона невозможна без ключа.", local_id);
         return None;
     }
 
-    let meta_path = root.join("data").join(account_id.to_string()).join("meta");
+    let meta_path = root.join("data").join(local_id.to_string()).join("meta");
     let meta = storage.load(&meta_path)?;
 
     let token = meta.get("token")?.as_str()?.to_string();
     let device = meta.get("device")?.clone();
-
     let identity: rumax::models::Identity = serde_json::from_value(device).ok()?;
 
-    Some((token, identity))
+    let self_path = root.join("data").join(local_id.to_string()).join("self");
+    let server_user_id = storage
+        .load(&self_path)
+        .and_then(|s| s.get("id").and_then(|id| id.as_u64()))
+        .unwrap_or(if account_id != 0 { account_id } else { local_id });
+
+    Some((local_id, server_user_id, token, identity))
 }
