@@ -45,10 +45,15 @@
   }
 
   function getPeerId(chat) {
-    if (chat.type === "DIALOG") {
-      return chat.ownerId === $currentUser ? chat.id : chat.ownerId;
+    if (chat?.type === "DIALOG" && chat.id && $currentUser) {
+      try {
+        const pId = Number(BigInt(chat.id) ^ BigInt($currentUser));
+        return pId > 0 ? pId : null;
+      } catch {
+        return null;
+      }
     }
-    return chat.id;
+    return null;
   }
 
   function getTitle(chat) {
@@ -56,9 +61,11 @@
     if (chat.title) return chat.title;
     if (chat.type === "DIALOG") {
       const peerId = getPeerId(chat);
-      const contactStore = getContact(peerId);
-      const contact = contactStore ? get(contactStore) : null;
-      if (contact?.names?.[0]?.name) return contact.names[0].name;
+      if (peerId) {
+        const contactStore = getContact(peerId);
+        const contact = contactStore ? get(contactStore) : null;
+        if (contact?.names?.[0]?.name) return contact.names[0].name;
+      }
     }
     return "Чат";
   }
