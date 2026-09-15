@@ -1,6 +1,7 @@
 <script>
   import { fly } from "svelte/transition";
   import { onDestroy } from 'svelte';
+  import { get } from 'svelte/store';
 
   import ChatItem from "$components/chats/ChatItem.svelte";
   import FolderTabs from "$components/chats/FolderTabs.svelte";
@@ -30,22 +31,34 @@
   import { isChatMuted } from "$lib/utils/notifications";
 
   let localFolders = [];
-  $: if ($currentFolders) {
+  const isAllChatsFolder = (f) => {
+    if (!f) return false;
+    if (f.id === 0 || f.id === "0" || f.id === "all.chat.folder") return true;
+    const t = (f.title || "").trim().toLowerCase();
+    return t === "все" || t === "все чаты" || t === "all" || t === "all chats";
+  };
+
+  $: {
+    const nonAll = ($currentFolders || []).filter((f) => !isAllChatsFolder(f));
+    const nextFolders = [
+      { id: 0, title: "Все", filters: null },
+      ...nonAll,
+    ];
     if (
-      localFolders.length === 0 ||
-      localFolders.length !== $currentFolders.length + 1
+      localFolders.length !== nextFolders.length ||
+      localFolders.some((f, idx) => f.id !== nextFolders[idx]?.id || f.title !== nextFolders[idx]?.title)
     ) {
-      localFolders = [
-        { id: 0, title: "Все", filters: null },
-        ...($currentFolders || []),
-      ];
+      localFolders = nextFolders;
+      if (!localFolders.some((f) => f.id === activeFolder?.id)) {
+        activeFolder = localFolders[0];
+      }
     }
   }
   let activeFolder = null;
   let activeFolderIndex = 0;
   $: if (!activeFolder && localFolders.length > 0)
     activeFolder = localFolders[0];
-  $: shouldRender = (index) => Math.abs(index - activeFolderIndex) <= 1;
+  $: shouldRender = (index) => index === activeFolderIndex;
 
   let selectedChats = new Set(); // ID выбранных чатов
   let isSelectionMode = false;
@@ -153,42 +166,55 @@
     }
 
     const include = folder.include || folder.includedChats || [];
-    if (include.includes(chat.id)) {
-      return true;
-    }
-
+    const isIncluded = include.includes(chat.id);
     const filters = folder.filters || [];
-    if (!filters.length && !include.length) {
-      return false;
-    }
 
-    const isDialog = chat.type === "DIALOG" || chat.type === "private";
-    const isBot = chat?.options?.BOT === true || chat?.options?.IS_BOT === true || chat?.options?.includes?.("BOT");
-    const peerId = isDialog ? (chat.ownerId === myId ? chat.id : chat.ownerId) : null;
-    const isSelf = peerId != null && peerId === myId;
-    const isContact = isDialog && !isSelf && peerId != null && contactIds.has(peerId);
+    if (!isIncluded) {
+      if (!filters.length) return false;
 
-    const typeFilters = filters.filter((f) => [8, 9, 3, 2, 10, 4, 13].includes(f));
-    if (typeFilters.length > 0) {
-      const matchesType = typeFilters.some((f) => {
-        switch (f) {
-          case 8:
-            return isDialog && !isBot && isContact;
-          case 9:
-            return isDialog && !isBot && !isSelf && !isContact;
-          case 3:
-            return chat.type === "CHAT" || chat.type === "GROUP" || chat.type === "group" || chat.type === "supergroup";
-          case 2:
-            return chat.type === "CHANNEL" || chat.type === "channel";
-          case 10:
-            return isBot;
-          case 4:
-            return isDialog;
-          default:
-            return false;
-        }
-      });
-      if (!matchesType) return false;
+      const isDialog = chat.type === "DIALOG" || chat.type === "private";
+      let peerId = null;
+      if (isDialog && chat.id && myId) {
+        try {
+          peerId = Number(BigInt(chat.id) ^ BigInt(myId));
+        } catch {}
+      }
+
+      const cachedContact = peerId ? get(getContact(peerId)) : null;
+      const isBot =
+        Boolean(cachedContact?.options && (Array.isArray(cachedContact.options) ? cachedContact.options.includes("BOT") : cachedContact.options.BOT)) ||
+        chat?.options?.BOT === true ||
+        chat?.options?.IS_BOT === true ||
+        Boolean(Array.isArray(chat?.options) && chat.options.includes("BOT")) ||
+        chat?.options?.bot === true;
+
+      const isSelf = peerId != null && peerId === myId;
+      const isContact = isDialog && !isBot && !isSelf && peerId != null && contactIds.has(peerId);
+
+      const typeFilters = filters.filter((f) => [8, 9, 3, 2, 10, 4, 13].includes(f));
+      if (typeFilters.length > 0) {
+        const matchesType = typeFilters.some((f) => {
+          switch (f) {
+            case 8:
+              return isDialog && !isBot && isContact;
+            case 9:
+              return isDialog && !isBot && !isSelf && !isContact;
+            case 3:
+              return chat.type === "CHAT" || chat.type === "GROUP" || chat.type === "group" || chat.type === "supergroup";
+            case 2:
+              return chat.type === "CHANNEL" || chat.type === "channel";
+            case 10:
+              return isBot;
+            case 4:
+              return isDialog;
+            default:
+              return false;
+          }
+        });
+        if (!matchesType) return false;
+      } else {
+        return false;
+      }
     }
 
     if (filters.includes(0) && !(chat.newMessages > 0)) return false;
@@ -196,11 +222,11 @@
     if (filters.includes(7) && !isChatMuted(chat)) return false;
     if (filters.includes(11) && isChatMuted(chat)) return false;
 
-    return typeFilters.length > 0 || include.includes(chat.id);
+    return true;
   }
 
   function getChatsForFolder(folder, allChats, realChats, myId, contactIds) {
-    if (!allChats || !realChats) return [];
+    if (!allChats || !realChats || !folder) return [];
     const chats = realChats
       .map((id) => allChats.find((x) => x.id === id))
       .filter(Boolean);
@@ -214,18 +240,16 @@
   }
 
   $: contactIdSet = new Set($currentRealContacts || []);
-  $: folderChatsMap = new Map(
-    localFolders.map((folder) => [
-      folder.id,
-      getChatsForFolder(
-        folder,
-        $currentSessionChats,
-        $currentRealChats,
-        $currentUser,
-        contactIdSet
-      ),
-    ])
-  );
+
+  function getFolderChats(folder) {
+    return getChatsForFolder(
+      folder,
+      $currentSessionChats,
+      $currentRealChats,
+      $currentUser,
+      contactIdSet
+    );
+  }
 
   async function handleSaveFolder(folderData) {
     try {
@@ -564,7 +588,7 @@
             {#if $currentlySyncing && i === activeFolderIndex && (!$currentSessionChats || $currentSessionChats.length === 0)}
               <div class="state">Загрузка...</div>
             {:else}
-              {@const chats = folderChatsMap.get(folder.id) || []}
+              {@const chats = getFolderChats(folder)}
 
               {#if chats.length === 0}
                 <div class="state">Нет чатов</div>
