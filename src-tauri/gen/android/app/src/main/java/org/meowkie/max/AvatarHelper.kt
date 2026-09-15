@@ -1,4 +1,3 @@
-// AvatarHelper.kt
 package org.meowkie.max
 
 import android.content.Context
@@ -7,6 +6,16 @@ import java.io.File
 import kotlin.math.abs
 
 object AvatarHelper {
+  init {
+    try {
+      System.loadLibrary("maxplus_lib")
+    } catch (e: Throwable) {
+      e.printStackTrace()
+    }
+  }
+
+  private external fun getAvatarPathNative(account: Int, id: Long, appDir: String): String?
+
   private val COLORS = intArrayOf(
     0xFFE17076.toInt(),
     0xFF7BC862.toInt(),
@@ -16,9 +25,15 @@ object AvatarHelper {
     0xFF6EC9CB.toInt()
   )
   
-  fun getAvatar(context: Context, id: Long, name: String, avatarPath: String? = null): Bitmap {
-    if (!avatarPath.isNullOrEmpty()) {
-      val file = File(avatarPath)
+  fun getAvatar(context: Context, id: Long, name: String, avatarPath: String? = null, account: Int = 0): Bitmap {
+    val path = avatarPath ?: try {
+      getAvatarPathNative(account, id, context.filesDir.absolutePath)
+    } catch (e: Throwable) {
+      null
+    }
+
+    if (!path.isNullOrEmpty()) {
+      val file = File(path)
       if (file.exists()) {
         val bitmap = BitmapFactory.decodeFile(file.absolutePath)
         if (bitmap != null) return getCircularBitmap(bitmap)
@@ -41,9 +56,9 @@ object AvatarHelper {
     canvas.drawCircle(size / 2f, size / 2f, size / 2f, paint)
     
     val initials = name.trim().split("\\s+".toRegex())
-    .take(2)
-    .mapNotNull { it.firstOrNull()?.uppercaseChar() }
-    .joinToString("")
+      .take(2)
+      .mapNotNull { it.firstOrNull()?.uppercaseChar() }
+      .joinToString("")
     
     if (initials.isNotEmpty()) {
       val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
