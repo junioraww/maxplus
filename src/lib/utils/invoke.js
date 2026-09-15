@@ -19,16 +19,17 @@ export const invoke = async (command, args) => {
     console.error(error);
     logError(error);
 
-    const { type, text } = error;
+    const type = error?.type;
+    const text = typeof error === "string" ? error : (error?.text || error?.message || "");
 
     if (type === "RequestTimeout")
       return restart("Сервер не отвечает!\nПереподключение...", command, args);
     if (type === "ConnectionFailed")
       return restart("Откис интернет!\nПереподключение...", command, args);
-    if (text.includes("proto.state"))
+    if (text && text.includes("proto.state"))
       return restart("Сломалась сессия!\nПереподключение...", command, args);
 
-    if (text.includes("login.token")) {
+    if (text && text.includes("login.token")) {
       alert("Выкинуло из аккаунта!");
       const current = await getCurrentAccount();
       if (current) await removeAccount(current.id);
@@ -38,10 +39,14 @@ export const invoke = async (command, args) => {
 
     if (type !== "ApiResponse") return error;
 
-    return {
-      ...JSON.parse(text),
-      type
-    };
+    try {
+      return {
+        ...JSON.parse(text),
+        type
+      };
+    } catch {
+      return error;
+    }
   }
 };
 

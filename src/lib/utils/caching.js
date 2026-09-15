@@ -15,16 +15,17 @@ export const syncContacts = async (contacts, requireInfo) => {
     requireInfo.delete(+raw.id);
   });
 
-  if (requireInfo.size) {
-    console.log("Необходимые для обновления контакты", requireInfo);
-
+  const userIds = [...requireInfo].map(Number).filter(id => id > 0);
+  if (userIds.length) {
     const response = await invoke("fetch_contacts", {
-      userIds: [...requireInfo],
+      userIds,
     });
 
-    response.contacts.forEach(raw => {
-      updateContact(normalizeContact(raw));
-    });
+    if (response?.contacts) {
+      response.contacts.forEach(raw => {
+        updateContact(normalizeContact(raw));
+      });
+    }
   }
 };
 
@@ -32,28 +33,31 @@ const empty = writable(null);
 let contactBatch = null;
 
 export const getContact = contactId => {
-  if (!+contactId) return empty;
+  const id = Number(contactId);
+  if (!id || id <= 0) return empty;
 
   getCachedContacts().then(contacts => {
-    // TODO return only ids (that are cached)
-    if (!contacts.some(x => x.id === +contactId))
-      requestAndCacheContact(contactId);
+    if (!contacts.some(x => x.id === id))
+      requestAndCacheContact(id);
   });
 
-  return getContactStore(+contactId);
+  return getContactStore(id);
 };
 
 const requestAndCacheContact = async contactId => {
+  const id = Number(contactId);
+  if (!id || id <= 0) return;
+
   if (!contactBatch) {
     contactBatch = {
       ids: [],
       promise: new Promise(resolve =>
-      setTimeout(resolve, 300)
+        setTimeout(resolve, 300)
       )
     };
   }
 
-  contactBatch.ids.push(+contactId);
+  contactBatch.ids.push(id);
 
   const batch = contactBatch;
 
@@ -62,25 +66,31 @@ const requestAndCacheContact = async contactId => {
   if (contactBatch === batch) {
     contactBatch = null;
 
+    const validIds = [...new Set(batch.ids)].filter(x => x > 0);
+    if (!validIds.length) return;
+
     const response = await invoke("fetch_contacts", {
-      userIds: [...new Set(batch.ids)]
+      userIds: validIds
     });
 
-    for (const raw of response.contacts) {
-      updateContact(normalizeContact(raw));
+    if (response?.contacts) {
+      for (const raw of response.contacts) {
+        updateContact(normalizeContact(raw));
+      }
     }
   }
 }
 
 export const getContactAsync = async contactId => {
-  if (!+contactId) return empty;
+  const id = Number(contactId);
+  if (!id || id <= 0) return empty;
   const contacts = await getCachedContacts();
 
-  if (!contacts.some(x => x.id === +contactId)) {
-    await requestAndCacheContact(contactId);
+  if (!contacts.some(x => x.id === id)) {
+    await requestAndCacheContact(id);
   }
 
-  return getContactStore(+contactId);
+  return getContactStore(id);
 }
 
 const normalizeContact = (contact) => {

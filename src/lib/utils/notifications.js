@@ -16,7 +16,7 @@ import {
   getFallbackAvatarLocalPath
 } from "$lib/utils/images";
 import Session from "$lib/stores/session";
-import API from "$lib/stores/api";
+import API, { currentSessionChats } from "$lib/stores/api";
 
 export const MESSAGES_CHANNEL_ID = 'MESSAGES_CHANNEL_ID';
 
@@ -47,7 +47,16 @@ export function toggleClientNotifications() {
 
 export function isChatMuted(chat) {
   if (!chat) return false;
-  const ddu = chat.dontDisturbUntil;
+  let chatObj = typeof chat.getInfo === "function" ? chat.getInfo() : chat;
+  if (typeof chat === "number" || typeof chat === "string" || (!chatObj?.dontDisturbUntil && chatObj?.id !== undefined)) {
+    const id = typeof chat === "number" || typeof chat === "string" ? Number(chat) : Number(chatObj?.id);
+    if (!isNaN(id)) {
+      const found = get(currentSessionChats)?.find(c => c.id === id);
+      if (found) chatObj = found;
+    }
+  }
+  if (!chatObj) return false;
+  const ddu = chatObj.dontDisturbUntil;
   if (ddu === undefined || ddu === null || ddu === 0) return false;
   if (ddu === -1) return true;
   return Number(ddu) > Date.now();
@@ -114,14 +123,15 @@ export async function setupPushNotifications() {
 
 export async function newMessage(chatId, chat, contact, message) {
   if (!isClientNotificationsEnabled()) return;
-  if (isChatMuted(chat)) return;
+  const resolvedChat = typeof chat?.getInfo === "function" ? chat.getInfo() : chat;
+  if (isChatMuted(resolvedChat || chatId)) return;
   if (get(Session).openedChats?.some(idx => idx === chatId)) return;
 
   let avatarLocalPath = null;
-  const chatInfo = chat?.getInfo ? chat.getInfo() : (chat || {});
+  const chatInfo = resolvedChat || {};
   const title = chatInfo.title || contact?.names?.[0]?.name || "Новое сообщение";
 
-  const avatarUrl = chat?.baseUrl || contact?.avatar;
+  const avatarUrl = chatInfo.baseUrl || chatInfo.baseIconUrl || chatInfo.avatar || contact?.avatar;
   if (avatarUrl) {
     avatarLocalPath = await getLocalFilePath(avatarUrl);
   } else {
@@ -156,6 +166,9 @@ export async function newMessage(chatId, chat, contact, message) {
 
 export async function sendNotification(data) {
   if (!isClientNotificationsEnabled()) return;
+  if (!granted) {
+    await suggestNotifications();
+  }
   if (!granted) return;
   try {
     await pluginSendNotification(data);
