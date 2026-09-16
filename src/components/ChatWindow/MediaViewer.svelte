@@ -3,6 +3,8 @@
   import { invoke as tauriInvoke } from "@tauri-apps/api/core";
   import { convertFileSrc } from '@tauri-apps/api/core';
   import { fetch } from '@tauri-apps/plugin-http';
+  import { save } from "@tauri-apps/plugin-dialog";
+  import { download } from "@tauri-apps/plugin-upload";
   import { createEventDispatcher } from "svelte";
 
   import { getCurrentAccount } from "$lib/stores/accounts";
@@ -48,14 +50,15 @@
   $: if (index !== undefined) {
     isMetadataLoaded = false;
     isVideoReady = false;
-    duration = 0;
+    duration = currentMedia?.duration
+      ? (currentMedia.duration > 1000 ? currentMedia.duration / 1000 : currentMedia.duration)
+      : 0;
     currentTime = 0;
     playbackRate = 1;
     showControls = true;
     paused = true;
   }
 
-  // TODO Use caching
   async function loadVideo(videoId) {
     if (videoCache[videoId] || isLoading) return;
     isLoading = true;
@@ -102,8 +105,11 @@
 
   function handleSync(e) {
     const el = e.target;
-    duration = el.duration || 0;
-    console.log(el.duration, el); // TODO fix video duration
+    if (el.duration && isFinite(el.duration) && el.duration > 0) {
+      duration = el.duration;
+    } else if (currentMedia?.duration && (!duration || duration <= 0)) {
+      duration = currentMedia.duration > 1000 ? currentMedia.duration / 1000 : currentMedia.duration;
+    }
     isMetadataLoaded = duration > 0 && !isNaN(duration);
   }
 
@@ -327,6 +333,59 @@
 
     return convertFileSrc(path);
   }
+
+  let isDownloadingMedia = false;
+
+  async function downloadCurrentMedia() {
+    if (isDownloadingMedia || !currentMedia) return;
+    isDownloadingMedia = true;
+    try {
+      if (currentMedia._type === "PHOTO") {
+        const url = currentMedia.baseUrl;
+        if (!url) return;
+        const defaultName = `photo_${Date.now()}.jpg`;
+        const filePath = await save({
+          defaultPath: defaultName,
+          filters: [{ name: "Images", extensions: ["jpg", "jpeg", "png", "webp"] }],
+        });
+        if (filePath) {
+          await download(url, filePath);
+        }
+      } else if (currentMedia._type === "VIDEO") {
+        let videoUrl = videoCache[currentMedia.videoId];
+        if (!videoUrl) {
+          const response = await $API.getVideoById(
+            chatId,
+            currentMedia.messageId,
+            currentMedia.videoId,
+          );
+          const qualityPriority = ["MP4_1080", "MP4_720", "MP4_480", "MP4_360"];
+          for (const quality of qualityPriority) {
+            if (response[quality]) {
+              videoUrl = response[quality];
+              break;
+            }
+          }
+          if (!videoUrl && response.HLS) videoUrl = response.HLS;
+        } else if (videoUrl.startsWith("http://127.0.0.1:11447/")) {
+          videoUrl = decodeURIComponent(videoUrl.replace("http://127.0.0.1:11447/", ""));
+        }
+        if (!videoUrl) return;
+        const defaultName = `video_${Date.now()}.mp4`;
+        const filePath = await save({
+          defaultPath: defaultName,
+          filters: [{ name: "Videos", extensions: ["mp4", "webm", "mov"] }],
+        });
+        if (filePath) {
+          await download(videoUrl, filePath);
+        }
+      }
+    } catch (e) {
+      console.error("Media download error:", e);
+    } finally {
+      isDownloadingMedia = false;
+    }
+  }
 </script>
 
 <div
@@ -336,13 +395,25 @@
 >
   <div class="viewer-header">
     <div class="counter">{index + 1} из {allMedia.length}</div>
-    <button class="viewer-icon-btn close" on:click={() => dispatch("close")}>
-      <svg viewBox="0 0 24 24"
-        ><path
-          d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"
-        /></svg
+    <div class="header-actions">
+      <button
+        class="viewer-icon-btn download"
+        on:click|stopPropagation={downloadCurrentMedia}
+        title={currentMedia?._type === "PHOTO" ? "Скачать фото" : "Скачать видео"}
+        disabled={isDownloadingMedia}
       >
-    </button>
+        <svg viewBox="0 0 24 24">
+          <path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z" />
+        </svg>
+      </button>
+      <button class="viewer-icon-btn close" on:click={() => dispatch("close")}>
+        <svg viewBox="0 0 24 24"
+          ><path
+            d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"
+          /></svg
+        >
+      </button>
+    </div>
   </div>
 
   <div class="viewer-content" on:mousemove={resetControlsTimeout}>
@@ -370,6 +441,7 @@
       {#key index}
         {#if currentMedia._type === "PHOTO"}
           {#await load(currentMedia.baseUrl)}
+            <div class="media-shimmer" style="width: min(80vw, 600px); height: min(70vh, 500px); border-radius: 12px;"></div>
           {:then url}
             <img
               style="transform: {transformStyle}"
@@ -444,8 +516,24 @@
                 class="video-controls-bar"
                 class:hidden={!showControls}
                 on:click|stopPropagation
+                on:pointerdown|stopPropagation
+                on:pointermove|stopPropagation
+                on:pointerup|stopPropagation
+                on:mousedown|stopPropagation
+                on:touchstart|stopPropagation
+                on:touchmove|stopPropagation
+                on:touchend|stopPropagation
               >
-                <div class="progress-row">
+                <div
+                  class="progress-row"
+                  on:pointerdown|stopPropagation
+                  on:pointermove|stopPropagation
+                  on:pointerup|stopPropagation
+                  on:mousedown|stopPropagation
+                  on:touchstart|stopPropagation
+                  on:touchmove|stopPropagation
+                  on:touchend|stopPropagation
+                >
                   <input
                     type="range"
                     min="0"
@@ -490,7 +578,16 @@
                         /></svg
                       >
                     </button>
-                    <div class="volume-group">
+                    <div
+                      class="volume-group"
+                      on:pointerdown|stopPropagation
+                      on:pointermove|stopPropagation
+                      on:pointerup|stopPropagation
+                      on:mousedown|stopPropagation
+                      on:touchstart|stopPropagation
+                      on:touchmove|stopPropagation
+                      on:touchend|stopPropagation
+                    >
                       <input
                         type="range"
                         min="0"
@@ -593,7 +690,7 @@
     top: 50%;
     left: 50%;
     transform: translate(-50%, -50%) scale(1);
-    object-fit: contain; /* можно вернуть */
+    object-fit: contain;
     max-width: 95vw;
     max-height: 80vh;
   }
@@ -627,17 +724,59 @@
     pointer-events: none;
   }
 
+  .header-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
   .viewer-icon-btn {
     background: none;
     border: none;
     color: white;
     cursor: pointer;
     padding: 5px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    transition: background 0.15s, opacity 0.15s;
+  }
+  .viewer-icon-btn:hover {
+    background: rgba(255, 255, 255, 0.12);
+  }
+  .viewer-icon-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
   }
   .viewer-icon-btn svg {
-    width: 28px;
-    height: 28px;
+    width: 26px;
+    height: 26px;
     fill: currentColor;
+  }
+
+  .media-shimmer {
+    background: linear-gradient(
+      90deg,
+      rgba(255, 255, 255, 0.04) 0%,
+      rgba(255, 255, 255, 0.12) 35%,
+      rgba(79, 195, 247, 0.16) 50%,
+      rgba(255, 255, 255, 0.12) 65%,
+      rgba(255, 255, 255, 0.04) 100%
+    );
+    background-size: 200% 100%;
+    animation: shimmer 1.6s infinite linear;
+    max-width: 95vw;
+    max-height: 80vh;
+  }
+
+  @keyframes shimmer {
+    0% {
+      background-position: 200% 0;
+    }
+    100% {
+      background-position: -200% 0;
+    }
   }
 
   .preview-wrapper {
