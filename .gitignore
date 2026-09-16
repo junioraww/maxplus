@@ -13,3 +13,6 @@ bun.lock
 .prevgit
 **/*.pem
 **/*.jks
+test-results
+playwright-report
+

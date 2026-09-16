@@ -9,8 +9,8 @@ export function escapeHtml(str = "") {
     .replace(/'/g, "&#39;");
 }
 
-// TODO there is duplicate of this func somewhere in code
 export function getMessagePreview(message) {
+  if (!message) return "";
   const attach = getAttachText(message);
 
   if (attach) {
@@ -18,5 +18,5 @@ export function getMessagePreview(message) {
     return attach;
   }
 
-  return message.text;
+  return message.text || "";
 }
