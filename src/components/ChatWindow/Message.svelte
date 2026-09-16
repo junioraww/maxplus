@@ -523,6 +523,8 @@
   }
 
   .status-ticks {
+    display: inline-flex;
+    align-items: center;
     align-self: end;
   }
 
@@ -548,7 +550,6 @@
 
   .status-icon.is-read {
     fill: #34b7f1;
-    height: 14px;
   }
 
   .obf-type {

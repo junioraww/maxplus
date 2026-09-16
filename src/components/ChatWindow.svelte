@@ -34,6 +34,7 @@
     decode_msg,
   } from "$components/ChatWindow/e2e.js";
   import { scrollToBottom } from "$lib/utils/scroll.js";
+  import { getChatScroll, saveChatScroll } from "$lib/stores/chatScroll.js";
   import * as Caching from "$lib/utils/caching.js";
   import Settings from "$components/ChatWindow/Settings.svelte";
   import E2eModal from "$components/ChatWindow/E2eModal.svelte";
@@ -92,6 +93,8 @@
   };
 
   onDestroy(() => {
+    saveCurrentPosition();
+    if (savePositionTimeout) clearTimeout(savePositionTimeout);
     delete onBack["chat"];
     if (onBack.dropout) delete onBack["dropout"];
     if (onBack.chatSettings) delete onBack["chatSettings"];
@@ -245,7 +248,9 @@
     }
     visibleMessages = newVisible;
 
-    await scheduleRead();
+    if (userHasScrolled) {
+      await scheduleRead();
+    }
   }
 
   function measureAllHeights() {
@@ -397,11 +402,62 @@
 
   let scrollTimeout = null;
   let updateScheduled = false;
+  let userHasScrolled = false;
+  let savePositionTimeout = null;
 
   let readTimer = null;
   let lastReadMessageId = null;
 
+  function saveCurrentPosition() {
+    if (!scrollElement || !chat?.id) return;
+    const distanceFromBottom =
+      scrollElement.scrollHeight - scrollElement.scrollTop - scrollElement.clientHeight;
+    const isAtBottom = distanceFromBottom < 60;
+    if (isAtBottom) {
+      saveChatScroll(chat.id, {
+        wasAtBottom: true,
+        lastSeenTime: Date.now(),
+      });
+      return;
+    }
+    const containerRect = scrollElement.getBoundingClientRect();
+    let bottomMsg = null;
+    let bottomOffset = 0;
+    let maxBottom = -Infinity;
+
+    for (const id in visibleMessages) {
+      const el = visibleMessages[id];
+      if (!el) continue;
+      const rect = el.getBoundingClientRect();
+      if (rect.top < containerRect.bottom && rect.bottom > maxBottom) {
+        maxBottom = rect.bottom;
+        const m = $messages.find((x) => String(x.id) === String(id));
+        if (m) {
+          bottomMsg = m;
+          bottomOffset = rect.top - containerRect.top;
+        }
+      }
+    }
+
+    if (bottomMsg) {
+      saveChatScroll(chat.id, {
+        wasAtBottom: false,
+        bottomMessageId: bottomMsg.id,
+        bottomMessageTime: bottomMsg.time,
+        offset: bottomOffset,
+        lastSeenTime: Date.now(),
+      });
+    }
+  }
+
+  function queueSavePosition() {
+    if (savePositionTimeout) clearTimeout(savePositionTimeout);
+    savePositionTimeout = setTimeout(saveCurrentPosition, 200);
+  }
+
   function handleScroll(event) {
+    userHasScrolled = true;
+    queueSavePosition();
     const target = event.currentTarget;
     const distanceFromBottom =
       target.scrollHeight - target.scrollTop - target.clientHeight;
@@ -432,8 +488,8 @@
     let lowestTop = -Infinity;
 
     for (const key in visibleMessages) {
-      const entry = $messages.find(x => x.id === key);
-      if (entry.sender === $currentUser) continue;
+      const entry = $messages.find(x => String(x.id) === String(key));
+      if (!entry || Number(entry.sender) === Number($currentUser)) continue;
 
       const el = visibleMessages[key];
       if (!el) continue;
@@ -603,14 +659,38 @@
     measureAllHeights();
     computeCumulativeHeights();
 
-    await updateVisibleMessages(true);
+    const savedPos = getChatScroll(chat?.id);
+    const unreadCount = Number(chat?.newMessages || 0);
 
-    await scrollToBottom(scrollElement, false);
+    if (savedPos && !savedPos.wasAtBottom && savedPos.bottomMessageId) {
+      const idx = $messages.findIndex(
+        (m) =>
+          String(m.id) === String(savedPos.bottomMessageId) ||
+          (savedPos.bottomMessageTime && m.time === savedPos.bottomMessageTime)
+      );
+      if (idx !== -1) {
+        const msgTop = idx === 0 ? 0 : cumulativeHeights[idx - 1];
+        const targetScroll = Math.max(0, msgTop - (savedPos.offset || 0));
+        scrollElement.scrollTop = targetScroll;
+      } else {
+        await scrollToBottom(scrollElement, false);
+      }
+    } else if (unreadCount > 0) {
+      const unreadIdx = Math.max(0, $messages.length - unreadCount);
+      if ($messages[unreadIdx]) {
+        const msgTop = unreadIdx === 0 ? 0 : cumulativeHeights[unreadIdx - 1];
+        scrollElement.scrollTop = Math.max(0, msgTop - 40);
+      } else {
+        await scrollToBottom(scrollElement, false);
+      }
+    } else {
+      await scrollToBottom(scrollElement, false);
+    }
 
-    await new Promise(r => setTimeout(r, 1));
+    await updateVisibleMessages();
+
+    await new Promise((r) => setTimeout(r, 1));
     allRendered = true;
-
-    await scheduleRead();
   });
 
   /*
