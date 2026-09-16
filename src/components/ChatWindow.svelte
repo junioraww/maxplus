@@ -260,7 +260,10 @@
     for (const wrapper of wrappers) {
       const id = wrapper.id?.replace('m-', '');
       if (!id) continue;
-      const content = wrapper.querySelector('#clickable-area');
+      const content =
+        wrapper.querySelector("#clickable-area") ||
+        wrapper.querySelector(".observer-area") ||
+        wrapper;
       if (content) {
         const height = content.getBoundingClientRect().height;
         if (height > 0) updates[id] = height;
@@ -404,12 +407,14 @@
   let updateScheduled = false;
   let userHasScrolled = false;
   let savePositionTimeout = null;
+  let isInitialMounting = true;
+  let isProgrammaticScroll = false;
 
   let readTimer = null;
   let lastReadMessageId = null;
 
   function saveCurrentPosition() {
-    if (!scrollElement || !chat?.id) return;
+    if (!scrollElement || !chat?.id || isInitialMounting || isProgrammaticScroll) return;
     const distanceFromBottom =
       scrollElement.scrollHeight - scrollElement.scrollTop - scrollElement.clientHeight;
     const isAtBottom = distanceFromBottom < 60;
@@ -456,6 +461,8 @@
   }
 
   function handleScroll(event) {
+    if (isInitialMounting || isProgrammaticScroll) return;
+
     userHasScrolled = true;
     queueSavePosition();
     const target = event.currentTarget;
@@ -650,6 +657,9 @@
   }
 
   onMount(async () => {
+    isInitialMounting = true;
+    isProgrammaticScroll = true;
+
     setupResizeObserver();
     startAutoScrollIfAtBottom();
 
@@ -659,38 +669,36 @@
     measureAllHeights();
     computeCumulativeHeights();
 
-    const savedPos = getChatScroll(chat?.id);
     const unreadCount = Number(chat?.newMessages || 0);
+    const savedPos = getChatScroll(chat?.id);
 
-    if (savedPos && !savedPos.wasAtBottom && savedPos.bottomMessageId) {
-      const idx = $messages.findIndex(
-        (m) =>
-          String(m.id) === String(savedPos.bottomMessageId) ||
-          (savedPos.bottomMessageTime && m.time === savedPos.bottomMessageTime)
-      );
-      if (idx !== -1) {
-        const msgTop = idx === 0 ? 0 : cumulativeHeights[idx - 1];
-        const targetScroll = Math.max(0, msgTop - (savedPos.offset || 0));
-        scrollElement.scrollTop = targetScroll;
-      } else {
+    if (unreadCount > 0) {
+      const targetId = getFirstUnreadMessageId();
+      let positioned = false;
+      if (targetId) {
+        positioned = await scrollToMessage(targetId, { offset: 40 });
+      }
+      if (!positioned) {
         await scrollToBottom(scrollElement, false);
       }
-    } else if (unreadCount > 0) {
-      const unreadIdx = Math.max(0, $messages.length - unreadCount);
-      if ($messages[unreadIdx]) {
-        const msgTop = unreadIdx === 0 ? 0 : cumulativeHeights[unreadIdx - 1];
-        scrollElement.scrollTop = Math.max(0, msgTop - 40);
-      } else {
+    } else if (savedPos && !savedPos.wasAtBottom && savedPos.bottomMessageId) {
+      const restored = await scrollToMessage(savedPos.bottomMessageId, {
+        offset: savedPos.offset || 40,
+      });
+      if (!restored) {
         await scrollToBottom(scrollElement, false);
       }
     } else {
       await scrollToBottom(scrollElement, false);
     }
 
+    await tick();
     await updateVisibleMessages();
 
-    await new Promise((r) => setTimeout(r, 1));
+    await new Promise((r) => setTimeout(r, 60));
     allRendered = true;
+    isInitialMounting = false;
+    isProgrammaticScroll = false;
   });
 
   /*
@@ -848,15 +856,52 @@
     if (!scrollElement) return;
 
     scrollResizeObserver = new ResizeObserver(() => {
-      if (!scrollElement) return;
+      if (!scrollElement || isInitialMounting || isProgrammaticScroll) return;
       const { scrollTop, scrollHeight, clientHeight } = scrollElement;
       const atBottom = scrollHeight - scrollTop - clientHeight < 50;
-      if (atBottom) {
+      if (atBottom && userHasScrolled) {
         scrollToBottom(scrollElement, false);
       }
     });
 
     scrollResizeObserver.observe(scrollElement);
+  }
+
+  async function scrollToMessage(targetMsgId, options = {}) {
+    if (!scrollElement || !targetMsgId) return false;
+    await tick();
+    const targetEl = document.getElementById("m-" + targetMsgId);
+    if (!targetEl) return false;
+
+    isProgrammaticScroll = true;
+    const { offset = 40 } = options;
+    const containerRect = scrollElement.getBoundingClientRect();
+    const elRect = targetEl.getBoundingClientRect();
+    const currentScroll = scrollElement.scrollTop;
+    const targetScroll = currentScroll + (elRect.top - containerRect.top) - offset;
+    scrollElement.scrollTop = Math.max(0, targetScroll);
+
+    await updateVisibleMessages();
+    setTimeout(() => {
+      isProgrammaticScroll = false;
+    }, 150);
+    return true;
+  }
+
+  function getFirstUnreadMessageId() {
+    const unreadCount = Number(chat?.newMessages || 0);
+    if (unreadCount <= 0 || !$messages || $messages.length === 0) return null;
+
+    const myId = Number($currentUser);
+    const myMark = Number(chat?.participants?.[myId] || 0);
+
+    if (myMark > 0) {
+      const found = $messages.find((m) => m.time > myMark && Number(m.sender) !== myId);
+      if (found) return found.id;
+    }
+
+    const unreadIdx = Math.max(0, $messages.length - unreadCount);
+    return $messages[unreadIdx]?.id || null;
   }
 
   async function makeVisible(id) {
