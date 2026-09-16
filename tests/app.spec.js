@@ -63,3 +63,40 @@ test.describe('Read receipt calculations', () => {
     expect(isIncoming).toBe(true);
   });
 });
+
+test.describe('Chat scroll store logic', () => {
+  test('persists and retrieves scroll information correctly', async () => {
+    const store = {};
+    global.localStorage = {
+      getItem: (k) => store[k] || null,
+      setItem: (k, v) => {
+        store[k] = String(v);
+      },
+      removeItem: (k) => {
+        delete store[k];
+      },
+    };
+
+    const { getChatScroll, saveChatScroll, clearChatScroll } = await import(
+      '../src/lib/stores/chatScroll.js'
+    );
+
+    saveChatScroll(99901, {
+      wasAtBottom: false,
+      bottomMessageId: 102,
+      bottomMessageTime: 1700000000,
+      offset: 35,
+    });
+
+    const restored = getChatScroll(99901);
+    expect(restored).toEqual({
+      wasAtBottom: false,
+      bottomMessageId: 102,
+      bottomMessageTime: 1700000000,
+      offset: 35,
+    });
+
+    clearChatScroll(99901);
+    expect(getChatScroll(99901)).toBeNull();
+  });
+});
