@@ -10,6 +10,7 @@
     "preview": "vite preview",
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
     "check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
+    "test": "playwright test",
     "tauri": "tauri"
   },
   "license": "MIT",
@@ -30,6 +31,7 @@
     "libsodium-wrappers-sumo": "^0.8.4"
   },
   "devDependencies": {
+    "@playwright/test": "^1.63.0",
     "@sveltejs/adapter-static": "^3.0.10",
     "@sveltejs/kit": "^2.64.0",
     "@sveltejs/vite-plugin-svelte": "^5.1.1",
