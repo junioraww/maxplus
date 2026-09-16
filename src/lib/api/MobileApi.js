@@ -110,29 +110,60 @@ export default class MobileApi extends BaseAPI {
         if (message.status !== "EDITED") {
           chat.receivedMessage.set(message);
 
-          const info = chat.getInfo();
+          const myId = Number(get(currentUser));
+          const isOutgoing = Number(message.sender) === myId || Number(message.from) === myId;
 
-          if (info.type === "DIALOG") {
-            const contact = await getContactAsync(message.chatId ^ get(currentUser));
+          if (!isOutgoing) {
+            const info = chat.getInfo();
+            if (info?.type === "DIALOG") {
+              let peerId = null;
+              try {
+                peerId = Number(BigInt(message.chatId) ^ BigInt(myId));
+              } catch {}
+              const contact = peerId ? await getContactAsync(peerId) : null;
 
-            console.log(get(contact));
-
-            newMessage(
-              message.chatId,
-              chat,
-              get(contact),
-              getMessagePreview(message)
-            );
-          } else {
-            newMessage(
-              message.chatId,
-              chat,
-              null,
-              getMessagePreview(message)
-            );
+              newMessage(
+                message.chatId,
+                chat,
+                contact ? get(contact) : null,
+                getMessagePreview(message)
+              );
+            } else {
+              newMessage(
+                message.chatId,
+                chat,
+                null,
+                getMessagePreview(message)
+              );
+            }
           }
         }
-      } else if (opc == 129) {
+      } else if (opc === 129) {
+      } else if (opc === 130) {
+        const payload = response.payload;
+        if (payload?.chatId && payload?.mark && payload?.setAsUnread !== true) {
+          const chatId = Number(payload.chatId);
+          const userId = Number(payload.userId);
+          const mark = Number(payload.mark);
+          const myId = Number(get(currentUser));
+
+          const chat = getChat(chatId);
+          chat.readReceipt?.set({ userId, mark });
+
+          currentSessionChats.update(chats => {
+            if (!chats) return chats;
+            const idx = chats.findIndex(c => c.id === chatId);
+            if (idx === -1) return chats;
+            const current = chats[idx];
+            const participants = { ...(current.participants || {}), [userId]: mark };
+            let otherReadTime = current.otherReadTime || 0;
+            if (userId !== myId && mark > otherReadTime) {
+              otherReadTime = mark;
+            }
+            chats[idx] = { ...current, participants, otherReadTime };
+            return [...chats];
+          });
+        }
         // typing
       } else if (opc === 136) {
         const { videoId, fileId } = response.payload;

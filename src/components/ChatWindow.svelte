@@ -514,6 +514,19 @@
   $: title = chat.id === 0 ? "Избранное" : (chat.title || $cachedContact?.names?.[0]?.name);
   $: isBot = $cachedContact?.options?.includes("BOT") || chat?.options?.BOT === true || chat?.options?.IS_BOT === true;
 
+  $: otherReadTime = (() => {
+    let maxMark = chat?.otherReadTime || 0;
+    const myId = Number($currentUser);
+    if (chat?.participants) {
+      for (const [uid, mark] of Object.entries(chat.participants)) {
+        if (Number(uid) !== myId && Number(mark) > maxMark) {
+          maxMark = Number(mark);
+        }
+      }
+    }
+    return maxMark;
+  })();
+
   let botInfo = null;
   let botCommands = [];
   let botStarting = false;
@@ -894,6 +907,7 @@
               {chat}
               {dropoutActiveAt}
               {scrollElement}
+              {otherReadTime}
               makeVisible={makeVisible}
               decoded={$decodedMessages[msg.id]}
               on:openMedia={(e) => openMedia(e.detail.attach)}

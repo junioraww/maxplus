@@ -23,8 +23,11 @@
   export let scrollElement;
   export let decoded;
   export let makeVisible;
+  export let otherReadTime = 0;
 
-  const isMe = msg.sender === $currentUser;
+  $: isMe = Number(msg.sender) === Number($currentUser);
+  $: isSending = msg.status === "sending" || msg.status === "pending" || msg.status === 0 || msg.sending === true;
+  $: isRead = !isSending && (msg.read === true || msg.status === 3 || msg.status === "read" || (otherReadTime > 0 && otherReadTime >= (msg.time || 0)));
   const isSystem = msg.attaches?.[0]?._type === "CONTROL";
 
   $: lines = (decoded?.text || msg.text)?.split("\n");
@@ -87,7 +90,7 @@
 
   $: showAvatar =
     chat.type !== "CHANNEL" &&
-    (!isMe || innerWidth > 500) &&
+    (!isMe || innerWidth > 600) &&
     !isSystem;
 
   $: inlineKeyboardAttach = msg.attaches?.find(x => x._type === "INLINE_KEYBOARD");
@@ -212,26 +215,27 @@
           </div>
           {#if isMe && !isSystem}
             <div class="status-ticks">
-              {#if msg.status === 3}
-                <svg class="status-icon is-read" viewBox="0 0 23 13"
-                  ><path
-                    d="M11 12.025L5 6L6.5 4.5L11 9.52502L20.05 0L21.45 1.425L11 12.025ZM4.9999 12.025L0 7L1.5 5.50002L4.9999 9.5L14.375 0.025L15.8 1.425L4.9999 12.025Z"
-                  /></svg
-                >
-              {:else}
-                <svg class="status-icon" viewBox="0 0 17 6"
-                  ><path
+              {#if isSending}
+                <svg class="status-icon is-sending" viewBox="0 0 17 13">
+                  <path
                     d="M6 12.025L0 6L1.5 4.5L6 9.52502L15.05 0L16.45 1.425L6 12.025Z"
-                  /></svg
-                >
+                  />
+                </svg>
+              {:else if isRead}
+                <svg class="status-icon is-read" viewBox="0 0 23 13">
+                  <path
+                    d="M11 12.025L5 6L6.5 4.5L11 9.52502L20.05 0L21.45 1.425L11 12.025ZM4.9999 12.025L0 7L1.5 5.50002L4.9999 9.5L14.375 0.025L15.8 1.425L4.9999 12.025Z"
+                  />
+                </svg>
+              {:else}
+                <svg class="status-icon is-sent" viewBox="0 0 23 13">
+                  <path
+                    d="M11 12.025L5 6L6.5 4.5L11 9.52502L20.05 0L21.45 1.425L11 12.025ZM4.9999 12.025L0 7L1.5 5.50002L4.9999 9.5L14.375 0.025L15.8 1.425L4.9999 12.025Z"
+                  />
+                </svg>
               {/if}
               {#if decoded}
                 <a class="obf-type">{decoded.obf}</a>
-                {#if false}
-                <svg class="status-icon safe" viewBox="0 0 14 14" fill="currentColor">
-                  <path d="M11 7V5a3 3 0 0 0-6 0v2H4v7h8V7h-1zM6 5a2 2 0 1 1 4 0v2H6V5z"/>
-                </svg>
-                {/if}
               {/if}
             </div>
           {/if}
@@ -280,14 +284,6 @@
     width: fit-content;
   }
 
-  .message-row.is-me {
-    justify-content: flex-end;
-  }
-
-  .message-row.is-me .message-bubble-container {
-    align-items: flex-end;
-  }
-
   .message-bubble {
     color: #fff;
     padding: 8px 4px 8px 12px;
@@ -333,24 +329,52 @@
     border-radius: 16px 16px 0px 16px;
   }
 
-  @media screen and (max-width: 500px) {
-    .message-row.is-me {
-      flex-direction: column;
-    }
+  .message-row.is-me {
+    justify-content: flex-end;
+  }
 
-    .message-row.is-me .message-bubble {
-      border-radius: 16px 16px 0px 16px;
-    }
-
-    .message-row.is-me .message-bubble::before {
-      left: inherit;
-      right: -10px;
-      clip-path: path("M0 0 Q5 10 10 10 Q10 10 0 10 Z");
-    }
+  .message-row.is-me .message-bubble-container {
+    align-items: flex-end;
   }
 
   .message-row.is-me .message-bubble {
-      background: #7b4cd6;
+    border-radius: 16px 16px 0px 16px;
+    background: #7b4cd6;
+  }
+
+  .message-row.is-me .message-bubble::before {
+    left: inherit;
+    right: -10px;
+    clip-path: path("M0 0 Q5 10 10 10 Q10 10 0 10 Z");
+  }
+
+  .message-row.is-me .indent {
+    display: none;
+  }
+
+  @media screen and (min-width: 601px) {
+    .message-row.is-me {
+      justify-content: flex-start;
+      flex-direction: row;
+    }
+
+    .message-row.is-me .message-bubble-container {
+      align-items: flex-start;
+    }
+
+    .message-row.is-me .message-bubble {
+      border-radius: 16px 16px 16px 0;
+    }
+
+    .message-row.is-me .message-bubble::before {
+      left: -10px;
+      right: inherit;
+      clip-path: path("M10 0 Q5 10 0 10 Q0 10 10 10 Z");
+    }
+
+    .message-row.is-me .indent {
+      display: block;
+    }
   }
 
   .message-row:not(.is-me, .is-system) .message-bubble {
@@ -499,19 +523,24 @@
   }
 
   .status-icon {
-    width: 10px;
+    width: 14px;
     height: 10px;
     top: 1px;
-    fill: #7f7;
+    fill: #8e8e93;
+  }
+
+  .status-icon.is-sending {
+    width: 10px;
+    fill: #8e8e93;
+  }
+
+  .status-icon.is-sent {
+    fill: #8e8e93;
   }
 
   .status-icon.is-read {
     fill: #34b7f1;
     height: 14px;
-  }
-
-  .status-icon.safe {
-    top: 1;
   }
 
   .obf-type {
