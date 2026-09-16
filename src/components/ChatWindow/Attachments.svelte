@@ -259,7 +259,10 @@
   a._type !== "PHOTO" &&
   a._type !== "VIDEO" &&
   a._type !== "FILE" &&
-  a._type !== "CONTROL") as attach}
+  a._type !== "CONTROL" &&
+  a._type !== "INLINE_KEYBOARD" &&
+  a._type !== "REPLY" &&
+  a._type !== "FORWARD") as attach}
   <div class="unsupported-attach">{attach._type} не поддерживается</div>
 {/each}
 

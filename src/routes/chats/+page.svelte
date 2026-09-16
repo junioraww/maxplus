@@ -372,11 +372,14 @@
             const index = chats.findIndex((c) => c.id === chat.id);
             if (index === -1) return chats;
 
+            const myId = Number(get(currentUser));
+            const isOutgoing = Number(msg.sender) === myId || Number(msg.from) === myId;
+
             const updatedChat = {
               ...chats[index],
               lastMessage: msg,
               lastEventTime: msg.time || Date.now(),
-              newMessages: (chats[index].newMessages || 0) + 1,
+              newMessages: isOutgoing ? (chats[index].newMessages || 0) : ((chats[index].newMessages || 0) + 1),
             };
 
             const next = [...chats];
