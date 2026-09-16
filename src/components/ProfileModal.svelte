@@ -579,7 +579,7 @@
   }
 
   .icon-btn {
-    background: rgba(0, 0, 0, 0.2);
+    background: rgba(0, 0, 0, 0.4);
     border: none;
     color: #fff;
     width: 36px;
@@ -589,7 +589,6 @@
     align-items: center;
     justify-content: center;
     cursor: pointer;
-    backdrop-filter: blur(4px);
   }
 
   .members {

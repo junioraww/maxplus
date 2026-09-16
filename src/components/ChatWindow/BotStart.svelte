@@ -62,9 +62,7 @@
   }
 
   .bot-card {
-    background: rgba(36, 40, 50, 0.85);
-    backdrop-filter: blur(16px);
-    -webkit-backdrop-filter: blur(16px);
+    background: #242832;
     border: 1px solid rgba(255, 255, 255, 0.1);
     border-radius: 20px;
     padding: 24px 20px;

@@ -50,6 +50,10 @@
     let url = null;
     let observer;
 
+    if (!node.src || node.src.startsWith("data:")) {
+      node.style.opacity = "0";
+    }
+
     async function load() {
       const account = await getCurrentAccount();
       let path = await getCachedFile(account.id, src);
@@ -70,6 +74,9 @@
       url = convertFileSrc(path);
 
       if (!cancelled) {
+        node.onload = () => {
+          node.style.opacity = "1";
+        };
         node.src = url;
       }
     }
@@ -270,8 +277,8 @@
       {#if attach._type === "PHOTO"}
         <img
           use:lazyLoad={attach.baseUrl}
-          src={getPlaceholderUrl(attach.previewData) || ''}
-          alt="photo"
+          src={getPlaceholderUrl(attach.previewData) || "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'/%3E"}
+          alt=""
           loading="lazy"
           decoding="async"
           width={attach.width}
@@ -281,8 +288,8 @@
         <div class="video-preview">
           <img
             use:lazyLoad={attach.thumbnail || attach.baseUrl}
-            src={getPlaceholderUrl(attach.previewData) || ''}
-            alt="video"
+            src={getPlaceholderUrl(attach.previewData) || "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'/%3E"}
+            alt=""
             loading="lazy"
             decoding="async"
             width={attach.width}
@@ -363,7 +370,7 @@
     width: 28px;
     height: 28px;
     border-radius: 50%;
-    background: rgba(0, 0, 0, 0.55);
+    background: rgba(0, 0, 0, 0.65);
     border: none;
     color: #fff;
     cursor: pointer;
@@ -373,7 +380,6 @@
     z-index: 2;
     opacity: 0;
     transition: opacity 0.2s, transform 0.15s, background 0.2s;
-    backdrop-filter: blur(4px);
     padding: 0;
   }
 
@@ -397,6 +403,7 @@
     height: 100%;
     object-fit: cover;
     display: block;
+    transition: opacity 0.2s ease;
   }
 
   .video-preview {

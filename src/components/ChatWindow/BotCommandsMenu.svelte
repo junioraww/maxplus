@@ -51,7 +51,6 @@
     display: flex;
     flex-direction: column;
     z-index: 50;
-    backdrop-filter: blur(12px);
   }
 
   .menu-header {

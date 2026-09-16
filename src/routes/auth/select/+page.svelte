@@ -355,7 +355,6 @@
     flex-direction: column;
 
     background: rgba(34, 34, 40, .98);
-    backdrop-filter: blur(18px);
 
     border: 1px solid rgba(255,255,255,.08);
     border-radius: 14px;
