@@ -76,7 +76,7 @@
 
   <div class="avatar-container">
     {#if chat.id === 0}
-      <img src="saved.webp" style={imageStyle} />
+      <img src="/saved.webp" style={imageStyle} />
     {:else if avatarUrl}
       <Image src={avatarUrl} alt={title} style={imageStyle} />
     {:else}

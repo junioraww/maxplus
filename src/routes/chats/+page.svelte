@@ -38,20 +38,45 @@
     return t === "все" || t === "все чаты" || t === "all" || t === "all chats";
   };
 
+  function areFoldersEqual(a, b) {
+    if (a === b) return true;
+    if (!a || !b || a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i++) {
+      const fa = a[i];
+      const fb = b[i];
+      if (String(fa.id) !== String(fb.id) || fa.title !== fb.title) return false;
+      if (JSON.stringify(fa.filters || []) !== JSON.stringify(fb.filters || [])) return false;
+      if (JSON.stringify(fa.include || []) !== JSON.stringify(fb.include || [])) return false;
+    }
+    return true;
+  }
+
   $: {
-    const nonAll = ($currentFolders || []).filter((f) => !isAllChatsFolder(f));
-    const nextFolders = [
-      { id: 0, title: "Все", filters: null },
-      ...nonAll,
-    ];
-    if (
-      localFolders.length !== nextFolders.length ||
-      localFolders.some((f, idx) => f.id !== nextFolders[idx]?.id || f.title !== nextFolders[idx]?.title)
-    ) {
+    const rawFolders = $currentFolders || [];
+    const allFolder = rawFolders.find(isAllChatsFolder) || {
+      id: "all.chat.folder",
+      title: "Все",
+      filters: null,
+    };
+    const allIndex = rawFolders.findIndex(isAllChatsFolder);
+    const nonAll = rawFolders.filter((f) => !isAllChatsFolder(f));
+
+    let nextFolders;
+    if (allIndex >= 0) {
+      nextFolders = rawFolders.map((f) =>
+        isAllChatsFolder(f) ? { ...f, id: "all.chat.folder", title: f.title || "Все" } : f
+      );
+    } else {
+      nextFolders = [{ id: "all.chat.folder", title: "Все", filters: null }, ...nonAll];
+    }
+
+    if (!areFoldersEqual(localFolders, nextFolders)) {
       localFolders = nextFolders;
-      if (!localFolders.some((f) => f.id === activeFolder?.id)) {
-        activeFolder = localFolders[0];
-      }
+      activeFolder =
+        localFolders.find((f) => String(f.id) === String(activeFolder?.id)) ||
+        localFolders[0];
+      activeFolderIndex = localFolders.findIndex((f) => String(f.id) === String(activeFolder?.id));
+      if (activeFolderIndex === -1) activeFolderIndex = 0;
     }
   }
   let activeFolder = null;
@@ -280,7 +305,7 @@
   async function handleReorderFolders(event) {
     const newFolders = event.detail;
     localFolders = newFolders;
-    const order = newFolders.filter((f) => f.id !== 0).map((f) => f.id);
+    const order = newFolders.map((f) => String(f.id));
     try {
       await $API.reorderFolders(order);
     } catch (e) {

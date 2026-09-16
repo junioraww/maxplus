@@ -63,12 +63,12 @@
     }
 
     dispatch("save", {
-      id: isNew ? generateUuid() : folder.id,
+      id: isNew ? generateUuid() : String(folder.id),
       title: trimmed,
-      filters,
-      include: includedChats,
-      options: folder?.options || [],
-      favorites: folder?.favorites || [],
+      filters: filters.map(Number),
+      include: includedChats.map(Number),
+      options: (folder?.options || []).map(Number),
+      favorites: (folder?.favorites || []).map(Number),
     });
   }
 
