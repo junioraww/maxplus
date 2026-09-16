@@ -10,10 +10,13 @@
     setCachedFile
   } from "$lib/stores/cache";
   import { getCurrentAccount } from "$lib/stores/accounts";
+  import API from "$lib/stores/api";
 
   export let getFile;
   export let attaches;
   export let handleMediaClick;
+  export let chatId = null;
+  export let messageId = null;
 
   let downloadingMap = {};
 
@@ -198,9 +201,50 @@
       downloadingMap = { ...downloadingMap, [attach.fileId]: false };
     }
   }
-  function openFile(attach) {
-    if (!attach.filePath) return;
-    // openFile(attach.filePath);
+  async function downloadMediaItem(attach) {
+    try {
+      if (attach._type === "PHOTO") {
+        const url = attach.baseUrl;
+        if (!url) return;
+        const defaultName = `photo_${Date.now()}.jpg`;
+        const filePath = await save({
+          defaultPath: defaultName,
+          filters: [{ name: "Images", extensions: ["jpg", "jpeg", "png", "webp"] }],
+        });
+        if (filePath) {
+          await download(url, filePath);
+        }
+      } else if (attach._type === "VIDEO") {
+        let videoUrl = null;
+        if (attach.videoId && chatId && (attach.messageId || messageId)) {
+          const response = await $API.getVideoById(
+            chatId,
+            attach.messageId || messageId,
+            attach.videoId,
+          );
+          const qualityPriority = ["MP4_1080", "MP4_720", "MP4_480", "MP4_360"];
+          for (const quality of qualityPriority) {
+            if (response[quality]) {
+              videoUrl = response[quality];
+              break;
+            }
+          }
+          if (!videoUrl && response.HLS) videoUrl = response.HLS;
+        }
+        if (!videoUrl) videoUrl = attach.baseUrl;
+        if (!videoUrl) return;
+        const defaultName = `video_${Date.now()}.mp4`;
+        const filePath = await save({
+          defaultPath: defaultName,
+          filters: [{ name: "Videos", extensions: ["mp4", "webm", "mov"] }],
+        });
+        if (filePath) {
+          await download(videoUrl, filePath);
+        }
+      }
+    } catch (e) {
+      console.error("downloadMediaItem error:", e);
+    }
   }
 </script>
 
@@ -214,6 +258,15 @@
       style="grid-column: {layout.items[i]?.gridColumn || 'auto'}; grid-row: {layout.items[i]?.gridRow || 'auto'}; {layout.items[i]?.style || ''}"
       on:click|stopPropagation={() => handleMediaClick(attach)}
     >
+      <button
+        class="media-download-badge"
+        on:click|stopPropagation={() => downloadMediaItem(attach)}
+        title="Скачать"
+      >
+        <svg viewBox="0 0 24 24">
+          <path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z" />
+        </svg>
+      </button>
       {#if attach._type === "PHOTO"}
         <img
           use:lazyLoad={attach.baseUrl}
@@ -282,7 +335,61 @@
     cursor: pointer;
     position: relative;
     overflow: hidden;
-    background: rgba(255,255,255,0.05);
+    background: linear-gradient(
+      90deg,
+      rgba(255, 255, 255, 0.04) 0%,
+      rgba(255, 255, 255, 0.12) 35%,
+      rgba(79, 195, 247, 0.16) 50%,
+      rgba(255, 255, 255, 0.12) 65%,
+      rgba(255, 255, 255, 0.04) 100%
+    );
+    background-size: 200% 100%;
+    animation: shimmer 1.6s infinite linear;
+  }
+
+  @keyframes shimmer {
+    0% {
+      background-position: 200% 0;
+    }
+    100% {
+      background-position: -200% 0;
+    }
+  }
+
+  .media-download-badge {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: rgba(0, 0, 0, 0.55);
+    border: none;
+    color: #fff;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 2;
+    opacity: 0;
+    transition: opacity 0.2s, transform 0.15s, background 0.2s;
+    backdrop-filter: blur(4px);
+    padding: 0;
+  }
+
+  .media-download-badge svg {
+    width: 16px;
+    height: 16px;
+    fill: #ffffff;
+  }
+
+  .grid-item:hover .media-download-badge {
+    opacity: 1;
+  }
+
+  .media-download-badge:hover {
+    background: rgba(0, 0, 0, 0.85);
+    transform: scale(1.1);
   }
 
   .grid-item img {

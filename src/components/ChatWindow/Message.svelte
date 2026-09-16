@@ -154,6 +154,8 @@
                   {getFile}
                   attaches={linkedMsg.attaches}
                   {handleMediaClick}
+                  chatId={linkedMsg.chatId || chat?.id}
+                  messageId={linkedMsg.id}
                 />
               {/if}
             </div>
@@ -187,7 +189,13 @@
           {/if}
 
           {#if msg.attaches?.length}
-            <Attachments {getFile} attaches={msg.attaches} {handleMediaClick} />
+            <Attachments
+              {getFile}
+              attaches={msg.attaches}
+              {handleMediaClick}
+              chatId={chat?.id}
+              messageId={msg?.id}
+            />
           {/if}
         {/if}
       </div>
