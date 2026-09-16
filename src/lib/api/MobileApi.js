@@ -55,10 +55,10 @@ import BaseAPI from "./BaseApi";
 function sortFolders(folders, order) {
   if (!folders || !Array.isArray(folders)) return [];
   if (!order || !order.length) return [...folders];
-  const orderMap = new Map(order.map((id, index) => [id, index]));
+  const orderMap = new Map(order.map((id, index) => [String(id), index]));
   return [...folders].sort((a, b) => {
-    const ai = orderMap.has(a.id) ? orderMap.get(a.id) : 999999;
-    const bi = orderMap.has(b.id) ? orderMap.get(b.id) : 999999;
+    const ai = orderMap.has(String(a.id)) ? orderMap.get(String(a.id)) : 999999;
+    const bi = orderMap.has(String(b.id)) ? orderMap.get(String(b.id)) : 999999;
     return ai - bi;
   });
 }
@@ -544,32 +544,42 @@ export default class MobileApi extends BaseAPI {
   }
 
   async updateFolder(folder) {
+    const stringId = String(folder.id);
+    const normalized = {
+      ...folder,
+      id: stringId,
+      filters: (folder.filters || []).map(Number),
+      include: (folder.include || []).map(Number),
+      options: (folder.options || []).map(Number),
+      favorites: (folder.favorites || []).map(Number),
+    };
+
     currentFolders.update((folders) => {
       const list = folders || [];
-      const idx = list.findIndex((f) => f.id === folder.id);
+      const idx = list.findIndex((f) => String(f.id) === stringId);
       if (idx !== -1) {
         const copy = [...list];
-        copy[idx] = { ...copy[idx], ...folder };
+        copy[idx] = { ...copy[idx], ...normalized };
         return copy;
       }
-      return [...list, folder];
+      return [...list, normalized];
     });
 
     await this.synchronized;
     const res = await invoke("update_folder", {
-      id: folder.id,
-      title: folder.title,
-      include: folder.include || [],
-      filters: folder.filters || [],
-      options: folder.options || [],
-      favorites: folder.favorites || []
+      id: stringId,
+      title: normalized.title,
+      include: normalized.include,
+      filters: normalized.filters,
+      options: normalized.options,
+      favorites: normalized.favorites,
     });
     if (res?.folders) {
       const sorted = sortFolders(res.folders, res.foldersOrder || []);
       currentFolders.set(sorted);
     } else if (res?.folder) {
       currentFolders.update(folders => {
-        const idx = folders.findIndex(f => f.id === res.folder.id);
+        const idx = folders.findIndex(f => String(f.id) === String(res.folder.id));
         if (idx !== -1) {
           folders[idx] = res.folder;
           return [...folders];

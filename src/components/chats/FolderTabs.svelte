@@ -100,7 +100,7 @@
           <span>{folder.title}</span>
         </button>
 
-        {#if isEditing && folder.id !== 0}
+        {#if isEditing && folder.id !== 0 && folder.id !== "all.chat.folder"}
           <button
             class="edit-icon"
             on:click|stopPropagation={() => dispatch("editFolder", folder)}
@@ -158,10 +158,14 @@
 
   .tabs {
     display: flex;
-    overflow: visible;
-    flex-grow: 1;
+    overflow-x: auto;
+    overflow-y: hidden;
+    flex: 1 1 auto;
+    min-width: 0;
     padding-left: 5px;
+    padding-right: 8px;
     scrollbar-width: none;
+    -ms-overflow-style: none;
   }
 
   .tabs::-webkit-scrollbar {
@@ -175,6 +179,7 @@
     margin-right: 4px;
     touch-action: pan-x;
     padding: 2px 0;
+    flex-shrink: 0;
   }
 
   .tab-wrapper.dragging {
@@ -280,6 +285,8 @@
     color: #007afd;
     font-weight: bold;
     font-size: 14px;
+    flex-shrink: 0;
+    white-space: nowrap;
   }
 
   .add-tab-btn {
@@ -295,6 +302,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
+    flex-shrink: 0;
     transition: background 0.15s, color 0.15s, border-color 0.15s;
   }
 
