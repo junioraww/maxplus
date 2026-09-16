@@ -35,8 +35,7 @@
     gap: 10px;
     width: 100%;
     padding: 10px 12px;
-    background: rgba(20, 20, 30, 0.92);
-    backdrop-filter: blur(1px);
+    background: #161722;
     border-bottom: 1px solid rgba(255, 255, 255, 0.08);
     cursor: pointer;
   }

@@ -166,9 +166,7 @@
     min-width: 0;
     min-height: 34px;
     padding: 6px 10px;
-    background: rgba(255, 255, 255, 0.08);
-    backdrop-filter: blur(10px);
-    -webkit-backdrop-filter: blur(10px);
+    background: rgba(255, 255, 255, 0.12);
     border: none;
     border-radius: 8px;
     color: #ffffff;

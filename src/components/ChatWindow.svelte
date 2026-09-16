@@ -674,22 +674,29 @@
 
     if (unreadCount > 0) {
       const targetId = getFirstUnreadMessageId();
-      let positioned = false;
+      let anchorId = targetId;
       if (targetId) {
-        positioned = await scrollToMessage(targetId, { offset: 40 });
+        const idx = $messages.findIndex((m) => String(m.id) === String(targetId));
+        if (idx > 0 && $messages[idx - 1]) {
+          anchorId = $messages[idx - 1].id;
+        }
+      }
+      let positioned = false;
+      if (anchorId) {
+        positioned = await scrollToMessage(anchorId, { offset: 40 });
       }
       if (!positioned) {
-        await scrollToBottom(scrollElement, false);
+        await scrollToBottomDirect();
       }
     } else if (savedPos && !savedPos.wasAtBottom && savedPos.bottomMessageId) {
       const restored = await scrollToMessage(savedPos.bottomMessageId, {
         offset: savedPos.offset || 40,
       });
       if (!restored) {
-        await scrollToBottom(scrollElement, false);
+        await scrollToBottomDirect();
       }
     } else {
-      await scrollToBottom(scrollElement, false);
+      await scrollToBottomDirect();
     }
 
     await tick();
@@ -867,21 +874,45 @@
     scrollResizeObserver.observe(scrollElement);
   }
 
+  async function scrollToBottomDirect() {
+    if (!scrollElement) return;
+    isProgrammaticScroll = true;
+    scrollElement.scrollTop = scrollElement.scrollHeight;
+    await tick();
+    await updateVisibleMessages();
+    await tick();
+    scrollElement.scrollTop = scrollElement.scrollHeight;
+    setTimeout(() => {
+      isProgrammaticScroll = false;
+    }, 150);
+  }
+
   async function scrollToMessage(targetMsgId, options = {}) {
     if (!scrollElement || !targetMsgId) return false;
     await tick();
-    const targetEl = document.getElementById("m-" + targetMsgId);
+    let targetEl = document.getElementById("m-" + targetMsgId);
     if (!targetEl) return false;
 
     isProgrammaticScroll = true;
     const { offset = 40 } = options;
     const containerRect = scrollElement.getBoundingClientRect();
-    const elRect = targetEl.getBoundingClientRect();
-    const currentScroll = scrollElement.scrollTop;
-    const targetScroll = currentScroll + (elRect.top - containerRect.top) - offset;
-    scrollElement.scrollTop = Math.max(0, targetScroll);
+    let elRect = targetEl.getBoundingClientRect();
+    let currentScroll = scrollElement.scrollTop;
+    scrollElement.scrollTop = Math.max(0, currentScroll + (elRect.top - containerRect.top) - offset);
 
+    await tick();
     await updateVisibleMessages();
+    await tick();
+
+    targetEl = document.getElementById("m-" + targetMsgId);
+    if (targetEl) {
+      elRect = targetEl.getBoundingClientRect();
+      const diff = elRect.top - containerRect.top - offset;
+      if (Math.abs(diff) > 2) {
+        scrollElement.scrollTop = Math.max(0, scrollElement.scrollTop + diff);
+      }
+    }
+
     setTimeout(() => {
       isProgrammaticScroll = false;
     }, 150);
