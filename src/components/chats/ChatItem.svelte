@@ -25,12 +25,12 @@
 
   export let chat;
   export let replace;
-  export let isSelected = false; // Выбран ли этот чат
-  export let selectionMode = false; // Включен ли вообще режим выбора
-
-  let unread = chat.newMessages || 0;
+  export let isSelected = false;
+  export let selectionMode = false;
 
   const dispatch = createEventDispatcher();
+
+  $: unread = $currentSessionChats?.find((x) => x.id === chat?.id)?.newMessages ?? chat?.newMessages ?? 0;
 
   $: peerId =
     chat.type === "DIALOG" ? $currentUser ^ chat.id : null;
@@ -49,14 +49,6 @@
   $: receivedMessage = cachedChat.receivedMessage;
   $: shownMessage = replace?.message || $receivedMessage || chat.lastMessage;
   $: attaches = getAttachText(chat, shownMessage);
-
-  currentSessionChats.subscribe(chats => {
-    const entry = chats.find(x => x.id === chat.id);
-
-    if (entry?.newMessages !== unread) {
-      unread = entry.newMessages;
-    }
-  });
 
   $: timeDisplay = (() => {
     if (!shownMessage?.time) return "";

@@ -349,32 +349,43 @@
 
   async function handleSearch(search) {
     searchQuery = search;
-    if (!search.length || (await debounce("pubsearch", 700))) return;
-    if (!searchQuery.length) {
+    if (!search || !search.trim().length) {
+      searchPublic = [];
+      searchMsg = [];
+      return;
+    }
+    if (await debounce("pubsearch", 700)) return;
+    if (!searchQuery || !searchQuery.trim().length) {
       searchPublic = [];
       searchMsg = [];
       return;
     }
 
-    /* сначала паблики */
-    const { result: publicResult } = await $API.searchPublic(search);
-
-    if (!publicResult) alert("Ошибка поиска!");
-
-    for (const entry of publicResult) {
-      /* немного реструктурирования. todo убрать */
-      if (entry.chat) entry.chat.avatar = entry.chat.baseIconUrl;
-      else if (entry.contact) {
-        entry.contact = entry.contact.contact;
-        entry.contact.avatar = entry.contact.baseUrl;
+    try {
+      const { result: publicResult } = (await $API.searchPublic(search)) || {};
+      if (publicResult && Array.isArray(publicResult)) {
+        for (const entry of publicResult) {
+          if (entry.chat) {
+            entry.chat.avatar = entry.chat.baseIconUrl;
+          } else if (entry.contact) {
+            entry.contact = entry.contact.contact || entry.contact;
+            entry.contact.avatar = entry.contact.baseUrl;
+          }
+        }
+        searchPublic = publicResult;
+      } else {
+        searchPublic = [];
       }
+    } catch {
+      searchPublic = [];
     }
 
-    searchPublic = publicResult;
-
-    /* потом сообщения */
-    const { result: msgResult } = await $API.searchMsg(search);
-    searchMsg = msgResult;
+    try {
+      const { result: msgResult } = (await $API.searchMsg(search)) || {};
+      searchMsg = Array.isArray(msgResult) ? msgResult : [];
+    } catch {
+      searchMsg = [];
+    }
   }
 
   const unsubscribers = new Map();
@@ -557,7 +568,7 @@
   {#if searchQuery.length}
     <div class="search-scrollable">
       {#if searchPublic.length}
-        {#each searchPublic as result, i ((result.chat || result.contact).id)}
+        {#each searchPublic as result, i ((result.chat || result.contact)?.id ?? i)}
           <ChatItem
             chat={result.chat || result.contact}
             on:open={async () => {
@@ -580,7 +591,7 @@
       {/if}
 
       {#if searchMsg.length}
-        {#each searchMsg as result (result.count)}
+        {#each searchMsg as result, i (result.chatId ? `${result.chatId}_${result.message?.id ?? i}` : i)}
           {@const chat = $currentSessionChats.find(
             (x) => x.id === result.chatId,
           )}
