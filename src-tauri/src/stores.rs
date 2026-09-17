@@ -18,12 +18,12 @@ use chacha20poly1305::{
 };
 
 
-struct Storage {
+pub(crate) struct Storage {
     key: Option<[u8;32]>
 }
 
 impl Storage {
-    fn new(
+    pub(crate) fn new(
         key: Option<[u8;32]>
     ) -> Self {
         Self { key }
@@ -33,16 +33,16 @@ impl Storage {
         data:&[u8], key:&[u8;32]
     )->Result<Vec<u8>,String>{
         let cipher = ChaCha20Poly1305::new(
-            Key::from_slice(key)
+            &Key::from(*key)
         );
 
         let mut nonce_bytes = [0u8;12];
         rand::thread_rng().fill_bytes(&mut nonce_bytes);
 
-        let nonce = Nonce::from_slice(&nonce_bytes);
+        let nonce = Nonce::from(nonce_bytes);
 
         let encrypted = cipher.encrypt(
-            nonce,
+            &nonce,
             data
         ).map_err(|e|e.to_string())?;
 
@@ -61,19 +61,17 @@ impl Storage {
         }
 
         let cipher = ChaCha20Poly1305::new(
-            Key::from_slice(key)
+            &Key::from(*key)
         );
 
-        let nonce = Nonce::from_slice(
-            &data[3..15]
-        );
+        let nonce = Nonce::try_from(&data[3..15]).map_err(|e| e.to_string())?;
 
         let encrypted = &data[15..];
 
-        cipher.decrypt(nonce, encrypted).map_err(|e|e.to_string())
+        cipher.decrypt(&nonce, encrypted).map_err(|e|e.to_string())
     }
 
-    fn load(&self, path: impl AsRef<Path>) -> Option<Value> {
+    pub(crate) fn load(&self, path: impl AsRef<Path>) -> Option<Value> {
         let bytes = fs::read(path).ok()?;
 
         let bytes = if bytes.starts_with(b"ENC") {
@@ -86,7 +84,7 @@ impl Storage {
         rmp_serde::from_slice(&bytes).ok()
     }
 
-    fn save(
+    pub(crate) fn save(
         &self,
         path: impl AsRef<Path>,
         value:&Value,
@@ -1094,7 +1092,7 @@ pub fn set_cached_file(
     Ok(file.to_string_lossy().to_string())
 }
 
-fn hash(src: &str) -> String {
+pub(crate) fn hash(src: &str) -> String {
     let mut hash: u32 = 2166136261;
 
     for b in src.bytes() {
@@ -1242,11 +1240,34 @@ pub fn save_sync_state<T: serde::Serialize>(
 }
 
 #[cfg(target_os = "android")]
+pub(crate) fn resolve_app_root(app_dir: &str) -> std::path::PathBuf {
+    let base = std::path::PathBuf::from(app_dir);
+    if base.join("accounts").exists() {
+        return base;
+    }
+    if base.join("files").join("accounts").exists() {
+        return base.join("files");
+    }
+    if let Some(parent) = base.parent() {
+        if parent.join("accounts").exists() {
+            return parent.to_path_buf();
+        }
+        if parent.join("files").join("accounts").exists() {
+            return parent.join("files");
+        }
+    }
+    if base.join("files").exists() {
+        return base.join("files");
+    }
+    base
+}
+
+#[cfg(target_os = "android")]
 pub fn get_background_creds(
     app_dir: &str,
     account_id: u64,
 ) -> Option<(u64, u64, String, rumax::models::Identity)> {
-    let root = std::path::PathBuf::from(app_dir);
+    let root = resolve_app_root(app_dir);
     let accounts_path = root.join("accounts");
 
     let storage = Storage::new(None);

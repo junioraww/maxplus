@@ -45,10 +45,11 @@
   import Input from "$components/ChatWindow/input/Input.svelte";
   import BotStart from "$components/ChatWindow/BotStart.svelte";
   import Avatar from "$components/main/Avatar.svelte";
+  import { clearChatNotification } from "$lib/utils/notifications.js";
 
   export let chatId;
 
-  $: chat = $currentSessionChats?.find((c) => c.id === chatId);
+  $: chat = $currentSessionChats?.find((c) => String(c.id) === String(chatId));
 
   let title;
 
@@ -63,10 +64,13 @@
 
   let loading = false;
   let all_loaded = false;
+  let loadingNewer = false;
+  let all_loaded_newer = true;
   let allRendered = false;
 
   let scrollElement;
   let scrollLoaderTimeout;
+  let scrollBottomLoaderTimeout;
   let showScrollDown = false;
 
   let viewerOpen = false;
@@ -83,18 +87,29 @@
 
   $: avatarUserId = chat?.type === "DIALOG" ? (chat.id ^ $currentUser) : undefined;
 
-  $: chatSettings = getChatSettings(chat.id);
+  $: chatSettings = getChatSettings(chat?.id || chatId);
 
   const onBack = getContext("onBack");
 
+  function handleCloseChat() {
+    if (savePositionTimeout) {
+      clearTimeout(savePositionTimeout);
+      savePositionTimeout = null;
+    }
+    saveCurrentPosition();
+    closeChat(chat?.id || chatId);
+  }
+
   onBack["chat"] = () => {
-    closeChat(chat.id);
+    handleCloseChat();
     delete onBack["chat"];
   };
 
   onDestroy(() => {
-    saveCurrentPosition();
-    if (savePositionTimeout) clearTimeout(savePositionTimeout);
+    if (savePositionTimeout) {
+      clearTimeout(savePositionTimeout);
+      savePositionTimeout = null;
+    }
     delete onBack["chat"];
     if (onBack.dropout) delete onBack["dropout"];
     if (onBack.chatSettings) delete onBack["chatSettings"];
@@ -276,69 +291,75 @@
 
   const decodedMessages = writable({});
 
-  const loadHistory = async (isInitial = false, from = Date.now() + sessionGet("drift")) => {
+  const decodeMessagesBatch = async (list) => {
+    const decoded = {};
+
+    await Promise.all(
+      list.map(async msg => {
+        const res = await decode_msg(msg);
+        if (res) decoded[msg.id] = res;
+      })
+    );
+
+    decodedMessages.update(old => ({
+      ...old,
+      ...decoded
+    }));
+  };
+
+  const mergeMessages = async (
+    incoming,
+    updateCache = false
+  ) => {
+    if (!incoming?.length) return;
+
+    const map = new Map(
+      get(messages).map(m => [m.id, m])
+    );
+
+    const changed = [];
+
+    for (const msg of incoming) {
+      const old = map.get(msg.id);
+
+      if (!old || JSON.stringify(old) !== JSON.stringify(msg)) {
+        map.set(msg.id, msg);
+        changed.push(msg);
+      }
+    }
+
+    if (!changed.length) return;
+
+    await decodeMessagesBatch(changed);
+
+    messages.set(
+      [...map.values()].sort(
+        (a,b) => a.time - b.time
+      )
+    );
+
+    if (updateCache) {
+      chatCache.updateMessages(changed);
+    }
+  };
+
+  const loadHistory = async (
+    isInitial = false,
+    from = Date.now() + sessionGet("drift"),
+    backward = BATCH_SIZE,
+    forward = 0
+  ) => {
+    const currentChatId = chat?.id || chatId;
     if (loading) return;
     if (all_loaded && !isInitial) return;
-    if (!chat) return;
+    if (!currentChatId) return;
 
     loading = true;
-
-    const decodeMessagesBatch = async (list) => {
-      const decoded = {};
-
-      await Promise.all(
-        list.map(async msg => {
-          const res = await decode_msg(msg);
-          if (res) decoded[msg.id] = res;
-        })
-      );
-
-      decodedMessages.update(old => ({
-        ...old,
-        ...decoded
-      }));
-    };
-
-    const mergeMessages = async (
-      incoming,
-      updateCache = false
-    ) => {
-      if (!incoming?.length) return;
-
-      const map = new Map(
-        get(messages).map(m => [m.id, m])
-      );
-
-      const changed = [];
-
-      for (const msg of incoming) {
-        const old = map.get(msg.id);
-
-        if (!old || JSON.stringify(old) !== JSON.stringify(msg)) {
-          map.set(msg.id, msg);
-          changed.push(msg);
-        }
-      }
-
-      if (!changed.length) return;
-
-      await decodeMessagesBatch(changed);
-
-      messages.set(
-        [...map.values()].sort(
-          (a,b) => a.time - b.time
-        )
-      );
-
-      if (updateCache) {
-        chatCache.updateMessages(changed);
-      }
-    };
 
     try {
       const cached = await chatCache.loadMessages(
         from,
-        BATCH_SIZE
+        backward
       );
 
       captureScrollAnchor();
@@ -352,7 +373,7 @@
         const {
           error,
           messages: serverMessages
-        } = await $API.getMessages(chat.id);
+        } = await $API.getMessages(currentChatId, from, backward, forward);
 
         if (error) throw new Error(error);
 
@@ -365,8 +386,10 @@
         await decodeMessagesBatch(serverMessages);
         chatCache.updateMessages(serverMessages);
 
-        if (serverMessages.length < BATCH_SIZE) {
-          all_loaded = true;
+        if (serverMessages.length < backward + forward) {
+          if (forward === 0) {
+            all_loaded = true;
+          }
         }
 
         initialized = true;
@@ -377,13 +400,15 @@
           error,
           messages: olderMessages
         } = await $API.getMessages(
-          chat.id,
-          oldest?.time ?? from
+          currentChatId,
+          oldest?.time ?? from,
+          backward,
+          forward
         );
 
         if (error) throw new Error(error);
 
-        if (olderMessages.length < BATCH_SIZE) {
+        if (olderMessages.length < backward) {
           all_loaded = true;
         }
 
@@ -392,15 +417,49 @@
           true
         );
       }
-      //$API.savedMessages[chat.id] = get(messages);
     } catch(e) {
-      console.error("loadHistory error:", e);
+      console.error(e);
     } finally {
       restoreScrollAnchor();
       loading = false;
     }
 
     restoreScrollAnchor();
+  };
+
+  const loadNewer = async () => {
+    const currentChatId = chat?.id || chatId;
+    if (loadingNewer || all_loaded_newer) return;
+    if (!currentChatId) return;
+
+    loadingNewer = true;
+
+    try {
+      const msgs = get(messages);
+      const newest = msgs[msgs.length - 1];
+      const fromTime = newest?.time ?? (Date.now() + sessionGet("drift"));
+
+      const {
+        error,
+        messages: newerMessages
+      } = await $API.getNewerMessages(currentChatId, fromTime, BATCH_SIZE);
+
+      if (error) throw new Error(error);
+
+      if (!newerMessages || newerMessages.length < BATCH_SIZE) {
+        all_loaded_newer = true;
+      }
+
+      if (newerMessages && newerMessages.length > 0) {
+        await mergeMessages(newerMessages, true);
+        await tick();
+        await updateVisibleMessages();
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      loadingNewer = false;
+    }
   };
 
   let scrollTimeout = null;
@@ -414,12 +473,15 @@
   let lastReadMessageId = null;
 
   function saveCurrentPosition() {
-    if (!scrollElement || !chat?.id || isInitialMounting || isProgrammaticScroll) return;
+    const targetChatId = chat?.id || chatId;
+    if (!scrollElement || !targetChatId || isInitialMounting || isProgrammaticScroll) return;
+    if (scrollElement.clientHeight <= 0 || scrollElement.scrollHeight <= 0) return;
+    if (scrollElement.scrollHeight <= scrollElement.clientHeight + 20) return;
     const distanceFromBottom =
       scrollElement.scrollHeight - scrollElement.scrollTop - scrollElement.clientHeight;
-    const isAtBottom = distanceFromBottom < 60;
+    const isAtBottom = all_loaded_newer && distanceFromBottom < 60;
     if (isAtBottom) {
-      saveChatScroll(chat.id, {
+      saveChatScroll(targetChatId, {
         wasAtBottom: true,
         lastSeenTime: Date.now(),
       });
@@ -444,8 +506,17 @@
       }
     }
 
+    if (!bottomMsg && $messages && $messages.length > 0) {
+      const currentScroll = scrollElement.scrollTop;
+      const idx = findIndexByOffset(currentScroll + scrollElement.clientHeight / 2);
+      if (idx >= 0 && idx < $messages.length) {
+        bottomMsg = $messages[idx];
+        bottomOffset = 40;
+      }
+    }
+
     if (bottomMsg) {
-      saveChatScroll(chat.id, {
+      saveChatScroll(targetChatId, {
         wasAtBottom: false,
         bottomMessageId: bottomMsg.id,
         bottomMessageTime: bottomMsg.time,
@@ -468,7 +539,7 @@
     const target = event.currentTarget;
     const distanceFromBottom =
       target.scrollHeight - target.scrollTop - target.clientHeight;
-    showScrollDown = distanceFromBottom > 50;
+    showScrollDown = !all_loaded_newer || distanceFromBottom > 50;
 
     if (!updateScheduled) {
       updateScheduled = true;
@@ -484,6 +555,15 @@
         await loadHistory();
         await updateVisibleMessages();
         setTimeout(() => scrollLoaderTimeout = null, 500);
+      }, 200);
+    }
+
+    if (distanceFromBottom <= 100 && !loadingNewer && !all_loaded_newer) {
+      if (scrollBottomLoaderTimeout) return;
+      scrollBottomLoaderTimeout = setTimeout(async () => {
+        await loadNewer();
+        await updateVisibleMessages();
+        setTimeout(() => scrollBottomLoaderTimeout = null, 500);
       }, 200);
     }
   }
@@ -551,25 +631,32 @@
       wasAtBottom = scrollHeight - scrollTop - clientHeight < 150;
     }
 
-    messages.update((_messages) => {
-      const idx = _messages.findIndex((x) => x.id === message.id);
-      if (idx !== -1) _messages[idx] = message;
-      else return [..._messages, message];
-      return _messages;
-    });
-
-    const decoded = await decode_msg(message);
-    if (decoded) decodedMessages.update(d => ({ ...d, [message.id]: decoded }));
-
-    await tick();
-    applyPendingHeights();
-    computeCumulativeHeights();
-
-    if (message.sender === $currentUser || wasAtBottom) {
-      scrollToBottom(scrollElement, true);
+    if (message.sender === $currentUser) {
+      all_loaded_newer = true;
     }
 
-    await updateVisibleMessages(wasAtBottom);
+    if (all_loaded_newer) {
+      messages.update((_messages) => {
+        const idx = _messages.findIndex((x) => x.id === message.id);
+        if (idx !== -1) _messages[idx] = message;
+        else return [..._messages, message];
+        return _messages;
+      });
+
+      const decoded = await decode_msg(message);
+      if (decoded) decodedMessages.update(d => ({ ...d, [message.id]: decoded }));
+
+      await tick();
+      applyPendingHeights();
+      computeCumulativeHeights();
+
+      if (message.sender === $currentUser || wasAtBottom) {
+        scrollToBottom(scrollElement, true);
+      }
+
+      await updateVisibleMessages(wasAtBottom);
+    }
+
     checkForEncryptionRequest(chat, chatSettings, [message]);
   });
 
@@ -660,19 +747,67 @@
     isInitialMounting = true;
     isProgrammaticScroll = true;
 
+    const targetChatId = chat?.id || chatId;
+    clearChatNotification(targetChatId);
+
     setupResizeObserver();
     startAutoScrollIfAtBottom();
 
-    await loadHistory(true);
+    const unreadCount = Number(chat?.newMessages || 0);
+    const savedPos = getChatScroll(targetChatId);
+    const hasSavedScroll = savedPos && !savedPos.wasAtBottom && savedPos.bottomMessageTime;
+
+    let initialFrom = Date.now() + sessionGet("drift");
+    if (hasSavedScroll) {
+      initialFrom = Number(savedPos.bottomMessageTime) + 1;
+      all_loaded_newer = false;
+      showScrollDown = true;
+      await loadHistory(true, initialFrom, 35, 35);
+    } else {
+      all_loaded_newer = true;
+      await loadHistory(true, initialFrom, 40, 0);
+    }
+
     await tick();
 
     measureAllHeights();
     computeCumulativeHeights();
 
-    const unreadCount = Number(chat?.newMessages || 0);
-    const savedPos = getChatScroll(chat?.id);
-
-    if (unreadCount > 0) {
+    if (hasSavedScroll) {
+      let targetId = savedPos.bottomMessageId;
+      if (targetId && !document.getElementById("m-" + targetId) && $messages.length > 0) {
+        const targetTime = Number(savedPos.bottomMessageTime);
+        if (targetTime) {
+          let closest = null;
+          let minDiff = Infinity;
+          for (const m of $messages) {
+            const diff = Math.abs(Number(m.time) - targetTime);
+            if (diff < minDiff) {
+              minDiff = diff;
+              closest = m;
+            }
+          }
+          if (closest) {
+            targetId = closest.id;
+          }
+        }
+      }
+      let restored = false;
+      if (targetId) {
+        restored = await scrollToMessage(targetId, {
+          offset: savedPos.offset || 40,
+        });
+      }
+      if (!restored && !all_loaded_newer) {
+        const msgs = $messages;
+        if (msgs.length > 0) {
+          const mid = msgs[Math.floor(msgs.length / 2)].id;
+          await scrollToMessage(mid, { offset: 40 });
+        }
+      } else if (!restored) {
+        await scrollToBottomDirect();
+      }
+    } else if (unreadCount > 0) {
       const targetId = getFirstUnreadMessageId();
       let anchorId = targetId;
       if (targetId) {
@@ -688,13 +823,6 @@
       if (!positioned) {
         await scrollToBottomDirect();
       }
-    } else if (savedPos && !savedPos.wasAtBottom && savedPos.bottomMessageId) {
-      const restored = await scrollToMessage(savedPos.bottomMessageId, {
-        offset: savedPos.offset || 40,
-      });
-      if (!restored) {
-        await scrollToBottomDirect();
-      }
     } else {
       await scrollToBottomDirect();
     }
@@ -707,6 +835,15 @@
     isInitialMounting = false;
     isProgrammaticScroll = false;
   });
+
+  async function jumpToBottom() {
+    if (!all_loaded_newer) {
+      all_loaded_newer = true;
+      await loadHistory(true, Date.now() + sessionGet("drift"), 40, 0);
+      await tick();
+    }
+    scrollToBottom(scrollElement, true);
+  }
 
   /*
    * drag & message select
@@ -863,7 +1000,7 @@
     if (!scrollElement) return;
 
     scrollResizeObserver = new ResizeObserver(() => {
-      if (!scrollElement || isInitialMounting || isProgrammaticScroll) return;
+      if (!scrollElement || isInitialMounting || isProgrammaticScroll || !all_loaded_newer) return;
       const { scrollTop, scrollHeight, clientHeight } = scrollElement;
       const atBottom = scrollHeight - scrollTop - clientHeight < 50;
       if (atBottom && userHasScrolled) {
@@ -982,7 +1119,7 @@
     <div class="align-left">
       <button
         class="icon-button"
-        on:click|stopPropagation={() => closeChat(chat.id)}
+        on:click|stopPropagation={handleCloseChat}
       >
         <img src="icons/arrow.svg" style="transform: scale(-1.7)" />
       </button>
@@ -1114,7 +1251,7 @@
       class="scroll-down-btn"
       class:nije={chat.type === "CHANNEL"}
       class:vise={!!replyTo}
-      on:click={() => scrollToBottom(scrollElement, true)}
+      on:click={jumpToBottom}
     >
       <svg viewBox="0 0 640 640"
         ><path

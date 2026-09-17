@@ -76,7 +76,7 @@ export function closeChat(chatId) {
   console.log('Closing', chatId)
 
   return data.update(session => {
-    const idx = session.openedChats.indexOf(chatId);
+    const idx = session.openedChats.findIndex(id => String(id) === String(chatId));
     if (idx !== -1) session.openedChats.splice(idx, 1);
     return session;
   });

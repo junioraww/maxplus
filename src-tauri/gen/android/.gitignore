@@ -11,12 +11,22 @@ key.properties
 
 /.tauri
 /tauri.settings.gradle
-
-/app/src/main/assets
-/app/src/main/jniLibs
-/app/src/main/res
-/app/buildSrc/
 /gradle**
 /settings.gradle
 /.idea
 /keystore.properties
+
+/app/src/main/java/org/meowkie/max/generated
+/app/src/main/jniLibs/**/*.so
+/app/src/main/assets/tauri.conf.json
+/app/tauri.build.gradle.kts
+/app/proguard-tauri.pro
+/app/tauri.properties
+/app/keystore.jks
+/app/src/main/assets
+/app/src/main/jniLibs
+/app/buildSrc/
+
+/app/src/main/res/*
+!/app/src/main/res/drawable/
+!/app/src/main/res/drawable/ic_notification.xml

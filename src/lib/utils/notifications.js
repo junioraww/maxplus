@@ -1,3 +1,4 @@
+import { invoke } from "@tauri-apps/api/core";
 import {
   registerForPushNotifications,
   isPermissionGranted,
@@ -17,8 +18,19 @@ import {
 } from "$lib/utils/images";
 import Session from "$lib/stores/session";
 import API, { currentSessionChats } from "$lib/stores/api";
+import { getCurrentAccount } from "$lib/stores/accounts";
+import { getMessagePreview } from "$lib/utils/text";
 
 export const MESSAGES_CHANNEL_ID = 'MESSAGES_CHANNEL_ID';
+
+export async function clearChatNotification(chatId) {
+  if (!currentOs) currentOs = type();
+  if (currentOs === 'android') {
+    try {
+      await invoke("cancel_notification", { chatId: Number(chatId) });
+    } catch (e) {}
+  }
+}
 
 const NOTIFICATIONS_STORAGE_KEY = 'maxplus_client_notifications_enabled';
 
@@ -125,12 +137,36 @@ export async function newMessage(chatId, chat, contact, message) {
   if (!isClientNotificationsEnabled()) return;
   const resolvedChat = typeof chat?.getInfo === "function" ? chat.getInfo() : chat;
   if (isChatMuted(resolvedChat || chatId)) return;
-  if (get(Session).openedChats?.some(idx => idx === chatId)) return;
+  if (get(Session).openedChats?.some(idx => String(idx) === String(chatId))) return;
 
-  let avatarLocalPath = null;
   const chatInfo = resolvedChat || {};
   const title = chatInfo.title || contact?.names?.[0]?.name || "Новое сообщение";
+  const bodyText = typeof message === 'string' ? message : (getMessagePreview(message) || message?.text || "Новое сообщение");
 
+  if (!currentOs) currentOs = type();
+
+  if (currentOs === 'android') {
+    try {
+      const senderId = message?.sender ? String(message.sender) : (contact?.id ? String(contact.id) : "");
+      let account = 0;
+      try {
+        const acc = await getCurrentAccount();
+        if (acc?.id) account = Number(acc.id);
+      } catch (_) {}
+      await invoke("show_notification", {
+        chatId: Number(chatId),
+        title,
+        text: bodyText,
+        senderId,
+        account
+      });
+      return;
+    } catch (e) {
+      console.error(e);
+    }
+  }
+
+  let avatarLocalPath = null;
   const avatarUrl = chatInfo.baseUrl || chatInfo.baseIconUrl || chatInfo.avatar || contact?.avatar;
   if (avatarUrl) {
     avatarLocalPath = await getLocalFilePath(avatarUrl);
@@ -146,22 +182,12 @@ export async function newMessage(chatId, chat, contact, message) {
   const entry = {
     id: notificationId,
     title: title,
-    body: typeof message === 'string' ? message : (message?.text || "Новое сообщение"),
+    body: bodyText,
     icon: avatarLocalPath,
     largeIcon: avatarLocalPath,
   };
 
-  if (!currentOs) currentOs = type();
-
-  if (currentOs === 'android') {
-    await ensureMessagesChannel();
-    await sendNotification({
-      ...entry,
-      channelId: MESSAGES_CHANNEL_ID
-    });
-  } else {
-    await sendNotification(entry);
-  }
+  await sendNotification(entry);
 }
 
 export async function sendNotification(data) {

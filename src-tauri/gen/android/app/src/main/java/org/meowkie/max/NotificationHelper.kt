@@ -11,6 +11,7 @@ import android.text.SpannableStringBuilder
 import android.text.Spanned
 import android.text.style.StrikethroughSpan
 import android.text.style.StyleSpan
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.Person
 import androidx.core.app.RemoteInput
@@ -23,17 +24,56 @@ class NotificationHelper(private val ctx: Context) {
     try {
       System.loadLibrary("maxplus_lib")
     } catch (e: Throwable) {
-      e.printStackTrace()
+      Log.e("MaxPlus", "NotificationHelper: Failed to load maxplus_lib", e)
     }
   }
 
-  private external fun isChatMutedNative(account: Int, chatId: Long, appDir: String): Boolean
+  private external fun isChatMutedNative(account: Long, chatId: Long, appDir: String): Boolean
   
   companion object {
     const val CHANNEL_ID = "MESSAGES_CHANNEL_ID"
     private const val CHANNEL_NAME = "Сообщения"
     private const val PREFS = "max_push_history"
     private const val HISTORY_LIMIT = 10
+
+    @JvmStatic
+    fun showNotificationDirect(chatId: Long, title: String, text: String, senderId: String, account: Long) {
+      val ctx = MainActivity.appContext ?: MainActivity.instance?.applicationContext
+      if (ctx == null) {
+        Log.e("MaxPlus", "showNotificationDirect: no Context available")
+        return
+      }
+      Log.d("MaxPlus", "showNotificationDirect: chatId=$chatId, title=$title, account=$account")
+      val data = mapOf(
+        "mc" to chatId.toString(),
+        "title" to title,
+        "msg" to text,
+        "suid" to senderId,
+        "c" to account.toString()
+      )
+      Thread {
+        try {
+          NotificationHelper(ctx).handleIncomingMessage(data)
+        } catch (e: Throwable) {
+          Log.e("MaxPlus", "showNotificationDirect error in background thread", e)
+        }
+      }.start()
+    }
+
+    @JvmStatic
+    fun cancelNotificationDirect(chatId: Long) {
+      val ctx = MainActivity.appContext ?: MainActivity.instance?.applicationContext
+      if (ctx == null) {
+        Log.e("MaxPlus", "cancelNotificationDirect: no Context available")
+        return
+      }
+      Log.d("MaxPlus", "cancelNotificationDirect: chatId=$chatId")
+      val mgr = ctx.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+      val notifId = (chatId and 0x7fffffff).toInt()
+      mgr.cancel(notifId)
+      val prefs = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+      prefs.edit().remove("hist_$chatId").remove("meta_$chatId").apply()
+    }
   }
   
   private data class Hist(
@@ -61,14 +101,21 @@ class NotificationHelper(private val ctx: Context) {
   }
   
   fun handleIncomingMessage(data: Map<String, String>) {
-    val chatId = (data["mc"] ?: data["chat_id"])?.toLongOrNull() ?: return
-    val account = (data["c"] ?: data["account_id"])?.toIntOrNull() ?: 0
+    Log.d("MaxPlus", "handleIncomingMessage: data=$data")
+    val chatId = (data["mc"] ?: data["chat_id"])?.toLongOrNull()
+    if (chatId == null) {
+      Log.w("MaxPlus", "handleIncomingMessage: missing chatId")
+      return
+    }
+    val account = (data["c"] ?: data["account_id"])?.toLongOrNull() ?: 0L
 
     try {
-      if (isChatMutedNative(account, chatId, ctx.filesDir.absolutePath)) {
+      if (isChatMutedNative(account, chatId, ctx.applicationInfo.dataDir)) {
+        Log.d("MaxPlus", "handleIncomingMessage: chat $chatId is muted")
         return
       }
     } catch (e: Throwable) {
+      Log.e("MaxPlus", "isChatMutedNative error", e)
     }
 
     val mid = data["msgid"] ?: data["mid"] ?: ""
@@ -86,6 +133,7 @@ class NotificationHelper(private val ctx: Context) {
   }
   
   fun handleEditMessage(data: Map<String, String>) {
+    Log.d("MaxPlus", "handleEditMessage: data=$data")
     val chatId = (data["mc"] ?: data["chat_id"])?.toLongOrNull() ?: return
     val mid = data["msgid"] ?: data["mid"] ?: return
     val newText = data["msg"] ?: data["body"] ?: data["text"] ?: return
@@ -94,17 +142,18 @@ class NotificationHelper(private val ctx: Context) {
     val index = history.indexOfLast { it.mid == mid }
     if (index < 0) return
       
-      val old = history[index]
-      if (old.deleted || old.text == newText) return
-        
-        history[index] = old.copy(text = newText)
-        saveHistory(chatId, history)
-        
-        val (title, account) = loadMeta(chatId)
-        render(chatId, title, account, history, alertOnce = true)
+    val old = history[index]
+    if (old.deleted || old.text == newText) return
+      
+    history[index] = old.copy(text = newText)
+    saveHistory(chatId, history)
+    
+    val (title, account) = loadMeta(chatId)
+    render(chatId, title, account, history, alertOnce = true)
   }
   
   fun handleRemoveMessage(data: Map<String, String>) {
+    Log.d("MaxPlus", "handleRemoveMessage: data=$data")
     val chatId = (data["mc"] ?: data["chat_id"])?.toLongOrNull() ?: return
     val mid = data["msgid"] ?: data["mid"] ?: return
     
@@ -112,91 +161,103 @@ class NotificationHelper(private val ctx: Context) {
     val index = history.indexOfLast { it.mid == mid }
     if (index < 0) return
       
-      // Помечаем удаленным со зачеркиванием текста
-      history[index] = history[index].copy(deleted = true)
-      saveHistory(chatId, history)
-      
-      val (title, account) = loadMeta(chatId)
-      render(chatId, title, account, history, alertOnce = true)
+    history[index] = history[index].copy(deleted = true)
+    saveHistory(chatId, history)
+    
+    val (title, account) = loadMeta(chatId)
+    render(chatId, title, account, history, alertOnce = true)
   }
   
-  private fun render(chatId: Long, title: String, account: Int, history: List<Hist>, alertOnce: Boolean) {
+  private fun render(chatId: Long, title: String, account: Long, history: List<Hist>, alertOnce: Boolean) {
     if (history.isEmpty()) return
-      val notifId = (chatId and 0x7fffffff).toInt()
-      val newest = history.last()
+    val notifId = (chatId and 0x7fffffff).toInt()
+    Log.d("MaxPlus", "render: chatId=$chatId, notifId=$notifId, account=$account, count=${history.size}")
+    val newest = history.last()
+    
+    val userPerson = Person.Builder().setName("Вы").build()
+    
+    val isGroup = chatId < 0 || title != newest.senderName
+    val style = NotificationCompat.MessagingStyle(userPerson)
+      .setConversationTitle(title)
+      .setGroupConversation(isGroup)
+    
+    for (h in history) {
+      val senderIdLong = h.senderId.toLongOrNull() ?: chatId
+      val avatarBitmap = AvatarHelper.getAvatar(ctx, senderIdLong, h.senderName, null, account)
+      val person = Person.Builder()
+        .setName(h.senderName)
+        .setKey(h.senderId)
+        .setIcon(IconCompat.createWithBitmap(avatarBitmap))
+        .build()
       
-      val userPerson = Person.Builder().setName("Вы").build()
-      
-      val isGroup = title != newest.senderName
-      val style = NotificationCompat.MessagingStyle(userPerson)
-        .setConversationTitle(title)
-        .setGroupConversation(isGroup)
-      
-      for (h in history) {
-        val senderIdLong = h.senderId.toLongOrNull() ?: chatId
-        val avatarBitmap = AvatarHelper.getAvatar(ctx, senderIdLong, h.senderName, null, account)
-        val person = Person.Builder()
-          .setName(h.senderName)
-          .setKey(h.senderId)
-          .setIcon(IconCompat.createWithBitmap(avatarBitmap))
-          .build()
-        
-        val textFormatted = if (h.deleted) {
-          SpannableStringBuilder("Удалено: ${h.text}").apply {
-            setSpan(StrikethroughSpan(), 9, length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
-            setSpan(StyleSpan(Typeface.ITALIC), 0, length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
-          }
-        } else {
-          h.text
+      val textFormatted = if (h.deleted) {
+        SpannableStringBuilder("Удалено: ${h.text}").apply {
+          setSpan(StrikethroughSpan(), 9, length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+          setSpan(StyleSpan(Typeface.ITALIC), 0, length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
         }
-        
-        style.addMessage(textFormatted, h.ts, person)
+      } else {
+        h.text
       }
       
-      val chatAvatar = AvatarHelper.getAvatar(ctx, chatId, title, null, account)
-      
-      val builder = NotificationCompat.Builder(ctx, CHANNEL_ID)
-        .setSmallIcon(android.R.drawable.ic_dialog_email)
-        .setContentTitle(title)
-        .setContentText(newest.text)
-        .setLargeIcon(chatAvatar)
-        .setStyle(style)
-        .setAutoCancel(true)
-        .setOnlyAlertOnce(alertOnce)
-        .setPriority(NotificationCompat.PRIORITY_HIGH)
-      
-      if (account != 0) {
-        val replyIntent = Intent(ctx, ReplyReceiver::class.java).apply {
-          action = "org.meowkie.max.ACTION_REPLY"
-          putExtra("account", account)
-          putExtra("chatId", chatId)
-          putExtra("mid", newest.mid.toLongOrNull() ?: 0L)
-          putExtra("notificationId", notifId)
-        }
-        
-        val pendingIntent = PendingIntent.getBroadcast(
-          ctx,
-          notifId,
-          replyIntent,
-          PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE
-        )
-        
-        val remoteInput = RemoteInput.Builder("key_text_reply")
-          .setLabel("Ответить...")
-          .build()
-        
-        val action = NotificationCompat.Action.Builder(
-          android.R.drawable.ic_menu_send,
-          "Ответить",
-          pendingIntent
-        ).addRemoteInput(remoteInput)
-          .setSemanticAction(NotificationCompat.Action.SEMANTIC_ACTION_REPLY)
-          .build()
-        
-        builder.addAction(action)
+      style.addMessage(textFormatted, h.ts, person)
+    }
+    
+    val chatAvatar = AvatarHelper.getAvatar(ctx, chatId, title, null, account)
+    
+    val launchIntent = ctx.packageManager.getLaunchIntentForPackage(ctx.packageName) ?: Intent(ctx, MainActivity::class.java)
+    launchIntent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+    val contentIntent = PendingIntent.getActivity(
+      ctx,
+      notifId,
+      launchIntent,
+      PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+    )
+
+    val builder = NotificationCompat.Builder(ctx, CHANNEL_ID)
+      .setSmallIcon(R.drawable.ic_notification)
+      .setContentTitle(title)
+      .setContentText(newest.text)
+      .setLargeIcon(chatAvatar)
+      .setStyle(style)
+      .setContentIntent(contentIntent)
+      .setAutoCancel(true)
+      .setOnlyAlertOnce(alertOnce)
+      .setPriority(NotificationCompat.PRIORITY_HIGH)
+      .setCategory(NotificationCompat.CATEGORY_MESSAGE)
+      .setAllowSystemGeneratedContextualActions(false)
+    
+    if (account != 0L) {
+      val replyIntent = Intent(ctx, ReplyReceiver::class.java).apply {
+        action = "${ctx.packageName}.ACTION_REPLY"
+        putExtra("account", account)
+        putExtra("chatId", chatId)
+        putExtra("mid", newest.mid.toLongOrNull() ?: 0L)
+        putExtra("notificationId", notifId)
       }
       
-      manager().notify(notifId, builder.build())
+      val pendingIntent = PendingIntent.getBroadcast(
+        ctx,
+        notifId,
+        replyIntent,
+        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE
+      )
+      
+      val remoteInput = RemoteInput.Builder("key_text_reply")
+        .setLabel("Ответить...")
+        .build()
+      
+      val action = NotificationCompat.Action.Builder(
+        android.R.drawable.ic_menu_send,
+        "Ответить",
+        pendingIntent
+      ).addRemoteInput(remoteInput)
+        .setSemanticAction(NotificationCompat.Action.SEMANTIC_ACTION_REPLY)
+        .build()
+      
+      builder.addAction(action)
+    }
+    
+    manager().notify(notifId, builder.build())
   }
   
   private fun prefs() = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -238,20 +299,20 @@ class NotificationHelper(private val ctx: Context) {
     val items = loadHistory(chatId).toMutableList()
     items.add(item)
     while (items.size > HISTORY_LIMIT) items.removeAt(0)
-      saveHistory(chatId, items)
-      return items
+    saveHistory(chatId, items)
+    return items
   }
   
-  private fun saveMeta(chatId: Long, title: String, account: Int) {
+  private fun saveMeta(chatId: Long, title: String, account: Long) {
     prefs().edit().putString("meta_$chatId", JSONObject().apply {
       put("title", title)
       put("account", account)
     }.toString()).apply()
   }
   
-  private fun loadMeta(chatId: Long): Pair<String, Int> {
-    val raw = prefs().getString("meta_$chatId", null) ?: return Pair("Чат", 0)
+  private fun loadMeta(chatId: Long): Pair<String, Long> {
+    val raw = prefs().getString("meta_$chatId", null) ?: return Pair("Чат", 0L)
     val obj = JSONObject(raw)
-    return Pair(obj.optString("title", "Чат"), obj.optInt("account", 0))
+    return Pair(obj.optString("title", "Чат"), obj.optLong("account", 0L))
   }
 }
