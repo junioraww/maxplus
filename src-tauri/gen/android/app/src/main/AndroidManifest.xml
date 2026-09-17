@@ -37,10 +37,14 @@
           android:name=".ReplyReceiver"
           android:exported="false">
           <intent-filter>
-            <action android:name="org.meowkie.max.ACTION_REPLY" />
+            <action android:name="${applicationId}.ACTION_REPLY" />
           </intent-filter>
         </receiver>
         
+        <service
+          android:name="app.tauri.notification.TauriFirebaseMessagingService"
+          tools:node="remove" />
+
         <service
           android:name=".MessagingService"
           android:exported="true"
@@ -49,6 +53,7 @@
             <action android:name="com.google.firebase.MESSAGING_EVENT" />
           </intent-filter>
         </service>
+
 
         <provider
           android:name="androidx.core.content.FileProvider"

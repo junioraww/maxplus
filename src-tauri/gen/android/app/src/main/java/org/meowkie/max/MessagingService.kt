@@ -9,7 +9,7 @@ class MessagingService : FirebaseMessagingService() {
   override fun onMessageReceived(message: RemoteMessage) {
     super.onMessageReceived(message)
     
-    if (AppState.isAppAlive) {
+    if (AppState.isAppInForeground) {
       return
     }
     
@@ -30,5 +30,6 @@ class MessagingService : FirebaseMessagingService() {
   
   override fun onNewToken(token: String) {
     super.onNewToken(token)
+    app.tauri.notification.NotificationPlugin.instance?.handleNewToken(token)
   }
 }

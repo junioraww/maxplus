@@ -149,6 +149,8 @@ pub fn run() {
             stores::get_dictionary_url,
             stores::get_device,
             stores::save_device,
+            notifications::show_notification,
+            notifications::cancel_notification,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

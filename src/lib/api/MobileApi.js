@@ -126,14 +126,14 @@ export default class MobileApi extends BaseAPI {
                 message.chatId,
                 chat,
                 contact ? get(contact) : null,
-                getMessagePreview(message)
+                message
               );
             } else {
               newMessage(
                 message.chatId,
                 chat,
                 null,
-                getMessagePreview(message)
+                message
               );
             }
           }
@@ -267,8 +267,7 @@ export default class MobileApi extends BaseAPI {
   }
 
   async _handleLoginResponse(payload) {
-    console.log(payload);
-    if (!payload?.tokenAttrs?.LOGIN) return payload; // failed
+    if (!payload?.tokenAttrs?.LOGIN) return payload;
 
     const accountEntry = await addAccount(
       payload.tokenAttrs.LOGIN.token,
@@ -280,8 +279,6 @@ export default class MobileApi extends BaseAPI {
     const contact = payload.profile.contact;
     await setAccountContact(accountEntry.id, contact);
     currentUser.set(contact.id);
-
-    await this.sync();
 
     return {
       success: true,
@@ -442,19 +439,24 @@ export default class MobileApi extends BaseAPI {
     return invoke("fetch_contacts", { userIds });
   }
 
-  async getMessages(chatId, from_time = Date.now() + sessionGet("drift")) {
+  async getMessages(chatId, from_time = Date.now() + sessionGet("drift"), backward = 40, forward = 0) {
     await this.synchronized;
 
     const payload = {
       chatId,
       options: {
         from_time,
-        backward: 40,
+        backward,
+        forward,
         interactive: true
       }
-    }
+    };
 
     return await invoke("fetch_history", payload);
+  }
+
+  async getNewerMessages(chatId, from_time, forward = 40) {
+    return this.getMessages(chatId, from_time, 0, forward);
   }
 
   async sendMessage(message, chatId, params) {

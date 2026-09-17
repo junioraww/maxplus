@@ -2,6 +2,7 @@ package org.meowkie.max
 
 import android.content.Context
 import android.graphics.*
+import android.util.Log
 import java.io.File
 import kotlin.math.abs
 
@@ -10,11 +11,11 @@ object AvatarHelper {
     try {
       System.loadLibrary("maxplus_lib")
     } catch (e: Throwable) {
-      e.printStackTrace()
+      Log.e("MaxPlus", "AvatarHelper: Failed to load maxplus_lib", e)
     }
   }
 
-  private external fun getAvatarPathNative(account: Int, id: Long, appDir: String): String?
+  private external fun getAvatarPathNative(account: Long, id: Long, appDir: String): String?
 
   private val COLORS = intArrayOf(
     0xFFE17076.toInt(),
@@ -25,10 +26,11 @@ object AvatarHelper {
     0xFF6EC9CB.toInt()
   )
   
-  fun getAvatar(context: Context, id: Long, name: String, avatarPath: String? = null, account: Int = 0): Bitmap {
+  fun getAvatar(context: Context, id: Long, name: String, avatarPath: String? = null, account: Long = 0L): Bitmap {
     val path = avatarPath ?: try {
-      getAvatarPathNative(account, id, context.filesDir.absolutePath)
+      getAvatarPathNative(account, id, context.applicationInfo.dataDir)
     } catch (e: Throwable) {
+      Log.e("MaxPlus", "getAvatarPathNative error", e)
       null
     }
 
@@ -47,7 +49,8 @@ object AvatarHelper {
     val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
     val canvas = Canvas(bitmap)
     
-    val color = COLORS[abs(id.toInt()) % COLORS.size]
+    val colorIndex = ((id % COLORS.size + COLORS.size) % COLORS.size).toInt()
+    val color = COLORS[colorIndex]
     val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
       this.color = color
       style = Paint.Style.FILL
