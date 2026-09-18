@@ -50,6 +50,7 @@ pub fn run() {
             });
 
             let handle = app.handle().clone();
+            notifications::set_app_handle(handle.clone());
 
             tauri::async_runtime::spawn(async move {
                 while let Ok(msg) = event_stream.recv().await {
@@ -151,6 +152,7 @@ pub fn run() {
             stores::save_device,
             notifications::show_notification,
             notifications::cancel_notification,
+            notifications::check_pending_open_chat,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

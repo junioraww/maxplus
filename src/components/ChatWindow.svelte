@@ -85,7 +85,23 @@
 
   const BATCH_SIZE = 40;
 
-  $: avatarUserId = chat?.type === "DIALOG" ? (chat.id ^ $currentUser) : undefined;
+  $: avatarUserId = (() => {
+    if (chat?.type !== "DIALOG") return undefined;
+    if (chat?.participants && Object.keys(chat.participants).length > 0) {
+      const other = Object.keys(chat.participants).find(id => String(id) !== String($currentUser));
+      if (other) return Number(other);
+    }
+    if ($currentUser != null && chat?.id != null) {
+      try {
+        return Number(BigInt(chat.id) ^ BigInt($currentUser));
+      } catch (e) {
+        return undefined;
+      }
+    }
+    return undefined;
+  })();
+
+  $: unreadBadgeCount = Math.max(0, Number($currentSessionChats?.find((x) => x.id === chat?.id)?.newMessages ?? chat?.newMessages ?? 0));
 
   $: chatSettings = getChatSettings(chat?.id || chatId);
 
@@ -1127,7 +1143,7 @@
         class="row"
         on:click={() => {
           if (chat.type === "DIALOG")
-            $Session.profile = { userId: $currentUser ^ chat.id };
+            $Session.profile = { userId: avatarUserId };
           else $Session.profile = { chatId: chat.id };
         }}
       >
@@ -1245,21 +1261,30 @@
   {/if}
 
   {#if showScrollDown}
-    <button
+    <div
       in:fade={{ duration: 100 }}
       out:fade={{ duration: 100 }}
-      class="scroll-down-btn"
+      class="scroll-down-container"
       class:nije={chat.type === "CHANNEL"}
       class:vise={!!replyTo}
-      on:click={jumpToBottom}
     >
-      <svg viewBox="0 0 640 640"
-        ><path
-          fill="#777"
-          d="M297.4 470.6C309.9 483.1 330.2 483.1 342.7 470.6L534.7 278.6C547.2 266.1 547.2 245.8 534.7 233.3C522.2 220.8 501.9 220.8 489.4 233.3L320 402.7L150.6 233.4C138.1 220.9 117.8 220.9 105.3 233.4C92.8 245.9 92.8 266.2 105.3 278.7L297.3 470.7z"
-        /></svg
+      <button
+        class="scroll-down-btn"
+        on:click={jumpToBottom}
       >
-    </button>
+        <svg viewBox="0 0 640 640"
+          ><path
+            fill="#777"
+            d="M297.4 470.6C309.9 483.1 330.2 483.1 342.7 470.6L534.7 278.6C547.2 266.1 547.2 245.8 534.7 233.3C522.2 220.8 501.9 220.8 489.4 233.3L320 402.7L150.6 233.4C138.1 220.9 117.8 220.9 105.3 233.4C92.8 245.9 92.8 266.2 105.3 278.7L297.3 470.7z"
+          /></svg
+        >
+      </button>
+      {#if unreadBadgeCount > 0}
+        <div class="scroll-down-badge" on:click={jumpToBottom}>
+          {unreadBadgeCount > 99 ? "99+" : unreadBadgeCount}
+        </div>
+      {/if}
+    </div>
   {/if}
 </div>
 
@@ -1359,22 +1384,37 @@
     transform: scale(1.1) translateX(-5px);
   }
 
-  .scroll-down-btn {
+  .scroll-down-container {
     position: fixed;
     bottom: 80px;
     right: 10px;
+    width: 55px;
+    height: 55px;
+    z-index: 100;
+  }
+
+  .scroll-down-container.nije {
+    bottom: 20px;
+  }
+
+  .scroll-down-container.vise {
+    bottom: 140px;
+  }
+
+  .scroll-down-btn {
+    width: 55px;
+    height: 55px;
     background: #1e2024;
     opacity: 0.9;
     color: white;
     border: none;
     border-radius: 50%;
-    width: 55px;
-    height: 55px;
     cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
     transition: opacity 0.1s;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
   }
 
   .scroll-down-btn:hover {
@@ -1385,12 +1425,25 @@
     width: 36px;
   }
 
-  .scroll-down-btn.nije {
-    bottom: 20px;
-  }
-
-  .scroll-down-btn.vise {
-    bottom: 140px;
+  .scroll-down-badge {
+    position: absolute;
+    top: -5px;
+    left: -5px;
+    min-width: 22px;
+    height: 22px;
+    box-sizing: border-box;
+    padding: 0 5px;
+    background: #2b7fc3;
+    color: #ffffff;
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 22px;
+    text-align: center;
+    border-radius: 11px;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+    pointer-events: auto;
+    cursor: pointer;
+    user-select: none;
   }
 
   .message-list-container {

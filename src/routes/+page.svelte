@@ -1,4 +1,7 @@
 <script>
+  import { onMount } from "svelte";
+  import { listen } from "@tauri-apps/api/event";
+  import { invoke } from "@tauri-apps/api/core";
   import Chats from "./chats/+page.svelte";
   import Contacts from "./contacts/+page.svelte";
   import Calls from "./calls/+page.svelte";
@@ -8,7 +11,7 @@
   import ChatWindow from "$components/ChatWindow.svelte";
 
   import * as Caching from "$lib/utils/caching";
-  import Session from "$lib/stores/session";
+  import Session, { openChat } from "$lib/stores/session";
   import { page } from "$app/stores";
 
   const pages = [
@@ -31,6 +34,38 @@
   const openCard = ({ detail }) => {
     active = detail.index;
   };
+
+  onMount(() => {
+    let unlisten;
+    (async () => {
+      try {
+        unlisten = await listen("open_chat", (event) => {
+          const chatId = event.payload;
+          if (chatId != null && chatId !== 0) openChat(Number(chatId));
+        });
+      } catch (_) {}
+
+      try {
+        const pending = await invoke("check_pending_open_chat");
+        if (pending != null && pending !== 0) openChat(Number(pending));
+      } catch (_) {}
+    })();
+
+    const handleVisibility = async () => {
+      if (document.visibilityState === "visible") {
+        try {
+          const pending = await invoke("check_pending_open_chat");
+          if (pending != null && pending !== 0) openChat(Number(pending));
+        } catch (_) {}
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibility);
+
+    return () => {
+      if (unlisten) unlisten();
+      document.removeEventListener("visibilitychange", handleVisibility);
+    };
+  });
 </script>
 
 <div class="container">

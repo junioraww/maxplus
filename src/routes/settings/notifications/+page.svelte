@@ -45,12 +45,18 @@
   }
 
   function getPeerId(chat) {
-    if (chat?.type === "DIALOG" && chat.id && $currentUser) {
-      try {
-        const pId = Number(BigInt(chat.id) ^ BigInt($currentUser));
-        return pId > 0 ? pId : null;
-      } catch {
-        return null;
+    if (chat?.type === "DIALOG") {
+      if (chat.participants && Object.keys(chat.participants).length > 0) {
+        const other = Object.keys(chat.participants).find(id => String(id) !== String($currentUser));
+        if (other) return Number(other);
+      }
+      if (chat.id && $currentUser) {
+        try {
+          const pId = Number(BigInt(chat.id) ^ BigInt($currentUser));
+          return pId > 0 ? pId : null;
+        } catch {
+          return null;
+        }
       }
     }
     return null;

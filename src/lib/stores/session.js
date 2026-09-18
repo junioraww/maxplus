@@ -32,8 +32,8 @@ export const now = readable(Date.now(), (set) => {
 export async function openChat(chatId/*,  messageId */) { // TODO
   const { openedChats, profile } = getStoreValue(data);
 
-  if (openedChats.findIndex(id => id === chatId) === -1) {
-    let chat = getStoreValue(currentSessionChats).find(x => x.id === chatId);
+  if (openedChats.findIndex(id => String(id) === String(chatId)) === -1) {
+    let chat = getStoreValue(currentSessionChats).find(x => String(x.id) === String(chatId));
 
     if (!chat) {
       console.log("Chat not cached, requesting:", chatId);

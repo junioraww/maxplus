@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import { writable } from "svelte/store";
+import { writable, get } from "svelte/store";
 
 import {
   getCurrentAccount
@@ -7,7 +7,6 @@ import {
 
 const cache = {};
 
-// USE utils/caching.js WHERE CONTACT MAY BE NEW!!!
 export const getContact = contactId => {
   if (!contactId) return null;
   if (cache[contactId]) return cache[contactId].store;
@@ -16,7 +15,6 @@ export const getContact = contactId => {
   cache[contactId] = { store };
 
   getCurrentAccount().then(async account => {
-    // TODO retrieve current account in stores.rs
     const cached = await invoke("get_contact", { account: +account.id, contactId });
     if (cached) store.set(cached);
 
@@ -30,6 +28,27 @@ export const getContact = contactId => {
   });
 
   return store;
+};
+
+export const getContactDirect = async contactId => {
+  const id = Number(contactId);
+  if (!id || id <= 0) return null;
+  if (cache[id]) {
+    const val = get(cache[id].store);
+    if (val !== undefined && val !== null) return val;
+  }
+  try {
+    const account = await getCurrentAccount();
+    if (!account?.id) return null;
+    const cached = await invoke("get_contact", { account: +account.id, contactId: id });
+    if (cached) {
+      if (cache[id]) {
+        cache[id].store.set(cached);
+      }
+      return cached;
+    }
+  } catch (_) {}
+  return null;
 };
 
 export const updateContact = async contact => {

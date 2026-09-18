@@ -42,13 +42,27 @@
   })
 
   $: userId = (() => {
-    const value = $Session.profile.userId;
-    return value || $currentUser ^ $Session.profile.chatId;
+    const value = $Session.profile?.userId;
+    if (value) return value;
+    const cid = $Session.profile?.chatId;
+    if (cid && $currentUser) {
+      try {
+        return Number(BigInt(cid) ^ BigInt($currentUser));
+      } catch (e) {}
+    }
+    return undefined;
   })();
 
   $: chatId = (() => {
-    const value = $Session.profile.chatId;
-    return value || $currentUser ^ $Session.profile.userId;
+    const value = $Session.profile?.chatId;
+    if (value) return value;
+    const uid = $Session.profile?.userId;
+    if (uid && $currentUser) {
+      try {
+        return Number(BigInt(uid) ^ BigInt($currentUser));
+      } catch (e) {}
+    }
+    return undefined;
   })();
 
   $: chat = $currentSessionChats.find(x => x.id === chatId);
