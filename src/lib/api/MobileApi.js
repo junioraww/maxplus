@@ -142,12 +142,42 @@ export default class MobileApi extends BaseAPI {
         const chat = getChat(message.chatId);
         chat.updateMessages([ message ]);
 
-        /* получено новое сообщение */
         if (message.status !== "EDITED") {
           chat.receivedMessage.set(message);
 
           const myId = Number(get(currentUser));
           const isOutgoing = Number(message.sender) === myId || Number(message.from) === myId;
+          const msgTime = message.time || Date.now();
+
+          currentSessionChats.update((chats) => {
+            if (!chats) return chats;
+            const index = chats.findIndex((c) => String(c.id) === String(message.chatId));
+            if (index === -1) {
+              const info = chat.getInfo() || { id: message.chatId, type: "DIALOG" };
+              const newChat = {
+                ...info,
+                id: message.chatId,
+                lastMessage: message,
+                lastEventTime: msgTime,
+                newMessages: isOutgoing ? 0 : 1,
+              };
+              return [newChat, ...chats];
+            }
+            const updatedChat = {
+              ...chats[index],
+              lastMessage: message,
+              lastEventTime: msgTime,
+              newMessages: isOutgoing ? (chats[index].newMessages || 0) : ((chats[index].newMessages || 0) + 1),
+            };
+            const next = [...chats];
+            next.splice(index, 1);
+            return [updatedChat, ...next];
+          });
+
+          currentRealChats.update((ids) => {
+            if (!ids) return [message.chatId];
+            return ids.some(id => String(id) === String(message.chatId)) ? ids : [message.chatId, ...ids];
+          });
 
           if (!isOutgoing) {
             const info = chat.getInfo();
@@ -188,7 +218,7 @@ export default class MobileApi extends BaseAPI {
       } else if (opc === 130) {
         const payload = response.payload;
         if (payload?.chatId && payload?.mark && payload?.setAsUnread !== true) {
-          const chatId = Number(payload.chatId);
+          const chatId = payload.chatId;
           const userId = Number(payload.userId);
           const mark = Number(payload.mark);
           const myId = Number(get(currentUser));
@@ -198,7 +228,7 @@ export default class MobileApi extends BaseAPI {
 
           currentSessionChats.update(chats => {
             if (!chats) return chats;
-            const idx = chats.findIndex(c => c.id === chatId);
+            const idx = chats.findIndex(c => String(c.id) === String(chatId));
             if (idx === -1) return chats;
             const current = chats[idx];
             const participants = { ...(current.participants || {}), [userId]: mark };
