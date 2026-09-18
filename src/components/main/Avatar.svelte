@@ -55,7 +55,7 @@
   const imageStyle = `width: 100%; height: 100%; border-radius: 50%; object-fit: cover;`;
 </script>
 
-<div class="avatar-wrapper" style="width: {size}px; height: {size}px; {style}">
+<div class="avatar-wrapper" style="width: {size}px; height: {size}px; {style}" on:click>
   {#if selectionMode}
     <div class="selection-overlay" class:checked={isSelected}>
       {#if isSelected}

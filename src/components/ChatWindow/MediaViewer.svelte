@@ -1,18 +1,12 @@
 <script>
   import { fade, fly, scale as scaleTransition } from "svelte/transition";
-  import { invoke as tauriInvoke } from "@tauri-apps/api/core";
-  import { convertFileSrc } from '@tauri-apps/api/core';
-  import { fetch } from '@tauri-apps/plugin-http';
+  import { invoke as tauriInvoke, convertFileSrc } from "@tauri-apps/api/core";
   import { save } from "@tauri-apps/plugin-dialog";
-  import { download } from "@tauri-apps/plugin-upload";
   import { createEventDispatcher } from "svelte";
 
+  import { getAssetUrl } from "$lib/utils/images";
   import { getCurrentAccount } from "$lib/stores/accounts";
   import API from "$lib/stores/api";
-  import {
-    getCachedFile,
-    setCachedFile
-  } from "$lib/stores/cache";
 
   export let index = 0;
   export let allMedia;
@@ -315,23 +309,7 @@
   }
 
   async function load(url) {
-    const account = await getCurrentAccount();
-    let path = await getCachedFile(account.id, url);
-
-    if (!path) {
-      const response = await fetch(url, {
-        method: "GET"
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
-      }
-
-      const buffer = await response.arrayBuffer();
-      path = await setCachedFile(account.id, url, new Uint8Array(buffer));
-    }
-
-    return convertFileSrc(path);
+    return await getAssetUrl(url);
   }
 
   let isDownloadingMedia = false;
@@ -349,7 +327,7 @@
           filters: [{ name: "Images", extensions: ["jpg", "jpeg", "png", "webp"] }],
         });
         if (filePath) {
-          await download(url, filePath);
+          await tauriInvoke("download_to_path", { url, path: filePath });
         }
       } else if (currentMedia._type === "VIDEO") {
         let videoUrl = videoCache[currentMedia.videoId];
@@ -377,7 +355,7 @@
           filters: [{ name: "Videos", extensions: ["mp4", "webm", "mov"] }],
         });
         if (filePath) {
-          await download(videoUrl, filePath);
+          await tauriInvoke("download_to_path", { url: videoUrl, path: filePath });
         }
       }
     } catch (e) {

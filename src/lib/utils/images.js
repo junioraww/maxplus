@@ -1,31 +1,66 @@
-import { fetch } from '@tauri-apps/plugin-http';
-import { convertFileSrc } from '@tauri-apps/api/core';
+import { invoke, convertFileSrc } from '@tauri-apps/api/core';
 import { getCachedFile, setCachedFile } from "$lib/stores/cache";
 import { getCurrentAccount } from "$lib/stores/accounts";
 
+const MAX_CONCURRENT_DOWNLOADS = 6;
+let activeDownloads = 0;
+const downloadQueue = [];
+const inflightRequests = new Map();
+
+function processQueue() {
+    if (activeDownloads >= MAX_CONCURRENT_DOWNLOADS || downloadQueue.length === 0) {
+        return;
+    }
+    const next = downloadQueue.shift();
+    if (!next) return;
+    activeDownloads++;
+    next.task()
+        .then(next.resolve, next.reject)
+        .finally(() => {
+            activeDownloads--;
+            processQueue();
+        });
+}
+
+function enqueueDownload(task) {
+    return new Promise((resolve, reject) => {
+        downloadQueue.push({ task, resolve, reject });
+        processQueue();
+    });
+}
+
 export async function getLocalFilePath(src) {
     if (!src) return null;
-
-    try {
-        const account = await getCurrentAccount();
-        let path = await getCachedFile(account.id, src);
-
-        if (!path) {
-            const response = await fetch(src, { method: "GET" });
-            if (!response.ok) throw new Error(`HTTP ${response.status}`);
-
-            const buffer = await response.arrayBuffer();
-            path = await setCachedFile(account.id, src, new Uint8Array(buffer));
-        }
-
-        return path;
-    } catch (e) {
-        console.error("Failed to load image to cache:", e);
+    if (src.startsWith("data:") || src.startsWith("blob:") || src.startsWith("asset:")) {
         return null;
     }
+
+    if (inflightRequests.has(src)) {
+        return inflightRequests.get(src);
+    }
+
+    const promise = enqueueDownload(async () => {
+        try {
+            const account = await getCurrentAccount().catch(() => null);
+            const accountId = account?.id ? Number(account.id) : 0;
+            return await invoke("cache_url", { account: accountId, src });
+        } catch (e) {
+            console.error("Failed to load image to cache:", e);
+            return null;
+        }
+    }).finally(() => {
+        inflightRequests.delete(src);
+    });
+
+    inflightRequests.set(src, promise);
+    return promise;
 }
 
 export async function getAssetUrl(src) {
+    if (!src) return null;
+    if (src.startsWith("data:") || src.startsWith("blob:") || src.startsWith("asset:")) {
+        return src;
+    }
     const path = await getLocalFilePath(src);
     if (path) {
         return convertFileSrc(path);

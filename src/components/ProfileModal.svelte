@@ -66,21 +66,21 @@
   })();
 
   $: chat = $currentSessionChats.find(x => x.id === chatId);
-  $: contact = getContact(chat.type === "DIALOG" ? userId : undefined);
+  $: contact = getContact(chat?.type === "DIALOG" || (!chat && userId) ? userId : undefined);
 
   let showMenu = false;
   let showDeleteConfirm = false;
   let showInputs = false;
 
-  $: title = $contact?.names?.[0]?.firstName || chat.title;
+  $: title = $contact?.names?.[0]?.firstName || chat?.title || ($contact ? "Пользователь" : "");
 
-  $: avatar = chat.avatar || $contact?.avatar;
-  $: chatLink = chat.link;
+  $: avatar = chat?.avatar || $contact?.avatar;
+  $: chatLink = chat?.link;
 
   $: infoFields = [
-    info(chat.description || $contact?.description, "about", "Описание", chat.description || $contact?.description),
-    info(chat.phone, "about", "Мобильный", chat.phone),
-    info(chat.created > 1, "about", "Дата создания", formatMs(chat.created)),
+    info(chat?.description || $contact?.description, "about", "Описание", chat?.description || $contact?.description),
+    info(chat?.phone, "about", "Мобильный", chat?.phone),
+    info(chat?.created > 1, "about", "Дата создания", formatMs(chat?.created)),
     info($contact?.registrationTime, "about", "Дата регистрации", formatMs($contact?.registrationTime)),
   ].filter(Boolean);
 
@@ -96,7 +96,7 @@
   }
 
   const closeModal = () => $Session.profile = null;
-  const closeChat = () => _closeChat(chat.id);
+  const closeChat = () => chat?.id != null && _closeChat(chat.id);
 
   function handleWindowClick(e) {
     if (showMenu && !e.target.closest(".menu-container")) showMenu = false;
@@ -292,7 +292,7 @@
     </div>
 
     <div class="info-list">
-      {#if chat.type === "CHANNEL"}
+      {#if chat?.type === "CHANNEL"}
         <div class="info-item hoverable" on:click={openChat}>
           <div class="icon-wrap">✨</div>
           <div class="button">
@@ -300,14 +300,14 @@
           </div>
         </div>
 
-        {#if $currentRealChats.includes(chat.id)}
+        {#if chat?.id && $currentRealChats.includes(chat.id)}
           <div class="info-item hoverable" on:click={quitChannel}>
             <div class="icon-wrap">❌</div>
             <div class="button">
               <span class="label">Отписаться</span>
             </div>
           </div>
-        {:else}
+        {:else if chat?.link}
           <div class="info-item hoverable" on:click={joinChannel}>
             <div class="icon-wrap">✅</div>
             <div class="button">
@@ -315,7 +315,7 @@
             </div>
           </div>
         {/if}
-      {:else if chat.type === "CHAT"}
+      {:else if chat?.type === "CHAT"}
         <div class="info-item hoverable" on:click={openChat}>
           <div class="icon-wrap">💭</div>
           <div class="button">
@@ -343,7 +343,7 @@
         </div>
       {/each}
 
-      {#if chat.type === "CHAT"}
+      {#if chat?.type === "CHAT" && chat?.participants}
       <hr />
         <div class="members">
           {#each Object.keys(chat.participants) as userId}

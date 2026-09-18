@@ -75,6 +75,15 @@ delegate_cmd!(get_folder_by_id(folder_ids: Vec<String>) => get_folder_by_id(fold
 delegate_cmd!(update_folder(id: String, title: String, include: Vec<i64>, filters: Vec<i64>, options: Vec<i64>, favorites: Vec<i64>) => update_folder(id, title, include, filters, options, favorites));
 delegate_cmd!(reorder_folders(folders_order: Vec<String>) => reorder_folders(folders_order));
 delegate_cmd!(delete_folders(folder_ids: Vec<String>) => delete_folders(folder_ids));
+delegate_cmd!(get_sticker_sections(sync: i64) => get_sticker_sections(sync));
+delegate_cmd!(get_favorite_stickers(sync: i64) => get_favorite_stickers(sync));
+delegate_cmd!(get_assets_section(section_id: String, from: i64, count: i32) => get_assets_section(section_id, from, count));
+delegate_cmd!(get_assets_by_ids(asset_type: String, ids: Vec<i64>) => get_assets_by_ids(asset_type, ids));
+delegate_cmd!(add_favorite_sticker_set(set_id: i64) => add_favorite_sticker_set(set_id));
+delegate_cmd!(remove_favorite_sticker_set(set_id: i64) => remove_favorite_sticker_set(set_id));
+delegate_cmd!(move_asset(asset_type: String, id: i64, position: i32) => move_asset(asset_type, id, position));
+delegate_cmd!(resolve_link(link: String) => resolve_link(link));
+delegate_cmd!(send_sticker_message(chat_id: i64, sticker_id: i64, notify: Option<bool>) => send_sticker_message(chat_id, sticker_id, notify));
 
 #[tauri::command]
 pub async fn init(

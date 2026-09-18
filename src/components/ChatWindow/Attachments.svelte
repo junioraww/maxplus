@@ -1,16 +1,11 @@
 <script>
-  import { fetch } from '@tauri-apps/plugin-http';
-  import { download } from '@tauri-apps/plugin-upload';
-  import { convertFileSrc } from '@tauri-apps/api/core';
+  import { convertFileSrc, invoke } from '@tauri-apps/api/core';
   import { save } from "@tauri-apps/plugin-dialog";
   import { onDestroy } from 'svelte';
 
-  import {
-    getCachedFile,
-    setCachedFile
-  } from "$lib/stores/cache";
-  import { getCurrentAccount } from "$lib/stores/accounts";
+  import { getAssetUrl } from "$lib/utils/images";
   import API from "$lib/stores/api";
+  import StickerMedia from "$components/ChatWindow/Stickers/StickerMedia.svelte";
 
   export let getFile;
   export let attaches;
@@ -55,25 +50,9 @@
     }
 
     async function load() {
-      const account = await getCurrentAccount();
-      let path = await getCachedFile(account.id, src);
+      url = await getAssetUrl(src);
 
-      if (!path) {
-        const response = await fetch(src, {
-          method: "GET"
-        });
-
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}`);
-        }
-
-        const buffer = await response.arrayBuffer();
-        path = await setCachedFile(account.id, src, new Uint8Array(buffer));
-      }
-
-      url = convertFileSrc(path);
-
-      if (!cancelled) {
+      if (!cancelled && url) {
         node.onload = () => {
           node.style.opacity = "1";
         };
@@ -191,11 +170,10 @@
     try {
       const response = await getFile(attach.fileId);
 
-      const result = await download(
-        response.url,
+      await invoke("download_to_path", {
+        url: response.url,
         path,
-        ({ progress, total }) => {}, { 'Content-Type': 'text/plain' }
-      );
+      });
 
       for (const a of attaches) {
         if (a.fileId === attach.fileId) a.filePath = attach.fileId;
@@ -219,7 +197,7 @@
           filters: [{ name: "Images", extensions: ["jpg", "jpeg", "png", "webp"] }],
         });
         if (filePath) {
-          await download(url, filePath);
+          await invoke("download_to_path", { url, path: filePath });
         }
       } else if (attach._type === "VIDEO") {
         let videoUrl = null;
@@ -246,7 +224,7 @@
           filters: [{ name: "Videos", extensions: ["mp4", "webm", "mov"] }],
         });
         if (filePath) {
-          await download(videoUrl, filePath);
+          await invoke("download_to_path", { url: videoUrl, path: filePath });
         }
       }
     } catch (e) {
@@ -315,10 +293,23 @@
   </div>
 {/each}
 
+{#each attaches.filter(a => a._type === "STICKER") as attach}
+  <div class="sticker-inline" on:click|stopPropagation={() => handleMediaClick(attach)}>
+    <StickerMedia
+      url={attach.baseUrl || attach.url}
+      lottieUrl={attach.lottieUrl}
+      size={140}
+      autoplay={true}
+      loop={true}
+    />
+  </div>
+{/each}
+
 {#each attaches.filter(a =>
   a._type !== "PHOTO" &&
   a._type !== "VIDEO" &&
   a._type !== "FILE" &&
+  a._type !== "STICKER" &&
   a._type !== "CONTROL" &&
   a._type !== "INLINE_KEYBOARD" &&
   a._type !== "REPLY" &&

@@ -21,6 +21,7 @@ import {
 import {
   syncContacts,
 } from "$lib/utils/caching";
+import { handlePushUpdate } from "$lib/stores/stickers";
 import {
   addAccount,
   getAccounts,
@@ -250,6 +251,11 @@ export default class MobileApi extends BaseAPI {
           const sorted = sortFolders(p.folders, p.foldersOrder || []);
           currentFolders.set(sorted);
         }
+      } else if (opc === 150) {
+        const p = response.payload;
+        if (p?.type === "FAVORITE_STICKER_SET") {
+          handlePushUpdate(p.id, p.updateType);
+        }
       }
     });
   }
@@ -292,12 +298,14 @@ export default class MobileApi extends BaseAPI {
 
     console.log(response);
 
-    if (response.success) {
+    if (response && !response.error) {
       sessionSet("connected", true);
       if (forceSync) await this.sync();
       return true;
     }
-    else alert(response);
+    else {
+      alert(response?.message || response?.text || response?.error || "Ошибка подключения");
+    }
   }
 
   async startAuth(phone) {
@@ -512,9 +520,8 @@ export default class MobileApi extends BaseAPI {
       //await suggestNotifications();
       setupPushNotifications();
     } catch (e) {
-      console.error('Showing error via alert', e);
-      alert(e);
-      const text = e.toString();
+      console.error(e);
+      const text = e?.toString() || "";
       if (text.includes("login.token")) await this.logout();
     } finally {
       this.resolve_sync();
@@ -523,7 +530,7 @@ export default class MobileApi extends BaseAPI {
       const response = await invoke("sync_contacts");
       console.log(response);
       currentRealContacts.set(response.contacts.map(c => c.id));
-      response.contacts.forEach(c => updateContact(c)); // TODO don't update if values the same
+      response.contacts.forEach(c => updateContact(c));
 
       const calls = await this.getCalls();
       currentSessionCalls.set(calls);
@@ -558,6 +565,15 @@ export default class MobileApi extends BaseAPI {
   async sendMessage(message, chatId, params) {
     await this.synchronized;
     return await invoke("send_message", { message, chatId, params });
+  }
+
+  async sendStickerMessage(chatId, stickerId, notify = true) {
+    await this.synchronized;
+    return await invoke("send_sticker_message", {
+      chatId: Number(chatId),
+      stickerId: Number(stickerId),
+      notify,
+    });
   }
 
   async react(chatId, messageId, reaction) {

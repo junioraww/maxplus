@@ -77,11 +77,13 @@ export async function sendMessage(
     time: Date.now(),
     ...(replyTo && { link: { type: "REPLY", messageId: replyTo } }),
     status: 0,
+    sending: true,
   };
 
-  /*const _messages = get(messages);
-  _messages.push(displayMessageEarlyEntry);
-  messages.set(_messages);*/
+  messages.update((msgs) => [...msgs, displayMessageEarlyEntry]);
+  const chatCache = getChat(chat.id);
+  chatCache.receivedMessage.set(displayMessageEarlyEntry);
+  chatCache.updateMessages([displayMessageEarlyEntry]);
 
   const params = {
     notify: true,
@@ -90,42 +92,57 @@ export async function sendMessage(
     elements,
   };
 
-  const response = await get(API).sendMessage(text, chatId, params);
+  let response;
+  try {
+    response = await get(API).sendMessage(text, chatId, params);
+  } catch (err) {
+    console.error(err);
+    messages.update((msgs) => {
+      const target = msgs.find((x) => x.id === id);
+      if (target) {
+        target.sending = false;
+        target.status = "failed";
+      }
+      return [...msgs];
+    });
+    throw err;
+  }
 
-  const message = response?.message || {};
+  const message = response?.message;
 
   if (!message) {
     messages.update((msgs) => {
-      msgs.find((x) => x.id === id).deleted = true;
-      return msgs;
+      const target = msgs.find((x) => x.id === id);
+      if (target) {
+        target.sending = false;
+        target.status = "failed";
+      }
+      return [...msgs];
     });
   }
   else {
-    const msgId = message.id;
-    message.status = 1;
-
     const fullMsg = {
       ...displayMessageEarlyEntry,
       ...message,
-      id: msgId || id,
+      id: message.id || id,
       text: message.text || text,
       sender: message.sender || get(currentUser),
       chatId: chat.id,
       time: message.time || Date.now(),
       status: 1,
+      sending: false,
     };
 
-    const chatCache = getChat(chat.id);
     chatCache.receivedMessage.set(fullMsg);
-    chatCache.updateMessages([ fullMsg ]);
+    chatCache.updateMessages([fullMsg]);
 
     messages.update(msgs => {
-      const idx = msgs.findIndex(m => String(m.id) === String(fullMsg.id));
+      const idx = msgs.findIndex(m => String(m.id) === String(id) || String(m.id) === String(fullMsg.id));
       if (idx !== -1) {
         msgs[idx] = fullMsg;
-        return msgs;
+        return [...msgs];
       }
-      return [ ...msgs, fullMsg ];
+      return [...msgs, fullMsg];
     });
 
     currentSessionChats.update((chats) => {

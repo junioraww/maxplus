@@ -4,7 +4,7 @@
   import { openPath } from "@tauri-apps/plugin-opener";
   import API, { currentUser, currentUserDetails } from "$lib/stores/api";
   import { getContact } from "$lib/utils/caching";
-  import { openChat } from "$lib/stores/session";
+  import Session, { openChat } from "$lib/stores/session";
   import {
     getAttachText, getSystemText
   } from "$lib/utils/attachs";
@@ -14,6 +14,7 @@
   import Reactions from "$components/ChatWindow/Reactions.svelte";
   import Attachments from "$components/ChatWindow/Attachments.svelte";
   import InlineKeyboard from "$components/ChatWindow/InlineKeyboard.svelte";
+  import StickerMedia from "$components/ChatWindow/Stickers/StickerMedia.svelte";
 
   const dispatch = createEventDispatcher();
 
@@ -94,6 +95,8 @@
     !isSystem;
 
   $: inlineKeyboardAttach = msg.attaches?.find(x => x._type === "INLINE_KEYBOARD");
+  $: stickerAttach = msg.attaches?.find(x => x._type === "STICKER");
+  $: isStickerOnly = stickerAttach && (!lines || lines.length === 0 || (lines.length === 1 && !lines[0]?.trim())) && (!msg.attaches || msg.attaches.length === 1) && !linkedMsg;
 </script>
 
 <svelte:window bind:innerWidth={innerWidth} />
@@ -103,19 +106,75 @@
   class:is-me={isMe}
   class:is-system={isSystem}
   class:is-deleted={msg.deleted}
+  class:is-sticker={isStickerOnly}
   class:inactive={/* todo optimize */
   dropoutActiveAt && dropoutActiveAt?.msg?.id !== msg.id}
 >
   <div class="indent">
     {#if showAvatar}
-      <Avatar size={32} contactId={msg.sender} style="chat" />
+      <button
+        type="button"
+        class="avatar-msg-btn"
+        on:click|stopPropagation={() => {
+          if (msg.sender) {
+            $Session.profile = { userId: Number(msg.sender) };
+          }
+        }}
+      >
+        <Avatar size={32} contactId={msg.sender} style="chat" />
+      </button>
     {/if}
   </div>
 
   <div class="message-bubble-container">
-    <div class={"message-bubble " + (column ? "column" : "row")}>
-    <div class="direction">
-      <div class="text">
+    {#if isStickerOnly}
+      <div class="message-bubble sticker-bubble">
+        <div class="sticker-wrapper" on:click|stopPropagation={() => dispatch("openStickerPack", { sticker: stickerAttach })}>
+          <StickerMedia
+            url={stickerAttach.baseUrl || stickerAttach.url}
+            lottieUrl={stickerAttach.lottieUrl}
+            size={160}
+            autoplay={true}
+            loop={true}
+          />
+          <div class="sticker-floating-meta">
+            <span class="timestamp"
+              >{new Date(msg.time).toLocaleTimeString([], {
+                hour: "2-digit",
+                minute: "2-digit",
+              })}</span
+            >
+            {#if isMe && !isSystem}
+              <div class="status-ticks">
+                {#if isSending}
+                  <svg class="status-icon is-sending" viewBox="0 0 16 16">
+                    <circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" stroke-width="1.6" />
+                    <polyline points="8,4.5 8,8 10.5,9.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
+                  </svg>
+                {:else if isRead}
+                  <svg class="status-icon is-read" viewBox="0 0 20 12">
+                    <path fill="currentColor" d="M9.5 10.5L5 6l1.4-1.4L9.5 7.7 17.6 0l1.4 1.4z" />
+                    <path fill="currentColor" d="M4.5 10.5L0 6l1.4-1.4L4.5 7.7 7.5 4.7 8.9 6.1z" />
+                  </svg>
+                {:else}
+                  <svg class="status-icon is-sent" viewBox="0 0 16 12">
+                    <path fill="currentColor" d="M5.5 10.5L1 6l1.4-1.4L5.5 7.7 13.6 0l1.4 1.4z" />
+                  </svg>
+                {/if}
+              </div>
+            {/if}
+          </div>
+        </div>
+        {#if msg.reactionInfo?.totalCount}
+          <div class="sticker-reactions">
+            <Reactions info={msg.reactionInfo} {isMe} />
+          </div>
+        {/if}
+      </div>
+    {:else}
+      <div class={"message-bubble " + (column ? "column" : "row")}>
+      <div class="direction">
+        <div class="text">
         {#if linkedMsg}
           {#if linkedType === "FORWARD"}
             <div class="forward-block">
@@ -224,22 +283,18 @@
           {#if isMe && !isSystem}
             <div class="status-ticks">
               {#if isSending}
-                <svg class="status-icon is-sending" viewBox="0 0 17 13">
-                  <path
-                    d="M6 12.025L0 6L1.5 4.5L6 9.52502L15.05 0L16.45 1.425L6 12.025Z"
-                  />
+                <svg class="status-icon is-sending" viewBox="0 0 16 16">
+                  <circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" stroke-width="1.6" />
+                  <polyline points="8,4.5 8,8 10.5,9.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
                 </svg>
               {:else if isRead}
-                <svg class="status-icon is-read" viewBox="0 0 23 13">
-                  <path
-                    d="M11 12.025L5 6L6.5 4.5L11 9.52502L20.05 0L21.45 1.425L11 12.025ZM4.9999 12.025L0 7L1.5 5.50002L4.9999 9.5L14.375 0.025L15.8 1.425L4.9999 12.025Z"
-                  />
+                <svg class="status-icon is-read" viewBox="0 0 20 12">
+                  <path fill="currentColor" d="M9.5 10.5L5 6l1.4-1.4L9.5 7.7 17.6 0l1.4 1.4z" />
+                  <path fill="currentColor" d="M4.5 10.5L0 6l1.4-1.4L4.5 7.7 7.5 4.7 8.9 6.1z" />
                 </svg>
               {:else}
-                <svg class="status-icon is-sent" viewBox="0 0 23 13">
-                  <path
-                    d="M11 12.025L5 6L6.5 4.5L11 9.52502L20.05 0L21.45 1.425L11 12.025ZM4.9999 12.025L0 7L1.5 5.50002L4.9999 9.5L14.375 0.025L15.8 1.425L4.9999 12.025Z"
-                  />
+                <svg class="status-icon is-sent" viewBox="0 0 16 12">
+                  <path fill="currentColor" d="M5.5 10.5L1 6l1.4-1.4L5.5 7.7 13.6 0l1.4 1.4z" />
                 </svg>
               {/if}
               {#if decoded}
@@ -251,6 +306,7 @@
       </div>
     </div>
   </div>
+  {/if}
 
   {#if inlineKeyboardAttach}
     <InlineKeyboard {chat} {msg} attach={inlineKeyboardAttach} />
@@ -562,20 +618,31 @@
     width: 14px;
     height: 10px;
     top: 1px;
-    fill: #8e8e93;
+    fill: currentColor;
+    color: #8e8e93;
   }
 
   .status-icon.is-sending {
-    width: 10px;
-    fill: #8e8e93;
+    width: 12px;
+    height: 12px;
+    color: #8e8e93;
+    stroke: currentColor;
+    fill: none;
+    top: 0;
   }
 
   .status-icon.is-sent {
-    fill: #8e8e93;
+    width: 13px;
+    height: 10px;
+    color: #8e8e93;
+    fill: currentColor;
   }
 
   .status-icon.is-read {
-    fill: #34b7f1;
+    width: 16px;
+    height: 10px;
+    color: #34b7f1;
+    fill: currentColor;
   }
 
   .obf-type {
@@ -619,17 +686,100 @@
     animation: pulseHighlight 1.2s ease-out forwards;
   }
 
-  /*.spinner {
-    width: 16px;
-    height: 16px;
-    border: 2px solid rgba(255,255,255,0.3);
-    border-top: 2px solid white;
-    border-radius: 50%;
-    animation: spin 0.8s linear infinite;
+  .message-row.is-sticker .message-bubble-container {
+    background: transparent !important;
   }
 
-  @keyframes spin {
-    from { transform: rotate(0deg); }
-    to { transform: rotate(360deg); }
-  }*/
+  .sticker-bubble {
+    background: transparent !important;
+    box-shadow: none !important;
+    border: none !important;
+    padding: 0 !important;
+    position: relative;
+    cursor: pointer;
+    overflow: visible !important;
+  }
+
+  .sticker-wrapper {
+    position: relative;
+    display: inline-flex;
+    border-radius: 16px;
+    overflow: hidden;
+    transition: transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+
+  .sticker-wrapper:hover {
+    transform: scale(1.03);
+  }
+
+  .sticker-wrapper:active {
+    transform: scale(0.97);
+  }
+
+  .sticker-floating-meta {
+    position: absolute;
+    bottom: 6px;
+    right: 6px;
+    background: rgba(0, 0, 0, 0.45);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    border-radius: 12px;
+    padding: 2px 8px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    pointer-events: none;
+  }
+
+  .sticker-floating-meta .timestamp {
+    color: rgba(255, 255, 255, 0.85);
+    font-size: 11px;
+    font-weight: 500;
+  }
+
+  .sticker-floating-meta .status-ticks svg {
+    width: 13px;
+    height: 10px;
+    fill: currentColor;
+    color: rgba(255, 255, 255, 0.85);
+  }
+
+  .sticker-floating-meta .status-ticks svg.is-sending {
+    width: 12px;
+    height: 12px;
+    stroke: currentColor;
+    fill: none;
+  }
+
+  .sticker-floating-meta .status-ticks svg.is-read {
+    width: 16px;
+    color: #34b7f1;
+    fill: currentColor;
+  }
+
+  .sticker-reactions {
+    margin-top: 4px;
+  }
+
+  .avatar-msg-btn {
+    background: none;
+    border: none;
+    padding: 0;
+    margin: 0;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    transition: transform 0.15s ease, opacity 0.15s ease;
+  }
+
+  .avatar-msg-btn:hover {
+    opacity: 0.85;
+    transform: scale(1.06);
+  }
+
+  .avatar-msg-btn:active {
+    transform: scale(0.95);
+  }
 </style>

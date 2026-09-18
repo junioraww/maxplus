@@ -12,7 +12,7 @@
     getAttachText,
     getSystemText,
   } from "$lib/utils/attachs";
-  import {
+  import Session, {
     openChat,
     get as sessionGet
   } from "$lib/stores/session";
@@ -135,12 +135,29 @@
   on:click={handleClick}
   on:contextmenu|preventDefault={() => dispatch("longpress", chat)}
 >
-  <Avatar
-    {chat}
-    contactId={peerId}
-    {selectionMode}
-    {isSelected}
-  />
+  <div
+    class="avatar-click-area"
+    on:click|stopPropagation={() => {
+      if (selectionMode) {
+        handleClick();
+        return;
+      }
+      if (chat.id === 0) {
+        $Session.profile = { userId: $currentUser };
+      } else if (chat.type === "DIALOG") {
+        $Session.profile = { userId: peerId };
+      } else {
+        $Session.profile = { chatId: chat.id };
+      }
+    }}
+  >
+    <Avatar
+      {chat}
+      contactId={peerId}
+      {selectionMode}
+      {isSelected}
+    />
+  </div>
 
   <div class="content">
     <div class="row top">
@@ -310,5 +327,16 @@
     margin-right: 2px;
     display: inline-block;
     vertical-align: -1px;
+  }
+
+  .avatar-click-area {
+    cursor: pointer;
+    flex-shrink: 0;
+    border-radius: 50%;
+    transition: opacity 0.15s ease;
+  }
+
+  .avatar-click-area:hover {
+    opacity: 0.88;
   }
 </style>
