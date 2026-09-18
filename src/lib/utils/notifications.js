@@ -17,8 +17,9 @@ import {
   getFallbackAvatarLocalPath
 } from "$lib/utils/images";
 import Session from "$lib/stores/session";
-import API, { currentSessionChats } from "$lib/stores/api";
+import API, { currentSessionChats, currentUser } from "$lib/stores/api";
 import { getCurrentAccount } from "$lib/stores/accounts";
+import { getContactDirect } from "$lib/stores/contacts";
 import { getMessagePreview } from "$lib/utils/text";
 
 export const MESSAGES_CHANNEL_ID = 'MESSAGES_CHANNEL_ID';
@@ -140,14 +141,47 @@ export async function newMessage(chatId, chat, contact, message) {
   if (get(Session).openedChats?.some(idx => String(idx) === String(chatId))) return;
 
   const chatInfo = resolvedChat || {};
-  const title = chatInfo.title || contact?.names?.[0]?.name || "Новое сообщение";
-  const bodyText = typeof message === 'string' ? message : (getMessagePreview(message) || message?.text || "Новое сообщение");
+  let contactObj = contact;
+  if (contactObj && typeof contactObj.subscribe === "function") {
+    contactObj = get(contactObj);
+  }
+
+  const myId = Number(get(currentUser));
+  let peerId = null;
+  if (chatInfo.type === "DIALOG") {
+    if (chatInfo.participants && Object.keys(chatInfo.participants).length > 0) {
+      const other = Object.keys(chatInfo.participants).find(id => String(id) !== String(myId));
+      if (other) peerId = Number(other);
+    }
+    if (!peerId && myId && chatId) {
+      try {
+        peerId = Number(BigInt(chatId) ^ BigInt(myId));
+      } catch (_) {}
+    }
+  }
+
+  if (!contactObj && (peerId || message?.sender)) {
+    try {
+      contactObj = await getContactDirect(peerId || message.sender);
+    } catch (_) {}
+  }
+
+  const senderContactName = contactObj?.names?.[0]?.name;
+  let title = chatInfo.title || senderContactName || "Новое сообщение";
+  let senderName = senderContactName || title;
+
+  if (chatInfo.type === "DIALOG") {
+    title = senderContactName || chatInfo.title || "Новое сообщение";
+    senderName = title;
+  }
+
+  const bodyText = typeof message === "string" ? message : (getMessagePreview(message) || message?.text || "Новое сообщение");
 
   if (!currentOs) currentOs = type();
 
-  if (currentOs === 'android') {
+  if (currentOs === "android") {
     try {
-      const senderId = message?.sender ? String(message.sender) : (contact?.id ? String(contact.id) : "");
+      const senderId = message?.sender ? String(message.sender) : (peerId ? String(peerId) : (contactObj?.id ? String(contactObj.id) : ""));
       let account = 0;
       try {
         const acc = await getCurrentAccount();
@@ -158,7 +192,8 @@ export async function newMessage(chatId, chat, contact, message) {
         title,
         text: bodyText,
         senderId,
-        account
+        account,
+        senderName
       });
       return;
     } catch (e) {

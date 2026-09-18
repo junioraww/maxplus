@@ -36,6 +36,7 @@ import {
 } from "$lib/stores/messages";
 import {
   getContact,
+  getContactDirect,
   updateContact,
   getCachedContacts,
 } from "$lib/stores/contacts";
@@ -117,22 +118,32 @@ export default class MobileApi extends BaseAPI {
             const info = chat.getInfo();
             if (info?.type === "DIALOG") {
               let peerId = null;
-              try {
-                peerId = Number(BigInt(message.chatId) ^ BigInt(myId));
-              } catch {}
-              const contact = peerId ? await getContactAsync(peerId) : null;
+              if (info?.participants && Object.keys(info.participants).length > 0) {
+                const other = Object.keys(info.participants).find(id => String(id) !== String(myId));
+                if (other) peerId = Number(other);
+              }
+              if (!peerId && myId && message.chatId) {
+                try {
+                  peerId = Number(BigInt(message.chatId) ^ BigInt(myId));
+                } catch {}
+              }
+              const contact = peerId ? await getContactDirect(peerId) : null;
 
               newMessage(
                 message.chatId,
                 chat,
-                contact ? get(contact) : null,
+                contact,
                 message
               );
             } else {
+              let contact = null;
+              if (message.sender) {
+                contact = await getContactDirect(message.sender);
+              }
               newMessage(
                 message.chatId,
                 chat,
-                null,
+                contact,
                 message
               );
             }
@@ -370,6 +381,7 @@ export default class MobileApi extends BaseAPI {
       if (profile.contact) {
         await setAccountContact(account.id, profile.contact);
         currentUserDetails.set(profile.contact);
+        currentUser.set(profile.contact.id);
       }
 
       const cachedContacts = await getCachedContacts();

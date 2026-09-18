@@ -38,19 +38,27 @@ class NotificationHelper(private val ctx: Context) {
 
     @JvmStatic
     fun showNotificationDirect(chatId: Long, title: String, text: String, senderId: String, account: Long) {
+      showNotificationDirect(chatId, title, text, senderId, account, "")
+    }
+
+    @JvmStatic
+    fun showNotificationDirect(chatId: Long, title: String, text: String, senderId: String, account: Long, senderName: String) {
       val ctx = MainActivity.appContext ?: MainActivity.instance?.applicationContext
       if (ctx == null) {
         Log.e("MaxPlus", "showNotificationDirect: no Context available")
         return
       }
-      Log.d("MaxPlus", "showNotificationDirect: chatId=$chatId, title=$title, account=$account")
-      val data = mapOf(
+      Log.d("MaxPlus", "showNotificationDirect: chatId=$chatId, title=$title, senderName=$senderName, account=$account")
+      val data = mutableMapOf(
         "mc" to chatId.toString(),
         "title" to title,
         "msg" to text,
         "suid" to senderId,
         "c" to account.toString()
       )
+      if (senderName.isNotEmpty()) {
+        data["userName"] = senderName
+      }
       Thread {
         try {
           NotificationHelper(ctx).handleIncomingMessage(data)
@@ -168,6 +176,22 @@ class NotificationHelper(private val ctx: Context) {
     render(chatId, title, account, history, alertOnce = true)
   }
   
+  fun handleOutgoingReply(chatId: Long, replyText: String) {
+    val (title, account) = loadMeta(chatId)
+    val history = appendHistory(
+      chatId,
+      Hist(
+        text = replyText,
+        senderId = "me",
+        senderName = "Вы",
+        ts = System.currentTimeMillis(),
+        mid = "",
+        deleted = false
+      )
+    )
+    render(chatId, title, account, history, alertOnce = true)
+  }
+
   private fun render(chatId: Long, title: String, account: Long, history: List<Hist>, alertOnce: Boolean) {
     if (history.isEmpty()) return
     val notifId = (chatId and 0x7fffffff).toInt()
@@ -182,13 +206,18 @@ class NotificationHelper(private val ctx: Context) {
       .setGroupConversation(isGroup)
     
     for (h in history) {
-      val senderIdLong = h.senderId.toLongOrNull() ?: chatId
-      val avatarBitmap = AvatarHelper.getAvatar(ctx, senderIdLong, h.senderName, null, account)
-      val person = Person.Builder()
-        .setName(h.senderName)
-        .setKey(h.senderId)
-        .setIcon(IconCompat.createWithBitmap(avatarBitmap))
-        .build()
+      val isMe = h.senderId == "me" || h.senderName == "Вы"
+      val person = if (isMe) {
+        null
+      } else {
+        val senderIdLong = h.senderId.toLongOrNull() ?: chatId
+        val avatarBitmap = AvatarHelper.getAvatar(ctx, senderIdLong, h.senderName, null, account)
+        Person.Builder()
+          .setName(h.senderName)
+          .setKey(h.senderId)
+          .setIcon(IconCompat.createWithBitmap(avatarBitmap))
+          .build()
+      }
       
       val textFormatted = if (h.deleted) {
         SpannableStringBuilder("Удалено: ${h.text}").apply {
@@ -206,6 +235,7 @@ class NotificationHelper(private val ctx: Context) {
     
     val launchIntent = ctx.packageManager.getLaunchIntentForPackage(ctx.packageName) ?: Intent(ctx, MainActivity::class.java)
     launchIntent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+    launchIntent.putExtra("chatId", chatId)
     val contentIntent = PendingIntent.getActivity(
       ctx,
       notifId,

@@ -368,6 +368,40 @@ pub extern "system" fn Java_org_meowkie_max_NotificationHelper_isChatMutedNative
     res.unwrap_or(false)
 }
 
+use tauri::Emitter;
+
+static GLOBAL_APP_HANDLE: std::sync::OnceLock<tauri::AppHandle> = std::sync::OnceLock::new();
+static PENDING_OPEN_CHAT: std::sync::atomic::AtomicI64 = std::sync::atomic::AtomicI64::new(0);
+
+pub fn set_app_handle(handle: tauri::AppHandle) {
+    let _ = GLOBAL_APP_HANDLE.set(handle);
+}
+
+#[tauri::command]
+pub fn check_pending_open_chat() -> Option<i64> {
+    let chat_id = PENDING_OPEN_CHAT.swap(0, std::sync::atomic::Ordering::SeqCst);
+    if chat_id != 0 {
+        Some(chat_id)
+    } else {
+        None
+    }
+}
+
+#[cfg(target_os = "android")]
+#[no_mangle]
+pub extern "system" fn Java_org_meowkie_max_MainActivity_notifyChatClickedNative<'local>(
+    _unowned_env: EnvUnowned<'local>,
+    _this: JObject<'local>,
+    chat_id: i64,
+) {
+    let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        PENDING_OPEN_CHAT.store(chat_id, std::sync::atomic::Ordering::SeqCst);
+        if let Some(app) = GLOBAL_APP_HANDLE.get() {
+            let _ = app.emit("open_chat", chat_id);
+        }
+    }));
+}
+
 #[cfg(target_os = "android")]
 static GLOBAL_JVM: std::sync::OnceLock<jni::JavaVM> = std::sync::OnceLock::new();
 #[cfg(target_os = "android")]
@@ -402,15 +436,17 @@ pub async fn show_notification(
     text: String,
     sender_id: String,
     account: i64,
+    sender_name: Option<String>,
 ) -> Result<(), String> {
     #[cfg(target_os = "android")]
     {
+        let sender_name_val = sender_name.unwrap_or_else(|| title.clone());
         android_log(
             3,
             "MaxPlusJNI",
             &format!(
-                "show_notification: chat_id={}, title={}, sender_id={}, account={}",
-                chat_id, title, sender_id, account
+                "show_notification: chat_id={}, title={}, sender_id={}, account={}, sender_name={}",
+                chat_id, title, sender_id, account, sender_name_val
             ),
         );
         if let (Some(vm), Some(global_class)) = (GLOBAL_JVM.get(), GLOBAL_NOTIFICATION_CLASS.get()) {
@@ -418,21 +454,24 @@ pub async fn show_notification(
                 let j_title = env.new_string(&title)?;
                 let j_text = env.new_string(&text)?;
                 let j_sender = env.new_string(&sender_id)?;
+                let j_sender_name = env.new_string(&sender_name_val)?;
 
                 let j_title_obj = JObject::from(j_title);
                 let j_text_obj = JObject::from(j_text);
                 let j_sender_obj = JObject::from(j_sender);
+                let j_sender_name_obj = JObject::from(j_sender_name);
 
                 env.call_static_method(
                     global_class,
                     jni_str!("showNotificationDirect"),
-                    jni_sig!("(JLjava/lang/String;Ljava/lang/String;Ljava/lang/String;J)V"),
+                    jni_sig!("(JLjava/lang/String;Ljava/lang/String;Ljava/lang/String;JLjava/lang/String;)V"),
                     &[
                         jni::objects::JValue::Long(chat_id),
                         jni::objects::JValue::Object(&j_title_obj),
                         jni::objects::JValue::Object(&j_text_obj),
                         jni::objects::JValue::Object(&j_sender_obj),
                         jni::objects::JValue::Long(account),
+                        jni::objects::JValue::Object(&j_sender_name_obj),
                     ],
                 )?;
                 Ok(())

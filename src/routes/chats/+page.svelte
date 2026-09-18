@@ -199,10 +199,16 @@
 
       const isDialog = chat.type === "DIALOG" || chat.type === "private";
       let peerId = null;
-      if (isDialog && chat.id && myId) {
-        try {
-          peerId = Number(BigInt(chat.id) ^ BigInt(myId));
-        } catch {}
+      if (isDialog) {
+        if (chat.participants && Object.keys(chat.participants).length > 0) {
+          const other = Object.keys(chat.participants).find(id => String(id) !== String(myId));
+          if (other) peerId = Number(other);
+        }
+        if (!peerId && chat.id && myId) {
+          try {
+            peerId = Number(BigInt(chat.id) ^ BigInt(myId));
+          } catch {}
+        }
       }
 
       const cachedContact = peerId ? get(getContact(peerId)) : null;

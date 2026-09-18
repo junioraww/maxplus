@@ -54,7 +54,7 @@ class ReplyReceiver : BroadcastReceiver() {
           val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
           
           if (success) {
-            notificationManager.cancel(notificationId)
+            NotificationHelper(context).handleOutgoingReply(chatId, replyText)
           } else {
             val errorBuilder = NotificationCompat.Builder(context, NotificationHelper.CHANNEL_ID)
               .setSmallIcon(android.R.drawable.ic_dialog_alert)

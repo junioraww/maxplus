@@ -32,8 +32,21 @@
 
   $: unread = $currentSessionChats?.find((x) => x.id === chat?.id)?.newMessages ?? chat?.newMessages ?? 0;
 
-  $: peerId =
-    chat.type === "DIALOG" ? $currentUser ^ chat.id : null;
+  $: peerId = (() => {
+    if (chat.type !== "DIALOG") return null;
+    if (chat.participants && Object.keys(chat.participants).length > 0) {
+      const other = Object.keys(chat.participants).find(id => String(id) !== String($currentUser));
+      if (other) return Number(other);
+    }
+    if ($currentUser != null && chat.id != null) {
+      try {
+        return Number(BigInt(chat.id) ^ BigInt($currentUser));
+      } catch (e) {
+        return null;
+      }
+    }
+    return null;
+  })();
 
   $: contact = getContact(peerId);
 
