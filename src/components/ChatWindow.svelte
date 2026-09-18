@@ -45,6 +45,7 @@
   import Input from "$components/ChatWindow/input/Input.svelte";
   import BotStart from "$components/ChatWindow/BotStart.svelte";
   import Avatar from "$components/main/Avatar.svelte";
+  import StickerPackModal from "$components/ChatWindow/Stickers/StickerPackModal.svelte";
   import { clearChatNotification } from "$lib/utils/notifications.js";
 
   export let chatId;
@@ -61,6 +62,16 @@
   let settingsShown = false;
   let dropoutActiveAt;
   let attachesDropout = null;
+  let activeStickerPack = null;
+  let inputComponent;
+
+  function handleOpenStickerPack(sticker) {
+    if (!sticker) return;
+    activeStickerPack = {
+      stickerId: sticker.stickerId ? Number(sticker.stickerId) : null,
+      setId: (sticker.setId || sticker.stickerPackId) ? Number(sticker.setId || sticker.stickerPackId) : null,
+    };
+  }
 
   let loading = false;
   let all_loaded = false;
@@ -103,7 +114,7 @@
 
   $: unreadBadgeCount = Math.max(0, Number($currentSessionChats?.find((x) => x.id === chat?.id)?.newMessages ?? chat?.newMessages ?? 0));
 
-  $: chatSettings = getChatSettings(chat?.id || chatId);
+  $: chatSettings = getChatSettings(chat?.id ?? chatId);
 
   const onBack = getContext("onBack");
 
@@ -113,7 +124,7 @@
       savePositionTimeout = null;
     }
     saveCurrentPosition();
-    closeChat(chat?.id || chatId);
+    closeChat(chat?.id ?? chatId);
   }
 
   let touchStartX = 0;
@@ -536,10 +547,10 @@
     backward = BATCH_SIZE,
     forward = 0
   ) => {
-    const currentChatId = chat?.id || chatId;
+    const currentChatId = chat?.id ?? chatId;
     if (loading) return;
     if (all_loaded && !isInitial) return;
-    if (!currentChatId) return;
+    if (currentChatId == null) return;
 
     loading = true;
 
@@ -618,9 +629,9 @@
   };
 
   const loadNewer = async () => {
-    const currentChatId = chat?.id || chatId;
+    const currentChatId = chat?.id ?? chatId;
     if (loadingNewer || all_loaded_newer) return;
-    if (!currentChatId) return;
+    if (currentChatId == null) return;
 
     loadingNewer = true;
 
@@ -640,16 +651,17 @@
         all_loaded_newer = true;
       }
 
-      if (newerMessages && newerMessages.length > 0) {
-        await mergeMessages(newerMessages, true);
-        await tick();
-        await updateVisibleMessages();
-      }
+      await mergeMessages(
+        newerMessages,
+        false
+      );
     } catch (e) {
       console.error(e);
     } finally {
       loadingNewer = false;
     }
+
+    restoreScrollAnchor();
   };
 
   let scrollTimeout = null;
@@ -663,8 +675,8 @@
   let lastReadMessageId = null;
 
   function saveCurrentPosition() {
-    const targetChatId = chat?.id || chatId;
-    if (!scrollElement || !targetChatId || isInitialMounting || isProgrammaticScroll) return;
+    const targetChatId = chat?.id ?? chatId;
+    if (!scrollElement || targetChatId == null || isInitialMounting || isProgrammaticScroll) return;
     if (scrollElement.clientHeight <= 0 || scrollElement.scrollHeight <= 0) return;
     if (scrollElement.scrollHeight <= scrollElement.clientHeight + 20) return;
     const distanceFromBottom =
@@ -905,7 +917,7 @@
   $: showBotStart = isBot && chat?.type === "DIALOG" && allRendered && $messages.length === 0;
 
   async function handleBotStart() {
-    if (botStarting || !chat?.id) return;
+    if (botStarting || chat?.id == null) return;
     botStarting = true;
     try {
       const response = await $API.sendBotStart(chat.id, "");
@@ -937,7 +949,7 @@
     isInitialMounting = true;
     isProgrammaticScroll = true;
 
-    const targetChatId = chat?.id || chatId;
+    const targetChatId = chat?.id ?? chatId;
     clearChatNotification(targetChatId);
 
     setupResizeObserver();
@@ -1342,12 +1354,16 @@
       <div
         class="row"
         on:click={() => {
-          if (chat.type === "DIALOG")
+          if (chat.id === 0) {
+            $Session.profile = { userId: $currentUser };
+          } else if (chat.type === "DIALOG") {
             $Session.profile = { userId: avatarUserId };
-          else $Session.profile = { chatId: chat.id };
+          } else {
+            $Session.profile = { chatId: chat.id };
+          }
         }}
       >
-        <Avatar size={42} {chat} contactId={avatarUserId} style="margin-left: -8px"/>
+        <Avatar size={42} {chat} contactId={avatarUserId} style="margin-left: -8px; cursor: pointer;"/>
         <div class="info">
           <a class="title">{title}</a>
           <a class="presence"><Signature {chat} contactId={avatarUserId} /></a>
@@ -1421,6 +1437,7 @@
               decoded={$decodedMessages[msg.id]}
               on:openMedia={(e) => openMedia(e.detail.attach)}
               on:openChat={() => openChat(chat.id, msg.id)}
+              on:openStickerPack={(e) => handleOpenStickerPack(e.detail.sticker)}
             />
           </div>
         {:else}
@@ -1440,6 +1457,18 @@
     on:close={handleDropout}
   />
 
+  {#if activeStickerPack}
+    <StickerPackModal
+      setId={activeStickerPack.setId}
+      stickerId={activeStickerPack.stickerId}
+      on:close={() => (activeStickerPack = null)}
+      on:select={(e) => {
+        activeStickerPack = null;
+        inputComponent?.sendSticker?.(e.detail.sticker);
+      }}
+    />
+  {/if}
+
   {#if showBotStart}
     <BotStart
       {botInfo}
@@ -1450,6 +1479,7 @@
     />
   {:else if chat.type !== "CHANNEL" && $chatSettings}
     <Input
+      bind:this={inputComponent}
       bind:replyTo
       bind:attachesDropout
       {scrollElement}

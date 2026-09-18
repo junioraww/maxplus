@@ -6,7 +6,9 @@ pub async fn download(
     url: String,
     name: String,
 ) -> Result<String, String> {
-    let bytes = reqwest::get(&url)
+    let client = rumax::create_http_client();
+    let bytes = client.get(&url)
+        .send()
         .await
         .map_err(|e| e.to_string())?
         .bytes()
@@ -244,4 +246,82 @@ pub async fn write_file_bytes(path: String, content: Vec<u8>) -> Result<(), Stri
     tokio::fs::write(path, content)
         .await
         .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn cache_url(
+    app: tauri::AppHandle,
+    account: Option<u64>,
+    src: String,
+) -> Result<String, String> {
+    let acc = account.unwrap_or(0);
+    if let Ok(Some(existing_path)) = crate::stores::get_cached_file(app.clone(), acc, src.clone()) {
+        if std::path::Path::new(&existing_path).exists() {
+            return Ok(existing_path);
+        }
+    }
+
+    let client = rumax::shared_http_client();
+    let resp = client.get(&src)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    if !resp.status().is_success() {
+        return Err(format!("HTTP {}", resp.status()));
+    }
+
+    let bytes = resp.bytes().await.map_err(|e| e.to_string())?.to_vec();
+    crate::stores::set_cached_file(app, acc, src, bytes)
+}
+
+#[tauri::command]
+pub async fn fetch_url_text(url: String) -> Result<String, String> {
+    let client = rumax::shared_http_client();
+    let resp = client.get(&url)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    if !resp.status().is_success() {
+        return Err(format!("HTTP {}", resp.status()));
+    }
+
+    resp.text().await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn fetch_url_bytes(url: String) -> Result<Vec<u8>, String> {
+    let client = rumax::shared_http_client();
+    let resp = client.get(&url)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    if !resp.status().is_success() {
+        return Err(format!("HTTP {}", resp.status()));
+    }
+
+    let bytes = resp.bytes().await.map_err(|e| e.to_string())?;
+    Ok(bytes.to_vec())
+}
+
+#[tauri::command]
+pub async fn download_to_path(url: String, path: String) -> Result<(), String> {
+    let client = rumax::shared_http_client();
+    let resp = client.get(&url)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    if !resp.status().is_success() {
+        return Err(format!("HTTP {}", resp.status()));
+    }
+
+    let bytes = resp.bytes().await.map_err(|e| e.to_string())?;
+    tokio::fs::write(path, bytes)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    Ok(())
 }
