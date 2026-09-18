@@ -30,7 +30,8 @@
 
   const dispatch = createEventDispatcher();
 
-  $: unread = $currentSessionChats?.find((x) => x.id === chat?.id)?.newMessages ?? chat?.newMessages ?? 0;
+  $: currentChat = $currentSessionChats?.find((x) => String(x.id) === String(chat?.id)) || chat;
+  $: unread = currentChat?.newMessages ?? 0;
 
   $: peerId = (() => {
     if (chat.type !== "DIALOG") return null;
@@ -50,7 +51,7 @@
 
   $: contact = getContact(peerId);
 
-  $: muted = isChatMuted(chat);
+  $: muted = isChatMuted(currentChat);
   $: isBot = $contact?.options?.includes("BOT") || chat?.options?.BOT === true || chat?.options?.IS_BOT === true;
 
   $: title =
@@ -60,8 +61,15 @@
 
   $: cachedChat = getChat(chat.id);
   $: receivedMessage = cachedChat.receivedMessage;
-  $: shownMessage = replace?.message || $receivedMessage || chat.lastMessage;
-  $: attaches = getAttachText(chat, shownMessage);
+  $: shownMessage = (() => {
+    if (replace?.message) return replace.message;
+    const fromChat = currentChat?.lastMessage || chat?.lastMessage;
+    const fromReceived = $receivedMessage;
+    if (!fromReceived) return fromChat;
+    if (!fromChat) return fromReceived;
+    return (fromReceived.time || 0) >= (fromChat.time || 0) ? fromReceived : fromChat;
+  })();
+  $: attaches = getAttachText(currentChat || chat, shownMessage);
 
   $: timeDisplay = (() => {
     if (!shownMessage?.time) return "";
@@ -82,7 +90,7 @@
     return msgDate.toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit" });
   })();
 
-  $: isMe = shownMessage?.sender === $currentUser;
+  $: isMe = String(shownMessage?.sender) === String($currentUser) || String(shownMessage?.from) === String($currentUser);
   $: isRead = shownMessage?.read;
 
   let pressTimer;

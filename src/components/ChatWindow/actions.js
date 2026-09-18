@@ -1,8 +1,11 @@
 import API, {
   currentUser,
+  currentSessionChats,
+  currentRealChats,
 } from "$lib/stores/api";
 import {
   getChat,
+  saveChats,
 } from "$lib/stores/messages";
 import { xorEncrypt } from "$lib/crypto/symmetric";
 import { deflate, obfuscate, detectObfuscation } from "$lib/crypto/messages";
@@ -101,19 +104,66 @@ export async function sendMessage(
     const msgId = message.id;
     message.status = 1;
 
-    const chatCache = getChat(chat.id);
-    chatCache.receivedMessage.set(message);
-    chatCache.updateMessages([ message ]);
+    const fullMsg = {
+      ...displayMessageEarlyEntry,
+      ...message,
+      id: msgId || id,
+      text: message.text || text,
+      sender: message.sender || get(currentUser),
+      chatId: chat.id,
+      time: message.time || Date.now(),
+      status: 1,
+    };
 
-    /*messages.update((msgs) => {
-      const element = msgs.indexOf(displayMessageEarlyEntry);
-      if (element !== -1) msgs.splice(element, 1);
-      return msgs;
-    });*/
+    const chatCache = getChat(chat.id);
+    chatCache.receivedMessage.set(fullMsg);
+    chatCache.updateMessages([ fullMsg ]);
 
     messages.update(msgs => {
-      return [ ...msgs, message ];
-    })
+      const idx = msgs.findIndex(m => String(m.id) === String(fullMsg.id));
+      if (idx !== -1) {
+        msgs[idx] = fullMsg;
+        return msgs;
+      }
+      return [ ...msgs, fullMsg ];
+    });
+
+    currentSessionChats.update((chats) => {
+      if (!chats) return chats;
+      const index = chats.findIndex((c) => String(c.id) === String(chat.id));
+      const now = fullMsg.time || Date.now();
+      if (index === -1) {
+        const newChat = {
+          ...chat,
+          id: chat.id,
+          lastMessage: fullMsg,
+          lastEventTime: now,
+          newMessages: 0,
+        };
+        return [newChat, ...chats];
+      }
+      const updatedChat = {
+        ...chats[index],
+        lastMessage: fullMsg,
+        lastEventTime: now,
+      };
+      const next = [...chats];
+      next.splice(index, 1);
+      return [updatedChat, ...next];
+    });
+
+    currentRealChats.update((ids) => {
+      return ids?.some(id => String(id) === String(chat.id)) ? ids : [chat.id, ...(ids || [])];
+    });
+
+    saveChats([
+      {
+        ...chat,
+        id: chat.id,
+        lastMessage: fullMsg,
+        lastEventTime: fullMsg.time || Date.now(),
+      }
+    ]).catch(() => {});
 
     if (ass) {
       const entry = keys.messages.find(

@@ -116,6 +116,177 @@
     closeChat(chat?.id || chatId);
   }
 
+  let touchStartX = 0;
+  let touchStartY = 0;
+  let currentDragX = 0;
+  let isSwipingChat = false;
+  let isScrollingChat = false;
+  let isClosingBySwipe = false;
+  let chatWindowWidth = 0;
+
+  function handleTouchStart(e) {
+    if (e.touches.length !== 1) return;
+    if (viewerOpen || settingsShown || dropoutActiveAt || isClosingBySwipe) return;
+
+    touchStartX = e.touches[0].clientX;
+    touchStartY = e.touches[0].clientY;
+    currentDragX = 0;
+    isSwipingChat = false;
+    isScrollingChat = false;
+    chatWindowWidth = window.innerWidth;
+  }
+
+  function handleTouchMove(e) {
+    if (isScrollingChat || isClosingBySwipe) return;
+    if (e.touches.length !== 1) return;
+
+    const currentX = e.touches[0].clientX;
+    const currentY = e.touches[0].clientY;
+    const diffX = currentX - touchStartX;
+    const diffY = currentY - touchStartY;
+
+    if (!isSwipingChat) {
+      if (Math.abs(diffX) > 10 || Math.abs(diffY) > 10) {
+        if (diffX > 10 && diffX > Math.abs(diffY) * 1.1) {
+          isSwipingChat = true;
+        } else {
+          isScrollingChat = true;
+          return;
+        }
+      } else {
+        return;
+      }
+    }
+
+    if (isSwipingChat) {
+      if (diffX > 0) {
+        currentDragX = diffX;
+      } else {
+        currentDragX = 0;
+      }
+      if (e.cancelable) e.preventDefault();
+    }
+  }
+
+  function handleTouchEnd() {
+    if (!isSwipingChat || isClosingBySwipe) {
+      isSwipingChat = false;
+      isScrollingChat = false;
+      return;
+    }
+
+    const threshold = chatWindowWidth * 0.3;
+    if (currentDragX >= threshold) {
+      isClosingBySwipe = true;
+      isSwipingChat = false;
+      currentDragX = chatWindowWidth;
+      setTimeout(() => {
+        handleCloseChat();
+      }, 220);
+    } else {
+      isSwipingChat = false;
+      currentDragX = 0;
+      isScrollingChat = false;
+    }
+  }
+
+  function handleTouchCancel() {
+    if (!isClosingBySwipe) {
+      isSwipingChat = false;
+      isScrollingChat = false;
+      currentDragX = 0;
+    }
+  }
+
+  let isMouseDragging = false;
+  let mouseStartX = 0;
+  let mouseStartY = 0;
+  let mouseDragEngaged = false;
+
+  function handleMouseDown(e) {
+    if (isClosingBySwipe || viewerOpen || settingsShown || dropoutActiveAt) return;
+    if (e.button !== 0) return;
+    if (e.target.closest("input, textarea, button, a, .icon-button, .scroll-down-container")) return;
+
+    const isHeader = Boolean(e.target.closest("header"));
+    const isLeftEdge = e.clientX <= 60;
+    const isMessage = Boolean(e.target.closest(".message, .bubble"));
+
+    if (!isHeader && !isLeftEdge && isMessage) {
+      return;
+    }
+
+    mouseStartX = e.clientX;
+    mouseStartY = e.clientY;
+    isMouseDragging = true;
+    mouseDragEngaged = false;
+    chatWindowWidth = window.innerWidth;
+
+    const onMouseMove = (moveEv) => {
+      if (!isMouseDragging) return;
+      const diffX = moveEv.clientX - mouseStartX;
+      const diffY = moveEv.clientY - mouseStartY;
+
+      if (!mouseDragEngaged) {
+        if (diffX > 10 && diffX > Math.abs(diffY) * 1.1) {
+          mouseDragEngaged = true;
+          isSwipingChat = true;
+          document.body.style.userSelect = "none";
+          document.body.style.cursor = "grabbing";
+        } else if (Math.abs(diffY) > 10) {
+          isMouseDragging = false;
+          window.removeEventListener("mousemove", onMouseMove);
+          window.removeEventListener("mouseup", onMouseUp);
+          return;
+        }
+      }
+
+      if (mouseDragEngaged) {
+        currentDragX = Math.max(0, diffX);
+        moveEv.preventDefault();
+      }
+    };
+
+    const onMouseUp = () => {
+      window.removeEventListener("mousemove", onMouseMove);
+      window.removeEventListener("mouseup", onMouseUp);
+      document.body.style.userSelect = "";
+      document.body.style.cursor = "";
+
+      if (!isMouseDragging) return;
+      isMouseDragging = false;
+
+      if (!mouseDragEngaged) {
+        isSwipingChat = false;
+        currentDragX = 0;
+        return;
+      }
+
+      const threshold = chatWindowWidth * 0.3;
+      if (currentDragX >= threshold) {
+        isClosingBySwipe = true;
+        isSwipingChat = false;
+        currentDragX = chatWindowWidth;
+        setTimeout(() => {
+          handleCloseChat();
+        }, 220);
+      } else {
+        isSwipingChat = false;
+        currentDragX = 0;
+      }
+    };
+
+    window.addEventListener("mousemove", onMouseMove);
+    window.addEventListener("mouseup", onMouseUp);
+  }
+
+  $: swipeStyle = (() => {
+    if (currentDragX > 0) {
+      return `transform: translate3d(${currentDragX}px, 0, 0);`;
+    }
+    return "";
+  })();
+
   onBack["chat"] = () => {
     handleCloseChat();
     delete onBack["chat"];
@@ -393,8 +564,11 @@
 
         if (error) throw new Error(error);
 
+        const map = new Map(
+          serverMessages.map(m => [String(m.id), m])
+        );
         messages.set(
-          serverMessages.sort(
+          [...map.values()].sort(
             (a,b) => a.time - b.time
           )
         );
@@ -639,7 +813,7 @@
   $: chatCache = getChat(chat.id);
 
   $: chatCache.receivedMessage.subscribe(async (message) => {
-    if (!message || message.chatId !== chat?.id) return;
+    if (!message || String(message.chatId) !== String(chat?.id)) return;
 
     let wasAtBottom = false;
     if (scrollElement) {
@@ -653,7 +827,7 @@
 
     if (all_loaded_newer) {
       messages.update((_messages) => {
-        const idx = _messages.findIndex((x) => x.id === message.id);
+        const idx = _messages.findIndex((x) => String(x.id) === String(message.id));
         if (idx !== -1) _messages[idx] = message;
         else return [..._messages, message];
         return _messages;
@@ -869,6 +1043,7 @@
   let startY, startScrollTop;
 
   function startDrag(e) {
+    if (isClosingBySwipe || isSwipingChat || currentDragX > 0) return;
     clickStartPos = { x: e.clientX, y: e.clientY };
     if (e.button !== 0) return;
     startY = e.pageY;
@@ -885,6 +1060,10 @@
   }
 
   async function mouseUp(e) {
+    if (currentDragX > 10 || isClosingBySwipe) {
+      stopDrag();
+      return;
+    }
     const clicked =
       !isDragging ||
       Math.abs(startScrollTop - scrollElement.scrollTop) < 5;
@@ -925,6 +1104,10 @@
   }
 
   function moveDrag(e) {
+    if (isSwipingChat || currentDragX > 0 || isClosingBySwipe) {
+      isDragging = false;
+      return;
+    }
     if (startScrollTop && !isDragging) isDragging = true;
     if (!isDragging) return;
     e.preventDefault();
@@ -934,6 +1117,12 @@
   }
 
   function handleClick(e) {
+    if (currentDragX > 10 || isClosingBySwipe) {
+      e.stopPropagation();
+      e.preventDefault();
+      return;
+    }
+
     if (!justOpenedDropout && dropoutActiveAt && !e.target.closest(".message-actions-dropout")) {
       dropoutActiveAt = null;
       delete onBack.dropout;
@@ -1119,7 +1308,18 @@
 
 </script>
 
-<div class="chat-window" on:click|capture={handleClick}>
+<div
+  class="chat-window"
+  class:swiping={isSwipingChat}
+  class:animating={!isSwipingChat && (currentDragX > 0 || isClosingBySwipe)}
+  style={swipeStyle}
+  on:click|capture={handleClick}
+  on:mousedown={handleMouseDown}
+  on:touchstart={handleTouchStart}
+  on:touchmove={handleTouchMove}
+  on:touchend={handleTouchEnd}
+  on:touchcancel={handleTouchCancel}
+>
   <Bubbles />
 
   {#if viewerOpen}
@@ -1304,6 +1504,16 @@
     background-color: #161621;
     padding-top: env(safe-area-inset-top, 10px);
     padding-bottom: env(safe-area-inset-bottom, 20px);
+    box-shadow: -4px 0 24px rgba(0, 0, 0, 0.45);
+    will-change: transform;
+  }
+
+  .chat-window.animating {
+    transition: transform 0.22s cubic-bezier(0.25, 1, 0.5, 1);
+  }
+
+  .chat-window.swiping {
+    transition: none;
   }
 
   header {

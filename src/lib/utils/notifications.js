@@ -60,13 +60,11 @@ export function toggleClientNotifications() {
 
 export function isChatMuted(chat) {
   if (!chat) return false;
-  let chatObj = typeof chat.getInfo === "function" ? chat.getInfo() : chat;
-  if (typeof chat === "number" || typeof chat === "string" || (!chatObj?.dontDisturbUntil && chatObj?.id !== undefined)) {
-    const id = typeof chat === "number" || typeof chat === "string" ? Number(chat) : Number(chatObj?.id);
-    if (!isNaN(id)) {
-      const found = get(currentSessionChats)?.find(c => c.id === id);
-      if (found) chatObj = found;
-    }
+  let chatObj = typeof chat === "object" && chat !== null && typeof chat.getInfo === "function" ? chat.getInfo() : chat;
+  const id = typeof chat === "number" || typeof chat === "string" ? Number(chat) : Number(chatObj?.id);
+  if (!isNaN(id)) {
+    const found = get(currentSessionChats)?.find(c => c.id === id);
+    if (found) chatObj = found;
   }
   if (!chatObj) return false;
   const ddu = chatObj.dontDisturbUntil;

@@ -171,7 +171,7 @@
 
   async function muteNotifications() {
     if (!selectedChats.size) return;
-    const allSelected = Array.from(selectedChats).map(id => $currentSessionChats?.find(c => c.id === id)).filter(Boolean);
+    const allSelected = Array.from(selectedChats).map(id => $currentSessionChats?.find(c => String(c.id) === String(id))).filter(Boolean);
     const anyMuted = allSelected.some(c => isChatMuted(c));
     const targetDDU = anyMuted ? 0 : -1;
     for (const chat of allSelected) {
@@ -259,15 +259,17 @@
   function getChatsForFolder(folder, allChats, realChats, myId, contactIds) {
     if (!allChats || !realChats || !folder) return [];
     const chats = realChats
-      .map((id) => allChats.find((x) => x.id === id))
+      .map((id) => allChats.find((x) => String(x.id) === String(id)))
       .filter(Boolean);
 
     const filtered = chats.filter((chat) =>
       chatMatchesFolder(chat, folder, myId, contactIds)
     );
-    return filtered.sort(
-      (a, b) => (b.lastEventTime || 0) - (a.lastEventTime || 0)
-    );
+    return filtered.sort((a, b) => {
+      const timeA = a.lastEventTime || a.lastMessage?.time || 0;
+      const timeB = b.lastEventTime || b.lastMessage?.time || 0;
+      return timeB - timeA;
+    });
   }
 
   $: contactIdSet = new Set($currentRealContacts || []);
@@ -599,7 +601,7 @@
       {#if searchMsg.length}
         {#each searchMsg as result, i (result.chatId ? `${result.chatId}_${result.message?.id ?? i}` : i)}
           {@const chat = $currentSessionChats.find(
-            (x) => x.id === result.chatId,
+            (x) => String(x.id) === String(result.chatId),
           )}
           {#if chat && result.message}
             {@const hl = result.highlights[0]}
@@ -633,7 +635,7 @@
             {#if $currentlySyncing && i === activeFolderIndex && (!$currentSessionChats || $currentSessionChats.length === 0)}
               <div class="state">Загрузка...</div>
             {:else}
-              {@const chats = getFolderChats(folder)}
+              {@const chats = getChatsForFolder(folder, $currentSessionChats, $currentRealChats, $currentUser, contactIdSet)}
 
               {#if chats.length === 0}
                 <div class="state">Нет чатов</div>
