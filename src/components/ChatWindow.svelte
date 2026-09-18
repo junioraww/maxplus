@@ -1090,7 +1090,9 @@
       e.target.closest(".reply-block") ||
       e.target.closest(".forward-block") ||
       e.target.closest(".inline-keyboard") ||
-      e.target.closest(".inline-btn")
+      e.target.closest(".inline-btn") ||
+      e.target.closest(".avatar-msg-btn") ||
+      e.target.closest(".avatar-wrapper")
     ) return;
 
     if (clicked) {
@@ -1152,7 +1154,9 @@
       e.target.closest(".reply-block") ||
       e.target.closest(".forward-block") ||
       e.target.closest(".inline-keyboard") ||
-      e.target.closest(".inline-btn")
+      e.target.closest(".inline-btn") ||
+      e.target.closest(".avatar-msg-btn") ||
+      e.target.closest(".avatar-wrapper")
     ) return;
 
     const dx = Math.abs(e.clientX - clickStartPos.x);
@@ -1612,8 +1616,11 @@
     border: none;
     color: white;
     cursor: pointer;
-    height: 452px;
-    width: 48px;
+    height: 40px;
+    width: 40px;
+    padding: 0;
+    border-radius: 50%;
+    flex-shrink: 0;
     display: flex;
     align-items: center;
     justify-content: center;

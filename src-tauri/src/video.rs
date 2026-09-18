@@ -121,7 +121,7 @@ pub fn start_video_proxy() {
     thread::spawn(move || {
         let mut builder = reqwest::blocking::Client::builder()
             .connect_timeout(Duration::from_secs(10));
-        if let Ok(cert) = reqwest::Certificate::from_pem(rumax::MINCIFRY_ROOT_CA) {
+        if let Ok(cert) = reqwest::Certificate::from_pem(rumax::MINTSIFRY_ROOT_CA) {
             builder = builder.add_root_certificate(cert);
         }
         let client = Arc::new(builder.build().unwrap_or_default());

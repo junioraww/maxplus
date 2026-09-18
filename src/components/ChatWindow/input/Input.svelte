@@ -538,10 +538,10 @@
     background: none;
     border: none;
     cursor: pointer;
-    width: 40px;
-    height: 40px;
-    margin-right: 4px;
-    margin-bottom: 4px;
+    width: 38px;
+    height: 38px;
+    margin-right: 5px;
+    margin-bottom: 5px;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -572,34 +572,40 @@
     border: none;
     cursor: pointer;
     padding: 0;
-    width: 32px;
-    height: 32px;
+    width: 38px;
+    height: 38px;
+    margin-right: 2px;
+    margin-bottom: 5px;
     display: flex;
     align-items: center;
     justify-content: center;
     opacity: 0.65;
-    color: #aaa;
-    margin-bottom: 6px;
-    border-radius: 8px;
+    color: #edf0f5;
+    border-radius: 50%;
     flex-shrink: 0;
-    transition: opacity 0.2s, color 0.15s, background-color 0.15s;
+    transition: all 0.18s ease;
   }
 
   .bot-cmd-btn:hover {
     opacity: 1;
-    color: #248bfe;
-    background: rgba(36, 139, 254, 0.1);
+    color: #fff;
+    background: rgba(255, 255, 255, 0.08);
   }
 
   .bot-cmd-btn.active {
     opacity: 1;
     color: #248bfe;
+    background: rgba(36, 139, 254, 0.2);
+    filter: brightness(1.2);
   }
 
   .slash-icon {
-    font-size: 18px;
-    font-weight: 700;
-    font-family: monospace, sans-serif;
+    font-size: 19px;
+    font-weight: 600;
+    line-height: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
   }
 
   .attaches-dropout {
