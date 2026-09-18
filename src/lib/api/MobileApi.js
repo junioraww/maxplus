@@ -64,6 +64,41 @@ function sortFolders(folders, order) {
   });
 }
 
+export function parseApiError(err) {
+  if (!err) return "Неизвестная ошибка";
+  if (typeof err === "string") {
+    try {
+      const parsed = JSON.parse(err);
+      return parsed.localizedMessage || parsed.message || parsed.error || err;
+    } catch {
+      return err;
+    }
+  }
+  if (err.localizedMessage) return err.localizedMessage;
+  if (err.message) return err.message;
+  if (err.error) {
+    if (typeof err.error === "string") {
+      if (err.error === "WRONG_PASSWORD") return "Неверный пароль";
+      return err.error;
+    }
+    return JSON.stringify(err.error);
+  }
+  if (err.text) {
+    try {
+      const parsed = JSON.parse(err.text);
+      if (parsed.localizedMessage) return parsed.localizedMessage;
+      if (parsed.message) return parsed.message;
+      if (parsed.error) {
+        if (parsed.error === "WRONG_PASSWORD") return "Неверный пароль";
+        return parsed.error;
+      }
+    } catch {
+      return err.text;
+    }
+  }
+  return "Ошибка аутентификации";
+}
+
 export default class MobileApi extends BaseAPI {
   resolve_sync = null;
   /* TODO throw an error if sync takes > 10 sec?
@@ -256,24 +291,34 @@ export default class MobileApi extends BaseAPI {
     };
   }
 
+  async checkCode(code) {
+    return await invoke("check_code", { code });
+  }
+
+  async submitRegister(first_name, last_name = null) {
+    const response = await invoke("register", { first_name });
+    return this._handleLoginResponse(response);
+  }
+
   async login(code) {
     const checkCode = await invoke("check_code", { code });
-
+    if (checkCode?.passwordChallenge) {
+      return checkCode;
+    }
     return this._handleLoginResponse(checkCode);
   }
 
   async register(code, first_name) {
     const checkCode = await invoke("check_code", { code });
-
+    if (checkCode?.passwordChallenge) {
+      return checkCode;
+    }
     let register;
-
-    if (checkCode.profile) {
-      register = checkCode; // already registered
+    if (checkCode?.profile) {
+      register = checkCode;
     } else {
-      console.log("Not registered. Sending request...");
       register = await invoke("register", { first_name });
     }
-
     return this._handleLoginResponse(register);
   }
 
@@ -287,19 +332,28 @@ export default class MobileApi extends BaseAPI {
 
     await setCurrentAccount(accountEntry.id);
 
-    const contact = payload.profile.contact;
-    await setAccountContact(accountEntry.id, contact);
-    currentUser.set(contact.id);
+    const contact = payload.profile?.contact || payload.contact;
+    if (contact) {
+      await setAccountContact(accountEntry.id, contact);
+      currentUserDetails.set(contact);
+      currentUser.set(contact.id);
+    } else {
+      const accountId = payload.accountId || payload.account_id || payload.profile?.id || payload.account?.id || payload.userId || payload.user_id;
+      currentUser.set(accountId || accountEntry.id);
+    }
 
     return {
       success: true,
       payload
-    }
+    };
+  }
+
+  async handleLoginResponse(payload) {
+    return this._handleLoginResponse(payload);
   }
 
   async checkPassword(password, trackId) {
     const response = await invoke("check_password", { password, trackId });
-
     return this._handleLoginResponse(response);
   }
 

@@ -1,6 +1,5 @@
 <script>
   import { getContext, onDestroy } from "svelte";
-  import { invoke } from "@tauri-apps/api/core";
   import { goto } from "$app/navigation";
   import {
     set as sessionSet,
@@ -10,47 +9,81 @@
   import BackButton from "$components/main/auth/BackButton.svelte";
   import ActionButton from "$components/main/auth/ActionButton.svelte";
 
-  import API, {
-    currentUser
-  } from "$lib/stores/api";
+  import API from "$lib/stores/api";
+  import { parseApiError } from "$lib/api/MobileApi.js";
 
   let error = "";
   let code = "";
+  let loading = false;
   const name = sessionGet("name");
   const state = !name ? "login" : "register";
 
   const onBack = getContext("onBack");
-  onBack["sms"] = () => {
-    goto("/auth/" + state);
-  };
-  onDestroy(() => delete onBack["sms"]);
+  if (onBack) {
+    onBack["sms"] = () => {
+      goto("/auth/" + state);
+    };
+  }
+  onDestroy(() => {
+    if (onBack) delete onBack["sms"];
+  });
 
   async function verify() {
-    console.log("Проверяем код:", code);
+    if (loading) return;
+    if (code.length !== 6) {
+      error = "Длина кода - 6 символов!";
+      return;
+    }
 
-    let response;
+    error = "";
+    loading = true;
 
-    if (state === "login") {
-      if (code.length !== 6) {
-        error = "Длина кода - 6 символов!";
+    try {
+      const response = await $API.checkCode(code);
+
+      if (response?.error) {
+        error = parseApiError(response);
+        loading = false;
         return;
       }
-      response = await $API.login(code);
-    }
-    else response = await $API.register(code, name);
 
-    if (response.error) {
-      error = response.localizedMessage;
-      return;
-    }
+      if (response?.passwordChallenge) {
+        sessionSet("challenge", response.passwordChallenge);
+        loading = false;
+        goto("/auth/password");
+        return;
+      }
 
-    if (response.passwordChallenge) {
-      sessionSet("challenge", response.passwordChallenge);
-      goto("/auth/password");
-      return;
-    }
+      const isRegistration = response?.tokenAttrs?.REGISTER && !response?.tokenAttrs?.LOGIN;
+      if (isRegistration) {
+        if (!name) {
+          sessionSet("registerToken", response?.tokenAttrs?.REGISTER?.token);
+          loading = false;
+          goto("/auth/register");
+          return;
+        }
+        const regResponse = await $API.submitRegister(name);
+        await $API.handleLoginResponse(regResponse);
+        loading = false;
+        goto("/");
+        return;
+      }
 
-    goto("/");
+      await $API.handleLoginResponse(response);
+      loading = false;
+      goto("/");
+    } catch (e) {
+      loading = false;
+      error = parseApiError(e);
+    }
+  }
+
+  function onInput(e) {
+    error = "";
+    code = e.target.value.trim();
+    if (code.length === 6) {
+      verify();
+    }
   }
 </script>
 
@@ -61,7 +94,10 @@
     <div class="error">{error}</div>
     <input
       type="text"
-      bind:value={code}
+      inputmode="numeric"
+      maxlength="6"
+      value={code}
+      on:input={onInput}
       placeholder="Код подтверждения"
       required
     />
@@ -107,12 +143,14 @@
     background-color: #26262e;
     color: #ccc;
     outline: none;
+    text-align: center;
+    letter-spacing: 2px;
   }
 
   .error {
-    color: red;
-    font-size: 15px;
-    height: 22px;
+    color: #ff5555;
+    font-size: 14px;
+    min-height: 20px;
     word-break: break-all;
   }
 </style>
