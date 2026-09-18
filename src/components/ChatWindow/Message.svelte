@@ -91,7 +91,7 @@
 
   $: showAvatar =
     chat.type !== "CHANNEL" &&
-    (!isMe || innerWidth > 600) &&
+    (!isMe || innerWidth > 960) &&
     !isSystem;
 
   $: inlineKeyboardAttach = msg.attaches?.find(x => x._type === "INLINE_KEYBOARD");
@@ -115,6 +115,9 @@
       <button
         type="button"
         class="avatar-msg-btn"
+        on:mousedown|stopPropagation
+        on:mouseup|stopPropagation
+        on:touchend|stopPropagation
         on:click|stopPropagation={() => {
           if (msg.sender) {
             $Session.profile = { userId: Number(msg.sender) };
@@ -447,7 +450,7 @@
     display: none;
   }
 
-  @media screen and (min-width: 601px) {
+  @media screen and (min-width: 961px) {
     .message-row.is-me:not(.is-system) {
       justify-content: flex-start;
       flex-direction: row;

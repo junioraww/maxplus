@@ -101,10 +101,21 @@ jobs:
           find src-tauri/gen/android/buildSrc/src/main/java/ru/oneme/app -name "*.kt" -type f -exec sed -i 's|org.meowkie.max|ru.oneme.app|g' {} + 2>/dev/null || true
 
       - name: Init Tauri Android
-        run: bunx tauri android init
+        run: |
+          bunx tauri android init
+          rm -f src-tauri/gen/android/app/src/main/res/drawable/ic_launcher_background.xml
+          rm -f src-tauri/gen/android/app/src/main/res/values/ic_launcher_background.xml
+          rm -rf src-tauri/gen/android/buildSrc/src/main/java/org/meowkie 2>/dev/null || true
+          rm -rf src-tauri/gen/android/app/src/main/java/org/meowkie 2>/dev/null || true
 
-      - name: Generate Icons
-        run: bun run tauri icon static/favicon.png
+      - name: Generate Bundle Icons
+        run: |
+          bun run tauri icon static/favicon.png
+          git checkout -- src-tauri/gen/android/app/src/main/res/mipmap-anydpi-v26/
+          rm -f src-tauri/gen/android/app/src/main/res/drawable/ic_launcher_background.xml
+          rm -f src-tauri/gen/android/app/src/main/res/values/ic_launcher_background.xml
+          rm -rf src-tauri/gen/android/buildSrc/src/main/java/org/meowkie 2>/dev/null || true
+          rm -rf src-tauri/gen/android/app/src/main/java/org/meowkie 2>/dev/null || true
 
       - name: Patch Cargo.toml for CI
         run: |
