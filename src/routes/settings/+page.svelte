@@ -74,22 +74,22 @@ import { goto } from "$app/navigation";
       {
         icon: "profile.svg",
         text: "Настроить профиль",
-        action: () => goto("/settings/profile?from=/?card=3"),
+        action: () => goto("/settings/profile?from=/?card=settings"),
       },
       {
         icon: "bell.svg",
         text: "Уведомления",
-        action: () => goto("/settings/notifications?from=/?card=3"),
+        action: () => goto("/settings/notifications?from=/?card=settings"),
       },
       {
         icon: "crypto.svg",
         text: "Защита пин-кодом",
-        action: () => goto("/settings/lock?from=/?card=3"),
+        action: () => goto("/settings/lock?from=/?card=settings"),
       },
       {
         icon: "book.svg",
         text: "Словарь шифрования",
-        action: () => goto("/settings/e2e/dictionary?from=/?card=3"),
+        action: () => goto("/settings/e2e/dictionary?from=/?card=settings"),
       },
     ],
     [
@@ -108,7 +108,7 @@ import { goto } from "$app/navigation";
       {
         icon: "logs.svg",
         text: "Сетевые логи",
-        action: () => goto("/settings/logs?from=/?card=3"),
+        action: () => goto("/settings/logs?from=/?card=settings"),
       },
       {
         icon: "debug.svg",
@@ -118,14 +118,14 @@ import { goto } from "$app/navigation";
       {
         icon: "about.svg",
         text: "О приложении",
-        action: () => goto("/settings/about?from=/?card=3"),
+        action: () => goto("/settings/about?from=/?card=settings"),
       },
     ],
     [
       {
         icon: "devices.png",
         text: "Активные сессии",
-        action: () => goto("/settings/sessions?from=/?card=3"),
+        action: () => goto("/settings/sessions?from=/?card=settings"),
       },
       {
         icon: "logout.svg",

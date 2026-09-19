@@ -1,5 +1,6 @@
 <script>
-  import { fly } from "svelte/transition";
+  import { fly, fade } from "svelte/transition";
+  import { cubicOut } from "svelte/easing";
   import { onDestroy } from 'svelte';
   import { get } from 'svelte/store';
 
@@ -740,8 +741,16 @@
   {/if}
 
   {#if showContactsModal}
-    <div class="contacts-modal-backdrop" on:click={() => (showContactsModal = false)}>
-      <div class="contacts-modal-panel" on:click|stopPropagation>
+    <div
+      class="contacts-modal-backdrop"
+      transition:fade={{ duration: 220 }}
+      on:click={() => (showContactsModal = false)}
+    >
+      <div
+        class="contacts-modal-panel"
+        transition:fly={{ y: 320, duration: 280, easing: cubicOut }}
+        on:click|stopPropagation
+      >
         <div class="contacts-modal-top">
           <span class="contacts-modal-title">Контакты</span>
           <button class="contacts-modal-close" on:click={() => (showContactsModal = false)}>
@@ -752,7 +761,7 @@
           </button>
         </div>
         <div class="contacts-modal-body">
-          <Contacts />
+          <Contacts hideHeader={true} />
         </div>
       </div>
     </div>
