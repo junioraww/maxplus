@@ -4,6 +4,7 @@
   import { get } from 'svelte/store';
 
   import ChatItem from "$components/chats/ChatItem.svelte";
+  import FolderChatList from "$components/chats/FolderChatList.svelte";
   import FolderTabs from "$components/chats/FolderTabs.svelte";
   import AddContactBtn from "$components/main/AddContactBtn.svelte";
   import Search from "$components/main/Search.svelte";
@@ -83,9 +84,22 @@
   let activeFolderIndex = 0;
   $: if (!activeFolder && localFolders.length > 0)
     activeFolder = localFolders[0];
-  $: shouldRender = (index) => index === activeFolderIndex;
+  let renderedFolderIndices = new Set([0]);
+  $: {
+    let changed = false;
+    for (const idx of [activeFolderIndex - 1, activeFolderIndex, activeFolderIndex + 1]) {
+      if (idx >= 0 && idx < localFolders.length && !renderedFolderIndices.has(idx)) {
+        renderedFolderIndices.add(idx);
+        changed = true;
+      }
+    }
+    if (changed) {
+      renderedFolderIndices = renderedFolderIndices;
+    }
+  }
+  $: shouldRender = (index) => renderedFolderIndices.has(index);
 
-  let selectedChats = new Set(); // ID выбранных чатов
+  let selectedChats = new Set();
   let isSelectionMode = false;
 
   $: isSelectionMode = selectedChats.size > 0;
@@ -256,11 +270,19 @@
     return true;
   }
 
+  $: contactIdSet = new Set($currentRealContacts || []);
+
   function getChatsForFolder(folder, allChats, realChats, myId, contactIds) {
     if (!allChats || !realChats || !folder) return [];
-    const chats = realChats
-      .map((id) => allChats.find((x) => String(x.id) === String(id)))
-      .filter(Boolean);
+    const chatMap = new Map();
+    for (let i = 0; i < allChats.length; i++) {
+      chatMap.set(String(allChats[i].id), allChats[i]);
+    }
+    const chats = [];
+    for (let i = 0; i < realChats.length; i++) {
+      const found = chatMap.get(String(realChats[i]));
+      if (found) chats.push(found);
+    }
 
     const filtered = chats.filter((chat) =>
       chatMatchesFolder(chat, folder, myId, contactIds)
@@ -272,16 +294,35 @@
     });
   }
 
-  $: contactIdSet = new Set($currentRealContacts || []);
+  $: chatsByFolderId = (() => {
+    if (!$currentSessionChats || !$currentRealChats || !localFolders.length) return new Map();
+    const chatMap = new Map();
+    for (let i = 0; i < $currentSessionChats.length; i++) {
+      chatMap.set(String($currentSessionChats[i].id), $currentSessionChats[i]);
+    }
+    const chats = [];
+    for (let i = 0; i < $currentRealChats.length; i++) {
+      const found = chatMap.get(String($currentRealChats[i]));
+      if (found) chats.push(found);
+    }
+    const result = new Map();
+    for (let f = 0; f < localFolders.length; f++) {
+      const folder = localFolders[f];
+      const filtered = chats.filter((chat) =>
+        chatMatchesFolder(chat, folder, $currentUser, contactIdSet)
+      );
+      filtered.sort((a, b) => {
+        const timeA = a.lastEventTime || a.lastMessage?.time || 0;
+        const timeB = b.lastEventTime || b.lastMessage?.time || 0;
+        return timeB - timeA;
+      });
+      result.set(folder.id, filtered);
+    }
+    return result;
+  })();
 
   function getFolderChats(folder) {
-    return getChatsForFolder(
-      folder,
-      $currentSessionChats,
-      $currentRealChats,
-      $currentUser,
-      contactIdSet
-    );
+    return chatsByFolderId.get(folder?.id) || [];
   }
 
   async function handleSaveFolder(folderData) {
@@ -324,17 +365,36 @@
   let scrollContainer;
   let isProgrammaticScroll = false;
   let scrollTimeout;
+  let scrollRafId = null;
+  let scrollEndTimeout = null;
 
   function handleScroll(e) {
     if (isProgrammaticScroll) return;
     const container = e.target;
     const width = container.clientWidth;
     if (width === 0) return;
-    const newIndex = Math.round(container.scrollLeft / width);
-    if (newIndex !== activeFolderIndex && localFolders[newIndex]) {
-      activeFolderIndex = newIndex;
-      activeFolder = localFolders[newIndex];
-    }
+
+    if (scrollRafId) cancelAnimationFrame(scrollRafId);
+    scrollRafId = requestAnimationFrame(() => {
+      const rawIndex = container.scrollLeft / width;
+      const newIndex = Math.round(rawIndex);
+      if (Math.abs(rawIndex - newIndex) < 0.05 && newIndex !== activeFolderIndex && localFolders[newIndex]) {
+        activeFolderIndex = newIndex;
+        activeFolder = localFolders[newIndex];
+      }
+    });
+
+    clearTimeout(scrollEndTimeout);
+    scrollEndTimeout = setTimeout(() => {
+      if (!scrollContainer) return;
+      const currentWidth = scrollContainer.clientWidth;
+      if (currentWidth === 0) return;
+      const finalIndex = Math.round(scrollContainer.scrollLeft / currentWidth);
+      if (finalIndex !== activeFolderIndex && localFolders[finalIndex]) {
+        activeFolderIndex = finalIndex;
+        activeFolder = localFolders[finalIndex];
+      }
+    }, 60);
   }
 
   function onFolderTabClick(event) {
@@ -438,6 +498,9 @@
   }
 
   onDestroy(() => {
+    if (scrollRafId) cancelAnimationFrame(scrollRafId);
+    clearTimeout(scrollEndTimeout);
+    clearTimeout(scrollTimeout);
     unsubscribers.forEach(unsub => unsub());
     unsubscribers.clear();
   });
@@ -631,28 +694,16 @@
     {#each localFolders as folder, i (folder.id)}
       <div class="folder-page">
         {#if shouldRender(i)}
-          <div class="chat-list-inner">
-            {#if $currentlySyncing && i === activeFolderIndex && (!$currentSessionChats || $currentSessionChats.length === 0)}
-              <div class="state">Загрузка...</div>
-            {:else}
-              {@const chats = getChatsForFolder(folder, $currentSessionChats, $currentRealChats, $currentUser, contactIdSet)}
-
-              {#if chats.length === 0}
-                <div class="state">Нет чатов</div>
-              {:else}
-                {#each chats as chat (chat.id)}
-                  <ChatItem
-                    {chat}
-                    selectionMode={isSelectionMode}
-                    isSelected={selectedChats.has(chat.id)}
-                    on:open={() => openChat(chat.id)}
-                    on:longpress={handleChatLongPress}
-                    on:toggle={handleChatToggle}
-                  />
-                {/each}
-              {/if}
-            {/if}
-          </div>
+          {@const folderChats = chatsByFolderId.get(folder.id) || []}
+          <FolderChatList
+            chats={folderChats}
+            {isSelectionMode}
+            {selectedChats}
+            loading={$currentlySyncing && i === activeFolderIndex && (!$currentSessionChats || $currentSessionChats.length === 0)}
+            on:open={(e) => e.detail && openChat(e.detail)}
+            on:longpress={handleChatLongPress}
+            on:toggle={handleChatToggle}
+          />
         {:else}
           <div class="placeholder"></div>
         {/if}
@@ -765,6 +816,9 @@
     scrollbar-width: none;
     -ms-overflow-style: none;
     cursor: grab;
+    will-change: scroll-position;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: contain;
   }
   .swipe-container::-webkit-scrollbar {
     display: none;
@@ -779,6 +833,9 @@
     display: flex;
     flex-direction: column;
     overflow: hidden;
+    contain: layout paint style;
+    content-visibility: auto;
+    contain-intrinsic-size: 100% 600px;
   }
 
   hr {

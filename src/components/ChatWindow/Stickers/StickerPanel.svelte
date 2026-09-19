@@ -27,6 +27,8 @@
   let searchTimer = null;
   let selectedSetId = null;
   let contentScrollEl;
+  let emojiScrollEl;
+  let selectedEmojiCat = "smileys";
 
   let showCatalogModal = false;
   let showPackModal = false;
@@ -37,56 +39,157 @@
 
   const emojiCategories = [
     {
+      id: "smileys",
       name: "Смайлы и эмоции",
+      icon: "😀",
       emojis: [
-        "😀", "😃", "😄", "😁", "😆", "😅", "🤣", "😂", "🙂", "🙃", "😉", "😊",
-        "😇", "🥰", "😍", "🤩", "😘", "😗", "😚", "😋", "😛", "😜", "🤪", "😝",
-        "🤑", "🤗", "🤭", "🤫", "🤔", "🤐", "🤨", "😐", "😑", "😶", "😏", "😒",
-        "🙄", "😬", "🤥", "😌", "😔", "😪", "🤤", "😴", "😷", "🤒", "🤕", "🤢",
-        "🤮", "🤧", "🥵", "🥶", "🥴", "😵", "🤯", "🤠", "🥳", "🥸", "😎", "🤓",
-        "🧐", "😕", "😟", "🙁", "😮", "😯", "😲", "😳", "🥺", "😦", "😧", "😨",
-        "😰", "😥", "😢", "😭", "😱", "😖", "😣", "😞", "😓", "😩", "😫", "🥱",
-        "😤", "😡", "😠", "🤬", "😈", "👿", "💀", "☠", "💩", "🤡", "👻", "👽", "🤖"
+        "😀", "😃", "😄", "😁", "😆", "😅", "🤣", "😂", "🙂", "🙃", "🫠", "😉", "😊", "😇",
+        "🥰", "😍", "🤩", "😘", "😗", "😚", "😙", "😋", "😛", "😜", "🤪", "😝", "🤑", "🤗",
+        "🤭", "🤫", "🫢", "🫣", "🤔", "🫡", "🤐", "🤨", "😐", "😑", "😶", "🫥", "😶‍🌫️", "😏",
+        "😒", "🙄", "😬", "🤥", "🫨", "😌", "😔", "😪", "🤤", "😴", "😷", "🤒", "🤕", "🤢",
+        "🤮", "🤧", "🥵", "🥶", "🥴", "😵", "😵‍💫", "🤯", "🤠", "🥳", "🥸", "😎", "🤓", "🧐",
+        "😕", "🫤", "😟", "🙁", "☹️", "😮", "😯", "😲", "😳", "🥺", "🥹", "😦", "😧", "😨",
+        "😰", "😥", "😢", "😭", "😱", "😖", "😣", "😞", "😓", "😩", "😫", "🥱", "😤", "😡",
+        "😠", "🤬", "😈", "👿", "💀", "☠️", "💩", "🤡", "👹", "👺", "👻", "👽", "👾", "🤖",
+        "😺", "😸", "😹", "😻", "😼", "😽", "🙀", "😿", "😾", "🙈", "🙉", "🙊", "💋", "💌",
+        "💘", "💝", "💖", "💗", "💓", "💞", "💕", "💟", "❣️", "💔", "❤️‍🔥", "❤️‍🩹", "❤️", "🩷",
+        "🧡", "💛", "💚", "💙", "🩵", "💜", "🤎", "🖤", "🩶", "🤍", "💥", "💫", "💦", "💨",
+        "💬", "💭", "💤"
       ]
     },
     {
-      name: "Жесты и люди",
+      id: "people",
+      name: "Люди и тело",
+      icon: "👋",
       emojis: [
-        "👋", "🤚", "🖐", "✋", "🖖", "🫱", "🫲", "🫳", "🫴", "👌", "🤌", "🤏",
-        "✌", "🤞", "🫰", "🤟", "🤘", "🤙", "👈", "👉", "👆", "🖕", "👇", "☝",
-        "🫵", "👍", "👎", "✊", "👊", "🤛", "🤜", "👏", "🙌", "🫶", "👐", "🤲",
-        "🤝", "🙏", "✍", "💅", "🤳", "💪", "🧠", "🫀", "🫁", "🦷", "🦴", "👀",
-        "👁", "👅", "👄", "🫦"
+        "👋", "🤚", "🖐️", "✋", "🖖", "🫱", "🫲", "🫳", "🫴", "🫷", "🫸", "👌", "🤌", "🤏",
+        "✌️", "🤞", "🫰", "🤟", "🤘", "🤙", "👈", "👉", "👆", "🖕", "👇", "☝️", "🫵", "👍",
+        "👎", "✊", "👊", "🤛", "🤜", "👏", "🙌", "🫶", "👐", "🤲", "🤝", "🙏", "✍️", "💅",
+        "🤳", "💪", "🦾", "🦿", "🦵", "🦶", "👂", "🦻", "👃", "🧠", "🫀", "🫁", "🦷", "🦴",
+        "👀", "👁️", "👅", "👄", "🫦", "👶", "🧒", "👦", "👧", "🧑", "👱", "👨", "🧔", "👩",
+        "🧓", "👴", "👵", "🙍", "🙎", "🙅", "🙆", "💁", "🙋", "🧏", "🙇", "🤦", "🤷", "👮",
+        "🕵️", "💂", "👷", "🫅", "🤴", "👸", "👳", "👲", "🧕", "🤵", "👰", "🤰", "🫃", "🫄",
+        "🤱", "👼", "🎅", "🤶", "🦸", "🦹", "🧙", "🧚", "🧛", "🧜", "🧝", "🧞", "🧟", "🚶",
+        "🏃", "💃", "🕺", "🕴️", "🧖", "🧗", "🤺", "🏇", "⛷️", "🏂", "🏌️", "🏄", "🚣", "🏊",
+        "⛹️", "🏋️", "🚴", "🚵", "🤸", "🤼", "🤽", "🤾", "🤹", "🧘", "🛀", "🛌", "👭", "👫", "👬"
       ]
     },
     {
-      name: "Сердца и любовь",
-      emojis: [
-        "❤", "🩷", "🧡", "💛", "💚", "💙", "🩵", "💜", "🤎", "🖤", "🩶", "🤍",
-        "💔", "❤‍🔥", "❤‍🩹", "❣", "💕", "💞", "💓", "💗", "💖", "💘", "💝", "💟",
-        "💌", "💋", "💯", "💥", "💫", "💦", "💨", "✨", "⭐", "🌟", "🔥"
-      ]
-    },
-    {
+      id: "nature",
       name: "Животные и природа",
+      icon: "🐱",
       emojis: [
-        "🐶", "🐱", "🐭", "🐹", "🐰", "🦊", "🐻", "🐼", "🐨", "🐯", "🦁", "🐮",
-        "🐷", "🐸", "🐵", "🐔", "🐧", "🐦", "🦆", "🦅", "🦉", "🦇", "🐺", "🐗",
-        "🐴", "🦄", "🐝", "🐛", "🦋", "🐌", "🐞", "🐜", "🕷", "🐢", "🐍", "🐙",
-        "🦑", "🦐", "🦞", "🦀", "🐡", "🐠", "🐟", "🐬", "🐳", "🦈", "🐊", "🐅",
-        "🐆", "🦓", "🐘", "🦛", "🦏", "🐪", "🦒", "🦘", "🐕", "🐈", "🌸", "🌹",
-        "🌺", "🌻", "🌼", "🌲", "🌳", "🌴", "🍀", "🍁", "🍂", "🍃"
+        "🐶", "🐱", "🐭", "🐹", "🐰", "🦊", "🐻", "🐼", "🐻‍❄️", "🐨", "🐯", "🦁", "🐮", "🐷",
+        "🐽", "🐸", "🐵", "🐒", "🐔", "🐧", "🐦", "🐤", "🐣", "🐥", "🦆", "🦅", "🦉", "🦇",
+        "🐺", "🐗", "🐴", "🦄", "🐝", "🪱", "🐛", "🦋", "🐌", "🐞", "🐜", "🪰", "🪲", "🪳",
+        "🦟", "🦗", "🕷️", "🕸️", "🦂", "🐢", "🐍", "🦎", "🦖", "🦕", "🐙", "🦑", "🪼", "🦐",
+        "🦞", "🦀", "🐡", "🐠", "🐟", "🐬", "🐳", "🐋", "🦈", "🦭", "🐊", "🐅", "🐆", "🦓",
+        "🦍", "🦧", "🦣", "🐘", "🦛", "🦏", "🐪", "🐫", "🦒", "🦘", "🦬", "🐃", "🐂", "🐄",
+        "🐎", "🐖", "🐏", "🐑", "🦙", "🐐", "🦌", "🐕", "🐩", "🦮", "🐈", "🐈‍⬛", "🪶", "🐓",
+        "🦃", "🦚", "🦜", "🦢", "🦩", "🕊️", "🐇", "🦝", "🦨", "🦡", "🦫", "🦦", "🦥", "🐁",
+        "🐀", "🐿️", "🦔", "🐾", "🌵", "🎄", "🌲", "🌳", "🌴", "🪵", "🌱", "🌿", "☘️", "🍀",
+        "🎍", "🪴", "🎋", "🍃", "🍂", "🍁", "🍄", "🌾", "💐", "🌷", "🌹", "🥀", "🪻", "🪷",
+        "🌺", "🌸", "🌼", "🌻", "🌞", "🌝", "🌛", "🌜", "🌚", "🌕", "🌖", "🌗", "🌘", "🌑",
+        "🌒", "🌓", "🌔", "🌙", "🌎", "🌍", "🌏", "🪐", "💫", "⭐️", "🌟", "✨", "⚡️", "☄️",
+        "🔥", "🌪️", "🌈", "☀️", "🌤️", "⛅️", "🌥️", "☁️", "🌦️", "🌧️", "⛈️", "🌩️", "🌨️",
+        "❄️", "☃️", "⛄️", "💨", "💧", "💦", "🫧", "🌊"
       ]
     },
     {
+      id: "food",
       name: "Еда и напитки",
+      icon: "🍔",
       emojis: [
-        "🍏", "🍎", "🍐", "🍊", "🍋", "🍌", "🍉", "🍇", "🍓", "🫐", "🍒", "🍑",
-        "🥭", "🍍", "🥥", "🥝", "🍅", "🥑", "🥦", "🌽", "🥕", "🥔", "🥐", "🍞",
-        "🥖", "🥨", "🧀", "🥚", "🍳", "🥞", "🧇", "🥓", "🥩", "🍗", "🍖", "🌭",
-        "🍔", "🍟", "🍕", "🥪", "🌮", "🌯", "🥗", "🥘", "🍝", "🍜", "🍲", "🍣",
-        "🍱", "🥟", "🍦", "🍧", "🍨", "🍩", "🍪", "🎂", "🍰", "🧁", "🍫", "🍬",
-        "🍭", "🍮", "🍯", "☕", "🫖", "🍵", "🍶", "🍾", "🍷", "🍸", "🍹", "🍺"
+        "🍏", "🍎", "🍐", "🍊", "🍋", "🍌", "🍉", "🍇", "🍓", "🫐", "🍈", "🍒", "🍑", "🥭",
+        "🍍", "🥥", "🥝", "🍅", "🍆", "🥑", "pea", "🥦", "🥬", "🥒", "🌶️", "🫑", "🌽", "🥕",
+        "🫒", "🧄", "🧅", "🥔", "🍠", "🥐", "🥯", "🍞", "🥖", "🥨", "🧀", "🥚", "🍳", "🧈",
+        "🥞", "🧇", "🥓", "🥩", "🍗", "🍖", "🌭", "🍔", "🍟", "🍕", "🫓", "🥪", "🥙", "🧆",
+        "🌮", "🌯", "🫔", "🥗", "🥘", "🫕", "🥫", "🍝", "🍜", "🍲", "🍛", "🍣", "🍱", "🥟",
+        "🦪", "🍤", "🍙", "🍚", "🍘", "🍥", "🥠", "🥮", "🍢", "🍡", "🍧", "🍨", "🍦", "🥧",
+        "🧁", "🍰", "🎂", "🍮", "🍭", "🍬", "🍫", "🍿", "🍩", "🍪", "🌰", "🥜", "🍯", "🥛",
+        "🍼", "☕️", "🫖", "🍵", "🍶", "🍾", "🍷", "🍸", "🍹", "🍺", "🍻", "🥂", "🥃", "🥤",
+        "🧋", "🧃", "🧉", "🧊", "🥢", "🍽️", "🍴", "🥄", "🔪"
+      ]
+    },
+    {
+      id: "travel",
+      name: "Путешествия и места",
+      icon: "✈️",
+      emojis: [
+        "🚗", "🚕", "🚙", "🚌", "🚎", "🏎️", "🚓", "🚑", "🚒", "🚐", "🛻", "🚚", "🚛", "🚜",
+        "🛴", "🚲", "🛵", "🏍️", "🛺", "🚨", "🚔", "🚍", "🚘", "🚖", "🚡", "🚠", "🚟", "🚃",
+        "🚋", "🚞", "🚝", "🚄", "🚅", "🚈", "🚂", "🚆", "🚇", "🚊", "🚉", "✈️", "🛫", "🛬",
+        "🛩️", "💺", "🛰️", "🚀", "🛸", "🚁", "🛶", "⛵️", "🚤", "🛥️", "🛳️", "⛴️", "🚢", "⚓️",
+        "🛟", "⛽️", "🚧", "🚦", "🚥", "🚏", "🗺️", "🗿", "🗽", "🗼", "🏰", "🏯", "🏟️", "🎡",
+        "🎢", "🎠", "⛲️", "⛱️", "🏖️", "🏝️", "🏜️", "🌋", "⛰️", "🏔️", "🗻", "🏕️", "⛺️", "🛖",
+        "🏠", "🏡", "🏘️", "🏚️", "🏗️", "🏭", "🏢", "🏬", "🏣", "🏤", "🏥", "🏦", "🏨", "🏪",
+        "🏫", "🏩", "💒", "🏛️", "⛪️", "🕌", "🛕", "🕍", "⛩️", "🕋"
+      ]
+    },
+    {
+      id: "activities",
+      name: "Активности и спорт",
+      icon: "⚽",
+      emojis: [
+        "⚽️", "🏀", "🏈", "⚾️", "🥎", "🎾", "🏐", "🏉", "🥏", "🎱", "🪀", "🏓", "🏸", "🏒",
+        "🏑", "🥍", "🏏", "🪃", "🥅", "⛳️", "🪁", "🏹", "🎣", "🤿", "🥊", "🥋", "🎽", "🛹",
+        "🛼", "🛷", "⛸️", "🥌", "🎿", "🪂", "🏆", "🥇", "🥈", "🥉", "🏅", "🎖️", "🏵️", "🎗️",
+        "🎫", "🎟️", "🎪", "🤹", "🎭", "🩰", "🎨", "🎬", "🎤", "🎧", "🎼", "🎹", "🥁", "🪘",
+        "🎷", "🎺", "🪗", "🎸", "🪕", "🎻", "🎲", "♟️", "🎯", "🎳", "🎮", "🎰", "🧩"
+      ]
+    },
+    {
+      id: "objects",
+      name: "Предметы",
+      icon: "💡",
+      emojis: [
+        "⌚️", "📱", "📲", "💻", "⌨️", "🖥️", "🖨️", "🖱️", "🕹️", "💽", "💾", "💿", "📀", "📼",
+        "📷", "📸", "📹", "🎥", "📽️", "🎞️", "📞", "☎️", "📟", "📠", "📺", "📻", "🎙️", "🎚️",
+        "🎛️", "⏱️", "⏲️", "⏰", "🕰️", "⌛️", "⏳", "📡", "🔋", "🪫", "🔌", "💡", "🔦", "🕯️",
+        "🪔", "🧯", "🛢️", "💸", "💵", "💴", "💶", "💷", "🪙", "💰", "💳", "💎", "⚖️", "🪜",
+        "🧰", "🪛", "🔧", "🔨", "⚒️", "🛠️", "⛏️", "🪚", "🔩", "⚙️", "🪤", "🧱", "⛓️", "🧲",
+        "🔫", "💣", "🧨", "🪓", "🔪", "🗡️", "⚔️", "🛡️", "🚬", "⚰️", "🪦", "⚱️", "🏺", "🔮",
+        "📿", "🧿", "💈", "⚗️", "🔭", "🔬", "💊", "💉", "🩸", "🩹", "🩺", "🩻", "🚪", "🛗",
+        "🪞", "🪟", "🛏️", "🛋️", "🪑", "🚽", "🪠", "🚿", "🛁", "🪒", "🧴", "🧷", "🧹", "🧺",
+        "🧻", "🪣", "🧼", "🪥", "🧽", "🛒", "🔔", "🔕"
+      ]
+    },
+    {
+      id: "symbols",
+      name: "Символы",
+      icon: "🔣",
+      emojis: [
+        "🏧", "🚮", "🚰", "♿️", "🚹", "🚺", "🚻", "🚼", "🚾", "🛂", "🛃", "🛄", "🛅", "⚠️",
+        "🚸", "⛔️", "🚫", "🚳", "🚭", "🚯", "🚱", "🚷", "📵", "🔞", "☢️", "☣️", "⬆️", "↗️",
+        "➡️", "↘️", "⬇️", "↙️", "⬅️", "↖️", "↕️", "↔️", "↩️", "↪️", "⤴️", "⤵️", "🔃", "🔄",
+        "🔙", "🔚", "🔛", "🔜", "🔝", "🛐", "⚛️", "🕉️", "✡️", "☸️", "☯️", "✝️", "☦️", "☪️",
+        "☮️", "🕎", "🔯", "♈️", "♉️", "♊️", "♋️", "♌️", "♍️", "♎️", "♏️", "♐️", "♑️", "♒️",
+        "♓️", "⛎", "🔀", "🔁", "🔂", "▶️", "⏩", "⏭️", "⏯️", "◀️", "⏪", "⏮️", "🔼", "⏫",
+        "🔽", "⏬", "⏸️", "⏹️", "⏺️", "⏏️", "🎦", "🔅", "🔆", "📶", "📳", "📴", "♀️", "♂️",
+        "⚧️", "✖️", "➕", "➖", "➗", "🟰", "♾️", "‼️", "⁉️", "❓", "❔", "❕", "❗️", "〰️",
+        "💲", "⚕️", "♻️", "⚜️", "🔱", "📛", "🔰", "⭕️", "✅", "☑️", "✔️", "❌", "❎", "➰",
+        "➿", "〽️", "✳️", "✴️", "❇️", "©️", "®️", "™️", "#️⃣", "*️⃣", "0️⃣", "1️⃣", "2️⃣", "3️⃣",
+        "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟", "🔠", "🔡", "🔢", "🔣", "🔤", "🅰️", "🆎",
+        "🅱️", "🆑", "🆒", "🆓", "ℹ️", "🆔", "Ⓜ️", "🆕", "🆖", "🅾️", "🆗", "🅿️", "🆘", "🆙",
+        "🔴", "🟠", "🟡", "🟢", "🔵", "🟣", "🟤", "⚫️", "⚪️", "🟥", "🟧", "🟨", "🟩", "🟦",
+        "🟪", "🟫", "⬛️", "⬜️", "🔶", "🔷", "🔸", "🔹", "🔺", "🔻", "💠", "🔘", "🔳", "🔲"
+      ]
+    },
+    {
+      id: "flags",
+      name: "Флаги",
+      icon: "🏁",
+      emojis: [
+        "🏁", "🚩", "🎌", "🏴", "🏳️", "🏳️‍🌈", "🏳️‍⚧️", "🏴‍☠️", "🇦🇫", "🇦🇱", "🇩🇿", "🇦🇩", "🇦🇴", "🇦🇷",
+        "🇦🇲", "🇦🇺", "🇦🇹", "🇦🇿", "🇧🇸", "🇧🇭", "🇧🇩", "🇧🇾", "🇧🇪", "🇧🇿", "🇧🇴", "🇧🇦", "🇧🇷", "🇧🇬",
+        "🇨🇲", "🇨🇦", "🇨🇱", "🇨🇳", "🇨🇴", "🇨🇷", "🇭🇷", "🇨🇺", "🇨🇾", "🇨🇿", "🇩🇰", "🇪🇨", "🇪🇬", "🇸🇻",
+        "🇪🇪", "🇪🇹", "🇪🇺", "🇫🇮", "🇫🇷", "🇬🇪", "🇩🇪", "🇬🇭", "🇬🇷", "🇬🇹", "🇭🇹", "🇭🇳", "🇭🇰", "🇭🇺",
+        "🇮🇸", "🇮🇳", "🇮🇩", "🇮🇷", "🇮🇶", "🇮🇪", "🇮🇱", "🇮🇹", "🇯🇲", "🇯🇵", "🇯🇴", "🇰🇿", "🇰🇪", "🇰🇬",
+        "🇱🇻", "🇱🇧", "🇱🇹", "🇱🇺", "🇲🇾", "🇲🇻", "🇲🇹", "🇲🇽", "🇲🇩", "🇲🇨", "🇲🇳", "🇲🇪", "🇲🇦", "🇳🇵",
+        "🇳🇱", "🇳🇿", "🇳🇮", "🇳🇬", "🇰🇵", "🇲🇰", "🇳🇴", "🇵🇰", "🇵🇸", "🇵🇦", "🇵🇾", "🇵🇪", "🇵🇭", "🇵🇱",
+        "🇵🇹", "🇶🇦", "🇷🇴", "🇷🇺", "🇸🇦", "🇷🇸", "🇸🇬", "🇸🇰", "🇸🇮", "🇿🇦", "🇰🇷", "🇪🇸", "🇱🇰", "🇸🇪",
+        "🇨🇭", "🇸🇾", "🇹🇼", "🇹🇯", "🇹🇭", "🇹🇷", "🇹🇲", "🇺🇦", "🇦🇪", "🇬🇧", "🇺🇸", "🇺🇾", "🇺🇿", "🇻🇦",
+        "🇻🇪", "🇻🇳"
       ]
     }
   ];
@@ -138,6 +241,7 @@
   $: visibleRecommended = recommendedSections.slice(0, recommendedBatchSize);
 
   function handleContentScroll(e) {
+    endPeek();
     const el = e.currentTarget;
     if (!el) return;
     if (el.scrollHeight - el.scrollTop - el.clientHeight < 350) {
@@ -189,10 +293,19 @@
     dispatch("insertEmoji", { emoji });
   }
 
+  function scrollToEmojiCategory(catId) {
+    selectedEmojiCat = catId;
+    if (!emojiScrollEl) return;
+    const target = emojiScrollEl.querySelector(`[data-emoji-cat="${catId}"]`);
+    if (target) {
+      target.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  }
+
   async function scrollToSection(secId) {
     selectedSetId = secId;
     if (secId !== "recents" && !$favoriteSetIds.includes(secId)) {
-      const idx = recommendedSections.findIndex(s => s.id === secId);
+      const idx = recommendedSections.findIndex((s) => s.id === secId);
       if (idx !== -1 && idx >= recommendedBatchSize) {
         recommendedBatchSize = idx + 3;
         await tick();
@@ -217,6 +330,8 @@
   }
 </script>
 
+<svelte:window on:mouseup={endPeek} on:touchend={endPeek} />
+
 <div class="sticker-panel-wrapper">
   <div class="panel-mode-toggle">
     <button
@@ -225,11 +340,21 @@
       class:active={activeTab === "emoji"}
       on:click={() => (activeTab = "emoji")}
     >
-      <svg class="mode-icon-svg" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <circle cx="12" cy="12" r="10"/>
-        <path d="M8 14s1.5 2 4 2 4-2 4-2"/>
-        <line x1="9" y1="9" x2="9.01" y2="9"/>
-        <line x1="15" y1="9" x2="15.01" y2="9"/>
+      <svg
+        class="mode-icon-svg"
+        viewBox="0 0 24 24"
+        width="16"
+        height="16"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      >
+        <circle cx="12" cy="12" r="10" />
+        <path d="M8 14s1.5 2 4 2 4-2 4-2" />
+        <line x1="9" y1="9" x2="9.01" y2="9" />
+        <line x1="15" y1="9" x2="15.01" y2="9" />
       </svg>
       <span class="mode-text">Эмодзи</span>
     </button>
@@ -239,39 +364,68 @@
       class:active={activeTab === "stickers"}
       on:click={() => (activeTab = "stickers")}
     >
-      <svg class="mode-icon-svg" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-        <path d="M14 2v6h6"/>
+      <svg
+        class="mode-icon-svg"
+        viewBox="0 0 24 24"
+        width="16"
+        height="16"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      >
+        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+        <path d="M14 2v6h6" />
       </svg>
       <span class="mode-text">Стикеры</span>
     </button>
   </div>
 
   {#if activeTab === "emoji"}
-    <div class="emoji-scroll-area">
-      {#each emojiCategories as cat}
-        <div class="category-block">
-          <div class="category-title">{cat.name}</div>
-          <div class="emoji-grid">
-            {#each cat.emojis as em}
-              <button
-                type="button"
-                class="emoji-item"
-                on:click={() => insertEmoji(em)}
-              >
-                {em}
-              </button>
-            {/each}
+    <div class="emoji-view">
+      <div class="emoji-tabs-bar">
+        {#each emojiCategories as cat (cat.id)}
+          <button
+            type="button"
+            class="emoji-tab-item"
+            class:selected={selectedEmojiCat === cat.id}
+            on:click={() => scrollToEmojiCategory(cat.id)}
+            title={cat.name}
+          >
+            {cat.icon}
+          </button>
+        {/each}
+      </div>
+
+      <div class="emoji-scroll-area" bind:this={emojiScrollEl}>
+        {#each emojiCategories as cat (cat.id)}
+          <div class="category-block" data-emoji-cat={cat.id}>
+            <div class="category-title">{cat.name}</div>
+            <div class="emoji-grid">
+              {#each cat.emojis as em}
+                <button
+                  type="button"
+                  class="emoji-item"
+                  on:click={() => insertEmoji(em)}
+                >
+                  {em}
+                </button>
+              {/each}
+            </div>
           </div>
-        </div>
-      {/each}
+        {/each}
+      </div>
     </div>
   {:else}
     <div class="stickers-view">
       <div class="search-bar">
         <div class="search-input-box">
           <svg class="search-icon" viewBox="0 0 24 24" width="16" height="16">
-            <path fill="currentColor" d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/>
+            <path
+              fill="currentColor"
+              d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"
+            />
           </svg>
           <input
             type="text"
@@ -282,7 +436,10 @@
           {#if query}
             <button type="button" class="clear-btn" on:click={clearSearch}>
               <svg viewBox="0 0 24 24" width="14" height="14">
-                <path fill="currentColor" d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
+                <path
+                  fill="currentColor"
+                  d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"
+                />
               </svg>
             </button>
           {/if}
@@ -300,7 +457,10 @@
               title="Недавние"
             >
               <svg viewBox="0 0 24 24" width="20" height="20">
-                <path fill="currentColor" d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67z"/>
+                <path
+                  fill="currentColor"
+                  d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67z"
+                />
               </svg>
             </button>
           {/if}
@@ -324,17 +484,26 @@
           <button
             type="button"
             class="pack-tab-item add-pack-tab"
-            on:click={() => { showCatalogModal = true; }}
+            on:click={() => {
+              showCatalogModal = true;
+            }}
             title="Каталог стикеров"
           >
             <svg viewBox="0 0 24 24" width="20" height="20">
-              <path fill="currentColor" d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/>
+              <path
+                fill="currentColor"
+                d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"
+              />
             </svg>
           </button>
         </div>
       {/if}
 
-      <div class="stickers-content-area" bind:this={contentScrollEl} on:scroll={handleContentScroll}>
+      <div
+        class="stickers-content-area"
+        bind:this={contentScrollEl}
+        on:scroll={handleContentScroll}
+      >
         {#if $stickersLoading && !recentsSection && favoriteSections.length === 0 && recommendedSections.length === 0}
           <div class="loading-state">
             <div class="spinner"></div>
@@ -356,9 +525,9 @@
                   type="button"
                   class="sticker-cell"
                   on:click={() => selectSticker(st)}
+                  on:contextmenu|preventDefault
                   on:mousedown={() => startPeek(st)}
                   on:mouseup={endPeek}
-                  on:mouseleave={endPeek}
                   on:touchstart={() => startPeek(st)}
                   on:touchend={endPeek}
                   title={st.tags?.join(", ") || ""}
@@ -366,7 +535,7 @@
                   <StickerMedia
                     url={st.url}
                     lottieUrl={st.lottieUrl}
-                    size={76}
+                    size="100%"
                     autoplay={true}
                     loop={true}
                   />
@@ -428,7 +597,9 @@
 
   {#if showCatalogModal}
     <StickerCatalogModal
-      on:close={() => { showCatalogModal = false; }}
+      on:close={() => {
+        showCatalogModal = false;
+      }}
       on:openPack={(e) => {
         openedSetId = e.detail.setId;
         showPackModal = true;
@@ -489,25 +660,31 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 8px;
-    padding: 6px 12px;
+    gap: 12px;
+    padding: 4px 16px;
+    min-height: 44px;
     border-bottom: 1px solid rgba(255, 255, 255, 0.06);
     background: #1b1d22;
+    width: 100%;
+    box-sizing: border-box;
   }
 
   .mode-btn {
     display: flex;
     align-items: center;
+    justify-content: center;
     gap: 6px;
-    padding: 6px 16px;
+    padding: 8px 20px;
+    min-height: 36px;
     background: transparent;
     border: none;
     border-radius: 20px;
     color: #8b929e;
-    font-size: 13px;
+    font-size: 14px;
     font-weight: 600;
     cursor: pointer;
     transition: all 0.15s ease;
+    box-sizing: border-box;
   }
 
   .mode-btn:hover {
@@ -522,6 +699,53 @@
 
   .mode-icon-svg {
     flex-shrink: 0;
+  }
+
+  .emoji-view {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+  }
+
+  .emoji-tabs-bar {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 8px;
+    overflow-x: auto;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    scrollbar-width: none;
+    flex-shrink: 0;
+  }
+
+  .emoji-tabs-bar::-webkit-scrollbar {
+    display: none;
+  }
+
+  .emoji-tab-item {
+    background: none;
+    border: none;
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    font-size: 18px;
+    line-height: 1;
+    transition: background-color 0.15s, transform 0.12s;
+    flex-shrink: 0;
+  }
+
+  .emoji-tab-item:hover {
+    background: rgba(255, 255, 255, 0.06);
+    transform: scale(1.1);
+  }
+
+  .emoji-tab-item.selected {
+    background: rgba(255, 255, 255, 0.14);
   }
 
   .emoji-scroll-area {
@@ -588,7 +812,7 @@
     align-items: center;
     background: rgba(255, 255, 255, 0.06);
     border-radius: 20px;
-    padding: 4px 12px;
+    padding: 8px 12px;
     gap: 8px;
   }
 
@@ -688,7 +912,10 @@
   .stickers-content-area {
     flex: 1;
     overflow-y: auto;
-    padding: 10px 12px;
+    overflow-x: hidden;
+    padding: 10px 8px;
+    width: 100%;
+    box-sizing: border-box;
     scrollbar-width: thin;
     scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
   }
@@ -704,19 +931,25 @@
 
   .stickers-grid {
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
+    grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 6px;
+    width: 100%;
+    box-sizing: border-box;
   }
 
   .sticker-cell {
     background: none;
     border: none;
-    padding: 4px;
+    padding: 2px;
     border-radius: 12px;
     cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    box-sizing: border-box;
+    overflow: hidden;
     transition: background-color 0.15s, transform 0.15s;
     user-select: none;
   }
@@ -767,6 +1000,7 @@
     justify-content: center;
     z-index: 100;
     animation: peekFadeIn 0.15s ease;
+    pointer-events: none;
   }
 
   @keyframes peekFadeIn {

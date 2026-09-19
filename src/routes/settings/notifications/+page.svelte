@@ -11,7 +11,15 @@
   import Avatar from "$components/main/Avatar.svelte";
   import {
     clientNotificationsEnabled,
+    messagePreviewEnabled,
+    notificationSoundEnabled,
+    callNotificationsEnabled,
+    newContactsNotificationsEnabled,
     toggleClientNotifications,
+    setMessagePreviewServer,
+    setNotificationSoundServer,
+    setCallNotificationsServer,
+    setNewContactsServer,
     isChatMuted
   } from "$lib/utils/notifications";
 
@@ -107,11 +115,85 @@
     <div class="settings-card">
       <div class="toggle-row" on:click={toggleClientNotifications}>
         <div class="toggle-info">
-          <span class="toggle-title">Включить уведомления</span>
+          <span class="toggle-title">Все уведомления</span>
           <span class="toggle-desc">Оповещения о входящих сообщениях и вызовах</span>
         </div>
         <div class="toggle-track" class:active={$clientNotificationsEnabled}>
           <div class="toggle-thumb" class:active={$clientNotificationsEnabled}></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="section-header">
+      <h2>Сообщения</h2>
+    </div>
+
+    <div class="settings-card">
+      <div
+        class="toggle-row"
+        class:disabled={!$clientNotificationsEnabled}
+        on:click={() => {
+          if ($clientNotificationsEnabled) setMessagePreviewServer(!$messagePreviewEnabled);
+        }}
+      >
+        <div class="toggle-info">
+          <span class="toggle-title">Предпросмотр сообщений</span>
+          <span class="toggle-desc">Показывать текст входящего сообщения</span>
+        </div>
+        <div class="toggle-track" class:active={$messagePreviewEnabled && $clientNotificationsEnabled}>
+          <div class="toggle-thumb" class:active={$messagePreviewEnabled && $clientNotificationsEnabled}></div>
+        </div>
+      </div>
+
+      <div class="card-divider"></div>
+
+      <div
+        class="toggle-row"
+        class:disabled={!$clientNotificationsEnabled}
+        on:click={() => {
+          if ($clientNotificationsEnabled) setNotificationSoundServer(!$notificationSoundEnabled);
+        }}
+      >
+        <div class="toggle-info">
+          <span class="toggle-title">Звук</span>
+          <span class="toggle-desc">Звуковой сигнал при получении сообщения</span>
+        </div>
+        <div class="toggle-track" class:active={$notificationSoundEnabled && $clientNotificationsEnabled}>
+          <div class="toggle-thumb" class:active={$notificationSoundEnabled && $clientNotificationsEnabled}></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="section-header">
+      <h2>Дополнительно</h2>
+    </div>
+
+    <div class="settings-card">
+      <div
+        class="toggle-row"
+        on:click={() => setCallNotificationsServer(!$callNotificationsEnabled)}
+      >
+        <div class="toggle-info">
+          <span class="toggle-title">Уведомления о звонках</span>
+          <span class="toggle-desc">Оповещать о входящих аудио- и видеозвонках</span>
+        </div>
+        <div class="toggle-track" class:active={$callNotificationsEnabled}>
+          <div class="toggle-thumb" class:active={$callNotificationsEnabled}></div>
+        </div>
+      </div>
+
+      <div class="card-divider"></div>
+
+      <div
+        class="toggle-row"
+        on:click={() => setNewContactsServer(!$newContactsNotificationsEnabled)}
+      >
+        <div class="toggle-info">
+          <span class="toggle-title">Новые контакты</span>
+          <span class="toggle-desc">Уведомлять, когда контакт присоединяется</span>
+        </div>
+        <div class="toggle-track" class:active={$newContactsNotificationsEnabled}>
+          <div class="toggle-thumb" class:active={$newContactsNotificationsEnabled}></div>
         </div>
       </div>
     </div>
@@ -275,6 +357,12 @@
     padding: 16px;
   }
 
+  .card-divider {
+    height: 1px;
+    background: rgba(255, 255, 255, 0.06);
+    margin: 14px 0;
+  }
+
   .toggle-row {
     display: flex;
     align-items: center;
@@ -282,6 +370,12 @@
     gap: 16px;
     cursor: pointer;
     user-select: none;
+    transition: opacity 0.2s;
+  }
+
+  .toggle-row.disabled {
+    opacity: 0.4;
+    pointer-events: none;
   }
 
   .toggle-info {

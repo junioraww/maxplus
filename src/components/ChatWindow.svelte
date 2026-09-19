@@ -64,6 +64,7 @@
   let attachesDropout = null;
   let activeStickerPack = null;
   let inputComponent;
+  let showStickerPanel = false;
 
   function handleOpenStickerPack(sticker) {
     if (!sticker) return;
@@ -824,43 +825,76 @@
 
   $: chatCache = getChat(chat.id);
 
-  $: chatCache.receivedMessage.subscribe(async (message) => {
-    if (!message || String(message.chatId) !== String(chat?.id)) return;
-
-    let wasAtBottom = false;
-    if (scrollElement) {
-      const { scrollTop, scrollHeight, clientHeight } = scrollElement;
-      wasAtBottom = scrollHeight - scrollTop - clientHeight < 150;
+  let unsubReceivedMessage = null;
+  $: {
+    if (unsubReceivedMessage) {
+      unsubReceivedMessage();
+      unsubReceivedMessage = null;
     }
+    const currentChatCache = chatCache;
+    if (currentChatCache?.receivedMessage) {
+      unsubReceivedMessage = currentChatCache.receivedMessage.subscribe(async (message) => {
+        if (!message || String(message.chatId) !== String(chat?.id)) return;
 
-    if (message.sender === $currentUser) {
-      all_loaded_newer = true;
-    }
+        let wasAtBottom = false;
+        if (scrollElement) {
+          const { scrollTop, scrollHeight, clientHeight } = scrollElement;
+          wasAtBottom = scrollHeight - scrollTop - clientHeight < 150;
+        }
 
-    if (all_loaded_newer) {
-      messages.update((_messages) => {
-        const idx = _messages.findIndex((x) => String(x.id) === String(message.id));
-        if (idx !== -1) _messages[idx] = message;
-        else return [..._messages, message];
-        return _messages;
+        if (message.sender === $currentUser) {
+          all_loaded_newer = true;
+        }
+
+        if (all_loaded_newer) {
+          messages.update((_messages) => {
+            const idx = _messages.findIndex((x) => String(x.id) === String(message.id));
+            if (idx !== -1) _messages[idx] = message;
+            else return [..._messages, message];
+            return _messages;
+          });
+
+          const decoded = await decode_msg(message);
+          if (decoded) decodedMessages.update(d => ({ ...d, [message.id]: decoded }));
+
+          await tick();
+          applyPendingHeights();
+          computeCumulativeHeights();
+
+          if (message.sender === $currentUser || wasAtBottom) {
+            scrollToBottom(scrollElement, true);
+          }
+
+          await updateVisibleMessages(wasAtBottom);
+        }
+
+        checkForEncryptionRequest(chat, chatSettings, [message]);
       });
-
-      const decoded = await decode_msg(message);
-      if (decoded) decodedMessages.update(d => ({ ...d, [message.id]: decoded }));
-
-      await tick();
-      applyPendingHeights();
-      computeCumulativeHeights();
-
-      if (message.sender === $currentUser || wasAtBottom) {
-        scrollToBottom(scrollElement, true);
-      }
-
-      await updateVisibleMessages(wasAtBottom);
     }
+  }
 
-    checkForEncryptionRequest(chat, chatSettings, [message]);
+  onDestroy(() => {
+    if (unsubReceivedMessage) {
+      unsubReceivedMessage();
+      unsubReceivedMessage = null;
+    }
   });
+
+  $: uniqueMessages = (() => {
+    const seen = new Set();
+    const result = [];
+    const list = $messages || [];
+    for (let i = list.length - 1; i >= 0; i--) {
+      const m = list[i];
+      const key = m?.id != null ? String(m.id) : null;
+      if (key) {
+        if (seen.has(key)) continue;
+        seen.add(key);
+      }
+      result.unshift(m);
+    }
+    return result;
+  })();
 
   $: cachedContact = chat.type === "DIALOG" ? getContact(avatarUserId) : writable(undefined);
   $: title = chat.id === 0 ? "Избранное" : (chat.title || $cachedContact?.names?.[0]?.name);
@@ -1421,7 +1455,7 @@
 
     <div style={"flex-shrink: 0; height: " + (chat.pinnedMessage ? "60px" : "10px")}></div>
 
-    {#each $messages as msg (msg.id)}
+    {#each uniqueMessages as msg (msg.id)}
       <div class="message-wrapper" id={"m-" + msg.id}>
         {#if visibleMessages[msg.id] || !$messageHeights[msg.id]}
           <div
@@ -1486,6 +1520,7 @@
       bind:this={inputComponent}
       bind:replyTo
       bind:attachesDropout
+      bind:showStickerPanel
       {scrollElement}
       {chat}
       {messages}
@@ -1501,6 +1536,7 @@
       class="scroll-down-container"
       class:nije={chat.type === "CHANNEL"}
       class:vise={!!replyTo}
+      class:with-stickers={showStickerPanel}
     >
       <button
         class="scroll-down-btn"
@@ -1533,8 +1569,11 @@
     z-index: 10;
     top: 0;
     left: 0;
-    width: 100vw;
-    height: 100svh;
+    right: 0;
+    bottom: 0;
+    width: 100%;
+    height: 100%;
+    max-height: 100%;
     background-color: #161621;
     padding-top: env(safe-area-inset-top, 10px);
     padding-bottom: env(safe-area-inset-bottom, 20px);
@@ -1552,8 +1591,8 @@
 
   header {
     display: flex;
-    padding: 11px 0;
-    height: 40px;
+    align-items: center;
+    padding: 8px 0;
     cursor: grab;
     flex-shrink: 0;
     background-color: #1e2024;
@@ -1638,6 +1677,7 @@
     width: 55px;
     height: 55px;
     z-index: 100;
+    transition: bottom 0.2s ease;
   }
 
   .scroll-down-container.nije {
@@ -1646,6 +1686,14 @@
 
   .scroll-down-container.vise {
     bottom: 140px;
+  }
+
+  .scroll-down-container.with-stickers {
+    bottom: 420px;
+  }
+
+  .scroll-down-container.with-stickers.vise {
+    bottom: 480px;
   }
 
   .scroll-down-btn {
@@ -1694,12 +1742,13 @@
   }
 
   .message-list-container {
-    flex: 1;
+    flex: 1 1 0;
+    min-height: 0;
     overflow-y: auto;
     display: block;
     flex-direction: column;
     overflow-anchor: none;
-    overflow-x: clip
+    overflow-x: hidden;
   }
 
   .message-list-inner {

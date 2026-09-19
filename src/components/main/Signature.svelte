@@ -27,6 +27,8 @@
 {#if $contact?.id && $contact?.id !== $currentUser}
   {#if $currentPresence[$contact.id]}
     {#if $currentPresence[$contact.id]?.status === 1}
+      <span class="online-text">в сети</span>
+    {:else if $currentPresence[$contact.id]?.seen}
       {$contact.gender === 2 ? "Была" : "Был"}
       <Timestamp
         gender={$contact.gender || 1}
@@ -58,3 +60,9 @@
 {:else}
   Это вообще чё?
 {/if}
+
+<style>
+  .online-text {
+    color: #4fc3f7;
+  }
+</style>

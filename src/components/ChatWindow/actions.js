@@ -137,12 +137,13 @@ export async function sendMessage(
     chatCache.updateMessages([fullMsg]);
 
     messages.update(msgs => {
-      const idx = msgs.findIndex(m => String(m.id) === String(id) || String(m.id) === String(fullMsg.id));
-      if (idx !== -1) {
-        msgs[idx] = fullMsg;
-        return [...msgs];
+      const withoutOptimistic = msgs.filter(m => String(m.id) !== String(id));
+      const existingIdx = withoutOptimistic.findIndex(m => String(m.id) === String(fullMsg.id));
+      if (existingIdx !== -1) {
+        withoutOptimistic[existingIdx] = fullMsg;
+        return withoutOptimistic;
       }
-      return [...msgs, fullMsg];
+      return [...withoutOptimistic, fullMsg];
     });
 
     currentSessionChats.update((chats) => {

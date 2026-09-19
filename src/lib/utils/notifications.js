@@ -34,12 +34,36 @@ export async function clearChatNotification(chatId) {
 }
 
 const NOTIFICATIONS_STORAGE_KEY = 'maxplus_client_notifications_enabled';
+const PREVIEW_STORAGE_KEY = 'maxplus_client_preview_enabled';
+const SOUND_STORAGE_KEY = 'maxplus_client_sound_enabled';
+const CALLS_STORAGE_KEY = 'maxplus_client_calls_enabled';
+const NEW_CONTACTS_STORAGE_KEY = 'maxplus_client_new_contacts_enabled';
 
 const initialEnabled = typeof localStorage !== 'undefined'
   ? localStorage.getItem(NOTIFICATIONS_STORAGE_KEY) !== 'false'
   : true;
 
+const initialPreview = typeof localStorage !== 'undefined'
+  ? localStorage.getItem(PREVIEW_STORAGE_KEY) !== 'false'
+  : true;
+
+const initialSound = typeof localStorage !== 'undefined'
+  ? localStorage.getItem(SOUND_STORAGE_KEY) !== 'false'
+  : true;
+
+const initialCalls = typeof localStorage !== 'undefined'
+  ? localStorage.getItem(CALLS_STORAGE_KEY) !== 'false'
+  : true;
+
+const initialNewContacts = typeof localStorage !== 'undefined'
+  ? localStorage.getItem(NEW_CONTACTS_STORAGE_KEY) === 'true'
+  : false;
+
 export const clientNotificationsEnabled = writable(initialEnabled);
+export const messagePreviewEnabled = writable(initialPreview);
+export const notificationSoundEnabled = writable(initialSound);
+export const callNotificationsEnabled = writable(initialCalls);
+export const newContactsNotificationsEnabled = writable(initialNewContacts);
 
 export function isClientNotificationsEnabled() {
   return get(clientNotificationsEnabled);
@@ -54,8 +78,117 @@ export function setClientNotificationsEnabled(enabled) {
 
 export function toggleClientNotifications() {
   const current = isClientNotificationsEnabled();
-  setClientNotificationsEnabled(!current);
+  setAllNotificationsServer(!current);
   return !current;
+}
+
+export function applyUserConfig(userConfig) {
+  if (!userConfig || typeof userConfig !== 'object') return;
+
+  if (userConfig.CHATS_PUSH_NOTIFICATION !== undefined) {
+    const on = userConfig.CHATS_PUSH_NOTIFICATION === 'ON';
+    clientNotificationsEnabled.set(on);
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem(NOTIFICATIONS_STORAGE_KEY, on ? 'true' : 'false');
+    }
+  }
+  if (userConfig.PUSH_DETAILS !== undefined) {
+    const preview = Boolean(userConfig.PUSH_DETAILS);
+    messagePreviewEnabled.set(preview);
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem(PREVIEW_STORAGE_KEY, preview ? 'true' : 'false');
+    }
+  }
+  if (userConfig.PUSH_SOUND !== undefined || userConfig.CHATS_PUSH_SOUND !== undefined) {
+    const snd = Boolean(userConfig.PUSH_SOUND || userConfig.CHATS_PUSH_SOUND);
+    notificationSoundEnabled.set(snd);
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem(SOUND_STORAGE_KEY, snd ? 'true' : 'false');
+    }
+  }
+  if (userConfig.M_CALL_PUSH_NOTIFICATION !== undefined) {
+    const calls = userConfig.M_CALL_PUSH_NOTIFICATION === 'ON';
+    callNotificationsEnabled.set(calls);
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem(CALLS_STORAGE_KEY, calls ? 'true' : 'false');
+    }
+  }
+  if (userConfig.PUSH_NEW_CONTACTS !== undefined) {
+    const nc = Boolean(userConfig.PUSH_NEW_CONTACTS);
+    newContactsNotificationsEnabled.set(nc);
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem(NEW_CONTACTS_STORAGE_KEY, nc ? 'true' : 'false');
+    }
+  }
+}
+
+export async function setAllNotificationsServer(enabled) {
+  setClientNotificationsEnabled(enabled);
+  try {
+    await get(API).updateUserSettings({
+      CHATS_PUSH_NOTIFICATION: enabled ? 'ON' : 'OFF',
+    });
+  } catch (e) {
+    console.error(e);
+  }
+}
+
+export async function setMessagePreviewServer(enabled) {
+  messagePreviewEnabled.set(enabled);
+  if (typeof localStorage !== 'undefined') {
+    localStorage.setItem(PREVIEW_STORAGE_KEY, enabled ? 'true' : 'false');
+  }
+  try {
+    await get(API).updateUserSettings({
+      PUSH_DETAILS: enabled,
+    });
+  } catch (e) {
+    console.error(e);
+  }
+}
+
+export async function setNotificationSoundServer(enabled) {
+  notificationSoundEnabled.set(enabled);
+  if (typeof localStorage !== 'undefined') {
+    localStorage.setItem(SOUND_STORAGE_KEY, enabled ? 'true' : 'false');
+  }
+  const sound = enabled ? 'oki.aiff' : '';
+  try {
+    await get(API).updateUserSettings({
+      PUSH_SOUND: sound,
+      CHATS_PUSH_SOUND: sound,
+    });
+  } catch (e) {
+    console.error(e);
+  }
+}
+
+export async function setCallNotificationsServer(enabled) {
+  callNotificationsEnabled.set(enabled);
+  if (typeof localStorage !== 'undefined') {
+    localStorage.setItem(CALLS_STORAGE_KEY, enabled ? 'true' : 'false');
+  }
+  try {
+    await get(API).updateUserSettings({
+      M_CALL_PUSH_NOTIFICATION: enabled ? 'ON' : 'OFF',
+    });
+  } catch (e) {
+    console.error(e);
+  }
+}
+
+export async function setNewContactsServer(enabled) {
+  newContactsNotificationsEnabled.set(enabled);
+  if (typeof localStorage !== 'undefined') {
+    localStorage.setItem(NEW_CONTACTS_STORAGE_KEY, enabled ? 'true' : 'false');
+  }
+  try {
+    await get(API).updateUserSettings({
+      PUSH_NEW_CONTACTS: enabled,
+    });
+  } catch (e) {
+    console.error(e);
+  }
 }
 
 export function isChatMuted(chat) {
@@ -173,7 +306,9 @@ export async function newMessage(chatId, chat, contact, message) {
     senderName = title;
   }
 
-  const bodyText = typeof message === "string" ? message : (getMessagePreview(message) || message?.text || "Новое сообщение");
+  const previewAllowed = get(messagePreviewEnabled);
+  const rawBody = typeof message === "string" ? message : (getMessagePreview(message) || message?.text || "Новое сообщение");
+  const bodyText = previewAllowed ? rawBody : "Новое сообщение";
 
   if (!currentOs) currentOs = type();
 

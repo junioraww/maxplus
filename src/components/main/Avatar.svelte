@@ -4,7 +4,7 @@
 
   import Image from "$components/main/Image.svelte";
 
-  import API, { currentSessionChats } from "$lib/stores/api";
+  import API, { currentSessionChats, currentPresence } from "$lib/stores/api";
 
   export let size;
   export let selectionMode;
@@ -16,6 +16,11 @@
   export let seed;
 
   $: contact = getContact(contactId);
+  $: effectiveContactId = contactId || $contact?.id;
+  $: isOnline = Boolean(
+    $contact?.online ||
+    (effectiveContactId && $currentPresence && $currentPresence[effectiveContactId]?.status === 1)
+  );
 
   if (!size) size = 50;
   if (!title)
@@ -88,7 +93,7 @@
       </div>
     {/if}
 
-    {#if $contact?.online && !selectionMode}
+    {#if isOnline && !selectionMode}
       <span class="online-badge"></span>
     {/if}
   </div>

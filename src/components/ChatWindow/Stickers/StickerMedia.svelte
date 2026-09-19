@@ -192,7 +192,7 @@
 <div
   bind:this={rootEl}
   class="sticker-media"
-  style="width: {size}px; height: {size}px;"
+  style="width: {typeof size === 'number' ? `${size}px` : size}; height: {typeof size === 'number' ? `${size}px` : size};"
 >
   {#if hasStartedLoading && lottieUrl && !loadError}
     <div
