@@ -38,7 +38,7 @@
       <div
         on:click={() => {
           sessionSet("devSettings", false);
-          goto("/settings/logs?from=/?card=3");
+          goto("/settings/logs?from=/?card=settings");
         }}
         class="button"
       >

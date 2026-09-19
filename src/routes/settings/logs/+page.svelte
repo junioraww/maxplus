@@ -7,6 +7,8 @@
 
   $: from = $page.url.searchParams.get("from") || "/auth/login";
 
+  export let isTab = false;
+
   let expandedId = null;
 
   const toggleLog = (id) => {
@@ -58,7 +60,7 @@
   }
 </script>
 
-<div class="logs-page">
+<div class="logs-page" class:is-tab={isTab}>
   <header>
     <h1>Сетевые логи</h1>
     <span class="count">Всего {$total} запросов</span>
@@ -91,9 +93,11 @@
     {/each}
   </div>
 
-  <div class="footer-panel">
-    <button class="back-btn" on:click={() => goto(from)}> Назад </button>
-  </div>
+  {#if !isTab}
+    <div class="footer-panel">
+      <button class="back-btn" on:click={() => goto(from)}> Назад </button>
+    </div>
+  {/if}
 </div>
 
 <style>
@@ -104,6 +108,11 @@
     color: #ddd;
     padding: 20px;
     box-sizing: border-box;
+  }
+
+  .logs-page.is-tab {
+    height: 100%;
+    padding-bottom: 20px;
   }
 
   header {

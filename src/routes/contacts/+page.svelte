@@ -21,6 +21,8 @@
 
   import "$lib/styles/AnimatedPanel.css";
 
+  export let hideHeader = false;
+
   let grouped = {};
   let filter = "";
   let showAll = false;
@@ -108,16 +110,22 @@
   }
 </script>
 
-<div class="container">
-  <header>
-    <div class="row">
-      <h3 style="margin-left: 15px;">Контакты</h3>
-      <div style="margin-right: 15px;" class="flex-end">
-        <AddContactBtn />
+<div class="container" class:modal-mode={hideHeader}>
+  {#if !hideHeader}
+    <header>
+      <div class="row">
+        <h3 style="margin-left: 15px;">Контакты</h3>
+        <div style="margin-right: 15px;" class="flex-end">
+          <AddContactBtn />
+        </div>
       </div>
+      <Search input={search} placeholder="Имя, фамилия или ник" />
+    </header>
+  {:else}
+    <div class="modal-search-wrapper">
+      <Search input={search} placeholder="Имя, фамилия или ник" />
     </div>
-    <Search input={search} placeholder="Имя, фамилия или ник" />
-  </header>
+  {/if}
 
   {#if showDeleteConfirm}
     <ConfirmModal
@@ -130,7 +138,7 @@
     />
   {/if}
 
-  <label class="showAll" style="margin-left: -15px;">
+  <label class="showAll" style={hideHeader ? "margin-left: 0; padding-right: 15px;" : "margin-left: -15px;"}>
     <input
       type="checkbox"
       id="only-added"
@@ -171,7 +179,15 @@
 
 <style>
   .container {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
     overflow: hidden;
+  }
+
+  .modal-search-wrapper {
+    padding: 8px 12px 4px;
+    flex-shrink: 0;
   }
 
   header {
@@ -257,13 +273,14 @@
   }
 
   .content {
-    height: calc(100% - 140px);
+    flex: 1 1 auto;
+    min-height: 0;
     color: #ccc;
     padding: 10px;
     display: flex;
     flex-direction: column;
     gap: 14px;
-    overflow-y: scroll;
+    overflow-y: auto;
     overflow-x: hidden;
   }
 

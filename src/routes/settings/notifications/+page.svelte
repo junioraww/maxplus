@@ -23,7 +23,9 @@
     isChatMuted
   } from "$lib/utils/notifications";
 
-  $: from = $page.url.searchParams.get("from") || "/?card=3";
+  $: from = $page.url.searchParams.get("from") || "/?card=settings";
+
+  export let isTab = false;
 
   let activeTab = "all";
   let unmutingIds = new Set();
@@ -99,14 +101,16 @@
   }
 </script>
 
-<div class="notifications-page">
+<div class="notifications-page" class:is-tab={isTab}>
   <header>
     <div class="header-left">
-      <button class="icon-back-btn" on:click={() => goto(from)}>
-        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <polyline points="15 18 9 12 15 6"></polyline>
-        </svg>
-      </button>
+      {#if !isTab}
+        <button class="icon-back-btn" on:click={() => goto(from)}>
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="15 18 9 12 15 6"></polyline>
+          </svg>
+        </button>
+      {/if}
       <h1>Уведомления</h1>
     </div>
   </header>
@@ -284,9 +288,11 @@
     </div>
   </div>
 
-  <div class="actions-panel">
-    <button class="back-btn" on:click={() => goto(from)}>Назад</button>
-  </div>
+  {#if !isTab}
+    <div class="actions-panel">
+      <button class="back-btn" on:click={() => goto(from)}>Назад</button>
+    </div>
+  {/if}
 </div>
 
 <style>
@@ -298,6 +304,10 @@
     color: #ddd;
     box-sizing: border-box;
     overflow: hidden;
+  }
+
+  .notifications-page.is-tab {
+    height: 100%;
   }
 
   header {
