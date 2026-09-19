@@ -28,7 +28,7 @@
   let attaches = [];
   let elements = [];
   let showCommandsMenu = false;
-  let showStickerPanel = false;
+  export let showStickerPanel = false;
   let stickerSuggestions = [];
   let suggestionTimer = null;
 
@@ -139,12 +139,13 @@
         };
         chatCache.updateMessages([fullMsg]);
         messages.update(msgs => {
-          const idx = msgs.findIndex(m => String(m.id) === String(tempId));
-          if (idx !== -1) {
-            msgs[idx] = fullMsg;
-            return [...msgs];
+          const withoutTemp = msgs.filter(m => String(m.id) !== String(tempId));
+          const existingIdx = withoutTemp.findIndex(m => String(m.id) === String(fullMsg.id));
+          if (existingIdx !== -1) {
+            withoutTemp[existingIdx] = fullMsg;
+            return withoutTemp;
           }
-          return [...msgs, fullMsg];
+          return [...withoutTemp, fullMsg];
         });
       }
     } catch (e) {
@@ -424,7 +425,10 @@
       </button>
     {:else}
       <button class="button voice-button" type="button" title="Голосовое сообщение">
-        <img src="icons/voice.svg" alt="voice" style="transform: scale(1.1, 1)" />
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
+          <path d="M15.5 5.5C15.5 3.567 13.933 2 12 2C10.067 2 8.5 3.567 8.5 5.5V12C8.5 13.933 10.067 15.5 12 15.5C13.933 15.5 15.5 13.933 15.5 12V5.5Z"/>
+          <path d="M4.5 11.5C4.5 15.642 7.858 19 12 19M12 19C16.142 19 19.5 15.642 19.5 11.5M12 19V22"/>
+        </svg>
       </button>
     {/if}
   </div>
@@ -443,7 +447,7 @@
 <style>
   .input-area {
     position: relative;
-    padding: 8px 12px 10px;
+    padding: 0;
     flex-shrink: 0;
     background: #17191d;
     border-top: 1px solid rgba(255, 255, 255, 0.06);
@@ -452,9 +456,10 @@
 
   .input-controls {
     display: flex;
-    align-items: flex-end;
+    align-items: center;
     gap: 8px;
     position: relative;
+    padding: 8px 12px 10px;
   }
 
   .input-container {

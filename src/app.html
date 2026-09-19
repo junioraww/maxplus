@@ -84,6 +84,10 @@
       display: none;
     }
 
+    *, *::before, *::after {
+      box-sizing: border-box;
+    }
+
     body {
       margin: 0;
       background-color: #17181c;
@@ -91,6 +95,7 @@
       padding-top: env(safe-area-inset-top, 10px);
       padding-bottom: env(safe-area-inset-bottom, 20px);
       font-family: "Inter Medium", system-ui, sans-serif;
+      box-sizing: border-box;
     }
 
     html,
@@ -98,6 +103,7 @@
       -webkit-text-size-adjust: 100%;
       text-size-adjust: 100%;
       height: 100%;
+      overflow: hidden;
     }
 
     html {

@@ -111,6 +111,11 @@
     dispatch("openPack", { setId: section.id });
   }
 
+  let touchStartX = 0;
+  let touchStartY = 0;
+  let isScrolling = false;
+  let suppressClickUntil = 0;
+
   function handleStickerClick(st) {
     if (!st) return;
     dispatch("select", { sticker: st });
@@ -123,6 +128,39 @@
 
   function handlePeekEnd() {
     dispatch("peekEnd");
+  }
+
+  function onTouchStart(e, st) {
+    if (e.touches && e.touches.length > 0) {
+      touchStartX = e.touches[0].clientX;
+      touchStartY = e.touches[0].clientY;
+      isScrolling = false;
+    }
+    handlePeekStart(st);
+  }
+
+  function onTouchMove(e) {
+    if (e.touches && e.touches.length > 0) {
+      const dx = Math.abs(e.touches[0].clientX - touchStartX);
+      const dy = Math.abs(e.touches[0].clientY - touchStartY);
+      if (dx > 8 || dy > 8) {
+        isScrolling = true;
+        suppressClickUntil = Date.now() + 350;
+        handlePeekEnd();
+      }
+    }
+  }
+
+  function onTouchEnd() {
+    handlePeekEnd();
+    if (isScrolling) {
+      suppressClickUntil = Date.now() + 350;
+    }
+  }
+
+  function onCellClick(st) {
+    if (Date.now() < suppressClickUntil || isScrolling) return;
+    handleStickerClick(st);
   }
 </script>
 
@@ -180,18 +218,20 @@
         <button
           type="button"
           class="sticker-cell"
-          on:click={() => handleStickerClick(st)}
+          on:click={() => onCellClick(st)}
+          on:contextmenu|preventDefault
           on:mousedown={() => handlePeekStart(st)}
           on:mouseup={handlePeekEnd}
-          on:mouseleave={handlePeekEnd}
-          on:touchstart={() => handlePeekStart(st)}
-          on:touchend={handlePeekEnd}
+          on:touchstart={(e) => onTouchStart(e, st)}
+          on:touchmove={onTouchMove}
+          on:touchend={onTouchEnd}
+          on:touchcancel={onTouchEnd}
           title={st?.tags?.join(", ") || ""}
         >
           <StickerMedia
             url={st?.url || ""}
             lottieUrl={st?.lottieUrl}
-            size={76}
+            size="100%"
             autoplay={true}
             loop={true}
           />
@@ -300,8 +340,10 @@
 
   .stickers-grid {
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
+    grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 6px;
+    width: 100%;
+    box-sizing: border-box;
   }
 
   .grid-placeholder {
@@ -312,12 +354,16 @@
   .sticker-cell {
     background: none;
     border: none;
-    padding: 4px;
+    padding: 2px;
     border-radius: 12px;
     cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    box-sizing: border-box;
+    overflow: hidden;
     transition: background-color 0.15s, transform 0.15s;
     user-select: none;
     -webkit-user-select: none;

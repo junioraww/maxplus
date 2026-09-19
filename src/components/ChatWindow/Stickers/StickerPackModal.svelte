@@ -142,7 +142,7 @@
               <StickerMedia
                 url={sticker.url}
                 lottieUrl={sticker.lottieUrl}
-                size={84}
+                size="100%"
                 autoplay={true}
                 loop={true}
               />
@@ -211,7 +211,7 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 16px 20px;
+    padding: 12px 20px;
     border-bottom: 1px solid rgba(255, 255, 255, 0.06);
   }
 
@@ -276,6 +276,7 @@
   .modal-body {
     flex: 1;
     overflow-y: auto;
+    overflow-x: hidden;
     padding: 16px;
     scrollbar-width: thin;
     scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
@@ -283,19 +284,25 @@
 
   .stickers-grid {
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: 12px;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 8px;
+    width: 100%;
+    box-sizing: border-box;
   }
 
   .sticker-grid-item {
     background: none;
     border: none;
-    padding: 6px;
-    border-radius: 14px;
+    padding: 4px;
+    border-radius: 12px;
     cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    box-sizing: border-box;
+    overflow: hidden;
     transition: transform 0.15s ease, background-color 0.15s ease;
   }
 
@@ -388,5 +395,27 @@
 
   .btn-copy:hover {
     background: rgba(255, 255, 255, 0.12);
+  }
+
+  @media (max-width: 480px) {
+    .modal-backdrop {
+      padding: 8px;
+    }
+    .modal-card {
+      border-radius: 16px;
+      max-height: 88vh;
+    }
+    .modal-header {
+      padding: 12px 14px;
+    }
+    .modal-body {
+      padding: 10px;
+    }
+    .stickers-grid {
+      gap: 6px;
+    }
+    .modal-footer {
+      padding: 10px 14px;
+    }
   }
 </style>

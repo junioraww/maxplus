@@ -269,7 +269,7 @@
       <div class="hero-info">
         <h2>{title}</h2>
         <a
-          class:online={$currentPresence[$contact?.id]?.on === "ON"}
+          class:online={$currentPresence[$contact?.id]?.status === 1 || $currentPresence[$contact?.id]?.on === "ON" || Boolean($contact?.online)}
           class="status"
         >
         <Signature contact={contact} chat={chat} />

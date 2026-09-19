@@ -108,6 +108,7 @@ pub fn run() {
             commands::get_chat_bot_commands,
             commands::suspend_bot,
             commands::set_chat_mute,
+            commands::update_user_settings,
             commands::get_folders,
             commands::get_folder_by_id,
             commands::update_folder,

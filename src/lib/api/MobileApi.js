@@ -46,7 +46,8 @@ import {
 } from "$lib/utils/caching";
 import {
   setupPushNotifications,
-  newMessage
+  newMessage,
+  applyUserConfig
 } from "$lib/utils/notifications";
 import {
   getMessagePreview
@@ -241,7 +242,22 @@ export default class MobileApi extends BaseAPI {
             return [...chats];
           });
         }
-        // typing
+      } else if (opc === 132) {
+        const p = response.payload;
+        if (p?.userId) {
+          const userId = Number(p.userId);
+          const presence = p.presence || p;
+          const status = presence.status != null ? Number(presence.status) : 0;
+          const seen = presence.seen != null ? Number(presence.seen) : Date.now();
+          currentPresence.update(prev => ({
+            ...prev,
+            [userId]: {
+              status,
+              seen,
+              on: status === 1 ? "ON" : "OFF"
+            }
+          }));
+        }
       } else if (opc === 136) {
         const { videoId, fileId } = response.payload;
         this.notify[videoId || fileId]?.();
@@ -512,6 +528,26 @@ export default class MobileApi extends BaseAPI {
       } else {
         this.getFolders().catch(() => {});
       }
+
+      if (synced.presence && typeof synced.presence === "object") {
+        const initialMap = {};
+        for (const [uid, pres] of Object.entries(synced.presence)) {
+          if (pres) {
+            const status = pres.status != null ? Number(pres.status) : 0;
+            const seen = pres.seen != null ? Number(pres.seen) : 0;
+            initialMap[Number(uid)] = {
+              status,
+              seen,
+              on: status === 1 ? "ON" : "OFF"
+            };
+          }
+        }
+        currentPresence.update(prev => ({ ...prev, ...initialMap }));
+      }
+
+      if (config?.user) {
+        applyUserConfig(config.user);
+      }
       //currentRealContacts.set(contacts.map((x) => x.id));
       //if (!this.getUser()) this.setUser(res.profile.contact.id);
       //sessionSet("reactions", config.server["reactions-menu"]);
@@ -644,6 +680,11 @@ export default class MobileApi extends BaseAPI {
       await saveChats([updatedChat]);
     }
     return res;
+  }
+
+  async updateUserSettings(settings) {
+    await this.synchronized;
+    return await invoke("update_user_settings", { settings });
   }
 
   async getFolders(folderSync = null) {
