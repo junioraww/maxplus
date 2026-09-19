@@ -1,6 +1,7 @@
 <script>
   import { openUrl } from "@tauri-apps/plugin-opener";
   import API from "$lib/stores/api";
+  import { openMiniApp } from "$lib/stores/webapp.js";
 
   let { chat, msg, attach } = $props();
 
@@ -51,15 +52,24 @@
     }
 
     if (bType === "OPEN_APP") {
-      const url = button.webApp || button.url || button.payload;
-      if (url && (url.startsWith("http://") || url.startsWith("https://"))) {
+      const botId = button.contactId || button.botId || (chat ? chat.id : null);
+      const url = button.webApp || button.url;
+      const startParam = button.payload || null;
+      if (botId) {
+        openMiniApp({
+          botId,
+          title: button.text || "Мини-приложение",
+          url: url && (url.startsWith("http://") || url.startsWith("https://")) ? url : null,
+          startParam,
+          chatId: chat?.id,
+          entryPoint: "inline_button",
+        });
+      } else if (url && (url.startsWith("http://") || url.startsWith("https://"))) {
         try {
           await openUrl(url);
         } catch {
           window.open(url, "_blank");
         }
-      } else {
-        alert("Приложение: " + (button.text || ""));
       }
       return;
     }
@@ -78,6 +88,17 @@
       if (resp) {
         const payload = resp.payload || resp;
         const url = payload.url;
+        const botId = payload.botId || payload.bot_id || button.contactId;
+        if (botId && url) {
+          openMiniApp({
+            botId,
+            title: button.text || "Мини-приложение",
+            url,
+            chatId: chat?.id,
+            entryPoint: "inline_button",
+          });
+          return;
+        }
         if (url) {
           try {
             await openUrl(url);

@@ -31,6 +31,7 @@ import { goto } from "$app/navigation";
   import Avatar from "$components/main/Avatar.svelte";
   import API, { currentUser } from "$lib/stores/api";
   import { clientNotificationsEnabled, toggleClientNotifications } from "$lib/utils/notifications";
+  import { openDigitalIdApp, openSferumApp } from "$lib/stores/webapp.js";
 
   let platform;
 
@@ -89,6 +90,18 @@ import { goto } from "$app/navigation";
         icon: "book.svg",
         text: "Словарь шифрования",
         action: () => goto("/settings/e2e/dictionary?from=/?card=3"),
+      },
+    ],
+    [
+      {
+        icon: "digital_id.svg",
+        text: "Цифровой ID",
+        action: () => openDigitalIdApp(),
+      },
+      {
+        icon: "bot.svg",
+        text: "Войти в Сферум",
+        action: () => openSferumApp(),
       },
     ],
     [

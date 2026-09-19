@@ -548,10 +548,27 @@ export default class MobileApi extends BaseAPI {
       if (config?.user) {
         applyUserConfig(config.user);
       }
-      //currentRealContacts.set(contacts.map((x) => x.id));
-      //if (!this.getUser()) this.setUser(res.profile.contact.id);
-      //sessionSet("reactions", config.server["reactions-menu"]);
-      //const callsEndpoint = config.server['calls-endpoint'];
+
+      const entryBanners = config?.server?.["settings-entry-banners"];
+      if (Array.isArray(entryBanners)) {
+        for (const banner of entryBanners) {
+          const items = banner?.items;
+          if (Array.isArray(items)) {
+            for (const item of items) {
+              const appId = item?.appid;
+              const icon = (item?.icon || "").toLowerCase();
+              if (appId) {
+                if (icon.includes("sferum")) {
+                  localStorage.setItem("max_app_sferum_id", String(appId));
+                }
+                if (icon.includes("digital")) {
+                  localStorage.setItem("max_app_digital_id", String(appId));
+                }
+              }
+            }
+          }
+        }
+      }
 
       //await suggestNotifications();
       setupPushNotifications();
@@ -1078,4 +1095,79 @@ export default class MobileApi extends BaseAPI {
   async _command(cmd, options) {
     return await invoke(cmd, options);
   }
+
+  async openWebApp(botId, startParam = null, chatId = null) {
+    await this.synchronized;
+    return await invoke("open_web_app", {
+      botId: Number(botId),
+      startParam: startParam || null,
+      chatId: chatId != null ? Number(chatId) : null,
+    });
+  }
+
+  async sharePhoneWithBot(botId) {
+    await this.synchronized;
+    return await invoke("share_phone_with_bot", {
+      botId: Number(botId),
+    });
+  }
+
+  async submitExternalCallback(url) {
+    await this.synchronized;
+    return await invoke("submit_external_callback", { url });
+  }
+
+  async launchWebApp(botId, { startParam = null, chatId = null } = {}) {
+    const resp = await this.openWebApp(botId, startParam, chatId);
+    if (!resp || !resp.url) {
+      throw new Error("Не удалось получить адрес мини-приложения");
+    }
+    return {
+      url: resp.url,
+      queryId: resp.query_id || resp.queryId || null,
+      botId: Number(botId),
+    };
+  }
+
+  async launchSferum() {
+    const stored = localStorage.getItem("max_app_sferum_id");
+    const botId = stored ? Number(stored) : 2340831;
+    return await this.launchWebApp(botId);
+  }
+
+  async launchDigitalId() {
+    const stored = localStorage.getItem("max_app_digital_id");
+    const botId = stored ? Number(stored) : 8250447;
+    return await this.launchWebApp(botId);
+  }
+
+  async processExternalCallback(url) {
+    const uri = new URL(url);
+    if (uri.searchParams.get("externalCallback") !== "1") {
+      throw new Error("Некорректный callback адрес");
+    }
+    const raw = await this.submitExternalCallback(url);
+    let botId = null;
+    let startParam = null;
+
+    const parsePayload = (obj) => {
+      if (!obj || typeof obj !== "object") return;
+      if (obj.botId != null || obj.bot_id != null) {
+        botId = Number(obj.botId ?? obj.bot_id);
+        startParam = (obj.startParam ?? obj.start_param)?.toString() || null;
+        return;
+      }
+      for (const k of ["data", "result", "response"]) {
+        if (obj[k]) parsePayload(obj[k]);
+      }
+    };
+
+    parsePayload(raw);
+
+    if (!botId) {
+      throw new Error("Не удалось определить приложение для авторизации");
+    }
+    return await this.launchWebApp(botId, { startParam });
+  }
 }
+

@@ -823,7 +823,7 @@
     }, 500);
   }
 
-  $: chatCache = getChat(chat.id);
+  $: chatCache = getChat(chat?.id ?? chatId);
 
   let unsubReceivedMessage = null;
   $: {
