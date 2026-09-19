@@ -39,6 +39,9 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
+    "iOS": {
+      "minimumSystemVersion": "15.0"
+    },
     "linux": {
       "appimage": {
         "bundleMediaFramework": false
