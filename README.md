@@ -182,7 +182,19 @@ $ cargo tauri android build --target aarch64
 $ cargo tauri android build
 ```
 
-Нормальная сборка под iOS возможна только с macOS. Может понадобиться [платная подписка Apple Developer.](https://developer.apple.com/support/compare-memberships/)
+### Сборка под iOS 15+ на macOS
+
+В CI используется Xcode 16.4. После установки [зависимостей для iOS](https://v2.tauri.app/start/prerequisites/#ios) и зависимостей проекта:
+
+```sh
+bun tauri ios init
+bun run tauri icon static/favicon.png
+bun tauri ios build --target aarch64 --no-sign
+```
+
+Неподписанный IPA появится в `src-tauri/gen/apple/build/arm64/`. Для установки на устройство его нужно подписать. Для сборки с подписью настройте [Apple Developer и подпись Tauri](https://v2.tauri.app/distribute/sign/ios/) и уберите `--no-sign`.
+
+GitHub Actions **Build Max+ iOS** выполняет ту же release-сборку при push в `main`, в pull request и вручную через `workflow_dispatch`. IPA доступен в артефакте `maxplus-ios-unsigned` завершённого запуска. Workflow не публикует GitHub Release.
 
 ## Сброс данных клиента
 Секретные чаты теряются!
