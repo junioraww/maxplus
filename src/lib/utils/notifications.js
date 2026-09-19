@@ -65,6 +65,8 @@ export const notificationSoundEnabled = writable(initialSound);
 export const callNotificationsEnabled = writable(initialCalls);
 export const newContactsNotificationsEnabled = writable(initialNewContacts);
 
+const MANUAL_SUFFIX = '_manual';
+
 export function isClientNotificationsEnabled() {
   return get(clientNotificationsEnabled);
 }
@@ -73,6 +75,7 @@ export function setClientNotificationsEnabled(enabled) {
   clientNotificationsEnabled.set(enabled);
   if (typeof localStorage !== 'undefined') {
     localStorage.setItem(NOTIFICATIONS_STORAGE_KEY, enabled ? 'true' : 'false');
+    localStorage.setItem(NOTIFICATIONS_STORAGE_KEY + MANUAL_SUFFIX, 'true');
   }
 }
 
@@ -85,35 +88,41 @@ export function toggleClientNotifications() {
 export function applyUserConfig(userConfig) {
   if (!userConfig || typeof userConfig !== 'object') return;
 
-  if (userConfig.CHATS_PUSH_NOTIFICATION !== undefined) {
+  const hasManualNotifications = typeof localStorage !== 'undefined' && (localStorage.getItem(NOTIFICATIONS_STORAGE_KEY + MANUAL_SUFFIX) === 'true' || localStorage.getItem(NOTIFICATIONS_STORAGE_KEY) !== null);
+  const hasManualPreview = typeof localStorage !== 'undefined' && (localStorage.getItem(PREVIEW_STORAGE_KEY + MANUAL_SUFFIX) === 'true' || localStorage.getItem(PREVIEW_STORAGE_KEY) !== null);
+  const hasManualSound = typeof localStorage !== 'undefined' && (localStorage.getItem(SOUND_STORAGE_KEY + MANUAL_SUFFIX) === 'true' || localStorage.getItem(SOUND_STORAGE_KEY) !== null);
+  const hasManualCalls = typeof localStorage !== 'undefined' && (localStorage.getItem(CALLS_STORAGE_KEY + MANUAL_SUFFIX) === 'true' || localStorage.getItem(CALLS_STORAGE_KEY) !== null);
+  const hasManualNewContacts = typeof localStorage !== 'undefined' && (localStorage.getItem(NEW_CONTACTS_STORAGE_KEY + MANUAL_SUFFIX) === 'true' || localStorage.getItem(NEW_CONTACTS_STORAGE_KEY) !== null);
+
+  if (!hasManualNotifications && userConfig.CHATS_PUSH_NOTIFICATION !== undefined) {
     const on = userConfig.CHATS_PUSH_NOTIFICATION === 'ON';
     clientNotificationsEnabled.set(on);
     if (typeof localStorage !== 'undefined') {
       localStorage.setItem(NOTIFICATIONS_STORAGE_KEY, on ? 'true' : 'false');
     }
   }
-  if (userConfig.PUSH_DETAILS !== undefined) {
+  if (!hasManualPreview && userConfig.PUSH_DETAILS !== undefined) {
     const preview = Boolean(userConfig.PUSH_DETAILS);
     messagePreviewEnabled.set(preview);
     if (typeof localStorage !== 'undefined') {
       localStorage.setItem(PREVIEW_STORAGE_KEY, preview ? 'true' : 'false');
     }
   }
-  if (userConfig.PUSH_SOUND !== undefined || userConfig.CHATS_PUSH_SOUND !== undefined) {
+  if (!hasManualSound && (userConfig.PUSH_SOUND !== undefined || userConfig.CHATS_PUSH_SOUND !== undefined)) {
     const snd = Boolean(userConfig.PUSH_SOUND || userConfig.CHATS_PUSH_SOUND);
     notificationSoundEnabled.set(snd);
     if (typeof localStorage !== 'undefined') {
       localStorage.setItem(SOUND_STORAGE_KEY, snd ? 'true' : 'false');
     }
   }
-  if (userConfig.M_CALL_PUSH_NOTIFICATION !== undefined) {
+  if (!hasManualCalls && userConfig.M_CALL_PUSH_NOTIFICATION !== undefined) {
     const calls = userConfig.M_CALL_PUSH_NOTIFICATION === 'ON';
     callNotificationsEnabled.set(calls);
     if (typeof localStorage !== 'undefined') {
       localStorage.setItem(CALLS_STORAGE_KEY, calls ? 'true' : 'false');
     }
   }
-  if (userConfig.PUSH_NEW_CONTACTS !== undefined) {
+  if (!hasManualNewContacts && userConfig.PUSH_NEW_CONTACTS !== undefined) {
     const nc = Boolean(userConfig.PUSH_NEW_CONTACTS);
     newContactsNotificationsEnabled.set(nc);
     if (typeof localStorage !== 'undefined') {
@@ -137,6 +146,7 @@ export async function setMessagePreviewServer(enabled) {
   messagePreviewEnabled.set(enabled);
   if (typeof localStorage !== 'undefined') {
     localStorage.setItem(PREVIEW_STORAGE_KEY, enabled ? 'true' : 'false');
+    localStorage.setItem(PREVIEW_STORAGE_KEY + MANUAL_SUFFIX, 'true');
   }
   try {
     await get(API).updateUserSettings({
@@ -151,6 +161,7 @@ export async function setNotificationSoundServer(enabled) {
   notificationSoundEnabled.set(enabled);
   if (typeof localStorage !== 'undefined') {
     localStorage.setItem(SOUND_STORAGE_KEY, enabled ? 'true' : 'false');
+    localStorage.setItem(SOUND_STORAGE_KEY + MANUAL_SUFFIX, 'true');
   }
   const sound = enabled ? 'oki.aiff' : '';
   try {
@@ -167,6 +178,7 @@ export async function setCallNotificationsServer(enabled) {
   callNotificationsEnabled.set(enabled);
   if (typeof localStorage !== 'undefined') {
     localStorage.setItem(CALLS_STORAGE_KEY, enabled ? 'true' : 'false');
+    localStorage.setItem(CALLS_STORAGE_KEY + MANUAL_SUFFIX, 'true');
   }
   try {
     await get(API).updateUserSettings({
@@ -181,6 +193,7 @@ export async function setNewContactsServer(enabled) {
   newContactsNotificationsEnabled.set(enabled);
   if (typeof localStorage !== 'undefined') {
     localStorage.setItem(NEW_CONTACTS_STORAGE_KEY, enabled ? 'true' : 'false');
+    localStorage.setItem(NEW_CONTACTS_STORAGE_KEY + MANUAL_SUFFIX, 'true');
   }
   try {
     await get(API).updateUserSettings({
@@ -242,6 +255,7 @@ async function ensureMessagesChannel() {
 }
 
 export async function setupPushNotifications() {
+  if (!isClientNotificationsEnabled()) return;
   if (!currentOs) currentOs = type();
 
   if (!granted) await suggestNotifications();

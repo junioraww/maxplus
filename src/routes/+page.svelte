@@ -3,19 +3,20 @@
   import { listen } from "@tauri-apps/api/event";
   import { invoke } from "@tauri-apps/api/core";
   import Chats from "./chats/+page.svelte";
-  import Contacts from "./contacts/+page.svelte";
+  import DigitalId from "./digital_id/+page.svelte";
   import Calls from "./calls/+page.svelte";
   import Settings from "./settings/+page.svelte";
   import Panel from "$components/Panel.svelte";
   import Card from "$components/main/Card.svelte";
   import ChatWindow from "$components/ChatWindow.svelte";
+  import WebAppManager from "$components/webapp/WebAppManager.svelte";
 
   import * as Caching from "$lib/utils/caching";
   import Session, { openChat } from "$lib/stores/session";
   import { page } from "$app/stores";
 
   const pages = [
-    { name: "Контакты", icon: "contacts", component: Contacts },
+    { name: "Цифровой ID", icon: "digital_id", component: DigitalId },
     { name: "Звонки", icon: "calls", component: Calls },
     { name: "Чаты", icon: "chats", component: Chats },
     { name: "Настройки", icon: "settings", component: Settings },
@@ -83,6 +84,7 @@
 </div>
 
 <Panel on:open={openCard} {pages} {active} />
+<WebAppManager />
 
 <style>
   .container {

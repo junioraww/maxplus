@@ -368,6 +368,7 @@ pub extern "system" fn Java_org_meowkie_max_NotificationHelper_isChatMutedNative
     res.unwrap_or(false)
 }
 
+#[cfg(target_os = "android")]
 use tauri::Emitter;
 
 static GLOBAL_APP_HANDLE: std::sync::OnceLock<tauri::AppHandle> = std::sync::OnceLock::new();

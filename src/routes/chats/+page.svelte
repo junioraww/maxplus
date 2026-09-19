@@ -9,6 +9,9 @@
   import AddContactBtn from "$components/main/AddContactBtn.svelte";
   import Search from "$components/main/Search.svelte";
   import FolderEditModal from "$components/chats/FolderEditModal.svelte";
+  import Contacts from "../contacts/+page.svelte";
+
+  let showContactsModal = false;
 
   import { escapeHtml } from "$lib/utils/text.js";
   import { debounce } from "$lib/utils/debounce.js";
@@ -612,7 +615,19 @@
       <div class="normal-header">
         <div class="row">
           <h3 style="margin-left: 15px;">Чаты</h3>
-          <div style="margin-right: 15px;">
+          <div style="margin-right: 15px; display: flex; align-items: center; gap: 8px;">
+            <button
+              class="top-btn contacts-header-btn animated-panel"
+              on:click={() => (showContactsModal = true)}
+              title="Контакты"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                <circle cx="9" cy="7" r="4"></circle>
+                <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+                <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+              </svg>
+            </button>
             <AddContactBtn />
           </div>
         </div>
@@ -723,7 +738,27 @@
       on:delete={(e) => handleDeleteFolder(e.detail)}
     />
   {/if}
+
+  {#if showContactsModal}
+    <div class="contacts-modal-backdrop" on:click={() => (showContactsModal = false)}>
+      <div class="contacts-modal-panel" on:click|stopPropagation>
+        <div class="contacts-modal-top">
+          <span class="contacts-modal-title">Контакты</span>
+          <button class="contacts-modal-close" on:click={() => (showContactsModal = false)}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+              <line x1="18" y1="6" x2="6" y2="18"></line>
+              <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+          </button>
+        </div>
+        <div class="contacts-modal-body">
+          <Contacts />
+        </div>
+      </div>
+    </div>
+  {/if}
 </div>
+
 
 <style>
   .layout {
@@ -862,4 +897,75 @@
     flex-direction: column;
     overflow-y: auto;
   }
+
+  .contacts-header-btn {
+    width: 30px;
+    height: 30px;
+    border-radius: 11px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    cursor: pointer;
+    background: #2b2d30;
+    border: none;
+    color: white;
+  }
+
+  .contacts-modal-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.65);
+    z-index: 1100;
+    display: flex;
+    justify-content: center;
+    align-items: flex-end;
+  }
+
+  .contacts-modal-panel {
+    width: 100%;
+    max-width: 600px;
+    height: 85%;
+    background: #18191b;
+    border-top-left-radius: 16px;
+    border-top-right-radius: 16px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.4);
+  }
+
+  .contacts-modal-top {
+    height: 48px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 16px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    flex-shrink: 0;
+  }
+
+  .contacts-modal-title {
+    font-size: 16px;
+    font-weight: 600;
+    color: #fff;
+  }
+
+  .contacts-modal-close {
+    background: transparent;
+    border: none;
+    color: #9ca3af;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 4px;
+    border-radius: 50%;
+  }
+
+  .contacts-modal-body {
+    flex: 1;
+    overflow: hidden;
+    position: relative;
+  }
 </style>
+

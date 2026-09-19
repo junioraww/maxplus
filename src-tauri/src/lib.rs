@@ -4,6 +4,7 @@ mod notifications;
 mod state;
 mod stores;
 mod video;
+mod webapp_proxy;
 
 use state::AppState;
 use std::sync::Arc;
@@ -12,6 +13,7 @@ use tauri::{Emitter, Manager};
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     video::start_video_proxy();
+    webapp_proxy::start_webapp_proxy();
 
     let builder = tauri::Builder::default()
         .plugin(tauri_plugin_upload::init())
@@ -123,6 +125,9 @@ pub fn run() {
             commands::move_asset,
             commands::resolve_link,
             commands::send_sticker_message,
+            commands::open_web_app,
+            commands::share_phone_with_bot,
+            commands::submit_external_callback,
             files::download,
             files::upload,
             files::pick,
