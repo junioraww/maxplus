@@ -89,6 +89,14 @@ export const getChat = chatId => {
       const account = await getCurrentAccount();
       return invoke("update_messages", { account: Number(account.id), chatId: Number(chatId), messages });
     },
+    markMessageDeleted: async messageId => {
+      const account = await getCurrentAccount();
+      return invoke("mark_message_deleted", {
+        account: Number(account.id),
+        chatId: Number(chatId),
+        messageId: String(messageId),
+      });
+    },
     loadMessages: async (time, amount) => {
       const account = await getCurrentAccount();
       return invoke("load_messages", { account: Number(account.id), chatId: Number(chatId), time, amount });

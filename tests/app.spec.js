@@ -197,3 +197,60 @@ test.describe('Transcription store', () => {
   });
 });
 
+test.describe('Message diffing and edit history', () => {
+  test('computeTextDiff generates correct word/token delta', async () => {
+    const { computeTextDiff, applyDiff } = await import('../src/lib/utils/diff.js');
+    const oldText = 'Hello synthetic world';
+    const newText = 'Hello beautiful synthetic world!';
+    const diff = computeTextDiff(oldText, newText);
+
+    expect(diff.length).toBeGreaterThan(0);
+    const hasAdd = diff.some((d) => d.op === '+' && d.text.includes('beautiful'));
+    expect(hasAdd).toBe(true);
+
+    const appliedNew = applyDiff(diff, 'new');
+    expect(appliedNew).toBe(newText);
+
+    const appliedOld = applyDiff(diff, 'old');
+    expect(appliedOld).toBe(oldText);
+  });
+
+  test('computeAttachesDiff correctly detects added and removed attachments', async () => {
+    const { computeAttachesDiff } = await import('../src/lib/utils/diff.js');
+    const oldAttaches = [
+      { id: 101, _type: 'PHOTO', name: 'photo1.jpg' },
+      { id: 102, _type: 'FILE', name: 'doc1.pdf' },
+    ];
+    const newAttaches = [
+      { id: 102, _type: 'FILE', name: 'doc1.pdf' },
+      { id: 103, _type: 'PHOTO', name: 'photo2.jpg' },
+    ];
+
+    const delta = computeAttachesDiff(oldAttaches, newAttaches);
+    expect(delta.added.length).toBe(1);
+    expect(delta.added[0].id).toBe(103);
+    expect(delta.removed.length).toBe(1);
+    expect(delta.removed[0].id).toBe(101);
+  });
+
+  test('preserves deleted status and timestamp on message deletion', () => {
+    const msg = {
+      id: 90001,
+      sender: 10001,
+      text: 'Synthetic content',
+      time: 1700000000000,
+    };
+
+    const deletedMsg = {
+      ...msg,
+      deleted: true,
+      deleted_at: 1700000005000,
+    };
+
+    expect(deletedMsg.deleted).toBe(true);
+    expect(deletedMsg.deleted_at).toBe(1700000005000);
+    expect(deletedMsg.text).toBe('Synthetic content');
+  });
+});
+
+

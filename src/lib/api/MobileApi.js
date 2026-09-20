@@ -338,6 +338,17 @@ export default class MobileApi extends BaseAPI {
         }
       } else if (opc === 293) {
         handleTranscriptionPush(response.payload);
+      } else if (opc === 142 || opc === 140) {
+        const p = response.payload;
+        const cId = p?.chatId || p?.chat?.id;
+        const messageIds = p?.messageIds || (p?.messageId ? [p.messageId] : []);
+        if (cId && messageIds.length) {
+          const chat = getChat(cId);
+          for (const mId of messageIds) {
+            chat.markMessageDeleted?.(mId);
+            chat.updateMessages([{ id: mId, deleted: true, deleted_at: Date.now() }]);
+          }
+        }
       }
     });
   }
@@ -733,7 +744,28 @@ export default class MobileApi extends BaseAPI {
 
   async deleteMessage(chatId, messageId, forMe) {
     await this.waitSync();
+    try {
+      const account = await getCurrentAccount();
+      if (account?.id) {
+        await invoke("mark_message_deleted", {
+          account: Number(account.id),
+          chatId: Number(chatId),
+          messageId: String(messageId),
+        });
+      }
+    } catch {}
     return await invoke("delete_message", { chatId, messageId, forMe });
+  }
+
+  async editMessage(chatId, messageId, text, attaches = [], elements = []) {
+    await this.waitSync();
+    return await invoke("edit_message", {
+      chatId: Number(chatId),
+      messageId: String(messageId),
+      text: String(text || ""),
+      attaches: attaches || [],
+      elements: elements || [],
+    });
   }
 
   async sendButtonCallback(chatId, messageId, callbackId, payload) {

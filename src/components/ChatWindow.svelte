@@ -46,6 +46,7 @@
   import BotStart from "$components/ChatWindow/BotStart.svelte";
   import Avatar from "$components/main/Avatar.svelte";
   import StickerPackModal from "$components/ChatWindow/Stickers/StickerPackModal.svelte";
+  import EditHistoryModal from "$components/ChatWindow/EditHistoryModal.svelte";
   import { clearChatNotification } from "$lib/utils/notifications.js";
 
   export let chatId;
@@ -58,6 +59,8 @@
   let gotSecretChatRequest = null;
 
   let replyTo = null;
+  let editingMessage = null;
+  let historyModalMessage = null;
 
   let settingsShown = false;
   let dropoutActiveAt;
@@ -1206,23 +1209,25 @@
   }
 
   function handleDropout(e) {
-    const msgId = dropoutActiveAt.msg.id;
+    const msgId = dropoutActiveAt?.msg?.id;
     dropoutActiveAt = null;
 
-    const action = e.detail?.action
+    const action = e.detail?.action;
 
     if (action === "delete") {
       messages.update(x => {
-        return x.filter(x => x.id !== msgId);
+        const idx = x.findIndex(m => String(m.id) === String(msgId));
+        if (idx !== -1) {
+          x[idx] = {
+            ...x[idx],
+            deleted: true,
+            deleted_at: Date.now(),
+          };
+        }
+        return [...x];
       });
 
-      if (visibleMessages[msgId]) delete visibleMessages[msgId];
-
-      let wasAtBottom = false;
-      if (scrollElement) {
-        const { scrollTop, scrollHeight, clientHeight } = scrollElement;
-        wasAtBottom = scrollHeight - scrollTop - clientHeight < 150;
-      }
+      getChat(chat?.id || chatId).markMessageDeleted?.(msgId);
     } else if (action === "reaction") {
       messages.update(x => x);
     }
@@ -1476,6 +1481,7 @@
               on:openMedia={(e) => openMedia(e.detail.attach)}
               on:openChat={() => openChat(chat.id, msg.id)}
               on:openStickerPack={(e) => handleOpenStickerPack(e.detail.sticker)}
+              on:openHistory={(e) => (historyModalMessage = e.detail.msg)}
             />
           </div>
         {:else}
@@ -1492,8 +1498,17 @@
     activeAt={dropoutActiveAt}
     {chat}
     on:reply={(e) => (replyTo = e.detail.id)}
+    on:edit={(e) => (editingMessage = e.detail.msg)}
+    on:history={(e) => (historyModalMessage = e.detail.msg)}
     on:close={handleDropout}
   />
+
+  {#if historyModalMessage}
+    <EditHistoryModal
+      msg={historyModalMessage}
+      on:close={() => (historyModalMessage = null)}
+    />
+  {/if}
 
   {#if activeStickerPack}
     <StickerPackModal
@@ -1519,6 +1534,7 @@
     <Input
       bind:this={inputComponent}
       bind:replyTo
+      bind:editingMessage
       bind:attachesDropout
       bind:showStickerPanel
       {scrollElement}

@@ -238,9 +238,21 @@
             <p class="line system">{@html line}</p>
           {/each}
         {:else}
+          {#if msg.deleted}
+            <div class="deleted-notice">
+              <svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor">
+                <path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/>
+              </svg>
+              <span>Сообщение удалено</span>
+              {#if msg.deleted_at || msg.deletedAt}
+                <span class="deleted-notice-time">({new Date(msg.deleted_at || msg.deletedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })})</span>
+              {/if}
+            </div>
+          {/if}
+
           {#if lines}
             {#each lines as line}
-              <p class="line">
+              <p class="line" class:deleted-text={msg.deleted}>
               {#if decoded}
                 {@html line}
               {:else}
@@ -275,6 +287,18 @@
                 >
                 {msg.stats.views}
               </span>
+            {/if}
+            {#if msg.deleted}
+              <span class="deleted-badge" title="Удалено">удалено</span>
+            {:else if msg.edited || (Array.isArray(msg.history) && msg.history.length > 0)}
+              <button
+                type="button"
+                class="edited-badge"
+                title="История изменений"
+                on:click|stopPropagation={() => dispatch('openHistory', { msg })}
+              >
+                изм.
+              </button>
             {/if}
             <span class="timestamp"
               >{new Date(msg.time).toLocaleTimeString([], {
@@ -600,6 +624,49 @@
   .views-icon {
     width: 12px;
     fill: currentColor;
+  }
+
+  .deleted-notice {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 11px;
+    color: #ef4444;
+    margin-bottom: 4px;
+    font-weight: 500;
+  }
+
+  .deleted-notice-time {
+    color: rgba(239, 68, 68, 0.7);
+    font-size: 10px;
+  }
+
+  .line.deleted-text {
+    opacity: 0.6;
+    text-decoration: line-through;
+  }
+
+  .deleted-badge {
+    font-size: 10px;
+    color: #ef4444;
+    font-weight: 600;
+    margin-right: 2px;
+  }
+
+  .edited-badge {
+    background: transparent;
+    border: none;
+    font-size: 10px;
+    color: #8b929e;
+    cursor: pointer;
+    padding: 0 2px;
+    border-radius: 3px;
+    transition: color 0.15s ease;
+  }
+
+  .edited-badge:hover {
+    color: #38bdf8;
+    text-decoration: underline;
   }
 
   .timestamp {

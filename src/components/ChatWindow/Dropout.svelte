@@ -5,11 +5,10 @@
   import { tick } from "svelte";
 
   import { handleReaction } from "$components/ChatWindow/actions";
-  import { currentSessionChats } from "$lib/stores/api";
+  import API, { currentSessionChats, currentUser } from "$lib/stores/api";
   import {
     saveChats,
   } from "$lib/stores/messages";
-  import API from "$lib/stores/api";
 
   export let activeAt;
   export let chat;
@@ -85,12 +84,20 @@
     if (onBack.dropout) delete onBack["dropout"];
   }
 
+  function handleEditMessage() {
+    dispatch("edit", { msg: activeAt.msg });
+    dispatch("close", {});
+    if (onBack.dropout) delete onBack["dropout"];
+  }
+
+  function handleHistoryMessage() {
+    dispatch("history", { msg: activeAt.msg });
+    dispatch("close", {});
+    if (onBack.dropout) delete onBack["dropout"];
+  }
+
   async function handleDeleteMessage() {
     const response = await $API.deleteMessage(chat.id, activeAt.msg.id, false);
-
-    /*$API.savedMessages[chat.id] = $API.savedMessages[chat.id].filter(
-      (x) => x.id !== activeAt.msg.id,
-    );*/
 
     dispatch("close", { action: "delete" });
     if (onBack.dropout) delete onBack["dropout"];
@@ -98,6 +105,10 @@
 </script>
 
 {#if activeAt}
+  {@const isMe = Number(activeAt.msg?.sender) === Number($currentUser)}
+  {@const hasHistory = !!(activeAt.msg?.edited || (Array.isArray(activeAt.msg?.history) && activeAt.msg.history.length > 0))}
+  {@const isDeleted = activeAt.msg?.deleted === true}
+
   <div
     class="message-actions-dropout"
     bind:this={menuNode}
@@ -122,6 +133,12 @@
     {/if}
 
     <div class="actions">
+      {#if isMe && !isDeleted}
+        <button on:click={handleEditMessage}>Изменить</button>
+      {/if}
+      {#if hasHistory}
+        <button on:click={handleHistoryMessage}>История изменений</button>
+      {/if}
       <button on:click={() => handleSetReply()}>Ответить</button>
       <button on:click={() => handlePinMessage()}>Закрепить</button>
       <button on:click={() => handleDeleteMessage()}>Удалить</button>

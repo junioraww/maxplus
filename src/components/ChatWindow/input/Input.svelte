@@ -17,6 +17,7 @@
   import StickerPanel from "$components/ChatWindow/Stickers/StickerPanel.svelte";
   import { generateWaveformFromAmplitudes } from "$lib/utils/waveform.js";
   import { stopCurrentMedia } from "$lib/stores/mediaPlayback.js";
+  import { computeTextDiff, computeAttachesDiff } from "$lib/utils/diff.js";
 
   export let replyTo;
   export let scrollElement;
@@ -25,6 +26,25 @@
   export let attachesDropout;
   export let chatSettings;
   export let botCommands = [];
+  export let editingMessage = null;
+
+  let prevEditingId = null;
+  $: if (editingMessage && editingMessage.id !== prevEditingId) {
+    prevEditingId = editingMessage.id;
+    newMessage = editingMessage.text || "";
+    attaches = Array.isArray(editingMessage.attaches) ? [...editingMessage.attaches] : [];
+    tick().then(() => autoResize());
+  } else if (!editingMessage && prevEditingId !== null) {
+    prevEditingId = null;
+  }
+
+  function cancelEdit() {
+    editingMessage = null;
+    prevEditingId = null;
+    newMessage = "";
+    attaches = [];
+    tick().then(() => autoResize());
+  }
 
   let newMessage = "";
   let attaches = [];
@@ -171,6 +191,61 @@
   async function onSend(event) {
     if (!newMessage.trim() && !attaches.length) return;
     const textToSend = newMessage;
+
+    if (editingMessage) {
+      const targetMsgId = editingMessage.id;
+      const oldText = editingMessage.text || "";
+      const oldAtts = editingMessage.attaches || [];
+
+      const _attaches = [];
+      for (const attach of attaches) {
+        if (attach._type) {
+          _attaches.push(attach);
+        } else {
+          const result = await $API.uploadAttachment(attach);
+          if (result) _attaches.push(result);
+        }
+      }
+
+      try {
+        await $API.editMessage(chat.id, targetMsgId, textToSend, _attaches, []);
+        const textDiff = computeTextDiff(oldText, textToSend);
+        const attsDiff = computeAttachesDiff(oldAtts, _attaches);
+        const at = Date.now();
+
+        const chatCache = getChat(chat.id);
+        messages.update(msgs => {
+          const idx = msgs.findIndex(m => String(m.id) === String(targetMsgId));
+          if (idx !== -1) {
+            const oldMsg = msgs[idx];
+            const prevHistory = Array.isArray(oldMsg.history) ? oldMsg.history : [];
+            const newHistory = [
+              ...prevHistory,
+              { at, diff: textDiff, attaches_diff: attsDiff }
+            ];
+            const updated = {
+              ...oldMsg,
+              text: textToSend,
+              attaches: _attaches,
+              edited: true,
+              edited_at: at,
+              history: newHistory,
+            };
+            msgs[idx] = updated;
+            chatCache.updateMessages([updated]);
+            return [...msgs];
+          }
+          return msgs;
+        });
+      } catch (e) {
+        console.error(e);
+        showAlert("Не удалось отредактировать сообщение");
+      } finally {
+        cancelEdit();
+      }
+      return;
+    }
+
     const tempId = Date.now().toString();
 
     newMessage = "";
@@ -537,23 +612,45 @@
 {#if attaches.length}
   <div class="selected-attaches">
     {#each attaches as attach, i}
+      {@const attachType = attach.type || attach._type}
       <div class="attach-card">
         <button class="remove" on:click={() => removeAttach(i)}>✕</button>
 
-        {#if attach.type === "PHOTO"}
-          <img src={convertFileSrc(attach.path)} alt="preview" />
-        {:else if attach.type === "VIDEO"}
-          <VideoPreview {attach} />
+        {#if attachType === "PHOTO"}
+          <img src={attach.path ? convertFileSrc(attach.path) : (attach.url || attach.baseUrl)} alt="preview" />
+        {:else if attachType === "VIDEO"}
+          {#if attach.path}
+            <VideoPreview {attach} />
+          {:else}
+            <div class="file-preview"><div class="file-icon">🎥</div><div class="file-name">Видео</div></div>
+          {/if}
+        {:else if attachType === "AUDIO"}
+          <div class="file-preview"><div class="file-icon">🎵</div><div class="file-name">Голосовое</div></div>
         {:else}
           <div class="file-preview">
             <div class="file-icon">📄</div>
             <div class="file-name">
-              {attach.path.split("/").pop()}
+              {attach.name || (attach.path ? attach.path.split("/").pop() : "Файл")}
             </div>
           </div>
         {/if}
       </div>
     {/each}
+  </div>
+{/if}
+
+{#if editingMessage}
+  <div class="editing-banner">
+    <div class="editing-icon">
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+        <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/>
+      </svg>
+    </div>
+    <div class="editing-details">
+      <div class="editing-title">Редактирование сообщения</div>
+      <div class="editing-snippet">{editingMessage.text || 'Вложения'}</div>
+    </div>
+    <button class="editing-cancel-btn" type="button" on:click={cancelEdit} title="Отменить">✕</button>
   </div>
 {/if}
 
@@ -1210,5 +1307,60 @@
   @keyframes rec-btn-pulse {
     0%, 100% { transform: scale(1); }
     50% { transform: scale(1.08); }
+  }
+
+  .editing-banner {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 14px;
+    background: #17191d;
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+    border-left: 3px solid #248bfe;
+  }
+
+  .editing-icon {
+    color: #248bfe;
+    display: flex;
+    align-items: center;
+    flex-shrink: 0;
+  }
+
+  .editing-details {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .editing-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: #248bfe;
+  }
+
+  .editing-snippet {
+    font-size: 12px;
+    color: #94a3b8;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .editing-cancel-btn {
+    background: transparent;
+    border: none;
+    color: #8b929e;
+    cursor: pointer;
+    font-size: 14px;
+    padding: 4px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    transition: color 0.15s ease;
+  }
+
+  .editing-cancel-btn:hover {
+    color: #fff;
   }
 </style>
