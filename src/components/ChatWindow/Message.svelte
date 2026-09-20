@@ -290,7 +290,7 @@
             {/if}
             {#if msg.deleted}
               <span class="deleted-badge" title="Удалено">удалено</span>
-            {:else if msg.edited || (Array.isArray(msg.history) && msg.history.length > 0)}
+            {:else if msg.edited || msg.status === 'EDITED' || (Array.isArray(msg.history) && msg.history.length > 0)}
               <button
                 type="button"
                 class="edited-badge"

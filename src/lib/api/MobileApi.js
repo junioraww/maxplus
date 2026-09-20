@@ -13,6 +13,7 @@ import {
   currentFolders,
   currentlySyncing,
   currentPresence,
+  serverConfig,
 } from "$lib/stores/api";
 import {
   get as sessionGet,
@@ -67,40 +68,7 @@ function sortFolders(folders, order) {
   });
 }
 
-export function parseApiError(err) {
-  if (!err) return "Неизвестная ошибка";
-  if (typeof err === "string") {
-    try {
-      const parsed = JSON.parse(err);
-      return parsed.localizedMessage || parsed.message || parsed.error || err;
-    } catch {
-      return err;
-    }
-  }
-  if (err.localizedMessage) return err.localizedMessage;
-  if (err.message) return err.message;
-  if (err.error) {
-    if (typeof err.error === "string") {
-      if (err.error === "WRONG_PASSWORD") return "Неверный пароль";
-      return err.error;
-    }
-    return JSON.stringify(err.error);
-  }
-  if (err.text) {
-    try {
-      const parsed = JSON.parse(err.text);
-      if (parsed.localizedMessage) return parsed.localizedMessage;
-      if (parsed.message) return parsed.message;
-      if (parsed.error) {
-        if (parsed.error === "WRONG_PASSWORD") return "Неверный пароль";
-        return parsed.error;
-      }
-    } catch {
-      return err.text;
-    }
-  }
-  return "Ошибка аутентификации";
-}
+export { parseApiError } from "$lib/utils/errors.js";
 
 export default class MobileApi extends BaseAPI {
   resolve_sync = null;
@@ -116,6 +84,10 @@ export default class MobileApi extends BaseAPI {
   constructor(token) {
     super(token);
     if (typeof window !== "undefined") {
+      try {
+        const cachedCfg = JSON.parse(localStorage.getItem("max_server_config") || "{}");
+        if (cachedCfg && Object.keys(cachedCfg).length) serverConfig.set(cachedCfg);
+      } catch {}
       window.addEventListener("online", () => {
         if (!sessionGet("connected") && get(currentUser)) {
           this.reconnectAttempts = 0;
@@ -201,14 +173,30 @@ export default class MobileApi extends BaseAPI {
       const opc = response.opcode;
 
       if (opc === 128) {
-        // TODO event handler
         const message = response.payload.message;
         message.chatId = response.payload.chatId;
 
         const chat = getChat(message.chatId);
         chat.updateMessages([ message ]);
 
-        if (message.status !== "EDITED") {
+        if (message.status === "EDITED") {
+          chat.receivedMessage.set(message);
+
+          currentSessionChats.update((chats) => {
+            if (!chats) return chats;
+            const index = chats.findIndex((c) => String(c.id) === String(message.chatId));
+            if (index !== -1 && chats[index].lastMessage && String(chats[index].lastMessage.id) === String(message.id)) {
+              const updatedChat = {
+                ...chats[index],
+                lastMessage: message,
+              };
+              const next = [...chats];
+              next[index] = updatedChat;
+              return next;
+            }
+            return chats;
+          });
+        } else {
           chat.receivedMessage.set(message);
 
           const myId = Number(get(currentUser));
@@ -637,6 +625,13 @@ export default class MobileApi extends BaseAPI {
         currentPresence.update(prev => ({ ...prev, ...initialMap }));
       }
 
+      if (config?.server) {
+        serverConfig.set(config.server);
+        try {
+          localStorage.setItem("max_server_config", JSON.stringify(config.server));
+        } catch {}
+      }
+
       if (config?.user) {
         applyUserConfig(config.user);
       }
@@ -759,13 +754,28 @@ export default class MobileApi extends BaseAPI {
 
   async editMessage(chatId, messageId, text, attaches = [], elements = []) {
     await this.waitSync();
-    return await invoke("edit_message", {
-      chatId: Number(chatId),
-      messageId: String(messageId),
-      text: String(text || ""),
-      attaches: attaches || [],
-      elements: elements || [],
-    });
+    let res;
+    try {
+      res = await invoke("edit_message", {
+        chatId: Number(chatId),
+        messageId: String(messageId),
+        text: String(text || ""),
+        attaches: attaches || [],
+        elements: elements || [],
+      });
+    } catch (e) {
+      const msg = parseApiError(e);
+      const err = new Error(msg);
+      err.payload = e;
+      throw err;
+    }
+    if (res && res.error) {
+      const msg = parseApiError(res);
+      const err = new Error(msg);
+      err.payload = res;
+      throw err;
+    }
+    return res;
   }
 
   async sendButtonCallback(chatId, messageId, callbackId, payload) {

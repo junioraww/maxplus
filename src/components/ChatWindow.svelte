@@ -47,6 +47,7 @@
   import Avatar from "$components/main/Avatar.svelte";
   import StickerPackModal from "$components/ChatWindow/Stickers/StickerPackModal.svelte";
   import EditHistoryModal from "$components/ChatWindow/EditHistoryModal.svelte";
+  import { computeTextDiff } from "$lib/utils/diff.js";
   import { clearChatNotification } from "$lib/utils/notifications.js";
 
   export let chatId;
@@ -516,17 +517,58 @@
     if (!incoming?.length) return;
 
     const map = new Map(
-      get(messages).map(m => [m.id, m])
+      get(messages).map(m => [String(m.id), m])
     );
 
     const changed = [];
 
     for (const msg of incoming) {
-      const old = map.get(msg.id);
+      const msgId = String(msg.id);
+      const old = map.get(msgId);
 
-      if (!old || JSON.stringify(old) !== JSON.stringify(msg)) {
-        map.set(msg.id, msg);
-        changed.push(msg);
+      if (!old) {
+        const isEdited = msg.status === "EDITED" || !!msg.edited;
+        const entry = {
+          ...msg,
+          id: msgId,
+          ...(isEdited ? { edited: true } : {}),
+        };
+        map.set(msgId, entry);
+        changed.push(entry);
+        continue;
+      }
+
+      const isEditedStatus = msg.status === "EDITED" || old.status === "EDITED" || old.edited || msg.edited;
+      const isDeletedStatus = old.deleted || msg.deleted || msg.status === "REMOVED";
+
+      let newHistory = Array.isArray(old.history) ? [...old.history] : [];
+      if (Array.isArray(msg.history)) {
+        for (const h of msg.history) {
+          if (!newHistory.some(existing => existing.at === h.at)) {
+            newHistory.push(h);
+          }
+        }
+      }
+
+      const textChanged = old.text && msg.text && old.text !== msg.text;
+      if (textChanged) {
+        const textDiff = computeTextDiff(old.text, msg.text);
+        const at = msg.editTime || msg.edited_at || Date.now();
+        newHistory.push({ at, diff: textDiff });
+      }
+
+      const merged = {
+        ...old,
+        ...msg,
+        id: msgId,
+        ...(isDeletedStatus ? { deleted: true, deleted_at: old.deleted_at || msg.deleted_at || Date.now() } : {}),
+        ...(isEditedStatus ? { edited: true, edited_at: old.edited_at || msg.edited_at || msg.editTime || Date.now() } : {}),
+        ...(newHistory.length ? { history: newHistory } : {}),
+      };
+
+      if (JSON.stringify(old) !== JSON.stringify(merged)) {
+        map.set(msgId, merged);
+        changed.push(merged);
       }
     }
 
@@ -579,17 +621,7 @@
 
         if (error) throw new Error(error);
 
-        const map = new Map(
-          serverMessages.map(m => [String(m.id), m])
-        );
-        messages.set(
-          [...map.values()].sort(
-            (a,b) => a.time - b.time
-          )
-        );
-
-        await decodeMessagesBatch(serverMessages);
-        chatCache.updateMessages(serverMessages);
+        await mergeMessages(serverMessages, true);
 
         if (serverMessages.length < backward + forward) {
           if (forward === 0) {
@@ -845,6 +877,42 @@
           wasAtBottom = scrollHeight - scrollTop - clientHeight < 150;
         }
 
+        if (message.status === "EDITED") {
+          messages.update((_messages) => {
+            const idx = _messages.findIndex((x) => String(x.id) === String(message.id));
+            if (idx !== -1) {
+              const old = _messages[idx];
+              let newHistory = Array.isArray(old.history) ? [...old.history] : [];
+              if (Array.isArray(message.history)) {
+                for (const h of message.history) {
+                  if (!newHistory.some(existing => existing.at === h.at)) newHistory.push(h);
+                }
+              }
+              if (old.text && message.text && old.text !== message.text) {
+                const textDiff = computeTextDiff(old.text, message.text);
+                const at = message.editTime || message.edited_at || Date.now();
+                newHistory.push({ at, diff: textDiff });
+              }
+              const updated = {
+                ...old,
+                ...message,
+                edited: true,
+                edited_at: old.edited_at || message.edited_at || Date.now(),
+                ...(newHistory.length ? { history: newHistory } : {}),
+              };
+              _messages[idx] = updated;
+            }
+            return _messages;
+          });
+          const decoded = await decode_msg(message);
+          if (decoded) decodedMessages.update(d => ({ ...d, [message.id]: decoded }));
+          await tick();
+          applyPendingHeights();
+          computeCumulativeHeights();
+          await updateVisibleMessages(wasAtBottom);
+          return;
+        }
+
         if (message.sender === $currentUser) {
           all_loaded_newer = true;
         }
@@ -852,8 +920,17 @@
         if (all_loaded_newer) {
           messages.update((_messages) => {
             const idx = _messages.findIndex((x) => String(x.id) === String(message.id));
-            if (idx !== -1) _messages[idx] = message;
-            else return [..._messages, message];
+            if (idx !== -1) {
+              const old = _messages[idx];
+              _messages[idx] = {
+                ...old,
+                ...message,
+                ...(old.edited || message.status === "EDITED" ? { edited: true } : {}),
+                ...(old.history ? { history: old.history } : {}),
+              };
+            } else {
+              return [..._messages, message];
+            }
             return _messages;
           });
 

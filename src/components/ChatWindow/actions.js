@@ -51,9 +51,6 @@ export async function sendMessage(
       Uint8Array.of(buildHeader(0, 0, 0, 0), ...bytes), obf
     );
   }
-
-  if (debug) console.log('Final', text);
-
   const chatId = chat.id;
   const id = Date.now();
 
