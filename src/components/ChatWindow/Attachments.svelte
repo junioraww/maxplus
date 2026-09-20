@@ -6,6 +6,8 @@
   import { getAssetUrl } from "$lib/utils/images";
   import API from "$lib/stores/api";
   import StickerMedia from "$components/ChatWindow/Stickers/StickerMedia.svelte";
+  import VoiceBubble from "$components/ChatWindow/VoiceBubble.svelte";
+  import VideoNoteBubble from "$components/ChatWindow/VideoNoteBubble.svelte";
 
   export let getFile;
   export let attaches;
@@ -16,9 +18,9 @@
   let downloadingMap = {};
 
   $: mediaAttaches = (attaches || []).filter(
-    (a) => a._type === "PHOTO" || a._type === "VIDEO" || a._type === "FILE",
+    (a) => a._type === "PHOTO" || a._type === "VIDEO" || a._type === "FILE" || a._type === "AUDIO",
   );
-  $: mediaItems = mediaAttaches.filter(a => a._type === "PHOTO" || a._type === "VIDEO");
+  $: mediaItems = mediaAttaches.filter(a => a._type === "PHOTO" || (a._type === "VIDEO" && a.videoType !== 1));
 
   let placeholderUrls = {};
   function getPlaceholderUrl(previewData) {
@@ -305,9 +307,18 @@
   </div>
 {/each}
 
+{#each attaches.filter(a => a._type === "AUDIO") as attach}
+  <VoiceBubble {attach} {messageId} {chatId} />
+{/each}
+
+{#each attaches.filter(a => a._type === "VIDEO" && a.videoType === 1) as attach}
+  <VideoNoteBubble {attach} {messageId} {chatId} />
+{/each}
+
 {#each attaches.filter(a =>
   a._type !== "PHOTO" &&
   a._type !== "VIDEO" &&
+  a._type !== "AUDIO" &&
   a._type !== "FILE" &&
   a._type !== "STICKER" &&
   a._type !== "CONTROL" &&

@@ -5,6 +5,8 @@
     <key>NSFaceIDUsageDescription</key>
     <string>Authenticate with biometric</string>
     <key>NSCameraUsageDescription</key>
-    <string>Read QR codes</string>
+    <string>Camera access for photos and video notes</string>
+    <key>NSMicrophoneUsageDescription</key>
+    <string>Microphone access for voice and video notes</string>
   </dict>
 </plist>

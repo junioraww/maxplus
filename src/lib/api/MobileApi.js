@@ -22,6 +22,7 @@ import {
   syncContacts,
 } from "$lib/utils/caching";
 import { handlePushUpdate } from "$lib/stores/stickers";
+import { handleTranscriptionPush } from "$lib/stores/transcription.js";
 import {
   addAccount,
   getAccounts,
@@ -335,6 +336,8 @@ export default class MobileApi extends BaseAPI {
         if (p?.type === "FAVORITE_STICKER_SET") {
           handlePushUpdate(p.id, p.updateType);
         }
+      } else if (opc === 293) {
+        handleTranscriptionPush(response.payload);
       }
     });
   }
@@ -954,41 +957,32 @@ export default class MobileApi extends BaseAPI {
     await this.waitSync();
     const { type, path, mime } = attach;
 
-    const response = await invoke("get_" + type.toLowerCase() + "_upload", {
-      count: 1,
-      profile: false,
-    });
+    let response;
+    if (type === "AUDIO") {
+      response = await invoke("get_audio_upload", { count: 1 });
+    } else if (type === "VIDEO" && attach.videoType === 1) {
+      response = await invoke("get_video_note_upload", { count: 1 });
+    } else {
+      response = await invoke("get_" + type.toLowerCase() + "_upload", {
+        count: 1,
+        profile: false,
+      });
+    }
 
     if (!response?.url && !response?.info) {
       alert("Не удалось получить ссылку на загрузку " + type);
       return null;
     }
 
-    console.log("response", response);
-
     const payload = {
       path,
-      attachType: type,
+      attachType: type === "AUDIO" ? "VIDEO" : type,
       mime,
     };
 
     if (type === "PHOTO") {
       payload.uploadUrl = response.url;
-      /* const formData = new FormData();
-        formData.append(
-        "file",
-        await fetch(convertFileSrc(path)).then(r => r.blob()),
-        "image.jpg"
-        );
-        const res = await fetch(response.url, {
-        method: "POST",
-        body: formData,
-        referrer: "no-referrer",
-      });
-      const json = await res.json();
-      const uploaded = Object.values(json.photos)[0];
-      return { _type: "PHOTO", photoToken: uploaded.token };*/
-    } else if (type === "VIDEO") {
+    } else if (type === "VIDEO" || type === "AUDIO") {
       const { token, url, videoId } = response.info[0];
       payload.token = token;
       payload.uploadUrl = url;
@@ -1010,7 +1004,37 @@ export default class MobileApi extends BaseAPI {
       return null;
     }
 
+    if (type === "AUDIO") {
+      return {
+        _type: "AUDIO",
+        token: payload.token,
+        audioId: payload.videoId,
+        duration: attach.duration,
+        wave: attach.wave,
+      };
+    }
+
+    if (type === "VIDEO" && attach.videoType === 1) {
+      return {
+        _type: "VIDEO",
+        videoType: 1,
+        token: payload.token,
+        videoId: payload.videoId,
+        duration: attach.duration,
+        thumbnail: attach.thumbnail,
+      };
+    }
+
     return { _type: type, ...data };
+  }
+
+  async requestTranscription(chatId, messageId, mediaId) {
+    await this.waitSync();
+    return await invoke("request_transcription", {
+      chatId: Number(chatId),
+      messageId: String(messageId),
+      mediaId: String(mediaId || messageId),
+    });
   }
 
   async updateProfile(firstName, lastName, description) {

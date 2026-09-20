@@ -36,6 +36,8 @@ delegate_cmd!(close_all_sessions() => close_all_sessions());
 delegate_cmd!(get_photo_upload(count: i64, profile: bool) => get_photo_upload(count, profile));
 delegate_cmd!(get_video_upload(count: i64, profile: bool) => get_video_upload(count, profile));
 delegate_cmd!(get_file_upload(count: i64, profile: bool) => get_file_upload(count, profile));
+delegate_cmd!(get_audio_upload(count: i64) => get_audio_upload(count));
+delegate_cmd!(get_video_note_upload(count: i64) => get_video_note_upload(count));
 delegate_cmd!(update_profile(first_name: String, last_name: String, description: Option<String>, avatar_token: Option<String>) =>
     update_profile(first_name, last_name, description, avatar_token));
 delegate_cmd!(get_calls(count: i64, forward: bool) => get_calls(forward, count));
@@ -58,6 +60,7 @@ delegate_cmd!(pin_message(chat_id: i64, message_id: String, notify: bool) => pin
 delegate_cmd!(delete_message(chat_id: i64, message_id: String, for_me: bool) => delete_message(chat_id, p(message_id)?, for_me));
 delegate_cmd!(get_video_by_id(chat_id: i64, message_id: String, video_id: i64) => get_video_by_id(chat_id, p(message_id)?, video_id));
 delegate_cmd!(get_file_by_id(chat_id: i64, message_id: String, file_id: i64) => get_file_by_id(chat_id, p(message_id)?, file_id));
+delegate_cmd!(request_transcription(chat_id: i64, message_id: String, media_id: String) => request_transcription(chat_id, p(message_id)?, p(media_id)?));
 
 delegate_cmd!(send_message(
     chat_id: i64,

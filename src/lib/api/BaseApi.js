@@ -49,4 +49,6 @@ export default class API {
     onMessage() { throw "onMessage: Unimplemented" }
 
     uploadAttachment() { throw "uploadAttachment: Unimplemented" }
+    requestTranscription() { throw "requestTranscription: Unimplemented" }
+    editMessage() { throw "editMessage: Unimplemented" }
 }

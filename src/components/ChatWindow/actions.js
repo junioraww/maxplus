@@ -22,8 +22,8 @@ export async function sendMessage(
   elements,
   forceObfuscation = false
 ) {
-  if (!newMessage.trim()) return;
-  let text = newMessage;
+  if (!newMessage?.trim() && (!attaches || !attaches.length)) return;
+  let text = newMessage ? newMessage.trim() : "";
 
   const keys = get(chatSettings).keys;
 
@@ -31,29 +31,20 @@ export async function sendMessage(
   const sym = get(chatSettings).password;
   const obf = get(chatSettings).obfs;
 
-  const debug = true;
-
-  // TODO Fix [!] Вес сообщения возрастает в 3 раза при ass + sym одновременно
-
-  if (forceObfuscation || sym || ass) {
-    if (debug) console.log('Original', text);
-
+  if (text && (forceObfuscation || sym || ass)) {
     let bytes = new TextEncoder().encode(text);
-    if (debug) console.log('2', bytes);
 
     if (ass) bytes = await encryptAss(chat, chatSettings, bytes);
-    if (debug) console.log('3', bytes);
 
     if (sym) bytes = await xorEncrypt(bytes, sym);
-    if (debug) console.log('4', bytes);
 
     const out = new Uint8Array(1 + bytes.length);
     out[0] = buildHeader(0, !!sym, !!ass, 0);
     out.set(bytes, 1);
 
-    text = await obfuscate(out, obf || "zh"); // obfuscation should hide header
+    text = await obfuscate(out, obf || "zh");
   }
-  else if (obf) {
+  else if (text && obf) {
     const bytes = new TextEncoder().encode(text);
 
     text = await obfuscate(

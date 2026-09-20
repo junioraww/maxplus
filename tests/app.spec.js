@@ -100,3 +100,100 @@ test.describe('Chat scroll store logic', () => {
     expect(getChatScroll(99901)).toBeNull();
   });
 });
+
+test.describe('Media playback coordinator and waveform', () => {
+  test('parseWaveform converts bytes to normalized floats', async () => {
+    const { parseWaveform, generateWaveformFromAmplitudes } = await import('../src/lib/utils/waveform.js');
+    const bytes = [0, 128, 255, 64];
+    const wave = parseWaveform(bytes, 4);
+    expect(wave.length).toBe(4);
+    expect(wave[0]).toBe(0.12);
+    expect(wave[1]).toBeCloseTo(128 / 255, 2);
+    expect(wave[2]).toBe(1);
+
+    const amps = [10, 50, 100, 200];
+    const gen = generateWaveformFromAmplitudes(amps, 8);
+    expect(gen.length).toBe(8);
+    for (const val of gen) {
+      expect(val).toBeGreaterThanOrEqual(0);
+      expect(val).toBeLessThanOrEqual(255);
+    }
+  });
+
+  test('media playback snaps speed to 1.0x within threshold and bounds between 0.5x and 4.0x', async () => {
+    const { snapSpeed, setPlaybackSpeed, globalSpeed } = await import('../src/lib/stores/mediaPlayback.js');
+    const { get } = await import('svelte/store');
+
+    expect(snapSpeed(1.04)).toBe(1.0);
+    expect(snapSpeed(0.96)).toBe(1.0);
+    expect(snapSpeed(1.25)).toBe(1.25);
+    expect(snapSpeed(0.5)).toBe(0.5);
+    expect(snapSpeed(0.2)).toBe(0.5);
+    expect(snapSpeed(5.0)).toBe(4.0);
+
+    setPlaybackSpeed(1.04);
+    expect(get(globalSpeed)).toBe(1.0);
+
+    setPlaybackSpeed(2.0);
+    expect(get(globalSpeed)).toBe(2.0);
+  });
+
+  test('playback mutual exclusion stops previously playing media', async () => {
+    const { activeMedia, registerAudio, registerVideo, stopCurrentMedia } = await import('../src/lib/stores/mediaPlayback.js');
+    const { get } = await import('svelte/store');
+
+    let audioPaused = false;
+    let videoPaused = false;
+
+    const mockAudio = {
+      playbackRate: 1.0,
+      volume: 1.0,
+      muted: false,
+      currentTime: 0,
+      pause: () => {
+        audioPaused = true;
+      },
+    };
+
+    const mockVideo = {
+      playbackRate: 1.0,
+      volume: 1.0,
+      muted: false,
+      currentTime: 0,
+      pause: () => {
+        videoPaused = true;
+      },
+    };
+
+    registerAudio('voice-msg-101', mockAudio, { type: 'voice' });
+    expect(get(activeMedia)?.id).toBe('voice-msg-101');
+
+    registerVideo('video-msg-202', mockVideo, { type: 'video' });
+    expect(audioPaused).toBe(true);
+    expect(get(activeMedia)?.id).toBe('video-msg-202');
+
+    stopCurrentMedia();
+    expect(videoPaused).toBe(true);
+    expect(get(activeMedia)).toBeNull();
+  });
+});
+
+test.describe('Transcription store', () => {
+  test('handleTranscriptionPush updates transcription state', async () => {
+    const { transcriptions, handleTranscriptionPush } = await import('../src/lib/stores/transcription.js');
+    const { get } = await import('svelte/store');
+
+    handleTranscriptionPush({
+      messageId: 90001,
+      transcriptionStatus: 1,
+      transcription: 'Synthetic speech transcribed text',
+    });
+
+    const storeVal = get(transcriptions);
+    expect(storeVal['90001']).toBeDefined();
+    expect(storeVal['90001'].text).toBe('Synthetic speech transcribed text');
+    expect(storeVal['90001'].status).toBe('done');
+    expect(storeVal['90001'].expanded).toBe(true);
+  });
+});
+
