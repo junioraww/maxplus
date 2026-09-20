@@ -78,7 +78,7 @@ jobs:
             x86_64-linux-android
 
       - name: Install dependencies
-        run: bun install --frozen-lockfile
+        run: bun install
 
       - name: Patch Tauri identifier and Android path
         run: |

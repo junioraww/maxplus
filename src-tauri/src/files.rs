@@ -93,13 +93,15 @@ async fn convert_media_if_needed(path: &str, is_video: bool) -> String {
             .args(&[
                 "-y",
                 "-i", path,
-                "-vf", "crop=min(iw\\,ih):min(iw\\,ih),scale=480:480,setsar=1",
+                "-vf", "setpts=PTS-STARTPTS,crop=min(iw\\,ih):min(iw\\,ih),scale=480:480,setsar=1",
+                "-af", "asetpts=PTS-STARTPTS",
                 "-c:v", "libx264",
                 "-preset", "veryfast",
                 "-pix_fmt", "yuv420p",
                 "-r", "30",
                 "-c:a", "aac",
                 "-b:a", "64k",
+                "-shortest",
                 "-movflags", "+faststart",
                 &out_path,
             ])
