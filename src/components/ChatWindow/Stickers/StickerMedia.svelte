@@ -1,6 +1,7 @@
 <script context="module">
   const lottieDataCache = new Map();
   const lottieInflight = new Map();
+  const MAX_LOTTIE_CACHE = 50;
 
   let sharedMediaObserver = null;
   const mediaCallbacks = new Map();
@@ -50,6 +51,10 @@
         const { invoke } = await import("@tauri-apps/api/core");
         const text = await invoke("fetch_url_text", { url: targetUrl });
         const parsed = JSON.parse(text);
+        if (lottieDataCache.size >= MAX_LOTTIE_CACHE) {
+          const firstKey = lottieDataCache.keys().next().value;
+          lottieDataCache.delete(firstKey);
+        }
         lottieDataCache.set(targetUrl, parsed);
         return parsed;
       } catch (e) {
@@ -86,15 +91,30 @@
   let unobserve = null;
   let destroyed = false;
 
+  let currentLoadedUrl = null;
+  let currentLoadedLottieUrl = null;
+  let currentLoadedAutoplay = null;
+
+  $: if (!destroyed && (url !== currentLoadedUrl || lottieUrl !== currentLoadedLottieUrl || autoplay !== currentLoadedAutoplay)) {
+    currentLoadedUrl = url;
+    currentLoadedLottieUrl = lottieUrl;
+    currentLoadedAutoplay = autoplay;
+    if (isVisible) {
+      loadMedia();
+    }
+  }
+
   async function loadStaticImage() {
     if (!url || destroyed) return;
     try {
       const assetUrl = await getAssetUrl(url);
       if (destroyed) return;
       resolvedStaticUrl = assetUrl || url;
+      loading = false;
     } catch {
       if (destroyed) return;
       resolvedStaticUrl = url;
+      loading = false;
     }
   }
 
@@ -118,12 +138,14 @@
         anim = null;
       }
 
+      const animationData = typeof structuredClone === "function" ? structuredClone(data) : JSON.parse(JSON.stringify(data));
+
       anim = lottie.loadAnimation({
         container: containerEl,
         renderer: "svg",
         loop,
         autoplay: autoplay && isVisible,
-        animationData: data,
+        animationData,
       });
 
       anim.addEventListener("DOMLoaded", () => {
@@ -144,10 +166,13 @@
     }
   }
 
-  function startLoading() {
-    if (hasStartedLoading || destroyed) return;
+  function loadMedia() {
+    if (destroyed) return;
     hasStartedLoading = true;
-    if (lottieUrl) {
+    loading = true;
+    loadError = false;
+
+    if (lottieUrl && (autoplay || !url)) {
       loadLottieAnimation();
     } else if (url) {
       loadStaticImage();
@@ -162,8 +187,8 @@
         if (entry.isIntersecting) {
           isVisible = true;
           if (!hasStartedLoading) {
-            startLoading();
-          } else if (anim && anim.isPaused) {
+            loadMedia();
+          } else if (anim && anim.isPaused && autoplay) {
             anim.play();
           }
         } else {
@@ -194,7 +219,7 @@
   class="sticker-media"
   style="width: {typeof size === 'number' ? `${size}px` : size}; height: {typeof size === 'number' ? `${size}px` : size};"
 >
-  {#if hasStartedLoading && lottieUrl && !loadError}
+  {#if hasStartedLoading && lottieUrl && !loadError && (autoplay || !url)}
     <div
       bind:this={containerEl}
       class="lottie-container"
@@ -202,7 +227,7 @@
     ></div>
   {/if}
 
-  {#if hasStartedLoading && (!lottieUrl || loadError) && resolvedStaticUrl}
+  {#if hasStartedLoading && (loadError || !lottieUrl || (url && !autoplay)) && resolvedStaticUrl}
     <img
       src={resolvedStaticUrl}
       {alt}

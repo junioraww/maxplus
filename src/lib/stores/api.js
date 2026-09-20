@@ -40,10 +40,14 @@ currentUser.subscribe(async userId => {
       goto("/auth/lock?mode=decrypt&from=/auth/select")
       sessionSet("loaded", true);
     } else {
-      if (!data?.contact?.id) { // TODO pin request
+      if (!data?.contact?.id) {
         try {
-          if (!sessionGet("connected")) await API.init();
-          await API.sync();
+          if (!sessionGet("connected")) {
+            const ok = await API.init();
+            if (ok) await API.sync();
+          } else if (!sessionGet("sync")) {
+            await API.sync();
+          }
         } catch (e) {
           console.error(e);
         } finally {
@@ -60,11 +64,14 @@ currentUser.subscribe(async userId => {
     sessionSet("loaded", true);
   }
   else {
-    // account init
     try {
-      if (sessionGet("sync")) return; // already synced
-      if (!sessionGet("connected")) await API.init();
-      await API.sync();
+      if (sessionGet("sync")) return;
+      if (!sessionGet("connected")) {
+        const ok = await API.init();
+        if (ok) await API.sync();
+      } else {
+        await API.sync();
+      }
     } catch (e) {
       console.error(e);
     } finally {

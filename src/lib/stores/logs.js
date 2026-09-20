@@ -32,6 +32,11 @@ export function error(data) {
   _add(data, "error", data.type + " " + data.text);
 }
 
+export function clear() {
+  logs.set([]);
+  total.set(0);
+}
+
 export const get = () => getStoreValue(logs);
 
 export default logs;

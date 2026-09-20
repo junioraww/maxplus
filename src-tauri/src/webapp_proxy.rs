@@ -1,10 +1,110 @@
 use regex::Regex;
 use reqwest::header::CONTENT_TYPE;
+use std::collections::VecDeque;
 use std::io::{Cursor, Read};
-use std::sync::{Arc, Mutex};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Mutex, OnceLock, RwLock};
 use std::thread;
 use std::time::Duration;
+use tauri::Emitter;
 use tiny_http::{Header, Method, Response, Server};
+
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+pub struct WebAppFilterRule {
+    pub id: String,
+    pub name: String,
+    pub pattern: String,
+    pub is_regex: bool,
+    pub target: String,
+    pub enabled: bool,
+}
+
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+pub struct WebAppLogEntry {
+    pub id: u64,
+    pub timestamp: String,
+    pub time_epoch: u64,
+    pub method: String,
+    pub url: String,
+    pub origin: String,
+    pub status: u16,
+    pub status_text: String,
+    pub duration_ms: u64,
+    pub request_headers: serde_json::Value,
+    pub request_body: Option<String>,
+    pub response_headers: serde_json::Value,
+    pub response_body: Option<String>,
+    pub content_type: String,
+    pub content_length: usize,
+    pub blocked: bool,
+    pub block_reason: Option<String>,
+    pub host_ip: Option<String>,
+}
+
+static PROXY_APP_HANDLE: OnceLock<tauri::AppHandle> = OnceLock::new();
+static FILTER_RULES: RwLock<Vec<WebAppFilterRule>> = RwLock::new(Vec::new());
+static RAM_LOG_BUFFER: Mutex<VecDeque<WebAppLogEntry>> = Mutex::new(VecDeque::new());
+static LOG_ID_COUNTER: AtomicU64 = AtomicU64::new(1);
+
+pub fn set_app_handle(handle: tauri::AppHandle) {
+    let _ = PROXY_APP_HANDLE.set(handle);
+}
+
+pub fn set_filter_rules(rules: Vec<WebAppFilterRule>) {
+    if let Ok(mut lock) = FILTER_RULES.write() {
+        *lock = rules;
+    }
+}
+
+pub fn get_filter_rules() -> Vec<WebAppFilterRule> {
+    FILTER_RULES.read().map(|r| r.clone()).unwrap_or_default()
+}
+
+pub fn get_ram_logs() -> Vec<WebAppLogEntry> {
+    RAM_LOG_BUFFER.lock().map(|b| b.iter().cloned().collect()).unwrap_or_default()
+}
+
+pub fn clear_ram_logs() {
+    if let Ok(mut b) = RAM_LOG_BUFFER.lock() {
+        b.clear();
+    }
+}
+
+fn emit_log(entry: WebAppLogEntry) {
+    if let Ok(mut buf) = RAM_LOG_BUFFER.lock() {
+        if buf.len() >= 1000 {
+            buf.pop_front();
+        }
+        buf.push_back(entry.clone());
+    }
+    if let Some(handle) = PROXY_APP_HANDLE.get() {
+        let _ = handle.emit("webapp_network_log", entry);
+    }
+}
+
+fn check_blocked(url: &str) -> Option<String> {
+    let Ok(rules) = FILTER_RULES.read() else { return None; };
+    let host = get_origin_from_url(url);
+    for rule in rules.iter() {
+        if !rule.enabled || rule.pattern.is_empty() {
+            continue;
+        }
+        let check_target = match rule.target.as_str() {
+            "host" => &host,
+            _ => url,
+        };
+        if rule.is_regex {
+            if let Ok(re) = Regex::new(&rule.pattern) {
+                if re.is_match(check_target) {
+                    return Some(rule.name.clone());
+                }
+            }
+        } else if check_target.contains(&rule.pattern) {
+            return Some(rule.name.clone());
+        }
+    }
+    None
+}
 
 struct ProxyState {
     last_origin: Mutex<String>,
@@ -150,8 +250,51 @@ fn handle_request(
         return;
     };
 
-    let method_str = request.method().as_str();
-    let mut rb = match method_str {
+    let start_instant = std::time::Instant::now();
+    let timestamp = chrono::Local::now().format("%H:%M:%S%.3f").to_string();
+    let time_epoch = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64;
+
+    let mut req_headers_map = serde_json::Map::new();
+    for h in request.headers() {
+        req_headers_map.insert(
+            h.field.as_str().to_string(),
+            serde_json::Value::String(h.value.as_str().to_string()),
+        );
+    }
+    let req_headers_val = serde_json::Value::Object(req_headers_map);
+
+    let method_str = request.method().as_str().to_string();
+
+    if let Some(reason) = check_blocked(&target_url) {
+        let entry = WebAppLogEntry {
+            id: LOG_ID_COUNTER.fetch_add(1, Ordering::SeqCst),
+            timestamp,
+            time_epoch,
+            method: method_str,
+            url: target_url,
+            origin,
+            status: 0,
+            status_text: "DROPPED".to_string(),
+            duration_ms: start_instant.elapsed().as_millis() as u64,
+            request_headers: req_headers_val,
+            request_body: None,
+            response_headers: serde_json::json!({}),
+            response_body: None,
+            content_type: String::new(),
+            content_length: 0,
+            blocked: true,
+            block_reason: Some(reason),
+            host_ip: None,
+        };
+        emit_log(entry);
+        drop(request);
+        return;
+    }
+
+    let mut rb = match method_str.as_str() {
         "POST" => client.post(&target_url),
         "PUT" => client.put(&target_url),
         "DELETE" => client.delete(&target_url),
@@ -160,9 +303,9 @@ fn handle_request(
     };
 
     let origin_header = if !caller_origin.is_empty() {
-        caller_origin
+        caller_origin.clone()
     } else if !origin.is_empty() {
-        origin
+        origin.clone()
     } else {
         get_origin_from_url(&target_url)
     };
@@ -210,23 +353,69 @@ fn handle_request(
         rb = rb.header(name, h.value.as_str());
     }
 
+    let mut req_body = Vec::new();
     if method_str == "POST" || method_str == "PUT" || method_str == "PATCH" {
-        let mut body = Vec::new();
-        let _ = request.as_reader().read_to_end(&mut body);
-        if !body.is_empty() {
-            rb = rb.body(body);
+        let _ = request.as_reader().read_to_end(&mut req_body);
+        if !req_body.is_empty() {
+            rb = rb.body(req_body.clone());
         }
     }
+    let req_body_str = if !req_body.is_empty() {
+        if let Ok(s) = std::str::from_utf8(&req_body) {
+            if s.len() > 32768 {
+                Some(format!("{}... [truncated]", &s[..32768]))
+            } else {
+                Some(s.to_string())
+            }
+        } else {
+            Some(format!("<binary {} bytes>", req_body.len()))
+        }
+    } else {
+        None
+    };
 
     let res = match rb.send() {
         Ok(r) => r,
-        Err(_) => {
+        Err(err) => {
+            let entry = WebAppLogEntry {
+                id: LOG_ID_COUNTER.fetch_add(1, Ordering::SeqCst),
+                timestamp,
+                time_epoch,
+                method: method_str,
+                url: target_url,
+                origin,
+                status: 502,
+                status_text: "Bad Gateway".to_string(),
+                duration_ms: start_instant.elapsed().as_millis() as u64,
+                request_headers: req_headers_val,
+                request_body: req_body_str,
+                response_headers: serde_json::json!({}),
+                response_body: Some(err.to_string()),
+                content_type: "text/plain".to_string(),
+                content_length: 0,
+                blocked: false,
+                block_reason: None,
+                host_ip: None,
+            };
+            emit_log(entry);
             let _ = request.respond(Response::from_string("Bad Gateway").with_status_code(502));
             return;
         }
     };
 
     let status = res.status().as_u16();
+    let status_text = res.status().canonical_reason().unwrap_or("").to_string();
+
+    let mut resp_headers_map = serde_json::Map::new();
+    for (k, v) in res.headers() {
+        if let Ok(val_str) = v.to_str() {
+            resp_headers_map.insert(
+                k.as_str().to_string(),
+                serde_json::Value::String(val_str.to_string()),
+            );
+        }
+    }
+    let resp_headers_val = serde_json::Value::Object(resp_headers_map);
 
     let content_type = res
         .headers()
@@ -374,6 +563,47 @@ fn handle_request(
         headers.push(h);
     }
 
+    let resp_body_preview = if len > 0 {
+        if is_js || is_html || content_type.contains("json") || content_type.contains("text") || content_type.contains("xml") {
+            let slice_len = final_bytes.len().min(32768);
+            if let Ok(s) = std::str::from_utf8(&final_bytes[..slice_len]) {
+                if final_bytes.len() > 32768 {
+                    Some(format!("{}... [truncated]", s))
+                } else {
+                    Some(s.to_string())
+                }
+            } else {
+                Some(format!("<binary {} bytes>", len))
+            }
+        } else {
+            Some(format!("<{} {} bytes>", if content_type.is_empty() { "binary" } else { &content_type }, len))
+        }
+    } else {
+        None
+    };
+
+    let log_entry = WebAppLogEntry {
+        id: LOG_ID_COUNTER.fetch_add(1, Ordering::SeqCst),
+        timestamp,
+        time_epoch,
+        method: method_str,
+        url: target_url,
+        origin,
+        status,
+        status_text,
+        duration_ms: start_instant.elapsed().as_millis() as u64,
+        request_headers: req_headers_val,
+        request_body: req_body_str,
+        response_headers: resp_headers_val,
+        response_body: resp_body_preview,
+        content_type,
+        content_length: len,
+        blocked: false,
+        block_reason: None,
+        host_ip: None,
+    };
+    emit_log(log_entry);
+
     let response = Response::new(
         status.into(),
         headers,
@@ -413,4 +643,26 @@ pub fn start_webapp_proxy() {
             });
         }
     });
+}
+
+#[tauri::command]
+pub fn set_webapp_filter_rules(rules: Vec<WebAppFilterRule>) -> Result<(), String> {
+    set_filter_rules(rules);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn get_webapp_filter_rules() -> Result<Vec<WebAppFilterRule>, String> {
+    Ok(get_filter_rules())
+}
+
+#[tauri::command]
+pub fn get_webapp_ram_logs() -> Result<Vec<WebAppLogEntry>, String> {
+    Ok(get_ram_logs())
+}
+
+#[tauri::command]
+pub fn clear_webapp_ram_logs() -> Result<(), String> {
+    clear_ram_logs();
+    Ok(())
 }

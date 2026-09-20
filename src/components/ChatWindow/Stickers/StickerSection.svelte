@@ -74,8 +74,6 @@
         if (entry.isIntersecting) {
           isInView = true;
           loadStickers();
-        } else {
-          isInView = false;
         }
       });
     }
@@ -232,7 +230,7 @@
             url={st?.url || ""}
             lottieUrl={st?.lottieUrl}
             size="100%"
-            autoplay={true}
+            autoplay={false}
             loop={true}
           />
         </button>
@@ -246,6 +244,8 @@
 <style>
   .sticker-section {
     margin-bottom: 14px;
+    content-visibility: auto;
+    contain-intrinsic-size: auto 200px;
   }
 
   .sticker-section.is-favorite-card {

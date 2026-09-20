@@ -50,13 +50,37 @@ export async function ensureFavoritesLoaded() {
       const fav = await invoke("get_favorite_stickers", { sync: 0 });
       const favIds = [];
       const sections = fav?.sections || [];
+      let marker = 0;
       for (const s of sections) {
-        if (s?.id === "FAVORITE_STICKER_SETS" && Array.isArray(s.stickerSets)) {
-          for (const id of s.stickerSets) {
+        if (s?.id === "FAVORITE_STICKER_SETS") {
+          if (Array.isArray(s.stickerSets)) {
+            for (const id of s.stickerSets) {
+              if (typeof id === "number") favIds.push(id);
+            }
+          }
+          if (typeof s.marker === "number") marker = s.marker;
+        }
+      }
+
+      let guard = 0;
+      while (marker !== 0 && guard < 50) {
+        guard++;
+        const page = await invoke("get_assets_section", {
+          sectionId: "FAVORITE_STICKER_SETS",
+          from: marker,
+          count: 100,
+        });
+        if (!page) break;
+        const beforeLen = favIds.length;
+        if (Array.isArray(page.stickerSets)) {
+          for (const id of page.stickerSets) {
             if (typeof id === "number") favIds.push(id);
           }
         }
+        if (favIds.length === beforeLen) break;
+        marker = typeof page.marker === "number" ? page.marker : 0;
       }
+
       favoriteSetIds.set(favIds);
       return favIds;
     } catch (e) {
@@ -164,32 +188,36 @@ export async function ensureSetMetas(ids) {
   const missing = ids.filter(id => !currentSets.has(id));
   if (!missing.length) return;
 
-  const chunks = chunkArray(missing, 100);
+  const chunks = chunkArray(missing, 50);
   for (const batch of chunks) {
-    const res = await invoke("get_assets_by_ids", {
-      assetType: "STICKER_SET",
-      ids: batch,
-    });
-    const list = res?.stickerSets;
-    if (Array.isArray(list)) {
-      stickerSets.update(map => {
-        const next = new Map(map);
-        for (const item of list) {
-          if (item?.id) {
-            const stickerIds = Array.isArray(item.stickers)
-              ? item.stickers.filter(x => typeof x === "number")
-              : [];
-            next.set(item.id, {
-              id: item.id,
-              name: item.name || "",
-              iconUrl: item.iconUrl || "",
-              stickerIds,
-              link: item.link || null,
-            });
-          }
-        }
-        return next;
+    try {
+      const res = await invoke("get_assets_by_ids", {
+        assetType: "STICKER_SET",
+        ids: batch,
       });
+      const list = res?.stickerSets;
+      if (Array.isArray(list)) {
+        stickerSets.update(map => {
+          const next = new Map(map);
+          for (const item of list) {
+            if (item?.id) {
+              const stickerIds = Array.isArray(item.stickers)
+                ? item.stickers.filter(x => typeof x === "number")
+                : [];
+              next.set(item.id, {
+                id: item.id,
+                name: item.name || "",
+                iconUrl: item.iconUrl || "",
+                stickerIds,
+                link: item.link || null,
+              });
+            }
+          }
+          return next;
+        });
+      }
+    } catch (e) {
+      console.error(e);
     }
   }
 }
@@ -201,34 +229,38 @@ export async function ensureStickers(ids) {
     return ids.map(id => current.get(id)).filter(Boolean);
   }
 
-  const chunks = chunkArray(missing, 100);
+  const chunks = chunkArray(missing, 50);
   for (const batch of chunks) {
-    const res = await invoke("get_assets_by_ids", {
-      assetType: "STICKER",
-      ids: batch,
-    });
-    const list = res?.stickers;
-    if (Array.isArray(list)) {
-      stickersById.update(map => {
-        const next = new Map(map);
-        for (const item of list) {
-          if (item?.id) {
-            const tags = Array.isArray(item.tags)
-              ? item.tags.map(t => String(t || "").trim()).filter(Boolean)
-              : [];
-            next.set(item.id, {
-              id: item.id,
-              url: item.url || "",
-              lottieUrl: item.lottieUrl || null,
-              setId: item.setId || null,
-              width: item.width || null,
-              height: item.height || null,
-              tags,
-            });
-          }
-        }
-        return next;
+    try {
+      const res = await invoke("get_assets_by_ids", {
+        assetType: "STICKER",
+        ids: batch,
       });
+      const list = res?.stickers;
+      if (Array.isArray(list)) {
+        stickersById.update(map => {
+          const next = new Map(map);
+          for (const item of list) {
+            if (item?.id) {
+              const tags = Array.isArray(item.tags)
+                ? item.tags.map(t => String(t || "").trim()).filter(Boolean)
+                : [];
+              next.set(item.id, {
+                id: item.id,
+                url: item.url || "",
+                lottieUrl: item.lottieUrl || null,
+                setId: item.setId || null,
+                width: item.width || null,
+                height: item.height || null,
+                tags,
+              });
+            }
+          }
+          return next;
+        });
+      }
+    } catch (e) {
+      console.error(e);
     }
   }
 
