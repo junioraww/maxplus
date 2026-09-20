@@ -1,9 +1,9 @@
 <script>
-  import { onDestroy, onMount } from 'svelte';
+  import { onMount } from 'svelte';
   import { convertFileSrc, invoke } from '@tauri-apps/api/core';
   import { save } from '@tauri-apps/plugin-dialog';
   import { showAlert } from '$lib/utils/alert';
-  import { getAssetUrl, getProxiedMediaUrl } from '$lib/utils/images';
+  import { getProxiedMediaUrl } from '$lib/utils/images';
   import API from '$lib/stores/api';
   import { parseWaveform } from '$lib/utils/waveform';
   import {
@@ -14,17 +14,11 @@
     cycleTrackSpeed,
     setTrackVolume,
     toggleTrackMute,
-    registerAudio,
-    updateMediaProgress,
-    updateMediaPlaybackState,
     seekMedia,
-    stopCurrentMedia,
     playMedia,
     pauseCurrentMedia,
     resumeCurrentMedia,
-    playNextMedia,
-    handOffToGlobal,
-    takeOverFromGlobal,
+    resolvePlayableUrl,
   } from '$lib/stores/mediaPlayback';
   import {
     transcriptions,
@@ -37,72 +31,54 @@
   export let chatId;
   export let isMe = false;
 
-  let audioEl;
-
-  $: mId = String(messageId ?? attach.token ?? attach.localPath ?? 'voice');
+  $: mId = String(messageId ?? attach.audioId ?? attach.videoId ?? attach.token ?? attach.localPath ?? 'voice');
   $: isCurrentTrack = $activeMedia?.id === mId;
   $: isPlaying = isCurrentTrack && $activeMedia?.isPlaying;
   $: currentSpeed = $trackSettings[mId]?.speed ?? 1.0;
   $: currentVolume = $trackSettings[mId]?.volume ?? 1.0;
   $: currentMuted = $trackSettings[mId]?.muted ?? false;
-  $: duration = (audioEl && audioEl.duration && isFinite(audioEl.duration) && audioEl.duration > 0)
-    ? audioEl.duration
+  $: duration = ($activeMedia?.id === mId && $activeMedia?.duration > 0)
+    ? $activeMedia.duration
     : (attach.duration
         ? (attach.duration > 120 ? attach.duration / 1000 : attach.duration)
         : ($activeMedia?.duration || 0));
-  $: currentTime = isCurrentTrack ? ($activeMedia?.currentTime ?? (audioEl?.currentTime || 0)) : 0;
+  $: currentTime = isCurrentTrack ? ($activeMedia?.currentTime ?? 0) : 0;
   $: progress = duration > 0 ? Math.min(1, Math.max(0, currentTime / duration)) : 0;
   $: waveBars = parseWaveform(attach.wave || attach.waveform, 45);
   $: transcription = $transcriptions[mId];
 
   let fetchedUrl = null;
-  $: rawUrl = fetchedUrl || attach.fileUrl || attach.baseUrl || attach.url || (attach.localPath ? attach.localPath : null);
+  $: rawUrl = fetchedUrl || (attach.localPath ? attach.localPath : null);
 
   let mediaUrl = null;
-  $: {
-    if (!rawUrl) {
-      mediaUrl = null;
-    } else if (rawUrl.startsWith('data:') || rawUrl.startsWith('blob:') || rawUrl.startsWith('http://127.0.0.1:11447/')) {
-      mediaUrl = rawUrl;
-    } else {
-      mediaUrl = getProxiedMediaUrl(rawUrl);
-      getAssetUrl(rawUrl).then((cached) => {
-        if (cached) mediaUrl = getProxiedMediaUrl(cached);
-      }).catch(() => {});
-    }
-  }
-
-  $: if (audioEl && mediaUrl && (!audioEl.src || !audioEl.src.includes(mediaUrl))) {
-    audioEl.src = mediaUrl;
-  }
+  $: mediaUrl = rawUrl ? getProxiedMediaUrl(rawUrl) : null;
 
   async function ensureVoiceUrl() {
     if (mediaUrl) return mediaUrl;
-    const vId = attach.videoId ?? attach.audioId ?? attach.id ?? attach.video_id;
-    const token = attach.videoToken ?? attach.token ?? null;
-    if (vId && chatId && messageId) {
-      try {
-        const response = await $API.getVideoById(chatId, messageId, vId, token);
-        const qualityPriority = ['MP4_720', 'MP4_480', 'MP4_360', 'MP4_240', 'MP4_1080', 'OGG', 'MP3', 'AUDIO', 'audio', 'EXTERNAL', 'url', 'baseUrl', 'fileUrl'];
-        let picked = null;
-        for (const q of qualityPriority) {
-          if (response && response[q]) {
-            picked = response[q];
-            break;
-          }
-        }
-        if (!picked && response && response.HLS) picked = response.HLS;
-        if (!picked && response && typeof response === 'object') {
-          picked = Object.values(response).find(v => typeof v === 'string' && (v.startsWith('http://') || v.startsWith('https://')));
-        }
-        if (picked) {
-          fetchedUrl = picked;
-          mediaUrl = getProxiedMediaUrl(picked);
-          return mediaUrl;
-        }
-      } catch (err) {}
+    if (fetchedUrl) return getProxiedMediaUrl(fetchedUrl);
+    if (attach.localPath) return getProxiedMediaUrl(attach.localPath);
+    const resolved = await resolvePlayableUrl(attach, chatId, messageId);
+    if (resolved) {
+      fetchedUrl = resolved;
+      mediaUrl = resolved;
+      return resolved;
     }
-    return mediaUrl || (rawUrl ? getProxiedMediaUrl(rawUrl) : null);
+    const rawFallback = attach.fileUrl || attach.url || attach.baseUrl;
+    if (rawFallback) {
+      if (rawFallback.startsWith('http://') || rawFallback.startsWith('https://')) {
+        try {
+          const cached = await invoke('cache_url', { src: rawFallback });
+          if (cached) {
+            fetchedUrl = cached;
+            mediaUrl = getProxiedMediaUrl(cached);
+            return mediaUrl;
+          }
+        } catch (e) {}
+      }
+      mediaUrl = getProxiedMediaUrl(rawFallback);
+      return mediaUrl;
+    }
+    return null;
   }
 
   function formatTime(sec) {
@@ -117,16 +93,11 @@
     if (isCurrentTrack) {
       if (isPlaying) {
         pauseCurrentMedia();
-        if (audioEl) audioEl.pause();
       } else {
         resumeCurrentMedia();
-        if (audioEl) audioEl.play().catch(() => {});
       }
     } else {
-      const url = mediaUrl || (await ensureVoiceUrl()) || (rawUrl ? getProxiedMediaUrl(rawUrl) : null);
-      if (audioEl && url && (!audioEl.src || !audioEl.src.includes(url))) {
-        audioEl.src = url;
-      }
+      const url = await ensureVoiceUrl();
       await playMedia({
         id: mId,
         chatId,
@@ -137,7 +108,6 @@
         senderName: isMe ? 'Вы' : (attach.senderName || 'Собеседник'),
         title: 'Голосовое сообщение',
         attach,
-        element: audioEl,
       }, { chatId, currentMessageId: messageId });
     }
   }
@@ -146,11 +116,8 @@
     const rect = e.currentTarget.getBoundingClientRect();
     const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
     const target = ratio * duration;
-    const url = mediaUrl || (await ensureVoiceUrl()) || (rawUrl ? getProxiedMediaUrl(rawUrl) : null);
-    if (audioEl && url && (!audioEl.src || !audioEl.src.includes(url))) {
-      audioEl.src = url;
-    }
     if (!isCurrentTrack) {
+      const url = await ensureVoiceUrl();
       await playMedia({
         id: mId,
         chatId,
@@ -161,11 +128,9 @@
         senderName: isMe ? 'Вы' : (attach.senderName || 'Собеседник'),
         title: 'Голосовое сообщение',
         attach,
-        element: audioEl,
       }, { chatId, currentMessageId: messageId });
     }
     seekMedia(mId, target);
-    if (audioEl) audioEl.currentTime = target;
   }
 
   function handleTranscriptionClick() {
@@ -173,7 +138,8 @@
   }
 
   async function handleDownload() {
-    if (!mediaUrl) {
+    const url = (await ensureVoiceUrl()) || mediaUrl;
+    if (!url) {
       showAlert('Ссылка на аудио недоступна');
       return;
     }
@@ -184,15 +150,15 @@
         filters: [{ name: 'Audio', extensions: ['ogg', 'mp3', 'wav', 'm4a'] }],
       });
       if (savePath) {
-        await invoke('download_to_path', { url: mediaUrl, path: savePath });
+        await invoke('download_to_path', { url, path: savePath });
         showAlert('Аудио успешно сохранено');
       } else {
-        await invoke('download', { url: mediaUrl, name: defaultName });
+        await invoke('download', { url, name: defaultName });
         showAlert('Загрузка в папку загрузок начата');
       }
     } catch (err) {
       try {
-        await invoke('download', { url: mediaUrl, name: `voice_${mId}.ogg` });
+        await invoke('download', { url, name: `voice_${mId}.ogg` });
         showAlert('Загрузка в папку загрузок начата');
       } catch (e) {
         showAlert('Не удалось скачать файл');
@@ -202,42 +168,10 @@
 
   onMount(() => {
     ensureVoiceUrl();
-    if (isCurrentTrack && audioEl) {
-      takeOverFromGlobal(mId, audioEl);
-    }
-  });
-
-  onDestroy(() => {
-    if (isCurrentTrack && isPlaying) {
-      handOffToGlobal({
-        id: mId,
-        type: 'voice',
-        url: mediaUrl,
-        currentTime: audioEl?.currentTime || currentTime,
-        duration,
-        speed: currentSpeed,
-        volume: currentVolume,
-        muted: currentMuted,
-        isPlaying: true,
-      });
-    }
   });
 </script>
 
 <div class="voice-message-bubble" class:is-me={isMe}>
-  <audio
-    bind:this={audioEl}
-    src={mediaUrl}
-    preload="metadata"
-    on:timeupdate={() => updateMediaProgress(mId, audioEl.currentTime, audioEl.duration || duration)}
-    on:play={() => updateMediaPlaybackState(mId, true)}
-    on:pause={() => updateMediaPlaybackState(mId, false)}
-    on:ended={() => {
-      updateMediaPlaybackState(mId, false);
-      if (audioEl) audioEl.currentTime = 0;
-      playNextMedia();
-    }}
-  ></audio>
 
   <div class="voice-row">
     <button

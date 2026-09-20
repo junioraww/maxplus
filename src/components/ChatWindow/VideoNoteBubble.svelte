@@ -3,21 +3,14 @@
   import { convertFileSrc, invoke } from '@tauri-apps/api/core';
   import { save } from '@tauri-apps/plugin-dialog';
   import { showAlert } from '$lib/utils/alert';
-  import { getAssetUrl, getProxiedMediaUrl } from '$lib/utils/images';
+  import { getProxiedMediaUrl } from '$lib/utils/images';
   import API from '$lib/stores/api';
   import {
     activeMedia,
     trackSettings,
-    snapSpeed,
-    setTrackSpeed,
-    cycleTrackSpeed,
-    setTrackVolume,
-    toggleTrackMute,
-    registerVideo,
     updateMediaProgress,
     updateMediaPlaybackState,
     seekMedia,
-    stopCurrentMedia,
     playMedia,
     pauseCurrentMedia,
     resumeCurrentMedia,
@@ -50,38 +43,19 @@
     ? videoEl.duration
     : (attachDur || (videoEl?.duration && isFinite(videoEl.duration) ? videoEl.duration : 0));
   $: currentTime = isCurrentTrack ? ($activeMedia?.currentTime ?? (videoEl?.currentTime || 0)) : 0;
-  $: rawUrl = fetchedUrl || attach.baseUrl || attach.url || (attach.localPath ? attach.localPath : null);
+  $: posterSrc = attach.thumbnail || attach.baseUrl || (attach.url && (attach.url.endsWith('.jpg') || attach.url.endsWith('.png') || attach.url.endsWith('.webp')) ? attach.url : null);
+  $: rawUrl = fetchedUrl || (attach.localPath ? attach.localPath : null) || attach.videoUrl || attach.fileUrl || ((attach.url && attach.url !== attach.baseUrl && !attach.url.endsWith('.jpg') && !attach.url.endsWith('.jpeg') && !attach.url.endsWith('.png') && !attach.url.endsWith('.webp')) ? attach.url : null);
 
   let resolvedPosterUrl = null;
-  $: {
-    const posterSrc = attach.thumbnail || attach.baseUrl;
-    if (posterSrc) {
-      if (posterSrc.startsWith('data:') || posterSrc.startsWith('blob:') || posterSrc.startsWith('http://127.0.0.1:11447/')) {
-        resolvedPosterUrl = posterSrc;
-      } else {
-        resolvedPosterUrl = getProxiedMediaUrl(posterSrc);
-        getAssetUrl(posterSrc).then((url) => {
-          if (url) resolvedPosterUrl = getProxiedMediaUrl(url);
-        }).catch(() => {});
-      }
-    } else {
-      resolvedPosterUrl = null;
-    }
+  $: resolvedPosterUrl = posterSrc ? getProxiedMediaUrl(posterSrc) : null;
+
+  function toPlayableUrl(path) {
+    if (!path) return null;
+    return getProxiedMediaUrl(path);
   }
 
   let resolvedVideoUrl = null;
-  $: {
-    if (!rawUrl) {
-      resolvedVideoUrl = null;
-    } else if (rawUrl.startsWith('data:') || rawUrl.startsWith('blob:') || rawUrl.startsWith('http://127.0.0.1:11447/')) {
-      resolvedVideoUrl = rawUrl;
-    } else {
-      resolvedVideoUrl = getProxiedMediaUrl(rawUrl);
-      getAssetUrl(rawUrl).then((cached) => {
-        if (cached) resolvedVideoUrl = getProxiedMediaUrl(cached);
-      }).catch(() => {});
-    }
-  }
+  $: resolvedVideoUrl = toPlayableUrl(rawUrl);
 
   const size = 200;
   const strokeWidth = 4;
@@ -143,38 +117,39 @@
   }
 
   async function ensureVideoUrl() {
-    if (resolvedVideoUrl) return resolvedVideoUrl;
+    if (fetchedUrl) return toPlayableUrl(fetchedUrl);
+    if (attach.localPath) return toPlayableUrl(attach.localPath);
     const vId = attach.videoId ?? attach.id ?? attach.video_id ?? 0;
     const token = attach.videoToken ?? attach.token ?? null;
-    if ((vId || token) && chatId && messageId) {
+    if ((vId || token) && chatId != null && messageId != null) {
       try {
         const response = await $API.getVideoById(chatId, messageId, vId || 0, token);
-        const qualityPriority = ['MP4_720', 'MP4_480', 'MP4_360', 'MP4_240', 'MP4_1080', 'EXTERNAL', 'url', 'baseUrl'];
+        const qualityPriority = ['MP4_720', 'MP4_480', 'MP4_360', 'MP4_240', 'MP4_144', 'MP4_1080', 'EXTERNAL', 'url', 'baseUrl', 'fileUrl'];
         let picked = null;
         for (const q of qualityPriority) {
-          if (response && response[q]) {
-            picked = response[q];
-            break;
-          }
+          if (response && response[q]) { picked = response[q]; break; }
         }
-        if (!picked && response && response.HLS) {
-          picked = response.HLS;
-        }
+        if (!picked && response && response.HLS) picked = response.HLS;
         if (!picked && response && typeof response === 'object') {
-          picked = Object.values(response).find(v => typeof v === 'string' && (v.startsWith('http://') || v.startsWith('https://')));
+          picked = Object.values(response).find(v => typeof v === 'string' && (v.startsWith('http://') || v.startsWith('https://')) && !v.endsWith('.jpg') && !v.endsWith('.png') && !v.endsWith('.webp'));
         }
         if (picked) {
-          fetchedUrl = picked;
-          resolvedVideoUrl = getProxiedMediaUrl(picked);
-          return resolvedVideoUrl;
+          let localTarget = picked;
+          if (picked.startsWith('http://') || picked.startsWith('https://')) {
+            try {
+              const cached = await invoke('cache_url', { src: picked });
+              if (cached) localTarget = cached;
+            } catch (e) {}
+          }
+          fetchedUrl = localTarget;
+          return toPlayableUrl(localTarget);
         }
       } catch (err) {}
     }
-    return resolvedVideoUrl || (rawUrl ? getProxiedMediaUrl(rawUrl) : null);
+    return resolvedVideoUrl || toPlayableUrl(rawUrl);
   }
 
   async function handleTogglePlay() {
-    const url = resolvedVideoUrl || (await ensureVideoUrl()) || (rawUrl ? getProxiedMediaUrl(rawUrl) : null);
     if (isCurrentTrack) {
       if (isPlaying) {
         pauseCurrentMedia();
@@ -183,61 +158,37 @@
         resumeCurrentMedia();
         if (videoEl) videoEl.play().catch(() => {});
       }
-    } else {
-      if (videoEl && url && (!videoEl.src || !videoEl.src.includes(url))) {
-        videoEl.src = url;
-      }
-      await playMedia({
-        id: mId,
-        chatId,
-        messageId,
-        type: 'video_note',
-        url,
-        poster: resolvedPosterUrl,
-        duration,
-        senderName: isMe ? 'Вы' : (attach.senderName || 'Собеседник'),
-        title: 'Видеосообщение',
-        attach,
-        element: videoEl,
-      }, { chatId, currentMessageId: messageId });
+      return;
     }
-  }
 
-  async function handleRingClick(e) {
-    const rect = e.currentTarget.getBoundingClientRect();
-    const centerX = rect.left + rect.width / 2;
-    const centerY = rect.top + rect.height / 2;
-    const dx = e.clientX - centerX;
-    const dy = e.clientY - centerY;
-    let angle = Math.atan2(dy, dx) + Math.PI / 2;
-    if (angle < 0) angle += 2 * Math.PI;
-    const ratio = angle / (2 * Math.PI);
-    const target = ratio * duration;
-    const url = resolvedVideoUrl || (await ensureVideoUrl()) || (rawUrl ? getProxiedMediaUrl(rawUrl) : null);
-    if (videoEl && url && (!videoEl.src || !videoEl.src.includes(url))) {
+    const url = (await ensureVideoUrl()) || resolvedVideoUrl || (rawUrl ? toPlayableUrl(rawUrl) : null);
+    if (!url) return;
+
+    if (videoEl && (!videoEl.src || !videoEl.src.includes(url))) {
       videoEl.src = url;
     }
-    if (!isCurrentTrack) {
-      await playMedia({
-        id: mId,
-        chatId,
-        messageId,
-        type: 'video_note',
-        url,
-        poster: resolvedPosterUrl,
-        duration,
-        senderName: isMe ? 'Вы' : (attach.senderName || 'Собеседник'),
-        title: 'Видеосообщение',
-        attach,
-        element: videoEl,
-      }, { chatId, currentMessageId: messageId });
-    }
-    seekMedia(mId, target);
-    if (videoEl) videoEl.currentTime = target;
+
+    await playMedia({
+      id: mId,
+      chatId,
+      messageId,
+      type: 'video_note',
+      url,
+      poster: resolvedPosterUrl,
+      duration,
+      senderName: isMe ? 'Вы' : (attach.senderName || 'Собеседник'),
+      title: 'Видеосообщение',
+      attach,
+      element: videoEl,
+    }, { chatId, currentMessageId: messageId });
+  }
+
+  $: if (isCurrentTrack && videoEl && ($activeMedia?.isGlobalPlayback || $activeMedia?.element !== videoEl)) {
+    takeOverFromGlobal(mId, videoEl);
   }
 
   async function handleDownload() {
-    const url = resolvedVideoUrl || (await ensureVideoUrl()) || rawUrl;
+    const url = (await ensureVideoUrl()) || resolvedVideoUrl || rawUrl;
     if (!url) {
       showAlert('Ссылка на видео недоступна');
       return;
@@ -297,12 +248,15 @@
   on:mouseenter={() => (isHovered = true)}
   on:mouseleave={() => (isHovered = false)}
 >
-  <div class="circular-wrapper" style="width: {size}px; height: {size}px;">
+  <div
+    class="circular-wrapper"
+    style="width: {size}px; height: {size}px;"
+    on:click|stopPropagation={handleTogglePlay}
+  >
     <svg
       class="progress-ring"
       width={size}
       height={size}
-      on:click|stopPropagation={handleRingClick}
     >
       <circle
         class="progress-ring-bg"
@@ -322,7 +276,7 @@
       />
     </svg>
 
-    <div class="video-crop-container" on:click|stopPropagation={handleTogglePlay}>
+    <div class="video-crop-container">
       <video
         bind:this={videoEl}
         src={resolvedVideoUrl}
@@ -409,7 +363,7 @@
     left: 0;
     z-index: 10;
     transform: rotate(-90deg);
-    pointer-events: auto;
+    pointer-events: none;
   }
 
   .progress-ring-bg {

@@ -83,10 +83,20 @@ export function getProxiedMediaUrl(src) {
     ) {
         return src;
     }
+    if (src.startsWith("asset://localhost/")) {
+        const rawPath = src.slice("asset://localhost/".length);
+        const decoded = decodeURIComponent(rawPath);
+        return `http://127.0.0.1:11447/${encodeURIComponent(decoded)}`;
+    }
+    if (src.startsWith("http://asset.localhost/")) {
+        const rawPath = src.slice("http://asset.localhost/".length);
+        const decoded = decodeURIComponent(rawPath);
+        return `http://127.0.0.1:11447/${encodeURIComponent(decoded)}`;
+    }
     if (src.startsWith("http://") || src.startsWith("https://") || src.startsWith("/") || src.startsWith("file://")) {
         return `http://127.0.0.1:11447/${encodeURIComponent(src)}`;
     }
-    return convertFileSrc(src);
+    return src;
 }
 
 export function getAvatarPlaceholder(id, type = "USER") {

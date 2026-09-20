@@ -19,6 +19,8 @@
   import DevicesSettings from "$components/main/devices/Settings.svelte";
   import GlobalMediaPlayer from "$components/media/GlobalMediaPlayer.svelte";
   import MediaPlaylistModal from "$components/media/MediaPlaylistModal.svelte";
+  import VideoCropModal from "$components/media/VideoCropModal.svelte";
+  import { videoCropState, closeVideoCropModal } from "$lib/stores/videoCrop.js";
 
   import Session from "$lib/stores/session";
 
@@ -97,6 +99,16 @@
 <Alerts />
 <GlobalMediaPlayer />
 <MediaPlaylistModal />
+
+{#if $videoCropState.isOpen}
+  <VideoCropModal
+    isOpen={$videoCropState.isOpen}
+    sourcePath={$videoCropState.sourcePath}
+    previewUrl={$videoCropState.previewUrl}
+    onConfirm={$videoCropState.onConfirm}
+    onCancel={() => closeVideoCropModal()}
+  />
+{/if}
 
 <style>
   main {

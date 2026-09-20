@@ -1,4 +1,5 @@
 <script>
+  import { tick } from 'svelte';
   import {
     mediaPlaylist,
     showPlaylistModal,
@@ -6,10 +7,29 @@
     activeMedia,
   } from '$lib/stores/mediaPlayback';
 
+  let listEl;
+  let rowEls = [];
+
   $: playlist = $mediaPlaylist;
   $: items = playlist?.items || [];
   $: currentIndex = playlist?.currentIndex ?? -1;
   $: isPlaying = $activeMedia?.isPlaying ?? false;
+
+  let lastScrolledIndex = -1;
+  $: if (currentIndex >= 0 && currentIndex !== lastScrolledIndex && rowEls[currentIndex] && listEl) {
+    lastScrolledIndex = currentIndex;
+    tick().then(() => {
+      const row = rowEls[currentIndex];
+      if (!listEl || !row) return;
+      const listRect = listEl.getBoundingClientRect();
+      const rowRect = row.getBoundingClientRect();
+      if (rowRect.top < listRect.top) {
+        listEl.scrollTop -= (listRect.top - rowRect.top);
+      } else if (rowRect.bottom > listRect.bottom) {
+        listEl.scrollTop += (rowRect.bottom - listRect.bottom);
+      }
+    });
+  }
 
   function closeModal() {
     showPlaylistModal.set(false);
@@ -17,7 +37,6 @@
 
   function handleSelectTrack(index) {
     playPlaylistItem(index);
-    closeModal();
   }
 
   function formatTime(sec) {
@@ -40,7 +59,7 @@
         <button class="modal-close-btn" on:click={closeModal} title="Закрыть">✕</button>
       </div>
 
-      <div class="modal-body">
+      <div class="modal-body" bind:this={listEl}>
         {#if items.length === 0}
           <div class="empty-state">Нет голосовых и кружочков в очереди!</div>
         {:else}
@@ -49,6 +68,7 @@
               <div
                 class="playlist-row"
                 class:active={index === currentIndex}
+                bind:this={rowEls[index]}
                 on:click={() => handleSelectTrack(index)}
               >
                 <div class="row-left">
@@ -63,7 +83,7 @@
                       </svg>
                     {:else}
                       <svg viewBox="0 0 24 24" width="18" height="18">
-                        <path fill="currentColor" d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/>
+                        <path fill="currentColor" d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5-3c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/>
                       </svg>
                     {/if}
                   </div>

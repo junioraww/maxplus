@@ -1,5 +1,5 @@
 import { writable, get } from 'svelte/store';
-import { convertFileSrc } from '@tauri-apps/api/core';
+import { convertFileSrc, invoke } from '@tauri-apps/api/core';
 import { getAssetUrl, getProxiedMediaUrl } from '$lib/utils/images';
 
 async function getApiInstance() {
@@ -172,16 +172,12 @@ export function stopCurrentMedia() {
     try {
       globalAudioElement.pause();
       globalAudioElement.currentTime = 0;
-      globalAudioElement.removeAttribute('src');
-      globalAudioElement.load();
     } catch {}
   }
   if (globalVideoElement) {
     try {
       globalVideoElement.pause();
       globalVideoElement.currentTime = 0;
-      globalVideoElement.removeAttribute('src');
-      globalVideoElement.load();
     } catch {}
   }
   activeMedia.set(null);
@@ -314,6 +310,7 @@ export function handOffToGlobal(data) {
     if (globalVideoElement) {
       if (data.url && (!globalVideoElement.src || !globalVideoElement.src.includes(data.url))) {
         globalVideoElement.src = data.url;
+        try { globalVideoElement.load(); } catch {}
       }
       globalVideoElement.currentTime = data.currentTime || 0;
       globalVideoElement.playbackRate = speed;
@@ -362,6 +359,10 @@ export function takeOverFromGlobal(id, element) {
       } catch {}
     }
     currentVideoElement = element;
+    if (state.url && (!element.src || !element.src.includes(state.url))) {
+      element.src = state.url;
+      try { element.load(); } catch {}
+    }
     element.currentTime = state.currentTime || 0;
     element.playbackRate = state.speed || 1.0;
     element.volume = state.muted ? 0 : (state.volume ?? 1.0);
@@ -426,20 +427,25 @@ export function seekMedia(id, targetTime) {
   activeMedia.update((s) => (s ? { ...s, currentTime: clampedTime } : null));
 }
 
+function toPlayableUrl(path) {
+  if (!path) return null;
+  return getProxiedMediaUrl(path);
+}
+
 export async function resolvePlayableUrl(attach, chatId, messageId) {
   if (!attach) return null;
-  const raw = attach.localPath || attach.url || attach.baseUrl || attach.fileUrl;
-  if (raw) {
-    return getProxiedMediaUrl(raw);
+  if (attach.localPath) {
+    return toPlayableUrl(attach.localPath);
   }
 
-  const vId = attach.videoId ?? attach.audioId ?? attach.id ?? attach.video_id;
-  if (vId && chatId && messageId) {
+  const isVideoNote = (attach.videoType === 1 || attach.isNote || attach._type === 'VIDEO' || attach.type === 'VIDEO');
+  const vId = attach.videoId ?? attach.audioId ?? attach.id ?? attach.video_id ?? 0;
+  const token = attach.videoToken ?? attach.token ?? null;
+  if ((vId || token) && chatId != null && messageId != null) {
     try {
       const api = await getApiInstance();
-      const token = attach.videoToken ?? attach.token ?? null;
       const res = await api.getVideoById(chatId, messageId, vId, token);
-      const qualityPriority = ['MP4_720', 'MP4_480', 'MP4_360', 'MP4_240', 'MP4_1080', 'OGG', 'MP3', 'AUDIO', 'audio', 'EXTERNAL', 'url', 'baseUrl', 'fileUrl'];
+      const qualityPriority = ['MP4_720', 'MP4_480', 'MP4_360', 'MP4_240', 'MP4_144', 'MP4_1080', 'OGG', 'MP3', 'AUDIO', 'audio', 'EXTERNAL', 'url', 'baseUrl', 'fileUrl'];
       let picked = null;
       for (const q of qualityPriority) {
         if (res && res[q]) { picked = res[q]; break; }
@@ -449,9 +455,26 @@ export async function resolvePlayableUrl(attach, chatId, messageId) {
         picked = Object.values(res).find(v => typeof v === 'string' && (v.startsWith('http://') || v.startsWith('https://')));
       }
       if (picked) {
-        return getProxiedMediaUrl(picked);
+        if (picked.startsWith('http://') || picked.startsWith('https://')) {
+          try {
+            const cached = await invoke('cache_url', { src: picked });
+            if (cached) return toPlayableUrl(cached);
+          } catch (e) {}
+        }
+        return toPlayableUrl(picked);
       }
     } catch {}
+  }
+
+  const fallback = isVideoNote ? (attach.videoUrl || attach.fileUrl) : (attach.url || attach.fileUrl || attach.baseUrl);
+  if (fallback) {
+    if (fallback.startsWith('http://') || fallback.startsWith('https://')) {
+      try {
+        const cached = await invoke('cache_url', { src: fallback });
+        if (cached) return toPlayableUrl(cached);
+      } catch (e) {}
+    }
+    return toPlayableUrl(fallback);
   }
   return null;
 }
@@ -469,7 +492,7 @@ function parseMediaItems(messages, chatId) {
         const id = String(m.id ?? attach.audioId ?? attach.videoId ?? attach.token ?? Math.random());
         items.push({
           id,
-          chatId: chatId || m.chatId,
+          chatId: chatId ?? m.chatId,
           messageId: m.id,
           type: 'voice',
           duration: dur,
@@ -484,7 +507,7 @@ function parseMediaItems(messages, chatId) {
         const id = String(m.id ?? attach.videoId ?? attach.token ?? Math.random());
         items.push({
           id,
-          chatId: chatId || m.chatId,
+          chatId: chatId ?? m.chatId,
           messageId: m.id,
           type: 'video_note',
           duration: dur,
@@ -508,11 +531,11 @@ export async function buildChatPlaylist(chatId, currentMessageId, initialMessage
   let combined = parseMediaItems(initialMessages, chatId);
 
   const cur = get(activeMedia);
-  if (cur && (cur.chatId === chatId || !cur.chatId)) {
+  if (cur && (cur.chatId === chatId || cur.chatId == null)) {
     if (!combined.some(i => String(i.id) === String(cur.id) || (cur.messageId && String(i.messageId) === String(cur.messageId)))) {
       combined.push({
         id: cur.id,
-        chatId: chatId || cur.chatId,
+        chatId: chatId ?? cur.chatId,
         messageId: cur.messageId,
         type: cur.type,
         duration: cur.duration || 0,
@@ -550,9 +573,14 @@ export async function buildChatPlaylist(chatId, currentMessageId, initialMessage
     i => String(i.messageId) === String(currentMessageId) || (cur && String(i.id) === String(cur.id))
   );
 
+  const prevPl = get(mediaPlaylist);
+  const sameItems = prevPl && prevPl.chatId === chatId && prevPl.items &&
+    prevPl.items.length === combined.length &&
+    prevPl.items.every((it, idx) => String(it.id) === String(combined[idx]?.id));
+
   mediaPlaylist.set({
     chatId,
-    items: combined,
+    items: sameItems ? prevPl.items : combined,
     currentIndex: currentIdx >= 0 ? currentIdx : 0,
   });
 
@@ -571,7 +599,26 @@ export async function playMedia(track, playlistContext = {}) {
     playUrl = await resolvePlayableUrl(track.attach, track.chatId, track.messageId);
   }
 
-  stopCurrentMedia();
+  if (currentAudioElement && currentAudioElement !== track.element) {
+    try {
+      currentAudioElement.pause();
+      currentAudioElement.currentTime = 0;
+    } catch {}
+    currentAudioElement = null;
+  }
+  if (currentVideoElement && currentVideoElement !== track.element) {
+    try {
+      currentVideoElement.pause();
+      currentVideoElement.currentTime = 0;
+    } catch {}
+    currentVideoElement = null;
+  }
+  if (track.type !== 'voice' && globalAudioElement) {
+    try { globalAudioElement.pause(); } catch {}
+  }
+  if (track.type !== 'video_note' && globalVideoElement) {
+    try { globalVideoElement.pause(); } catch {}
+  }
 
   const speed = getTrackSpeed(track.id);
   const muted = isTrackMuted(track.id);
@@ -585,15 +632,38 @@ export async function playMedia(track, playlistContext = {}) {
     muted,
     isPlaying: true,
     currentTime: 0,
+    isGlobalPlayback: !track.element,
   };
 
   activeMedia.set(newState);
 
-  const onPlayErr = () => {
+  const onPlayErr = (err) => {
+    if (err && err.name === 'AbortError') return;
     updateMediaPlaybackState(track.id, false);
   };
 
-  if (track.element) {
+  if (track.type === 'voice' && globalAudioElement) {
+    if (playUrl) {
+      if (!globalAudioElement.src || !globalAudioElement.src.includes(playUrl)) {
+        globalAudioElement.src = playUrl;
+      }
+      globalAudioElement.currentTime = 0;
+      globalAudioElement.playbackRate = speed;
+      globalAudioElement.volume = vol;
+      globalAudioElement.muted = muted;
+      try {
+        const p = globalAudioElement.play();
+        if (p && typeof p.catch === 'function') p.catch(onPlayErr);
+      } catch (err) {
+        onPlayErr(err);
+      }
+    }
+  } else if (track.element) {
+    if (track.type === 'voice') {
+      currentAudioElement = track.element;
+    } else {
+      currentVideoElement = track.element;
+    }
     if (playUrl && (!track.element.src || !track.element.src.includes(playUrl))) {
       track.element.src = playUrl;
     }
@@ -607,23 +677,11 @@ export async function playMedia(track, playlistContext = {}) {
     } catch {
       onPlayErr();
     }
-  } else if (track.type === 'voice' && globalAudioElement) {
-    if (playUrl) {
-      globalAudioElement.src = playUrl;
-      globalAudioElement.currentTime = 0;
-      globalAudioElement.playbackRate = speed;
-      globalAudioElement.volume = vol;
-      globalAudioElement.muted = muted;
-      try {
-        const p = globalAudioElement.play();
-        if (p && typeof p.catch === 'function') p.catch(onPlayErr);
-      } catch {
-        onPlayErr();
-      }
-    }
   } else if (track.type === 'video_note' && globalVideoElement) {
     if (playUrl) {
-      globalVideoElement.src = playUrl;
+      if (!globalVideoElement.src || !globalVideoElement.src.includes(playUrl)) {
+        globalVideoElement.src = playUrl;
+      }
       globalVideoElement.currentTime = 0;
       globalVideoElement.playbackRate = speed;
       globalVideoElement.volume = vol;
@@ -637,8 +695,8 @@ export async function playMedia(track, playlistContext = {}) {
     }
   }
 
-  const effectiveChatId = playlistContext.chatId || track.chatId;
-  if (effectiveChatId) {
+  const effectiveChatId = playlistContext.chatId ?? track.chatId;
+  if (effectiveChatId != null) {
     const listMessages = (playlistContext.messages && playlistContext.messages.length > 0)
       ? playlistContext.messages
       : (get(activeChatMessages) || []);

@@ -979,12 +979,21 @@ export default class MobileApi extends BaseAPI {
 
   async getVideoById(chatId, messageId, videoId, token = null) {
     await this.waitSync();
-    return await invoke("get_video_by_id", { chatId, messageId, videoId, token });
+    return await invoke("get_video_by_id", {
+      chatId: Number(chatId),
+      messageId: String(messageId),
+      videoId: Number(videoId),
+      token: token ? String(token) : null,
+    });
   }
 
   async getFileById(chatId, messageId, fileId) {
     await this.waitSync();
-    return await invoke("get_file_by_id", { chatId, messageId, fileId });
+    return await invoke("get_file_by_id", {
+      chatId: Number(chatId),
+      messageId: String(messageId),
+      fileId: Number(fileId),
+    });
   }
 
   async searchPublic(query) {
