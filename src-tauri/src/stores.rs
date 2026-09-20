@@ -431,6 +431,92 @@ pub fn load_messages(
         Ok(result)
 }
 
+fn compute_tokens_diff(old_text: &str, new_text: &str) -> Vec<Value> {
+    let old_tokens: Vec<&str> = old_text.split_inclusive(|c: char| c.is_whitespace()).collect();
+    let new_tokens: Vec<&str> = new_text.split_inclusive(|c: char| c.is_whitespace()).collect();
+    let m = old_tokens.len();
+    let n = new_tokens.len();
+
+    if m == 0 && n == 0 {
+        return vec![];
+    }
+    if m == 0 {
+        return vec![json!({ "op": "+", "text": new_text })];
+    }
+    if n == 0 {
+        return vec![json!({ "op": "-", "text": old_text })];
+    }
+
+    let mut dp = vec![vec![0u16; n + 1]; m + 1];
+    for i in 0..m {
+        for j in 0..n {
+            if old_tokens[i] == new_tokens[j] {
+                dp[i + 1][j + 1] = dp[i][j] + 1;
+            } else {
+                dp[i + 1][j + 1] = dp[i][j + 1].max(dp[i + 1][j]);
+            }
+        }
+    }
+
+    let mut i = m;
+    let mut j = n;
+    let mut raw_diff = Vec::new();
+
+    while i > 0 || j > 0 {
+        if i > 0 && j > 0 && old_tokens[i - 1] == new_tokens[j - 1] {
+            raw_diff.push(("=", old_tokens[i - 1].to_string()));
+            i -= 1;
+            j -= 1;
+        } else if j > 0 && (i == 0 || dp[i][j - 1] >= dp[i - 1][j]) {
+            raw_diff.push(("+", new_tokens[j - 1].to_string()));
+            j -= 1;
+        } else if i > 0 && (j == 0 || dp[i][j - 1] < dp[i - 1][j]) {
+            raw_diff.push(("-", old_tokens[i - 1].to_string()));
+            i -= 1;
+        }
+    }
+
+    raw_diff.reverse();
+
+    let mut merged: Vec<Value> = Vec::new();
+    for (op, text) in raw_diff {
+        if let Some(last) = merged.last_mut() {
+            if last.get("op").and_then(|x| x.as_str()) == Some(op) {
+                if let Some(t) = last.get_mut("text") {
+                    if let Some(s) = t.as_str() {
+                        *t = json!(format!("{}{}", s, text));
+                        continue;
+                    }
+                }
+            }
+        }
+        merged.push(json!({ "op": op, "text": text }));
+    }
+
+    merged
+}
+
+fn compute_attaches_diff(old_attaches: &[Value], new_attaches: &[Value]) -> Value {
+    let mut added = Vec::new();
+    let mut removed = Vec::new();
+
+    for new_att in new_attaches {
+        if !old_attaches.contains(new_att) {
+            added.push(new_att.clone());
+        }
+    }
+    for old_att in old_attaches {
+        if !new_attaches.contains(old_att) {
+            removed.push(old_att.clone());
+        }
+    }
+
+    json!({
+        "added": added,
+        "removed": removed
+    })
+}
+
 #[tauri::command]
 pub fn update_messages(
     app: AppHandle,
@@ -445,7 +531,7 @@ pub fn update_messages(
     let mut bulks: std::collections::HashMap<String, Vec<Value>> = std::collections::HashMap::new();
 
     for message in messages {
-        let time =  message.get("time").and_then(|x| x.as_i64()).unwrap_or(0);
+        let time = message.get("time").and_then(|x| x.as_i64()).unwrap_or(0);
         let day = chrono::DateTime::from_timestamp(time / 1000, 0).unwrap().format("%Y-%m-%d").to_string();
         bulks.entry(day).or_default().push(message);
     }
@@ -460,45 +546,65 @@ pub fn update_messages(
             let id = message.get("id").cloned();
 
             if let Some(id) = id {
-            if let Some(old) =
-                saved.iter_mut()
-                .find(|x| x.get("id") == Some(&id))
-                {
-                if let Some(map) = message.as_object()
-                {
-                for (key,value) in map {
-                    let changed = old.get(key) != Some(value);
-                    if !changed {
-                        continue;
-                    }
-                    if key == "text" {
-                        let at = chrono::Utc::now().timestamp();
+                if let Some(old) = saved.iter_mut().find(|x| x.get("id") == Some(&id)) {
+                    let old_text = old.get("text").and_then(|x| x.as_str()).unwrap_or("").to_string();
+                    let new_text = message.get("text").and_then(|x| x.as_str()).unwrap_or("").to_string();
+                    let empty_vec = vec![];
+                    let old_atts = old.get("attaches").and_then(|x| x.as_array()).unwrap_or(&empty_vec).clone();
+                    let new_atts = message.get("attaches").and_then(|x| x.as_array()).unwrap_or(&empty_vec).clone();
 
-                        let old_text = old.get("text").cloned().unwrap_or(Value::Null);
+                    let text_changed = old_text != new_text && !new_text.is_empty() && !old_text.is_empty();
+                    let atts_changed = old_atts != new_atts && message.get("attaches").is_some();
 
-                        if let Some(obj) =
-                            old.as_object_mut()
-                            {
-                                let history = obj.entry("history")
-                                .or_insert(
-                                    Value::Array(vec![])
-                                );
+                    if text_changed || atts_changed {
+                        let at = chrono::Utc::now().timestamp_millis();
+                        let text_diff = if text_changed {
+                            compute_tokens_diff(&old_text, &new_text)
+                        } else {
+                            vec![]
+                        };
+                        let atts_diff = if atts_changed {
+                            Some(compute_attaches_diff(&old_atts, &new_atts))
+                        } else {
+                            None
+                        };
 
-                                if let Value::Array(arr) = history {
-                                    arr.push(
-                                        json!({
-                                            "text": old_text,
-                                            "at": at
-                                        })
-                                    );
+                        if let Some(obj) = old.as_object_mut() {
+                            let history = obj.entry("history").or_insert_with(|| Value::Array(vec![]));
+                            if let Value::Array(arr) = history {
+                                let mut entry = serde_json::Map::new();
+                                entry.insert("at".to_string(), json!(at));
+                                if !text_diff.is_empty() {
+                                    entry.insert("diff".to_string(), json!(text_diff));
                                 }
+                                if let Some(ad) = atts_diff {
+                                    entry.insert("attaches_diff".to_string(), ad);
+                                }
+                                arr.push(Value::Object(entry));
                             }
+                            obj.insert("edited".to_string(), json!(true));
+                            obj.insert("edited_at".to_string(), json!(at));
+                        }
                     }
-                    old.as_object_mut().unwrap().insert(key.clone(), value.clone());
-                }
-                }
-                }
-                else {
+
+                    if message.get("deleted").and_then(|x| x.as_bool()).unwrap_or(false) {
+                        if let Some(obj) = old.as_object_mut() {
+                            obj.insert("deleted".to_string(), json!(true));
+                            if !obj.contains_key("deleted_at") {
+                                obj.insert("deleted_at".to_string(), json!(chrono::Utc::now().timestamp_millis()));
+                            }
+                        }
+                    }
+
+                    if let Some(map) = message.as_object() {
+                        for (key, value) in map {
+                            if key == "history" {
+                                continue;
+                            }
+                            old.as_object_mut().unwrap().insert(key.clone(), value.clone());
+                        }
+                    }
+                } else {
                     saved.push(message);
                 }
             }
@@ -511,6 +617,45 @@ pub fn update_messages(
         });
 
         storage.save(file, &Value::Array(saved))?;
+    }
+
+    Ok(())
+}
+
+#[tauri::command]
+pub fn mark_message_deleted(
+    app: AppHandle,
+    account: u64,
+    chat_id: i64,
+    message_id: String,
+) -> Result<(), String> {
+    let key = crypto_key(&app, account);
+    let storage = Storage::new(key);
+    let dir = Paths::new(&app, account).messages(chat_id);
+
+    let files = Storage::list(&dir);
+    for file in files {
+        let mut saved: Vec<Value> = storage
+            .load(&file)
+            .and_then(|x| x.as_array().cloned())
+            .unwrap_or_default();
+
+        let mut modified = false;
+        for msg in saved.iter_mut() {
+            let mid = msg.get("id").map(|x| x.to_string().replace('"', ""));
+            if mid.as_deref() == Some(&message_id) {
+                if let Some(obj) = msg.as_object_mut() {
+                    obj.insert("deleted".to_string(), json!(true));
+                    obj.insert("deleted_at".to_string(), json!(chrono::Utc::now().timestamp_millis()));
+                    modified = true;
+                }
+            }
+        }
+
+        if modified {
+            storage.save(file, &Value::Array(saved))?;
+            break;
+        }
     }
 
     Ok(())
