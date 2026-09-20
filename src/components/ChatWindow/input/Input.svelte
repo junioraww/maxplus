@@ -371,8 +371,17 @@
   let analyserNode = null;
   let animFrameId = null;
   let videoPreviewEl = null;
+  let fallbackCanvasEl = null;
+  let isFallbackVideo = false;
   let fallbackInterval = null;
   let videoFacingMode = 'user';
+
+  $: if (videoPreviewEl && mediaStream && recordMode === 'video') {
+    if (videoPreviewEl.srcObject !== mediaStream) {
+      videoPreviewEl.srcObject = mediaStream;
+      videoPreviewEl.play().catch(() => {});
+    }
+  }
   let isReviewingVideoNote = false;
   let reviewVideoBlob = null;
   let reviewVideoUrl = null;
@@ -443,24 +452,32 @@
     canvas.width = 480;
     canvas.height = 480;
     const ctx = canvas.getContext('2d');
+    const startT = Date.now();
+    const imgData = ctx.createImageData(480, 480);
+    const buf = new Uint32Array(imgData.data.buffer);
 
     const drawFrame = () => {
-      ctx.fillStyle = '#111318';
-      ctx.fillRect(0, 0, 480, 480);
+      for (let i = 0; i < buf.length; i++) {
+        const v = (Math.random() * 255) | 0;
+        buf[i] = 0xff000000 | (v << 16) | (v << 8) | v;
+      }
+      ctx.putImageData(imgData, 0, 0);
 
+      const sec = ((Date.now() - startT) / 1000).toFixed(1);
       ctx.save();
-      ctx.beginPath();
-      ctx.arc(240, 240, 220, 0, Math.PI * 2);
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
-      ctx.lineWidth = 4;
-      ctx.stroke();
-
-      const pulse = (Math.sin(Date.now() / 400) + 1) * 15;
-      ctx.beginPath();
-      ctx.arc(240, 240, 60 + pulse, 0, Math.PI * 2);
-      ctx.fillStyle = 'rgba(255, 255, 255, 0.04)';
-      ctx.fill();
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.65)';
+      ctx.fillRect(90, 210, 300, 60);
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 24px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(`TEST NOISE ${sec}s`, 240, 240);
       ctx.restore();
+
+      if (fallbackCanvasEl) {
+        const fctx = fallbackCanvasEl.getContext('2d');
+        if (fctx) fctx.drawImage(canvas, 0, 0, fallbackCanvasEl.width, fallbackCanvasEl.height);
+      }
     };
 
     drawFrame();
@@ -490,6 +507,7 @@
     cancelDrag = 0;
     lockDrag = 0;
     isLocked = false;
+    isFallbackVideo = false;
 
     try {
       if (recordMode === 'voice') {
@@ -504,15 +522,39 @@
         } catch {}
       } else {
         if (!navigator?.mediaDevices?.getUserMedia) throw new Error("No mediaDevices");
-        mediaStream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: 'user', width: { ideal: 480 }, height: { ideal: 480 } },
-          audio: true,
-        });
+        try {
+          mediaStream = await navigator.mediaDevices.getUserMedia({
+            video: { width: { ideal: 640 }, height: { ideal: 480 } },
+            audio: true,
+          });
+        } catch {
+          try {
+            mediaStream = await navigator.mediaDevices.getUserMedia({
+              video: true,
+              audio: true,
+            });
+          } catch {
+            const vStream = await navigator.mediaDevices.getUserMedia({ video: true });
+            let aStream = null;
+            try {
+              aStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            } catch {}
+            mediaStream = new MediaStream();
+            vStream.getVideoTracks().forEach(t => mediaStream.addTrack(t));
+            if (aStream && aStream.getAudioTracks().length > 0) {
+              aStream.getAudioTracks().forEach(t => mediaStream.addTrack(t));
+            } else {
+              const fallbackA = createFallbackAudioStream();
+              fallbackA.getAudioTracks().forEach(t => mediaStream.addTrack(t));
+            }
+          }
+        }
       }
     } catch (err) {
       if (recordMode === 'voice') {
         mediaStream = createFallbackAudioStream();
       } else {
+        isFallbackVideo = true;
         mediaStream = createFallbackVideoStream();
       }
     }
@@ -604,6 +646,7 @@
       clearInterval(fallbackInterval);
       fallbackInterval = null;
     }
+    isFallbackVideo = false;
     if (audioContext) {
       try { audioContext.close(); } catch {}
       audioContext = null;
@@ -1219,13 +1262,22 @@
 
   {#if isRecording && recordMode === 'video'}
     <div class="video-recorder-preview-wrap">
-      <video
-        bind:this={videoPreviewEl}
-        class="video-recorder-circle"
-        autoplay
-        playsinline
-        muted
-      ></video>
+      {#if isFallbackVideo}
+        <canvas
+          bind:this={fallbackCanvasEl}
+          width="480"
+          height="480"
+          class="video-recorder-circle"
+        ></canvas>
+      {:else}
+        <video
+          bind:this={videoPreviewEl}
+          class="video-recorder-circle"
+          autoplay
+          playsinline
+          muted
+        ></video>
+      {/if}
       <button class="flip-camera-btn" type="button" on:click={flipCamera} title="Сменить камеру">
         <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <path d="M11 19H4a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h5"/>

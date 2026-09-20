@@ -1,19 +1,55 @@
 use crate::state::AppState;
 
+fn unwrap_media_source(raw: &str) -> (Option<String>, Option<String>) {
+    let mut s = raw.to_string();
+    if let Some(idx) = s.find("127.0.0.1:11447/") {
+        let after = &s[idx + 16..];
+        if let Ok(dec) = urlencoding::decode(after) {
+            s = dec.into_owned();
+        }
+    } else if let Some(idx) = s.find("proxy?url=") {
+        let after = &s[idx + 10..];
+        if let Ok(dec) = urlencoding::decode(after) {
+            s = dec.into_owned();
+        }
+    }
+    if s.starts_with("http://asset.localhost/") {
+        let path = s.trim_start_matches("http://asset.localhost/");
+        let path = urlencoding::decode(path).map(|c| c.into_owned()).unwrap_or_else(|_| path.to_string());
+        return (Some(path), None);
+    }
+    if s.starts_with('/') {
+        return (Some(s), None);
+    }
+    if s.starts_with("file://") {
+        return (Some(s.trim_start_matches("file://").to_string()), None);
+    }
+    (None, Some(s))
+}
+
 #[tauri::command]
 pub async fn download(
     app: tauri::AppHandle,
     url: String,
     name: String,
 ) -> Result<String, String> {
-    let client = rumax::create_http_client();
-    let bytes = client.get(&url)
-        .send()
-        .await
-        .map_err(|e| e.to_string())?
-        .bytes()
-        .await
-        .map_err(|e| e.to_string())?;
+    let (local_src, remote_url) = unwrap_media_source(&url);
+    let bytes = if let Some(local_path) = local_src {
+        tokio::fs::read(&local_path)
+            .await
+            .map_err(|e| e.to_string())?
+    } else {
+        let target = remote_url.unwrap_or(url);
+        let client = rumax::create_http_client();
+        client.get(&target)
+            .send()
+            .await
+            .map_err(|e| e.to_string())?
+            .bytes()
+            .await
+            .map_err(|e| e.to_string())?
+            .to_vec()
+    };
 
     #[cfg(target_os = "android")]
     {
@@ -95,10 +131,13 @@ async fn convert_media_if_needed(path: &str, is_video: bool) -> String {
                 "-i", path,
                 "-vf", "setpts=PTS-STARTPTS,crop=min(iw\\,ih):min(iw\\,ih),scale=480:480,setsar=1",
                 "-af", "asetpts=PTS-STARTPTS",
+                "-fps_mode", "passthrough",
                 "-c:v", "libx264",
-                "-preset", "veryfast",
+                "-preset", "ultrafast",
+                "-b:v", "1500k",
+                "-maxrate", "2000k",
+                "-bufsize", "3000k",
                 "-pix_fmt", "yuv420p",
-                "-r", "30",
                 "-c:a", "aac",
                 "-b:a", "64k",
                 "-shortest",
@@ -113,6 +152,7 @@ async fn convert_media_if_needed(path: &str, is_video: bool) -> String {
                 "-y",
                 "-i", path,
                 "-vn",
+                "-af", "asetpts=PTS-STARTPTS",
                 "-c:a", "libopus",
                 "-b:a", "32k",
                 "-ar", "48000",
@@ -411,8 +451,17 @@ pub async fn fetch_url_bytes(url: String) -> Result<Vec<u8>, String> {
 
 #[tauri::command]
 pub async fn download_to_path(url: String, path: String) -> Result<(), String> {
+    let (local_src, remote_url) = unwrap_media_source(&url);
+    if let Some(src) = local_src {
+        tokio::fs::copy(&src, &path)
+            .await
+            .map_err(|e| e.to_string())?;
+        return Ok(());
+    }
+
+    let target = remote_url.unwrap_or(url);
     let client = rumax::shared_http_client();
-    let resp = client.get(&url)
+    let resp = client.get(&target)
         .send()
         .await
         .map_err(|e| e.to_string())?;

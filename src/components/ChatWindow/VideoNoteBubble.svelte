@@ -18,6 +18,12 @@
     updateMediaPlaybackState,
     seekMedia,
     stopCurrentMedia,
+    playMedia,
+    pauseCurrentMedia,
+    resumeCurrentMedia,
+    playNextMedia,
+    handOffToGlobal,
+    takeOverFromGlobal,
   } from '$lib/stores/mediaPlayback';
 
   export let attach;
@@ -27,9 +33,6 @@
 
   let videoEl;
   let isHovered = false;
-  let isDraggingSpeed = false;
-  let speedDragStartX = 0;
-  let speedDragStartVal = 1.0;
   let animFrameId = null;
   let smoothProgress = 0;
   let fetchedUrl = null;
@@ -46,24 +49,20 @@
   $: duration = (videoEl && videoEl.duration && isFinite(videoEl.duration) && videoEl.duration > 0 && (!attachDur || Math.abs(videoEl.duration - attachDur) < 2))
     ? videoEl.duration
     : (attachDur || (videoEl?.duration && isFinite(videoEl.duration) ? videoEl.duration : 0));
-  $: currentTime = isCurrentTrack ? ($activeMedia?.currentTime || 0) : 0;
+  $: currentTime = isCurrentTrack ? ($activeMedia?.currentTime ?? (videoEl?.currentTime || 0)) : 0;
   $: rawUrl = fetchedUrl || attach.baseUrl || attach.url || (attach.localPath ? attach.localPath : null);
 
   let resolvedPosterUrl = null;
   $: {
     const posterSrc = attach.thumbnail || attach.baseUrl;
     if (posterSrc) {
-      if (posterSrc.startsWith('data:') || posterSrc.startsWith('blob:') || posterSrc.startsWith('asset:') || posterSrc.startsWith('http://asset.localhost/')) {
+      if (posterSrc.startsWith('data:') || posterSrc.startsWith('blob:') || posterSrc.startsWith('http://127.0.0.1:11447/')) {
         resolvedPosterUrl = posterSrc;
-      } else if (posterSrc.startsWith('http')) {
-        getAssetUrl(posterSrc).then((url) => {
-          if (url) resolvedPosterUrl = url;
-          else resolvedPosterUrl = getProxiedMediaUrl(posterSrc);
-        }).catch(() => {
-          resolvedPosterUrl = getProxiedMediaUrl(posterSrc);
-        });
       } else {
-        resolvedPosterUrl = convertFileSrc(posterSrc);
+        resolvedPosterUrl = getProxiedMediaUrl(posterSrc);
+        getAssetUrl(posterSrc).then((url) => {
+          if (url) resolvedPosterUrl = getProxiedMediaUrl(url);
+        }).catch(() => {});
       }
     } else {
       resolvedPosterUrl = null;
@@ -74,21 +73,19 @@
   $: {
     if (!rawUrl) {
       resolvedVideoUrl = null;
-    } else if (rawUrl.startsWith('data:') || rawUrl.startsWith('blob:') || rawUrl.startsWith('asset:') || rawUrl.startsWith('http://asset.localhost/')) {
+    } else if (rawUrl.startsWith('data:') || rawUrl.startsWith('blob:') || rawUrl.startsWith('http://127.0.0.1:11447/')) {
       resolvedVideoUrl = rawUrl;
-    } else if (rawUrl.startsWith('http')) {
+    } else {
       resolvedVideoUrl = getProxiedMediaUrl(rawUrl);
       getAssetUrl(rawUrl).then((cached) => {
-        if (cached) resolvedVideoUrl = cached;
+        if (cached) resolvedVideoUrl = getProxiedMediaUrl(cached);
       }).catch(() => {});
-    } else {
-      resolvedVideoUrl = convertFileSrc(rawUrl);
     }
   }
 
   const size = 200;
   const strokeWidth = 4;
-  const radius = (size - strokeWidth) / 2;
+  const radius = (size - strokeWidth) / 2 - 1;
   const circumference = 2 * Math.PI * radius;
 
   let lastAnchorTime = 0;
@@ -96,21 +93,21 @@
 
   function runSmoothProgress() {
     if (animFrameId) cancelAnimationFrame(animFrameId);
-    if (!isPlaying || !videoEl) return;
+    if (!isPlaying) return;
 
     lastAnchorTime = performance.now();
-    lastVideoTime = videoEl.currentTime || 0;
+    lastVideoTime = videoEl?.currentTime || 0;
 
     const tick = (now) => {
-      if (!videoEl || !isPlaying) return;
-      const currentVidTime = videoEl.currentTime || 0;
+      if (!isPlaying) return;
+      const currentVidTime = videoEl?.currentTime || 0;
       if (Math.abs(currentVidTime - lastVideoTime) > 0.005) {
         lastVideoTime = currentVidTime;
         lastAnchorTime = now;
       }
-      const rate = videoEl.playbackRate || currentSpeed || 1.0;
+      const rate = videoEl?.playbackRate || currentSpeed || 1.0;
       const elapsed = Math.max(0, (now - lastAnchorTime) / 1000) * rate;
-      const realDur = (videoEl.duration && isFinite(videoEl.duration) && videoEl.duration > 0)
+      const realDur = (videoEl?.duration && isFinite(videoEl.duration) && videoEl.duration > 0)
         ? videoEl.duration
         : duration;
       if (realDur > 0) {
@@ -147,43 +144,66 @@
 
   async function ensureVideoUrl() {
     if (resolvedVideoUrl) return resolvedVideoUrl;
-    if (attach.videoId && chatId && messageId) {
+    const vId = attach.videoId ?? attach.id ?? attach.video_id ?? 0;
+    const token = attach.videoToken ?? attach.token ?? null;
+    if ((vId || token) && chatId && messageId) {
       try {
-        const response = await $API.getVideoById(chatId, messageId, attach.videoId);
-        const qualityPriority = ['MP4_720', 'MP4_480', 'MP4_360', 'MP4_1080'];
+        const response = await $API.getVideoById(chatId, messageId, vId || 0, token);
+        const qualityPriority = ['MP4_720', 'MP4_480', 'MP4_360', 'MP4_240', 'MP4_1080', 'EXTERNAL', 'url', 'baseUrl'];
+        let picked = null;
         for (const q of qualityPriority) {
-          if (response[q]) {
-            fetchedUrl = response[q];
-            return resolvedVideoUrl;
+          if (response && response[q]) {
+            picked = response[q];
+            break;
           }
         }
-        if (response.HLS) {
-          fetchedUrl = response.HLS;
+        if (!picked && response && response.HLS) {
+          picked = response.HLS;
+        }
+        if (!picked && response && typeof response === 'object') {
+          picked = Object.values(response).find(v => typeof v === 'string' && (v.startsWith('http://') || v.startsWith('https://')));
+        }
+        if (picked) {
+          fetchedUrl = picked;
+          resolvedVideoUrl = getProxiedMediaUrl(picked);
           return resolvedVideoUrl;
         }
       } catch (err) {}
     }
-    return resolvedVideoUrl;
+    return resolvedVideoUrl || (rawUrl ? getProxiedMediaUrl(rawUrl) : null);
   }
 
   async function handleTogglePlay() {
-    if (!videoEl) return;
-    if (!resolvedVideoUrl) {
-      await ensureVideoUrl();
-    }
+    const url = resolvedVideoUrl || (await ensureVideoUrl()) || (rawUrl ? getProxiedMediaUrl(rawUrl) : null);
     if (isCurrentTrack) {
       if (isPlaying) {
-        videoEl.pause();
+        pauseCurrentMedia();
+        if (videoEl) videoEl.pause();
       } else {
-        videoEl.play().catch(() => {});
+        resumeCurrentMedia();
+        if (videoEl) videoEl.play().catch(() => {});
       }
     } else {
-      registerVideo(mId, videoEl, { isNote: true, duration });
-      videoEl.play().catch(() => {});
+      if (videoEl && url && (!videoEl.src || !videoEl.src.includes(url))) {
+        videoEl.src = url;
+      }
+      await playMedia({
+        id: mId,
+        chatId,
+        messageId,
+        type: 'video_note',
+        url,
+        poster: resolvedPosterUrl,
+        duration,
+        senderName: isMe ? 'Вы' : (attach.senderName || 'Собеседник'),
+        title: 'Видеосообщение',
+        attach,
+        element: videoEl,
+      }, { chatId, currentMessageId: messageId });
     }
   }
 
-  function handleRingClick(e) {
+  async function handleRingClick(e) {
     const rect = e.currentTarget.getBoundingClientRect();
     const centerX = rect.left + rect.width / 2;
     const centerY = rect.top + rect.height / 2;
@@ -193,37 +213,31 @@
     if (angle < 0) angle += 2 * Math.PI;
     const ratio = angle / (2 * Math.PI);
     const target = ratio * duration;
-    if (!isCurrentTrack && videoEl) {
-      registerVideo(mId, videoEl, { isNote: true, duration });
+    const url = resolvedVideoUrl || (await ensureVideoUrl()) || (rawUrl ? getProxiedMediaUrl(rawUrl) : null);
+    if (videoEl && url && (!videoEl.src || !videoEl.src.includes(url))) {
+      videoEl.src = url;
+    }
+    if (!isCurrentTrack) {
+      await playMedia({
+        id: mId,
+        chatId,
+        messageId,
+        type: 'video_note',
+        url,
+        poster: resolvedPosterUrl,
+        duration,
+        senderName: isMe ? 'Вы' : (attach.senderName || 'Собеседник'),
+        title: 'Видеосообщение',
+        attach,
+        element: videoEl,
+      }, { chatId, currentMessageId: messageId });
     }
     seekMedia(mId, target);
     if (videoEl) videoEl.currentTime = target;
   }
 
-  function handleSpeedPointerDown(e) {
-    isDraggingSpeed = true;
-    speedDragStartX = e.clientX;
-    speedDragStartVal = currentSpeed;
-    window.addEventListener('pointermove', handleSpeedPointerMove);
-    window.addEventListener('pointerup', handleSpeedPointerUp);
-  }
-
-  function handleSpeedPointerMove(e) {
-    if (!isDraggingSpeed) return;
-    const deltaX = e.clientX - speedDragStartX;
-    const change = deltaX / 120;
-    const newSpeed = snapSpeed(speedDragStartVal + change);
-    setTrackSpeed(mId, newSpeed);
-  }
-
-  function handleSpeedPointerUp() {
-    isDraggingSpeed = false;
-    window.removeEventListener('pointermove', handleSpeedPointerMove);
-    window.removeEventListener('pointerup', handleSpeedPointerUp);
-  }
-
   async function handleDownload() {
-    const url = resolvedVideoUrl || (await ensureVideoUrl());
+    const url = resolvedVideoUrl || (await ensureVideoUrl()) || rawUrl;
     if (!url) {
       showAlert('Ссылка на видео недоступна');
       return;
@@ -253,12 +267,26 @@
 
   onMount(() => {
     ensureVideoUrl();
+    if (isCurrentTrack && videoEl) {
+      takeOverFromGlobal(mId, videoEl);
+    }
   });
 
   onDestroy(() => {
     if (animFrameId) cancelAnimationFrame(animFrameId);
-    if (isCurrentTrack) {
-      stopCurrentMedia();
+    if (isCurrentTrack && isPlaying) {
+      handOffToGlobal({
+        id: mId,
+        type: 'video_note',
+        url: resolvedVideoUrl || rawUrl,
+        poster: resolvedPosterUrl,
+        currentTime: videoEl?.currentTime || currentTime,
+        duration,
+        speed: currentSpeed,
+        volume: currentVolume,
+        muted: currentMuted,
+        isPlaying: true,
+      });
     }
   });
 </script>
@@ -301,6 +329,7 @@
         poster={resolvedPosterUrl}
         playsinline
         preload="metadata"
+        on:timeupdate={() => updateMediaProgress(mId, videoEl?.currentTime || 0, videoEl?.duration || duration)}
         on:play={() => {
           lastAnchorTime = performance.now();
           lastVideoTime = videoEl?.currentTime || 0;
@@ -317,6 +346,7 @@
           updateMediaPlaybackState(mId, false);
           if (videoEl) videoEl.currentTime = 0;
           smoothProgress = 0;
+          playNextMedia();
         }}
       ></video>
 
@@ -342,50 +372,6 @@
     </span>
 
     <div class="video-note-actions">
-      <div class="speed-control-wrapper">
-        <button
-          type="button"
-          class="note-btn speed-btn"
-          class:snapped={currentSpeed === 1.0}
-          on:click|stopPropagation={() => cycleTrackSpeed(mId)}
-          on:pointerdown|stopPropagation={handleSpeedPointerDown}
-          title="Скорость: {currentSpeed}x"
-        >
-          {currentSpeed}x
-        </button>
-        {#if isDraggingSpeed}
-          <div class="speed-tooltip">
-            {currentSpeed}x
-          </div>
-        {/if}
-      </div>
-
-      <button
-        type="button"
-        class="note-btn vol-btn"
-        class:muted={currentMuted || currentVolume === 0}
-        on:click|stopPropagation={() => toggleTrackMute(mId)}
-        on:wheel|preventDefault|stopPropagation={(e) => {
-          const delta = e.deltaY < 0 ? 0.05 : -0.05;
-          setTrackVolume(mId, currentVolume + delta);
-        }}
-        title={currentMuted || currentVolume === 0 ? 'Включить звук' : `Громкость: ${Math.round(currentVolume * 100)}%`}
-      >
-        {#if currentMuted || currentVolume === 0}
-          <svg viewBox="0 0 24 24" width="14" height="14">
-            <path fill="currentColor" d="M16.5 12c0-1.77-1.02-3.29-2.5-4.03v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51C20.63 14.91 21 13.5 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06c1.38-.31 2.63-.95 3.69-1.81L19.73 21 21 19.73l-9-9L4.27 3zM12 4L9.91 6.09 12 8.18V4z"/>
-          </svg>
-        {:else if currentVolume <= 0.5}
-          <svg viewBox="0 0 24 24" width="14" height="14">
-            <path fill="currentColor" d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02z"/>
-          </svg>
-        {:else}
-          <svg viewBox="0 0 24 24" width="14" height="14">
-            <path fill="currentColor" d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/>
-          </svg>
-        {/if}
-      </button>
-
       <button
         type="button"
         class="note-btn download-btn"
@@ -557,6 +543,29 @@
     position: relative;
     display: flex;
     align-items: center;
+  }
+
+  .volume-control-wrapper {
+    position: relative;
+    display: flex;
+    align-items: center;
+  }
+
+  .vol-tooltip {
+    position: absolute;
+    bottom: 125%;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(15, 23, 42, 0.9);
+    color: #38bdf8;
+    padding: 3px 6px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: bold;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+    pointer-events: none;
+    white-space: nowrap;
+    z-index: 100;
   }
 
   .vol-btn.muted {

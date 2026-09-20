@@ -977,9 +977,9 @@ export default class MobileApi extends BaseAPI {
     return { success: true };
   }
 
-  async getVideoById(chatId, messageId, videoId) {
+  async getVideoById(chatId, messageId, videoId, token = null) {
     await this.waitSync();
-    return await invoke("get_video_by_id", { chatId, messageId, videoId });
+    return await invoke("get_video_by_id", { chatId, messageId, videoId, token });
   }
 
   async getFileById(chatId, messageId, fileId) {
@@ -1005,6 +1005,17 @@ export default class MobileApi extends BaseAPI {
   async getChat(chatId) {
     await this.waitSync();
     return await invoke("get_chats", { chatIds: [chatId] });
+  }
+
+  async getChatMedia(chatId, messageId = null, attachTypes = ["AUDIO", "VIDEO"], forward = 0, backward = 60) {
+    await this.waitSync();
+    return await invoke("get_chat_media", {
+      chatId: Number(chatId),
+      messageId: messageId ? String(messageId) : null,
+      attachTypes,
+      forward,
+      backward
+    });
   }
 
   async getSessions() {
@@ -1090,6 +1101,7 @@ export default class MobileApi extends BaseAPI {
       return {
         _type: "AUDIO",
         token: payload.token,
+        videoId: payload.videoId,
         duration: Math.round(attach.duration || 0),
         wave: normalizedWave,
         localPath: attach.path,
@@ -1101,6 +1113,7 @@ export default class MobileApi extends BaseAPI {
         _type: "VIDEO",
         videoType: 1,
         token: payload.token,
+        videoId: payload.videoId,
         duration: Math.round(attach.duration || 0),
         wave: normalizedWave,
         localPath: attach.path,

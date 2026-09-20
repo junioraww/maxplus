@@ -17,6 +17,8 @@
   import DevSettings from "$components/main/dev/Settings.svelte";
   import AddContactModal from "$components/main/AddContactModal.svelte";
   import DevicesSettings from "$components/main/devices/Settings.svelte";
+  import GlobalMediaPlayer from "$components/media/GlobalMediaPlayer.svelte";
+  import MediaPlaylistModal from "$components/media/MediaPlaylistModal.svelte";
 
   import Session from "$lib/stores/session";
 
@@ -93,6 +95,8 @@
 {/if}
 
 <Alerts />
+<GlobalMediaPlayer />
+<MediaPlaylistModal />
 
 <style>
   main {

@@ -41,6 +41,8 @@
   import Dropout from "$components/ChatWindow/Dropout.svelte";
   import Signature from "$components/main/Signature.svelte";
   import MediaViewer from "$components/ChatWindow/MediaViewer.svelte";
+  import MediaPlaybackHeader from "$components/media/MediaPlaybackHeader.svelte";
+  import { activeMedia, activeChatMessages, buildChatPlaylist } from "$lib/stores/mediaPlayback";
   import DateSeparator from "$components/ChatWindow/DateSeparator.svelte";
   import Input from "$components/ChatWindow/input/Input.svelte";
   import BotStart from "$components/ChatWindow/BotStart.svelte";
@@ -97,6 +99,12 @@
   let clickStartPos = { x: 0, y: 0 };
 
   const messages = writable([]);
+  $: if ($messages) {
+    activeChatMessages.set($messages);
+    if ($messages.length > 0 && $activeMedia && ($activeMedia.chatId === (chat?.id ?? chatId) || !$activeMedia.chatId)) {
+      buildChatPlaylist(chat?.id ?? chatId, $activeMedia.messageId, $messages);
+    }
+  }
   let initialized = false;
 
   const BATCH_SIZE = 40;
@@ -773,6 +781,10 @@
   }
 
   function handleScroll(event) {
+    if (!isDragging) {
+      startY = null;
+      startScrollTop = null;
+    }
     if (isInitialMounting || isProgrammaticScroll) return;
 
     userHasScrolled = true;
@@ -962,6 +974,8 @@
   }
 
   onDestroy(() => {
+    window.removeEventListener("mouseup", stopDrag);
+    window.removeEventListener("blur", stopDrag);
     if (unsubReceivedMessage) {
       unsubReceivedMessage();
       unsubReceivedMessage = null;
@@ -1158,6 +1172,8 @@
     allRendered = true;
     isInitialMounting = false;
     isProgrammaticScroll = false;
+    window.addEventListener("mouseup", stopDrag);
+    window.addEventListener("blur", stopDrag);
   });
 
   async function jumpToBottom() {
@@ -1169,26 +1185,22 @@
     scrollToBottom(scrollElement, true);
   }
 
-  /*
-   * drag & message select
-   */
-
   let isDragging = false;
-  let startY, startScrollTop;
+  let startY = null;
+  let startScrollTop = null;
 
   function startDrag(e) {
     if (isClosingBySwipe || isSwipingChat || currentDragX > 0) return;
     clickStartPos = { x: e.clientX, y: e.clientY };
     if (e.button !== 0) return;
     startY = e.pageY;
-    startScrollTop = scrollElement.scrollTop;
-    scrollElement.style.cursor = "grabbing";
-    document.body.style.userSelect = "none";
+    startScrollTop = scrollElement ? scrollElement.scrollTop : null;
   }
 
   function stopDrag() {
     isDragging = false;
-    startScrollTop = 0;
+    startY = null;
+    startScrollTop = null;
     if (scrollElement) scrollElement.style.cursor = "grab";
     document.body.style.userSelect = "";
   }
@@ -1198,15 +1210,12 @@
       stopDrag();
       return;
     }
+    const currentScroll = scrollElement ? scrollElement.scrollTop : 0;
     const clicked =
       !isDragging ||
-      Math.abs(startScrollTop - scrollElement.scrollTop) < 5;
+      (startScrollTop !== null && Math.abs(startScrollTop - currentScroll) < 5);
 
-    startScrollTop = 0;
-    isDragging = false;
-
-    if (scrollElement) scrollElement.style.cursor = "grab";
-    document.body.style.userSelect = "";
+    stopDrag();
 
     if (
       e.target.closest(".reply-block") ||
@@ -1227,7 +1236,7 @@
       const nearest = children.find(el => {
         const rect = el.getBoundingClientRect();
         return rect.top < e.clientY && rect.bottom > e.clientY;
-      })
+      });
 
       if (nearest) {
         const id = nearest.id.split('-')[1];
@@ -1245,15 +1254,28 @@
 
   function moveDrag(e) {
     if (isSwipingChat || currentDragX > 0 || isClosingBySwipe) {
-      isDragging = false;
+      stopDrag();
       return;
     }
-    if (startScrollTop && !isDragging) isDragging = true;
-    if (!isDragging) return;
-    e.preventDefault();
+    if (e.buttons !== 1 || startScrollTop === null || startY === null) {
+      if (isDragging) stopDrag();
+      return;
+    }
     const y = e.pageY;
-    const walk = (y - startY) * 1;
-    scrollElement.scrollTop = startScrollTop - walk;
+    const walk = y - startY;
+    if (!isDragging) {
+      if (Math.abs(walk) > 5) {
+        isDragging = true;
+        if (scrollElement) scrollElement.style.cursor = "grabbing";
+        document.body.style.userSelect = "none";
+      } else {
+        return;
+      }
+    }
+    e.preventDefault();
+    if (scrollElement) {
+      scrollElement.scrollTop = startScrollTop - walk;
+    }
   }
 
   function handleClick(e) {
@@ -1510,6 +1532,10 @@
       {/if}
     </div>
   </header>
+
+  {#if $activeMedia}
+    <MediaPlaybackHeader isChatHeader={true} />
+  {/if}
 
   {#if $chatSettings}
     <Settings

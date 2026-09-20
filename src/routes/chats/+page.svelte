@@ -10,6 +10,8 @@
   import AddContactBtn from "$components/main/AddContactBtn.svelte";
   import Search from "$components/main/Search.svelte";
   import FolderEditModal from "$components/chats/FolderEditModal.svelte";
+  import MediaPlaybackHeader from "$components/media/MediaPlaybackHeader.svelte";
+  import { activeMedia } from "$lib/stores/mediaPlayback";
   import Contacts from "../contacts/+page.svelte";
 
   let showContactsModal = false;
@@ -651,6 +653,10 @@
       showFolderModal = true;
     }}
   />
+
+  {#if $activeMedia}
+    <MediaPlaybackHeader isChatHeader={false} />
+  {/if}
 
   {#if searchQuery.length}
     <div class="search-scrollable">
