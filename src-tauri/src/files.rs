@@ -131,7 +131,7 @@ async fn convert_media_if_needed(path: &str, is_video: bool) -> String {
 
 #[tauri::command]
 pub async fn upload(
-    _app: tauri::AppHandle,
+    #[allow(unused_variables)] app: tauri::AppHandle,
     state: tauri::State<'_, AppState>,
     upload_url: String,
     path: String,
