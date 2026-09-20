@@ -254,6 +254,29 @@ pub async fn write_file_bytes(path: String, content: Vec<u8>) -> Result<(), Stri
 }
 
 #[tauri::command]
+pub async fn save_temp_media(
+    app: tauri::AppHandle,
+    bytes: Vec<u8>,
+    extension: String,
+) -> Result<String, String> {
+    use tauri::Manager;
+    let cache_dir = app
+        .path()
+        .app_cache_dir()
+        .map_err(|e| e.to_string())?
+        .join("temp_media");
+    tokio::fs::create_dir_all(&cache_dir)
+        .await
+        .map_err(|e| e.to_string())?;
+    let filename = format!("{}.{}", uuid::Uuid::new_v4(), extension);
+    let path = cache_dir.join(filename);
+    tokio::fs::write(&path, bytes)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(path.to_string_lossy().to_string())
+}
+
+#[tauri::command]
 pub async fn cache_url(
     app: tauri::AppHandle,
     account: Option<u64>,
