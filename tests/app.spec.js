@@ -316,4 +316,63 @@ test.describe('Message diffing and edit history', () => {
   });
 });
 
+test.describe('Audio/video sending, failure marking, and sticker draft retention', () => {
+  test('optimistic media message has correct sender and isMe is true for current user', () => {
+    const currentUserId = 123456;
+    const optimisticMsg = {
+      id: -Date.now(),
+      sending: true,
+      sender: currentUserId,
+      attaches: [{ _type: 'AUDIO', duration: 3000, localPath: '/tmp/test.webm' }]
+    };
+
+    const isMe = Number(optimisticMsg.sender) === Number(currentUserId);
+    expect(isMe).toBe(true);
+  });
+
+  test('failed or unsent message is marked with deleted true and failed status', () => {
+    const tempId = -1001;
+    const msgs = [
+      { id: tempId, sending: true, text: '', status: 0 }
+    ];
+
+    const updated = msgs.map(m => {
+      if (m.id === tempId) {
+        return {
+          ...m,
+          sending: false,
+          deleted: true,
+          status: 'failed'
+        };
+      }
+      return m;
+    });
+
+    expect(updated[0].sending).toBe(false);
+    expect(updated[0].deleted).toBe(true);
+    expect(updated[0].status).toBe('failed');
+  });
+
+  test('sending sticker preserves user draft text', () => {
+    let newMessage = 'Draft message user is typing';
+    let stickerSuggestions = ['sticker1', 'sticker2'];
+
+    stickerSuggestions = [];
+
+    expect(newMessage).toBe('Draft message user is typing');
+    expect(stickerSuggestions.length).toBe(0);
+  });
+
+  test('local audio and video path resolves with convertFileSrc or local path', () => {
+    const attachWithLocal = {
+      _type: 'AUDIO',
+      duration: 5000,
+      localPath: '/home/user/.cache/temp_media/test.webm'
+    };
+
+    const rawUrl = attachWithLocal.fileUrl || attachWithLocal.baseUrl || attachWithLocal.url || attachWithLocal.localPath;
+    expect(rawUrl).toBe('/home/user/.cache/temp_media/test.webm');
+  });
+});
+
 

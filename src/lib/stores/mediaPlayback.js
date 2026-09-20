@@ -5,6 +5,8 @@ export const globalSpeed = writable(1.0);
 export const globalVolume = writable(1.0);
 export const isMuted = writable(false);
 
+export const trackSettings = writable({});
+
 let currentAudioElement = null;
 let currentVideoElement = null;
 let previousUnmutedVolume = 1.0;
@@ -15,6 +17,90 @@ export function snapSpeed(rawSpeed) {
     return 1.0;
   }
   return Math.round(clamped * 20) / 20;
+}
+
+export function getTrackSpeed(id) {
+  const settings = get(trackSettings);
+  return settings[id]?.speed ?? 1.0;
+}
+
+export function getTrackVolume(id) {
+  const settings = get(trackSettings);
+  return settings[id]?.volume ?? 1.0;
+}
+
+export function isTrackMuted(id) {
+  const settings = get(trackSettings);
+  return settings[id]?.muted ?? false;
+}
+
+export function setTrackSpeed(id, newSpeed) {
+  const finalSpeed = snapSpeed(newSpeed);
+  trackSettings.update(map => ({
+    ...map,
+    [id]: {
+      ...map[id],
+      speed: finalSpeed,
+      volume: map[id]?.volume ?? 1.0,
+      muted: map[id]?.muted ?? false,
+    }
+  }));
+
+  const state = get(activeMedia);
+  if (state && state.id === id && state.element) {
+    state.element.playbackRate = finalSpeed;
+    activeMedia.update(s => s ? { ...s, speed: finalSpeed } : null);
+  }
+  return finalSpeed;
+}
+
+export function cycleTrackSpeed(id) {
+  const cur = getTrackSpeed(id);
+  let next = 1.0;
+  if (Math.abs(cur - 0.5) < 0.1) next = 1.0;
+  else if (Math.abs(cur - 1.0) < 0.1) next = 1.5;
+  else if (Math.abs(cur - 1.5) < 0.1) next = 2.0;
+  else if (Math.abs(cur - 2.0) < 0.1) next = 0.5;
+  else if (cur < 1.0) next = 1.0;
+  else if (cur < 1.5) next = 1.5;
+  else if (cur < 2.0) next = 2.0;
+  else next = 1.0;
+
+  return setTrackSpeed(id, next);
+}
+
+export function setTrackVolume(id, newVolume) {
+  const clamped = Math.max(0.0, Math.min(1.0, newVolume));
+  const muted = clamped === 0;
+  trackSettings.update(map => ({
+    ...map,
+    [id]: {
+      ...map[id],
+      speed: map[id]?.speed ?? 1.0,
+      volume: clamped,
+      muted,
+    }
+  }));
+
+  const state = get(activeMedia);
+  if (state && state.id === id && state.element) {
+    state.element.volume = clamped;
+    state.element.muted = muted;
+    activeMedia.update(s => s ? { ...s, volume: clamped, muted } : null);
+  }
+}
+
+export function toggleTrackMute(id) {
+  const settings = get(trackSettings);
+  const currentMuted = settings[id]?.muted ?? false;
+  const currentVol = settings[id]?.volume ?? 1.0;
+
+  if (currentMuted) {
+    const restore = currentVol > 0 ? currentVol : 1.0;
+    setTrackVolume(id, restore);
+  } else {
+    setTrackVolume(id, 0.0);
+  }
 }
 
 export function setPlaybackSpeed(newSpeed) {
@@ -36,9 +122,13 @@ export function setPlaybackSpeed(newSpeed) {
 export function cyclePlaybackSpeed() {
   const cur = get(globalSpeed);
   let next = 1.0;
-  if (cur < 1.2) next = 1.5;
-  else if (cur < 1.8) next = 2.0;
-  else if (cur < 2.5) next = 0.5;
+  if (Math.abs(cur - 0.5) < 0.1) next = 1.0;
+  else if (Math.abs(cur - 1.0) < 0.1) next = 1.5;
+  else if (Math.abs(cur - 1.5) < 0.1) next = 2.0;
+  else if (Math.abs(cur - 2.0) < 0.1) next = 0.5;
+  else if (cur < 1.0) next = 1.0;
+  else if (cur < 1.5) next = 1.5;
+  else if (cur < 2.0) next = 2.0;
   else next = 1.0;
   return setPlaybackSpeed(next);
 }
@@ -115,11 +205,14 @@ export function pauseCurrentMedia() {
 export function registerAudio(id, element, metadata = {}) {
   stopCurrentMedia();
   currentAudioElement = element;
-  const speed = get(globalSpeed);
-  const vol = get(isMuted) ? 0 : get(globalVolume);
+  const settings = get(trackSettings)[id];
+  const speed = settings?.speed ?? 1.0;
+  const muted = settings?.muted ?? false;
+  const vol = muted ? 0 : (settings?.volume ?? 1.0);
+
   element.playbackRate = speed;
   element.volume = vol;
-  element.muted = get(isMuted);
+  element.muted = muted;
 
   activeMedia.set({
     id,
@@ -130,7 +223,7 @@ export function registerAudio(id, element, metadata = {}) {
     duration: element.duration || metadata.duration || 0,
     speed,
     volume: vol,
-    muted: get(isMuted),
+    muted,
     ...metadata,
   });
 }
@@ -138,11 +231,14 @@ export function registerAudio(id, element, metadata = {}) {
 export function registerVideo(id, element, metadata = {}) {
   stopCurrentMedia();
   currentVideoElement = element;
-  const speed = get(globalSpeed);
-  const vol = get(isMuted) ? 0 : get(globalVolume);
+  const settings = get(trackSettings)[id];
+  const speed = settings?.speed ?? 1.0;
+  const muted = settings?.muted ?? false;
+  const vol = muted ? 0 : (settings?.volume ?? 1.0);
+
   element.playbackRate = speed;
   element.volume = vol;
-  element.muted = get(isMuted);
+  element.muted = muted;
 
   activeMedia.set({
     id,
@@ -153,7 +249,7 @@ export function registerVideo(id, element, metadata = {}) {
     duration: element.duration || metadata.duration || 0,
     speed,
     volume: vol,
-    muted: get(isMuted),
+    muted,
     ...metadata,
   });
 }

@@ -15,6 +15,7 @@
   import Attachments from "$components/ChatWindow/Attachments.svelte";
   import InlineKeyboard from "$components/ChatWindow/InlineKeyboard.svelte";
   import StickerMedia from "$components/ChatWindow/Stickers/StickerMedia.svelte";
+  import { transcriptions, toggleTranscriptionExpanded } from "$lib/stores/transcription";
 
   const dispatch = createEventDispatcher();
 
@@ -32,6 +33,7 @@
   const isSystem = msg.attaches?.[0]?._type === "CONTROL";
 
   $: lines = (decoded?.text || msg.text)?.split("\n");
+  $: transcription = $transcriptions[String(msg?.id)];
 
   let innerWidth = 0;
 
@@ -97,6 +99,7 @@
   $: inlineKeyboardAttach = msg.attaches?.find(x => x._type === "INLINE_KEYBOARD");
   $: stickerAttach = msg.attaches?.find(x => x._type === "STICKER");
   $: isStickerOnly = stickerAttach && (!lines || lines.length === 0 || (lines.length === 1 && !lines[0]?.trim())) && (!msg.attaches || msg.attaches.length === 1) && !linkedMsg;
+  $: isVideoNoteOnly = msg.attaches?.some(x => x._type === "VIDEO" && x.videoType === 1) && (!lines || lines.length === 0 || (lines.length === 1 && !lines[0]?.trim())) && (!msg.attaches || msg.attaches.length === 1) && !linkedMsg;
 </script>
 
 <svelte:window bind:innerWidth={innerWidth} />
@@ -107,6 +110,7 @@
   class:is-system={isSystem}
   class:is-deleted={msg.deleted}
   class:is-sticker={isStickerOnly}
+  class:is-video-note={isVideoNoteOnly}
   class:inactive={/* todo optimize */
   dropoutActiveAt && dropoutActiveAt?.msg?.id !== msg.id}
 >
@@ -269,6 +273,7 @@
               {handleMediaClick}
               chatId={chat?.id}
               messageId={msg?.id}
+              {isMe}
             />
           {/if}
         {/if}
@@ -333,6 +338,33 @@
       </div>
     </div>
   </div>
+  {/if}
+
+  {#if transcription && transcription.expanded}
+    <div class="transcription-card" class:is-me={isMe}>
+      <div class="transcription-header">
+        <div class="transcription-title">
+          <svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor">
+            <path d="M12.87 15.07l-2.54-2.51.03-.03c1.74-1.94 2.98-4.17 3.71-6.53H17V4h-7V2H8v2H1v1.99h11.17C11.5 7.92 10.44 9.75 9 11.35 8.07 10.32 7.3 9.19 6.69 8h-2c.73 1.63 1.73 3.17 2.98 4.56l-5.09 5.02L4 19l5-5 3.11 3.11.76-2.04zM18.5 10h-2L12 22h2l1.12-3h4.75L21 22h2l-4.5-12zm-2.62 7l1.62-4.33L19.12 17h-3.24z"/>
+          </svg>
+          <span>Транскрипция</span>
+        </div>
+        <button
+          type="button"
+          class="transcription-close-btn"
+          on:click|stopPropagation={() => toggleTranscriptionExpanded(msg.id)}
+          title="Скрыть"
+        >✕</button>
+      </div>
+      {#if transcription.status === 'loading'}
+        <div class="transcription-loading">
+          <div class="transcription-spinner"></div>
+          <span>Распознавание речи...</span>
+        </div>
+      {:else}
+        <div class="transcription-text">{transcription.text}</div>
+      {/if}
+    </div>
   {/if}
 
   {#if inlineKeyboardAttach}
@@ -756,8 +788,20 @@
     animation: pulseHighlight 1.2s ease-out forwards;
   }
 
-  .message-row.is-sticker .message-bubble-container {
+  .message-row.is-sticker .message-bubble-container,
+  .message-row.is-video-note .message-bubble-container {
     background: transparent !important;
+  }
+
+  .message-row.is-video-note .message-bubble {
+    background: transparent !important;
+    box-shadow: none !important;
+    border: none !important;
+    padding: 0 !important;
+  }
+
+  .message-row.is-video-note .message-bubble::before {
+    display: none !important;
   }
 
   .sticker-bubble {
@@ -851,5 +895,83 @@
 
   .avatar-msg-btn:active {
     transform: scale(0.95);
+  }
+
+  .transcription-card {
+    margin-top: 4px;
+    max-width: 380px;
+    background: rgba(30, 41, 59, 0.95);
+    border: 1px solid rgba(56, 189, 248, 0.25);
+    border-radius: 12px;
+    padding: 8px 12px;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+    backdrop-filter: blur(8px);
+    user-select: text;
+  }
+
+  .transcription-card.is-me {
+    border-color: rgba(56, 189, 248, 0.4);
+  }
+
+  .transcription-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 4px;
+    font-size: 11px;
+    font-weight: 600;
+    color: #38bdf8;
+  }
+
+  .transcription-title {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+  }
+
+  .transcription-close-btn {
+    background: none;
+    border: none;
+    color: rgba(255, 255, 255, 0.5);
+    cursor: pointer;
+    font-size: 11px;
+    padding: 2px 4px;
+    border-radius: 4px;
+  }
+
+  .transcription-close-btn:hover {
+    color: white;
+    background: rgba(255, 255, 255, 0.1);
+  }
+
+  .transcription-loading {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.65);
+    font-style: italic;
+    padding: 4px 0;
+  }
+
+  .transcription-spinner {
+    width: 14px;
+    height: 14px;
+    border: 2px solid rgba(56, 189, 248, 0.25);
+    border-top-color: #38bdf8;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+
+  .transcription-text {
+    font-size: 13px;
+    line-height: 1.45;
+    color: rgba(255, 255, 255, 0.92);
+    word-break: break-word;
+    white-space: pre-wrap;
+  }
+
+  @keyframes spin {
+    to { transform: rotate(360deg); }
   }
 </style>

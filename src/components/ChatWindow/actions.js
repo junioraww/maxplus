@@ -54,8 +54,11 @@ export async function sendMessage(
   const chatId = chat.id;
   const id = Date.now();
 
+  const cid = -id;
+
   const displayMessageEarlyEntry = {
     id,
+    cid,
     text,
     sender: get(currentUser),
     reactionInfo: {},
@@ -71,10 +74,10 @@ export async function sendMessage(
   messages.update((msgs) => [...msgs, displayMessageEarlyEntry]);
   const chatCache = getChat(chat.id);
   chatCache.receivedMessage.set(displayMessageEarlyEntry);
-  chatCache.updateMessages([displayMessageEarlyEntry]);
 
   const params = {
     notify: true,
+    cid,
     replyTo,
     attaches,
     elements,
@@ -89,6 +92,7 @@ export async function sendMessage(
       const target = msgs.find((x) => x.id === id);
       if (target) {
         target.sending = false;
+        target.deleted = true;
         target.status = "failed";
       }
       return [...msgs];
@@ -103,6 +107,7 @@ export async function sendMessage(
       const target = msgs.find((x) => x.id === id);
       if (target) {
         target.sending = false;
+        target.deleted = true;
         target.status = "failed";
       }
       return [...msgs];

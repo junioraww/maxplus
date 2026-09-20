@@ -1,19 +1,17 @@
 <script>
   import { onDestroy, onMount } from 'svelte';
-  import { invoke } from '@tauri-apps/api/core';
+  import { convertFileSrc, invoke } from '@tauri-apps/api/core';
   import { save } from '@tauri-apps/plugin-dialog';
   import { showAlert } from '$lib/utils/alert';
   import API from '$lib/stores/api';
   import {
     activeMedia,
-    globalSpeed,
-    globalVolume,
-    isMuted,
+    trackSettings,
     snapSpeed,
-    setPlaybackSpeed,
-    cyclePlaybackSpeed,
-    setMediaVolume,
-    toggleMediaMute,
+    setTrackSpeed,
+    cycleTrackSpeed,
+    setTrackVolume,
+    toggleTrackMute,
     registerVideo,
     updateMediaProgress,
     updateMediaPlaybackState,
@@ -31,21 +29,76 @@
   let isDraggingSpeed = false;
   let speedDragStartX = 0;
   let speedDragStartVal = 1.0;
-  let showVolumeSlider = false;
-  let resolvedVideoUrl = attach.baseUrl || attach.url || (attach.localPath ? attach.localPath : null);
+  let animFrameId = null;
+  let smoothProgress = 0;
+  let fetchedUrl = null;
 
-  $: mId = String(messageId || '');
+  $: mId = String(messageId ?? attach.token ?? attach.videoId ?? attach.localPath ?? 'video_note');
   $: isCurrentTrack = $activeMedia?.id === mId;
   $: isPlaying = isCurrentTrack && $activeMedia?.isPlaying;
-  $: duration = attach.duration ? attach.duration / 1000 : ($activeMedia?.duration || 0);
+  $: currentSpeed = $trackSettings[mId]?.speed ?? 1.0;
+  $: currentVolume = $trackSettings[mId]?.volume ?? 1.0;
+  $: currentMuted = $trackSettings[mId]?.muted ?? false;
+  $: attachDur = attach.duration
+    ? (attach.duration > 120 ? attach.duration / 1000 : attach.duration)
+    : ($activeMedia?.duration || 0);
+  $: duration = (videoEl && videoEl.duration && isFinite(videoEl.duration) && videoEl.duration > 0 && (!attachDur || Math.abs(videoEl.duration - attachDur) < 2))
+    ? videoEl.duration
+    : (attachDur || (videoEl?.duration && isFinite(videoEl.duration) ? videoEl.duration : 0));
   $: currentTime = isCurrentTrack ? ($activeMedia?.currentTime || 0) : 0;
-  $: progress = duration > 0 ? Math.min(1, Math.max(0, currentTime / duration)) : 0;
+  $: rawUrl = fetchedUrl || attach.baseUrl || attach.url || (attach.localPath ? attach.localPath : null);
+  $: resolvedVideoUrl = rawUrl ? (rawUrl.startsWith('http') || rawUrl.startsWith('blob:') ? rawUrl : convertFileSrc(rawUrl)) : null;
 
   const size = 200;
   const strokeWidth = 4;
   const radius = (size - strokeWidth) / 2;
   const circumference = 2 * Math.PI * radius;
-  $: strokeDashoffset = circumference - progress * circumference;
+
+  let lastAnchorTime = 0;
+  let lastVideoTime = 0;
+
+  function runSmoothProgress() {
+    if (animFrameId) cancelAnimationFrame(animFrameId);
+    if (!isPlaying || !videoEl) return;
+
+    lastAnchorTime = performance.now();
+    lastVideoTime = videoEl.currentTime || 0;
+
+    const tick = (now) => {
+      if (!videoEl || !isPlaying) return;
+      const currentVidTime = videoEl.currentTime || 0;
+      if (Math.abs(currentVidTime - lastVideoTime) > 0.005) {
+        lastVideoTime = currentVidTime;
+        lastAnchorTime = now;
+      }
+      const rate = videoEl.playbackRate || currentSpeed || 1.0;
+      const elapsed = Math.max(0, (now - lastAnchorTime) / 1000) * rate;
+      const realDur = (videoEl.duration && isFinite(videoEl.duration) && videoEl.duration > 0)
+        ? videoEl.duration
+        : duration;
+      if (realDur > 0) {
+        const estimated = Math.min(realDur, Math.max(0, lastVideoTime + elapsed));
+        smoothProgress = Math.min(1, Math.max(0, estimated / realDur));
+      }
+      animFrameId = requestAnimationFrame(tick);
+    };
+    animFrameId = requestAnimationFrame(tick);
+  }
+
+  $: if (isPlaying) {
+    runSmoothProgress();
+  } else {
+    if (animFrameId) {
+      cancelAnimationFrame(animFrameId);
+      animFrameId = null;
+    }
+    const realDur = (videoEl && videoEl.duration && isFinite(videoEl.duration) && videoEl.duration > 0)
+      ? videoEl.duration
+      : duration;
+    smoothProgress = realDur > 0 ? Math.min(1, Math.max(0, (videoEl?.currentTime ?? currentTime) / realDur)) : 0;
+  }
+
+  $: strokeDashoffset = circumference - smoothProgress * circumference;
 
   function formatTime(sec) {
     if (!sec || isNaN(sec)) return '0:00';
@@ -63,12 +116,12 @@
         const qualityPriority = ['MP4_720', 'MP4_480', 'MP4_360', 'MP4_1080'];
         for (const q of qualityPriority) {
           if (response[q]) {
-            resolvedVideoUrl = response[q];
+            fetchedUrl = response[q];
             return resolvedVideoUrl;
           }
         }
         if (response.HLS) {
-          resolvedVideoUrl = response.HLS;
+          fetchedUrl = response.HLS;
           return resolvedVideoUrl;
         }
       } catch (err) {}
@@ -113,7 +166,7 @@
   function handleSpeedPointerDown(e) {
     isDraggingSpeed = true;
     speedDragStartX = e.clientX;
-    speedDragStartVal = $globalSpeed;
+    speedDragStartVal = currentSpeed;
     window.addEventListener('pointermove', handleSpeedPointerMove);
     window.addEventListener('pointerup', handleSpeedPointerUp);
   }
@@ -123,7 +176,7 @@
     const deltaX = e.clientX - speedDragStartX;
     const change = deltaX / 120;
     const newSpeed = snapSpeed(speedDragStartVal + change);
-    setPlaybackSpeed(newSpeed);
+    setTrackSpeed(mId, newSpeed);
   }
 
   function handleSpeedPointerUp() {
@@ -166,6 +219,7 @@
   });
 
   onDestroy(() => {
+    if (animFrameId) cancelAnimationFrame(animFrameId);
     if (isCurrentTrack) {
       stopCurrentMedia();
     }
@@ -210,16 +264,30 @@
         poster={attach.thumbnail || attach.baseUrl}
         playsinline
         preload="metadata"
-        on:timeupdate={() => updateMediaProgress(mId, videoEl.currentTime, videoEl.duration || duration)}
-        on:play={() => updateMediaPlaybackState(mId, true)}
+        on:play={() => {
+          lastAnchorTime = performance.now();
+          lastVideoTime = videoEl?.currentTime || 0;
+          updateMediaPlaybackState(mId, true);
+        }}
         on:pause={() => updateMediaPlaybackState(mId, false)}
+        on:seeked={() => {
+          lastAnchorTime = performance.now();
+          lastVideoTime = videoEl?.currentTime || 0;
+          const realDur = (videoEl?.duration && isFinite(videoEl.duration) && videoEl.duration > 0) ? videoEl.duration : duration;
+          if (realDur > 0) smoothProgress = Math.min(1, Math.max(0, lastVideoTime / realDur));
+        }}
         on:ended={() => {
           updateMediaPlaybackState(mId, false);
           if (videoEl) videoEl.currentTime = 0;
+          smoothProgress = 0;
         }}
       ></video>
 
-      {#if !isPlaying}
+      {#if attach.loading}
+        <div class="video-loading-overlay">
+          <div class="video-loading-spinner"></div>
+        </div>
+      {:else if !isPlaying}
         <div class="play-overlay">
           <div class="play-icon-circle">
             <svg viewBox="0 0 24 24" width="28" height="28">
@@ -241,54 +309,45 @@
         <button
           type="button"
           class="note-btn speed-btn"
-          class:snapped={$globalSpeed === 1.0}
-          on:click|stopPropagation={cyclePlaybackSpeed}
+          class:snapped={currentSpeed === 1.0}
+          on:click|stopPropagation={() => cycleTrackSpeed(mId)}
           on:pointerdown|stopPropagation={handleSpeedPointerDown}
-          title="Скорость: {$globalSpeed}x"
+          title="Скорость: {currentSpeed}x"
         >
-          {$globalSpeed}x
+          {currentSpeed}x
         </button>
         {#if isDraggingSpeed}
           <div class="speed-tooltip">
-            {$globalSpeed}x
+            {currentSpeed}x
           </div>
         {/if}
       </div>
 
-      <div
-        class="volume-control-wrapper"
-        on:mouseenter={() => (showVolumeSlider = true)}
-        on:mouseleave={() => (showVolumeSlider = false)}
+      <button
+        type="button"
+        class="note-btn vol-btn"
+        class:muted={currentMuted || currentVolume === 0}
+        on:click|stopPropagation={() => toggleTrackMute(mId)}
+        on:wheel|preventDefault|stopPropagation={(e) => {
+          const delta = e.deltaY < 0 ? 0.05 : -0.05;
+          setTrackVolume(mId, currentVolume + delta);
+        }}
+        title={currentMuted || currentVolume === 0 ? 'Включить звук' : `Громкость: ${Math.round(currentVolume * 100)}%`}
       >
-        <button
-          type="button"
-          class="note-btn vol-btn"
-          on:click|stopPropagation={toggleMediaMute}
-          title={$isMuted ? 'Включить звук' : 'Выключить звук'}
-        >
-          {#if $isMuted || $globalVolume === 0}
-            <svg viewBox="0 0 24 24" width="14" height="14">
-              <path fill="currentColor" d="M16.5 12c0-1.77-1.02-3.29-2.5-4.03v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51C20.63 14.91 21 13.5 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06c1.38-.31 2.63-.95 3.69-1.81L19.73 21 21 19.73l-9-9L4.27 3zM12 4L9.91 6.09 12 8.18V4z"/>
-            </svg>
-          {:else}
-            <svg viewBox="0 0 24 24" width="14" height="14">
-              <path fill="currentColor" d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/>
-            </svg>
-          {/if}
-        </button>
-        {#if showVolumeSlider}
-          <div class="volume-slider-popup" on:click|stopPropagation>
-            <input
-              type="range"
-              min="0"
-              max="1"
-              step="0.05"
-              value={$isMuted ? 0 : $globalVolume}
-              on:input={(e) => setMediaVolume(parseFloat(e.currentTarget.value))}
-            />
-          </div>
+        {#if currentMuted || currentVolume === 0}
+          <svg viewBox="0 0 24 24" width="14" height="14">
+            <path fill="currentColor" d="M16.5 12c0-1.77-1.02-3.29-2.5-4.03v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51C20.63 14.91 21 13.5 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06c1.38-.31 2.63-.95 3.69-1.81L19.73 21 21 19.73l-9-9L4.27 3zM12 4L9.91 6.09 12 8.18V4z"/>
+          </svg>
+        {:else if currentVolume <= 0.5}
+          <svg viewBox="0 0 24 24" width="14" height="14">
+            <path fill="currentColor" d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02z"/>
+          </svg>
+        {:else}
+          <svg viewBox="0 0 24 24" width="14" height="14">
+            <path fill="currentColor" d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/>
+          </svg>
         {/if}
-      </div>
+      </button>
 
       <button
         type="button"
@@ -339,7 +398,7 @@
     fill: transparent;
     stroke: #38bdf8;
     stroke-linecap: round;
-    transition: stroke-dashoffset 0.1s linear;
+    will-change: stroke-dashoffset;
   }
 
   .video-crop-container {
@@ -385,6 +444,28 @@
     box-shadow: 0 2px 10px rgba(0, 0, 0, 0.4);
   }
 
+  .video-loading-overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .video-loading-spinner {
+    width: 36px;
+    height: 36px;
+    border: 3px solid rgba(255, 255, 255, 0.2);
+    border-top-color: #38bdf8;
+    border-radius: 50%;
+    animation: note-spin 0.9s linear infinite;
+  }
+
+  @keyframes note-spin {
+    to { transform: rotate(360deg); }
+  }
+
   .video-note-controls {
     display: flex;
     align-items: center;
@@ -392,12 +473,10 @@
     width: 200px;
     margin-top: 4px;
     padding: 2px 6px;
-    background: rgba(15, 23, 42, 0.7);
-    backdrop-filter: blur(4px);
     border-radius: 12px;
     font-size: 11px;
     color: rgba(255, 255, 255, 0.8);
-    opacity: 0.85;
+    opacity: 0;
     transition: opacity 0.15s;
   }
 
@@ -437,48 +516,13 @@
     color: #38bdf8;
   }
 
-  .speed-control-wrapper,
-  .volume-control-wrapper {
+  .speed-control-wrapper {
     position: relative;
     display: flex;
     align-items: center;
   }
 
-  .speed-tooltip {
-    position: absolute;
-    bottom: 125%;
-    left: 50%;
-    transform: translateX(-50%);
-    background: #1e293b;
-    color: #38bdf8;
-    padding: 2px 6px;
-    border-radius: 4px;
-    font-size: 10px;
-    font-weight: bold;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
-    pointer-events: none;
-    white-space: nowrap;
-    z-index: 100;
-  }
-
-  .volume-slider-popup {
-    position: absolute;
-    bottom: 125%;
-    left: 50%;
-    transform: translateX(-50%);
-    background: #1e293b;
-    padding: 5px 8px;
-    border-radius: 6px;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
-    display: flex;
-    align-items: center;
-    z-index: 100;
-  }
-
-  .volume-slider-popup input[type='range'] {
-    width: 60px;
-    height: 4px;
-    cursor: pointer;
-    accent-color: #38bdf8;
+  .vol-btn.muted {
+    opacity: 0.6;
   }
 </style>

@@ -73,9 +73,63 @@ pub async fn download(
     }
 }
 
+async fn convert_media_if_needed(path: &str, is_video: bool) -> String {
+    if is_video && path.ends_with("_converted.mp4") {
+        return path.to_string();
+    }
+    if !is_video && path.ends_with("_converted.ogg") {
+        return path.to_string();
+    }
+    let target_ext = if is_video { "mp4" } else { "ogg" };
+    let base = path
+        .strip_suffix(".webm")
+        .or_else(|| path.strip_suffix(".ogg"))
+        .or_else(|| path.strip_suffix(".mp4"))
+        .or_else(|| path.strip_suffix(".wav"))
+        .unwrap_or(path);
+    let out_path = format!("{}_converted.{}", base, target_ext);
+    let status = if is_video {
+        tokio::process::Command::new("ffmpeg")
+            .args(&[
+                "-y",
+                "-i", path,
+                "-vf", "crop=min(iw\\,ih):min(iw\\,ih),scale=480:480,setsar=1",
+                "-c:v", "libx264",
+                "-preset", "veryfast",
+                "-pix_fmt", "yuv420p",
+                "-r", "30",
+                "-c:a", "aac",
+                "-b:a", "64k",
+                "-movflags", "+faststart",
+                &out_path,
+            ])
+            .status()
+            .await
+    } else {
+        tokio::process::Command::new("ffmpeg")
+            .args(&[
+                "-y",
+                "-i", path,
+                "-vn",
+                "-c:a", "libopus",
+                "-b:a", "32k",
+                "-ar", "48000",
+                "-ac", "1",
+                &out_path,
+            ])
+            .status()
+            .await
+    };
+
+    match status {
+        Ok(s) if s.success() && std::path::Path::new(&out_path).exists() => out_path,
+        _ => path.to_string(),
+    }
+}
+
 #[tauri::command]
 pub async fn upload(
-    app: tauri::AppHandle,
+    _app: tauri::AppHandle,
     state: tauri::State<'_, AppState>,
     upload_url: String,
     path: String,
@@ -84,39 +138,50 @@ pub async fn upload(
     video_id: Option<u64>,
     token: Option<String>,
     mime: Option<String>,
+    video_type: Option<i64>,
 ) -> Result<serde_json::Value, String> {
     use tokio::fs::File;
 
+    let is_video = attach_type == "VIDEO";
+    let is_audio = attach_type == "AUDIO";
+    let effective_path = if is_audio {
+        convert_media_if_needed(&path, false).await
+    } else if is_video && video_type == Some(1) {
+        convert_media_if_needed(&path, true).await
+    } else {
+        path.clone()
+    };
+
     #[cfg(target_os = "android")]
     let file: File = {
-        if path.starts_with("content://") {
+        if effective_path.starts_with("content://") {
             use tauri_plugin_android_fs::{ AndroidFsExt, FsUri };
             let api = app.android_fs_async();
-            let uri = FsUri::from_uri(path.clone());
+            let uri = FsUri::from_uri(effective_path.clone());
             let std_file = api.open_file_readable(&uri).await.map_err(|e| e.to_string())?;
             tokio::fs::File::from_std(std_file)
         } else {
-            let std_file = std::fs::File::open(&path).map_err(|e| e.to_string())?;
+            let std_file = std::fs::File::open(&effective_path).map_err(|e| e.to_string())?;
             tokio::fs::File::from_std(std_file)
         }
     };
 
     #[cfg(not(target_os = "android"))]
     let file: File = {
-        let std_file = std::fs::File::open(&path).map_err(|e| e.to_string())?;
+        let std_file = std::fs::File::open(&effective_path).map_err(|e| e.to_string())?;
         tokio::fs::File::from_std(std_file)
     };
 
     match attach_type.as_str() {
-        "PHOTO" => Ok(state.client.upload_photo(upload_url, file, path, mime).await),
-        "VIDEO" => {
+        "PHOTO" => Ok(state.client.upload_photo(upload_url, file, effective_path, mime).await),
+        "VIDEO" | "AUDIO" => {
             let video_id = video_id.ok_or("No video_id")?;
             let token = token.ok_or("No token")?;
-            Ok(state.client.upload_video(upload_url, video_id, token, file, path).await)
+            Ok(state.client.upload_video(upload_url, video_id, token, file, effective_path).await)
         }
         "FILE" => {
             let file_id = file_id.ok_or("No file_id")?;
-            Ok(state.client.upload_file(upload_url, file_id, file, path).await)
+            Ok(state.client.upload_file(upload_url, file_id, file, effective_path).await)
         }
         _ => Err("Wrong type".into()),
     }
@@ -258,6 +323,7 @@ pub async fn save_temp_media(
     app: tauri::AppHandle,
     bytes: Vec<u8>,
     extension: String,
+    is_video: Option<bool>,
 ) -> Result<String, String> {
     use tauri::Manager;
     let cache_dir = app
@@ -273,7 +339,14 @@ pub async fn save_temp_media(
     tokio::fs::write(&path, bytes)
         .await
         .map_err(|e| e.to_string())?;
-    Ok(path.to_string_lossy().to_string())
+    let path_str = path.to_string_lossy().to_string();
+    if let Some(video) = is_video {
+        let converted = convert_media_if_needed(&path_str, video).await;
+        if converted != path_str {
+            return Ok(converted);
+        }
+    }
+    Ok(path_str)
 }
 
 #[tauri::command]

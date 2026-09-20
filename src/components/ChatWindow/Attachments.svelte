@@ -14,6 +14,7 @@
   export let handleMediaClick;
   export let chatId = null;
   export let messageId = null;
+  export let isMe = false;
 
   let downloadingMap = {};
 
@@ -308,11 +309,11 @@
 {/each}
 
 {#each attaches.filter(a => a._type === "AUDIO") as attach}
-  <VoiceBubble {attach} {messageId} {chatId} />
+  <VoiceBubble {attach} {messageId} {chatId} {isMe} />
 {/each}
 
 {#each attaches.filter(a => a._type === "VIDEO" && a.videoType === 1) as attach}
-  <VideoNoteBubble {attach} {messageId} {chatId} />
+  <VideoNoteBubble {attach} {messageId} {chatId} {isMe} />
 {/each}
 
 {#each attaches.filter(a =>
