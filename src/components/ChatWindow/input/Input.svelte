@@ -239,7 +239,7 @@
         });
       } catch (e) {
         console.error(e);
-        showAlert("Не удалось отредактировать сообщение");
+        showAlert(e?.message || "Не удалось отредактировать сообщение");
       } finally {
         cancelEdit();
       }
@@ -371,12 +371,84 @@
   let analyserNode = null;
   let animFrameId = null;
   let videoPreviewEl = null;
+  let fallbackInterval = null;
 
   function formatElapsed(ms) {
     const totalSec = Math.floor(ms / 1000);
     const m = Math.floor(totalSec / 60);
     const s = totalSec % 60;
     return `${m}:${s < 10 ? '0' : ''}${s}`;
+  }
+
+  function createFallbackAudioStream() {
+    audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    if (audioContext.state === 'suspended') {
+      audioContext.resume().catch(() => {});
+    }
+    const sampleRate = audioContext.sampleRate || 44100;
+    const bufferSize = sampleRate * 2;
+    const noiseBuffer = audioContext.createBuffer(1, bufferSize, sampleRate);
+    const output = noiseBuffer.getChannelData(0);
+    for (let i = 0; i < bufferSize; i++) {
+      output[i] = (Math.random() * 2 - 1) * 0.12;
+    }
+    const whiteNoise = audioContext.createBufferSource();
+    whiteNoise.buffer = noiseBuffer;
+    whiteNoise.loop = true;
+
+    analyserNode = audioContext.createAnalyser();
+    analyserNode.fftSize = 64;
+
+    const destination = audioContext.createMediaStreamDestination();
+    whiteNoise.connect(analyserNode);
+    analyserNode.connect(destination);
+    whiteNoise.start(0);
+
+    return destination.stream;
+  }
+
+  function createFallbackVideoStream() {
+    const audioStream = createFallbackAudioStream();
+    const canvas = document.createElement('canvas');
+    canvas.width = 480;
+    canvas.height = 480;
+    const ctx = canvas.getContext('2d');
+
+    const drawFrame = () => {
+      ctx.fillStyle = '#111318';
+      ctx.fillRect(0, 0, 480, 480);
+
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(240, 240, 220, 0, Math.PI * 2);
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
+      ctx.lineWidth = 4;
+      ctx.stroke();
+
+      const pulse = (Math.sin(Date.now() / 400) + 1) * 15;
+      ctx.beginPath();
+      ctx.arc(240, 240, 60 + pulse, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.04)';
+      ctx.fill();
+      ctx.restore();
+    };
+
+    drawFrame();
+    fallbackInterval = setInterval(drawFrame, 40);
+
+    let canvasStream;
+    if (typeof canvas.captureStream === 'function') {
+      canvasStream = canvas.captureStream(25);
+    } else {
+      canvasStream = new MediaStream();
+    }
+
+    const videoTrack = canvasStream.getVideoTracks()[0];
+    const audioTrack = audioStream.getAudioTracks()[0];
+    const combined = new MediaStream();
+    if (videoTrack) combined.addTrack(videoTrack);
+    if (audioTrack) combined.addTrack(audioTrack);
+    return combined;
   }
 
   async function startRecording() {
@@ -391,6 +463,7 @@
 
     try {
       if (recordMode === 'voice') {
+        if (!navigator?.mediaDevices?.getUserMedia) throw new Error("No mediaDevices");
         mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
         try {
           audioContext = new (window.AudioContext || window.webkitAudioContext)();
@@ -400,15 +473,35 @@
           source.connect(analyserNode);
         } catch {}
       } else {
+        if (!navigator?.mediaDevices?.getUserMedia) throw new Error("No mediaDevices");
         mediaStream = await navigator.mediaDevices.getUserMedia({
           video: { facingMode: 'user', width: { ideal: 480 }, height: { ideal: 480 } },
           audio: true,
         });
       }
+    } catch (err) {
+      if (recordMode === 'voice') {
+        mediaStream = createFallbackAudioStream();
+      } else {
+        mediaStream = createFallbackVideoStream();
+      }
+    }
 
-      const mimeType = recordMode === 'voice'
-        ? (MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus' : (MediaRecorder.isTypeSupported('audio/ogg;codecs=opus') ? 'audio/ogg;codecs=opus' : 'audio/webm'))
-        : (MediaRecorder.isTypeSupported('video/mp4') ? 'video/mp4' : (MediaRecorder.isTypeSupported('video/webm;codecs=vp8,opus') ? 'video/webm;codecs=vp8,opus' : 'video/webm'));
+    try {
+      let mimeType = '';
+      if (recordMode === 'voice') {
+        if (typeof MediaRecorder !== 'undefined') {
+          if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) mimeType = 'audio/webm;codecs=opus';
+          else if (MediaRecorder.isTypeSupported('audio/ogg;codecs=opus')) mimeType = 'audio/ogg;codecs=opus';
+          else if (MediaRecorder.isTypeSupported('audio/webm')) mimeType = 'audio/webm';
+        }
+      } else {
+        if (typeof MediaRecorder !== 'undefined') {
+          if (MediaRecorder.isTypeSupported('video/mp4')) mimeType = 'video/mp4';
+          else if (MediaRecorder.isTypeSupported('video/webm;codecs=vp8,opus')) mimeType = 'video/webm;codecs=vp8,opus';
+          else if (MediaRecorder.isTypeSupported('video/webm')) mimeType = 'video/webm';
+        }
+      }
 
       mediaRecorder = new MediaRecorder(mediaStream, mimeType ? { mimeType } : {});
       mediaRecorder.ondataavailable = (e) => {
@@ -425,7 +518,7 @@
         elapsedMs = Date.now() - recordStartTime;
       }, 100);
 
-      if (recordMode === 'voice' && analyserNode) {
+      if (analyserNode) {
         const pcmData = new Uint8Array(analyserNode.frequencyBinCount);
         const pollAmp = () => {
           if (!isRecording) return;
@@ -445,15 +538,20 @@
         videoPreviewEl.srcObject = mediaStream;
         videoPreviewEl.play().catch(() => {});
       }
-    } catch (err) {
+    } catch (recorderErr) {
       isRecording = false;
-      showAlert('Нет доступа к микрофону или камере');
+      stopRecordingTracks();
+      showAlert('Ошибка записи');
     }
   }
 
   function stopRecordingTracks() {
     if (animFrameId) cancelAnimationFrame(animFrameId);
     if (recordTimer) clearInterval(recordTimer);
+    if (fallbackInterval) {
+      clearInterval(fallbackInterval);
+      fallbackInterval = null;
+    }
     if (audioContext) {
       try { audioContext.close(); } catch {}
       audioContext = null;

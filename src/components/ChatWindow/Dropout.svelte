@@ -5,7 +5,7 @@
   import { tick } from "svelte";
 
   import { handleReaction } from "$components/ChatWindow/actions";
-  import API, { currentSessionChats, currentUser } from "$lib/stores/api";
+  import API, { currentSessionChats, currentUser, serverConfig } from "$lib/stores/api";
   import {
     saveChats,
   } from "$lib/stores/messages";
@@ -102,12 +102,15 @@
     dispatch("close", { action: "delete" });
     if (onBack.dropout) delete onBack["dropout"];
   }
+  $: editTimeoutSec = Number($serverConfig?.["edit-timeout"]) || 86400;
 </script>
 
 {#if activeAt}
   {@const isMe = Number(activeAt.msg?.sender) === Number($currentUser)}
-  {@const hasHistory = !!(activeAt.msg?.edited || (Array.isArray(activeAt.msg?.history) && activeAt.msg.history.length > 0))}
   {@const isDeleted = activeAt.msg?.deleted === true}
+  {@const msgTime = Number(activeAt.msg?.time) || 0}
+  {@const canEdit = isMe && !isDeleted && (msgTime > 0 ? (Date.now() - msgTime <= editTimeoutSec * 1000) : true)}
+  {@const hasHistory = !!(activeAt.msg?.edited || activeAt.msg?.status === 'EDITED' || (Array.isArray(activeAt.msg?.history) && activeAt.msg.history.length > 0))}
 
   <div
     class="message-actions-dropout"
@@ -133,7 +136,7 @@
     {/if}
 
     <div class="actions">
-      {#if isMe && !isDeleted}
+      {#if canEdit}
         <button on:click={handleEditMessage}>Изменить</button>
       {/if}
       {#if hasHistory}

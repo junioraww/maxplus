@@ -555,6 +555,15 @@ pub fn update_messages(
 
                     let text_changed = old_text != new_text && !new_text.is_empty() && !old_text.is_empty();
                     let atts_changed = old_atts != new_atts && message.get("attaches").is_some();
+                    let is_edited_status = message.get("status").and_then(|x| x.as_str()) == Some("EDITED")
+                        || message.get("edited").and_then(|x| x.as_bool()).unwrap_or(false);
+                    let is_deleted_status = message.get("deleted").and_then(|x| x.as_bool()).unwrap_or(false)
+                        || message.get("status").and_then(|x| x.as_str()) == Some("REMOVED");
+
+                    let was_deleted = old.get("deleted").and_then(|x| x.as_bool()).unwrap_or(false);
+                    let old_deleted_at = old.get("deleted_at").cloned();
+                    let was_edited = old.get("edited").and_then(|x| x.as_bool()).unwrap_or(false);
+                    let old_edited_at = old.get("edited_at").cloned();
 
                     if text_changed || atts_changed {
                         let at = chrono::Utc::now().timestamp_millis();
@@ -587,21 +596,44 @@ pub fn update_messages(
                         }
                     }
 
-                    if message.get("deleted").and_then(|x| x.as_bool()).unwrap_or(false) {
+                    if let Some(incoming_history) = message.get("history").and_then(|x| x.as_array()) {
                         if let Some(obj) = old.as_object_mut() {
-                            obj.insert("deleted".to_string(), json!(true));
-                            if !obj.contains_key("deleted_at") {
-                                obj.insert("deleted_at".to_string(), json!(chrono::Utc::now().timestamp_millis()));
+                            let history = obj.entry("history").or_insert_with(|| Value::Array(vec![]));
+                            if let Value::Array(arr) = history {
+                                for item in incoming_history {
+                                    if !arr.contains(item) {
+                                        arr.push(item.clone());
+                                    }
+                                }
                             }
                         }
                     }
 
                     if let Some(map) = message.as_object() {
                         for (key, value) in map {
-                            if key == "history" {
+                            if key == "history" || key == "deleted" || key == "deleted_at" || key == "edited" || key == "edited_at" {
                                 continue;
                             }
                             old.as_object_mut().unwrap().insert(key.clone(), value.clone());
+                        }
+                    }
+
+                    if let Some(obj) = old.as_object_mut() {
+                        if was_deleted || is_deleted_status {
+                            obj.insert("deleted".to_string(), json!(true));
+                            if let Some(at) = old_deleted_at {
+                                obj.insert("deleted_at".to_string(), at);
+                            } else if !obj.contains_key("deleted_at") {
+                                obj.insert("deleted_at".to_string(), json!(chrono::Utc::now().timestamp_millis()));
+                            }
+                        }
+                        if was_edited || is_edited_status {
+                            obj.insert("edited".to_string(), json!(true));
+                            if let Some(at) = old_edited_at {
+                                obj.insert("edited_at".to_string(), at);
+                            } else if !obj.contains_key("edited_at") {
+                                obj.insert("edited_at".to_string(), json!(chrono::Utc::now().timestamp_millis()));
+                            }
                         }
                     }
                 } else {

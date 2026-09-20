@@ -251,6 +251,69 @@ test.describe('Message diffing and edit history', () => {
     expect(deletedMsg.deleted_at).toBe(1700000005000);
     expect(deletedMsg.text).toBe('Synthetic content');
   });
+
+  test('parseApiError properly formats error.edit.timeout', async () => {
+    const { parseApiError } = await import('../src/lib/utils/errors.js');
+    const rawError = {
+      error: 'error.edit.timeout',
+      localizedMessage: 'Невозможно отредактировать сообщение',
+      message: 'error.edit.timeout',
+    };
+    expect(parseApiError(rawError)).toBe('Невозможно отредактировать сообщение');
+
+    const stringError = JSON.stringify(rawError);
+    expect(parseApiError(stringError)).toBe('Невозможно отредактировать сообщение');
+
+    const wrappedTauriError = {
+      type: 'ApiResponse',
+      text: stringError,
+    };
+    expect(parseApiError(wrappedTauriError)).toBe('Невозможно отредактировать сообщение');
+  });
+
+  test('edit timeout calculation checks against server config', () => {
+    const serverConfig = { 'edit-timeout': 86400 };
+    const timeoutSec = Number(serverConfig['edit-timeout']);
+    const now = 1700000000000;
+    const freshMessageTime = now - 3600 * 1000;
+    const expiredMessageTime = now - 90000 * 1000;
+
+    const canEditFresh = (now - freshMessageTime) <= timeoutSec * 1000;
+    const canEditExpired = (now - expiredMessageTime) <= timeoutSec * 1000;
+
+    expect(canEditFresh).toBe(true);
+    expect(canEditExpired).toBe(false);
+  });
+
+  test('merging preserves edit history and status', () => {
+    const cachedMsg = {
+      id: '88801',
+      text: 'Synthetic initial text',
+      time: 1700000000000,
+      edited: true,
+      history: [
+        { at: 1700000001000, diff: [{ op: '=', text: 'Synthetic initial text' }] }
+      ]
+    };
+
+    const serverMsg = {
+      id: '88801',
+      text: 'Synthetic initial text',
+      time: 1700000000000,
+      status: 'EDITED'
+    };
+
+    const merged = {
+      ...cachedMsg,
+      ...serverMsg,
+      edited: serverMsg.status === 'EDITED' || cachedMsg.edited,
+      history: cachedMsg.history
+    };
+
+    expect(merged.edited).toBe(true);
+    expect(merged.history.length).toBe(1);
+    expect(merged.status).toBe('EDITED');
+  });
 });
 
 

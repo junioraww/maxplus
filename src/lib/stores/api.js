@@ -16,6 +16,7 @@ export const currentSessionCalls = writable(undefined);
 export const currentlySyncing = writable(false);
 export const currentFolders = writable([]);
 export const currentPresence = writable({});
+export const serverConfig = writable({});
 
 const API = new MobileApi();
 export default writable(API);
