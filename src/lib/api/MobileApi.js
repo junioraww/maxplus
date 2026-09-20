@@ -103,19 +103,83 @@ export function parseApiError(err) {
 
 export default class MobileApi extends BaseAPI {
   resolve_sync = null;
-  /* TODO throw an error if sync takes > 10 sec?
-  to prevent request spam
-  1) async function waitSync() {}
-  2) if (!await waitSync()) return null;
-  */
+  synchronizedPending = true;
   synchronized = new Promise((resolve) => (this.resolve_sync = resolve));
   latest_init = null;
   unlisten = null;
   notify = {};
   savedMessages = {};
+  reconnectPromise = null;
+  reconnectAttempts = 0;
 
   constructor(token) {
     super(token);
+    if (typeof window !== "undefined") {
+      window.addEventListener("online", () => {
+        if (!sessionGet("connected") && get(currentUser)) {
+          this.reconnectAttempts = 0;
+          this.reconnect();
+        }
+      });
+    }
+  }
+
+  async waitSync(timeoutMs = 15000) {
+    if (sessionGet("connected") && sessionGet("sync")) return true;
+    let timer;
+    const timeoutPromise = new Promise((_, reject) => {
+      timer = setTimeout(() => {
+        reject(new Error("Request timed out waiting for connection"));
+      }, timeoutMs);
+    });
+    try {
+      await Promise.race([this.synchronized, timeoutPromise]);
+      return true;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  async reconnect() {
+    sessionSet("connected", false);
+    sessionSet("sync", false);
+    if (!this.synchronizedPending) {
+      this.synchronizedPending = true;
+      this.synchronized = new Promise((resolve) => (this.resolve_sync = resolve));
+    }
+    if (this.reconnectPromise) return this.reconnectPromise;
+
+    this.reconnectPromise = (async () => {
+      try {
+        while (!sessionGet("connected")) {
+          const current = get(currentUser);
+          if (current === null || current === undefined) {
+            break;
+          }
+
+          const delay = this.reconnectAttempts === 0
+            ? 500
+            : Math.min(1000 * Math.pow(1.5, this.reconnectAttempts), 10000);
+          await new Promise((r) => setTimeout(r, delay));
+
+          try {
+            const success = await this.init(true, true);
+            if (success) {
+              this.reconnectAttempts = 0;
+              break;
+            }
+          } catch (err) {
+            console.error(err);
+          }
+
+          this.reconnectAttempts++;
+        }
+      } finally {
+        this.reconnectPromise = null;
+      }
+    })();
+
+    return this.reconnectPromise;
   }
 
   async startListener() {
@@ -124,9 +188,8 @@ export default class MobileApi extends BaseAPI {
 
       if (payload.type === "log") {
         if (payload.response === "closed") {
-          await new Promise((r) => setTimeout(r, 1000));
-          alert("Отключен сервером\nПереподключение...");
-          this.init();
+          sessionSet("connected", false);
+          this.reconnect();
         }
         return;
       }
@@ -286,10 +349,9 @@ export default class MobileApi extends BaseAPI {
     });
   }
 
-  async init(forceSync = false) {
-    if (this.latest_init > Date.now() - 5000) {
-      console.error("Had recent reconnection, not trying again");
-      return;
+  async init(forceSync = false, isReconnect = false) {
+    if (!isReconnect && this.latest_init > Date.now() - 3000) {
+      return false;
     }
 
     const account = await getCurrentAccount();
@@ -302,9 +364,11 @@ export default class MobileApi extends BaseAPI {
 
     this.latest_init = Date.now();
     sessionSet("connected", false);
-    //sessionSet('sync', false);
-    this.synchronized = new Promise((resolve) => (this.resolve_sync = resolve));
     sessionSet("sync", false);
+    if (!this.synchronizedPending) {
+      this.synchronizedPending = true;
+      this.synchronized = new Promise((resolve) => (this.resolve_sync = resolve));
+    }
 
     const response = await invoke("init", {
       userId: get(currentUser),
@@ -312,15 +376,26 @@ export default class MobileApi extends BaseAPI {
       identity: account.meta.device,
     });
 
-    console.log(response);
+    const isError = !response || Boolean(response.error) || (response.type && response.type !== "ApiResponse");
 
-    if (response && !response.error) {
+    if (!isError) {
       sessionSet("connected", true);
-      if (forceSync) await this.sync();
+      if (forceSync) {
+        await this.sync();
+      } else {
+        this.synchronizedPending = false;
+        if (this.resolve_sync) {
+          this.resolve_sync();
+        }
+      }
       return true;
-    }
-    else {
-      alert(response?.message || response?.text || response?.error || "Ошибка подключения");
+    } else {
+      sessionSet("connected", false);
+      sessionSet("sync", false);
+      if (!isReconnect) {
+        alert(response?.message || response?.text || response?.error || "Ошибка подключения");
+      }
+      return false;
     }
   }
 
@@ -430,7 +505,7 @@ export default class MobileApi extends BaseAPI {
   }
 
   async closeAllSessions() {
-    await this.synchronized;
+    await this.waitSync();
 
     await invoke("close_all_sessions");
 
@@ -450,6 +525,8 @@ export default class MobileApi extends BaseAPI {
 
     sessionSet("sync", false);
     sessionSet("connected", false);
+    this.synchronizedPending = true;
+    this.synchronized = new Promise((resolve) => (this.resolve_sync = resolve));
   }
 
   async sync() {
@@ -459,11 +536,7 @@ export default class MobileApi extends BaseAPI {
         return;
       }
 
-      // TODO multi accounts?
-
       console.warn("Синхронизируем!");
-
-      sessionSet("sync", true);
 
       const account = await getCurrentAccount();
       console.log('Current account', account);
@@ -474,15 +547,20 @@ export default class MobileApi extends BaseAPI {
       });
       const t1 = Date.now();
 
+      const isError = !synced || Boolean(synced.error) || (synced.type && synced.type !== "ApiResponse") || Boolean(synced.text);
+      if (isError) {
+        sessionSet("sync", false);
+        return null;
+      }
+
+      sessionSet("sync", true);
+
       const rtt = t1 - t0;
       const offset = Math.ceil(synced.time - (t0 + rtt / 2));
 
-      // сдвиг системного времени относительно серверного
       sessionSet("drift", offset);
 
       console.log("Ответ sync", synced);
-
-      if (synced.text) return null;
 
       const { chats, contacts, profile, config } = synced;
 
@@ -570,33 +648,42 @@ export default class MobileApi extends BaseAPI {
         }
       }
 
-      //await suggestNotifications();
       setupPushNotifications();
     } catch (e) {
       console.error(e);
       const text = e?.toString() || "";
       if (text.includes("login.token")) await this.logout();
     } finally {
-      this.resolve_sync();
-      console.log("Синхронизация завершена!");
+      if (sessionGet("sync")) {
+        this.synchronizedPending = false;
+        if (this.resolve_sync) {
+          this.resolve_sync();
+        }
+        console.log("Синхронизация завершена!");
 
-      const response = await invoke("sync_contacts");
-      console.log(response);
-      currentRealContacts.set(response.contacts.map(c => c.id));
-      response.contacts.forEach(c => updateContact(c));
+        try {
+          const response = await invoke("sync_contacts");
+          if (response?.contacts) {
+            currentRealContacts.set(response.contacts.map(c => c.id));
+            response.contacts.forEach(c => updateContact(c));
+          }
+        } catch {}
 
-      const calls = await this.getCalls();
-      currentSessionCalls.set(calls);
+        try {
+          const calls = await this.getCalls();
+          if (calls) currentSessionCalls.set(calls);
+        } catch {}
+      }
     }
   }
 
   async fetchContacts(userIds) {
-    await this.synchronized;
+    await this.waitSync();
     return invoke("fetch_contacts", { userIds });
   }
 
   async getMessages(chatId, from_time = Date.now() + sessionGet("drift"), backward = 40, forward = 0) {
-    await this.synchronized;
+    await this.waitSync();
 
     const payload = {
       chatId,
@@ -616,12 +703,12 @@ export default class MobileApi extends BaseAPI {
   }
 
   async sendMessage(message, chatId, params) {
-    await this.synchronized;
+    await this.waitSync();
     return await invoke("send_message", { message, chatId, params });
   }
 
   async sendStickerMessage(chatId, stickerId, notify = true) {
-    await this.synchronized;
+    await this.waitSync();
     return await invoke("send_sticker_message", {
       chatId: Number(chatId),
       stickerId: Number(stickerId),
@@ -630,24 +717,24 @@ export default class MobileApi extends BaseAPI {
   }
 
   async react(chatId, messageId, reaction) {
-    await this.synchronized;
+    await this.waitSync();
     if (!reaction)
       return await invoke("remove_reaction", { chatId, messageId });
     return await invoke("add_reaction", { chatId, messageId, reaction });
   }
 
   async pinMessage(chatId, messageId) {
-    await this.synchronized;
+    await this.waitSync();
     return await invoke("pin_message", { chatId, messageId, notify: true });
   }
 
   async deleteMessage(chatId, messageId, forMe) {
-    await this.synchronized;
+    await this.waitSync();
     return await invoke("delete_message", { chatId, messageId, forMe });
   }
 
   async sendButtonCallback(chatId, messageId, callbackId, payload) {
-    await this.synchronized;
+    await this.waitSync();
     return await invoke("send_button_callback", {
       chatId,
       messageId: messageId.toString(),
@@ -657,7 +744,7 @@ export default class MobileApi extends BaseAPI {
   }
 
   async sendBotStart(chatId, startPayload) {
-    await this.synchronized;
+    await this.waitSync();
     return await invoke("send_bot_start", {
       chatId,
       startPayload: startPayload ?? null,
@@ -665,22 +752,22 @@ export default class MobileApi extends BaseAPI {
   }
 
   async getBotInfo(botId) {
-    await this.synchronized;
+    await this.waitSync();
     return await invoke("get_bot_info", { botId });
   }
 
   async getChatBotCommands(chatId) {
-    await this.synchronized;
+    await this.waitSync();
     return await invoke("get_chat_bot_commands", { chatId });
   }
 
   async suspendBot(botId) {
-    await this.synchronized;
+    await this.waitSync();
     return await invoke("suspend_bot", { botId });
   }
 
   async setChatMute(chatId, dontDisturbUntil) {
-    await this.synchronized;
+    await this.waitSync();
     const res = await invoke("set_chat_mute", { chatId, dontDisturbUntil });
     let updatedChat = null;
     currentSessionChats.update((chats) => {
@@ -700,12 +787,12 @@ export default class MobileApi extends BaseAPI {
   }
 
   async updateUserSettings(settings) {
-    await this.synchronized;
+    await this.waitSync();
     return await invoke("update_user_settings", { settings });
   }
 
   async getFolders(folderSync = null) {
-    await this.synchronized;
+    await this.waitSync();
     const res = await invoke("get_folders", { folderSync });
     if (res?.folders) {
       const sorted = sortFolders(res.folders, res.foldersOrder || []);
@@ -737,7 +824,7 @@ export default class MobileApi extends BaseAPI {
       return [...list, normalized];
     });
 
-    await this.synchronized;
+    await this.waitSync();
     const res = await invoke("update_folder", {
       id: stringId,
       title: normalized.title,
@@ -763,21 +850,21 @@ export default class MobileApi extends BaseAPI {
   }
 
   async reorderFolders(foldersOrder) {
-    await this.synchronized;
+    await this.waitSync();
     const res = await invoke("reorder_folders", { foldersOrder });
     currentFolders.update(folders => sortFolders(folders, foldersOrder));
     return res;
   }
 
   async deleteFolders(folderIds) {
-    await this.synchronized;
+    await this.waitSync();
     const res = await invoke("delete_folders", { folderIds });
     currentFolders.update(folders => folders.filter(f => !folderIds.includes(f.id)));
     return res;
   }
 
   async addContact(name, phone) {
-    await this.synchronized;
+    await this.waitSync();
     let oldContact;
 
     try {
@@ -820,7 +907,7 @@ export default class MobileApi extends BaseAPI {
   }
 
   async removeContact(contactId) {
-    await this.synchronized;
+    await this.waitSync();
     const response = await invoke("remove_contact", { contactId });
     currentRealContacts.update((contacts) =>
       contacts.filter((x) => x !== contactId),
@@ -829,42 +916,42 @@ export default class MobileApi extends BaseAPI {
   }
 
   async getVideoById(chatId, messageId, videoId) {
-    await this.synchronized;
+    await this.waitSync();
     return await invoke("get_video_by_id", { chatId, messageId, videoId });
   }
 
   async getFileById(chatId, messageId, fileId) {
-    await this.synchronized;
+    await this.waitSync();
     return await invoke("get_file_by_id", { chatId, messageId, fileId });
   }
 
   async searchPublic(query) {
-    await this.synchronized;
+    await this.waitSync();
     return await invoke("search_public", { query, count: 5, type: "ALL" });
   }
 
   async searchMsg(query) {
-    await this.synchronized;
+    await this.waitSync();
     return await invoke("search_msg", { query, count: 30 });
   }
 
   async getChats(chatIds) {
-    await this.synchronized;
+    await this.waitSync();
     return await invoke("get_chats", { chatIds });
   }
 
   async getChat(chatId) {
-    await this.synchronized;
+    await this.waitSync();
     return await invoke("get_chats", { chatIds: [chatId] });
   }
 
   async getSessions() {
-    await this.synchronized;
+    await this.waitSync();
     return await invoke("get_sessions");
   }
 
   async uploadAttachment(attach) {
-    await this.synchronized;
+    await this.waitSync();
     const { type, path, mime } = attach;
 
     const response = await invoke("get_" + type.toLowerCase() + "_upload", {
@@ -927,7 +1014,7 @@ export default class MobileApi extends BaseAPI {
   }
 
   async updateProfile(firstName, lastName, description) {
-    await this.synchronized;
+    await this.waitSync();
     const result = await invoke("update_profile", {
       firstName,
       lastName,
@@ -950,7 +1037,7 @@ export default class MobileApi extends BaseAPI {
   }
 
   async createGroup(title) {
-    await this.synchronized;
+    await this.waitSync();
     const result = await invoke("create_group", {
       title,
       participantIds: [],
@@ -971,7 +1058,7 @@ export default class MobileApi extends BaseAPI {
   }
 
   async joinChannel(link) {
-    await this.synchronized;
+    await this.waitSync();
     const response = await invoke("join_channel", { link });
     const { chat } = response;
 
@@ -989,7 +1076,7 @@ export default class MobileApi extends BaseAPI {
   }
 
   async leaveChannel(chat) {
-    await this.synchronized;
+    await this.waitSync();
     const channelId = chat.id;
 
     await invoke("leave_channel", { channelId });
@@ -1004,7 +1091,7 @@ export default class MobileApi extends BaseAPI {
   }
 
   async leaveChat(chat) {
-    await this.synchronized;
+    await this.waitSync();
     const chatId = chat.id;
 
     await invoke("leave_group", { chatId });
@@ -1017,7 +1104,7 @@ export default class MobileApi extends BaseAPI {
   }
 
   async deleteChatForAll(chat) {
-    await this.synchronized;
+    await this.waitSync();
     const chatId = chat.id;
 
     await invoke("leave_group", { chatId, forAll: true });
@@ -1030,7 +1117,7 @@ export default class MobileApi extends BaseAPI {
   }
 
   async updateChatProfile(chat) {
-    await this.synchronized;
+    await this.waitSync();
     const response = await invoke("change_group_profile", {
       chatId: chat.id,
       title: chat.title,
@@ -1049,7 +1136,7 @@ export default class MobileApi extends BaseAPI {
   }
 
   async readMessage(chatId, messageId) {
-    await this.synchronized;
+    await this.waitSync();
     const response = await invoke("read_message", {
       chatId, messageId
     });
@@ -1067,7 +1154,7 @@ export default class MobileApi extends BaseAPI {
   }
 
   async refreshInviteLink(chatId) {
-    await this.synchronized;
+    await this.waitSync();
     const response = await invoke("refresh_invite_link", { chatId });
 
     if (!response.chat) throw new Error("Неизвестный ответ сервера");
@@ -1083,12 +1170,12 @@ export default class MobileApi extends BaseAPI {
   }
 
   async getCalls() {
-    await this.synchronized;
+    await this.waitSync();
     return await invoke("get_calls", { forward: false, count: 100 });
   }
 
   async call(actionId, payload) {
-    await this.synchronized;
+    await this.waitSync();
     return await invoke("call", { actionId, payload });
   }
 
@@ -1097,7 +1184,7 @@ export default class MobileApi extends BaseAPI {
   }
 
   async openWebApp(botId, startParam = null, chatId = null) {
-    await this.synchronized;
+    await this.waitSync();
     return await invoke("open_web_app", {
       botId: Number(botId),
       startParam: startParam || null,
@@ -1106,14 +1193,14 @@ export default class MobileApi extends BaseAPI {
   }
 
   async sharePhoneWithBot(botId) {
-    await this.synchronized;
+    await this.waitSync();
     return await invoke("share_phone_with_bot", {
       botId: Number(botId),
     });
   }
 
   async submitExternalCallback(url) {
-    await this.synchronized;
+    await this.waitSync();
     return await invoke("submit_external_callback", { url });
   }
 

@@ -298,10 +298,14 @@
     bottom: 0;
     left: 0;
     width: 100%;
-    z-index: 999;
+    z-index: 2;
     display: flex;
     flex-direction: column;
     align-items: center;
+  }
+
+  .panel-container.editing {
+    z-index: 999;
   }
 
   .edit-toolbar {

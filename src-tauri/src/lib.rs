@@ -53,6 +53,7 @@ pub fn run() {
 
             let handle = app.handle().clone();
             notifications::set_app_handle(handle.clone());
+            webapp_proxy::set_app_handle(handle.clone());
 
             tauri::async_runtime::spawn(async move {
                 while let Ok(msg) = event_stream.recv().await {
@@ -172,6 +173,10 @@ pub fn run() {
             notifications::show_notification,
             notifications::cancel_notification,
             notifications::check_pending_open_chat,
+            webapp_proxy::set_webapp_filter_rules,
+            webapp_proxy::get_webapp_filter_rules,
+            webapp_proxy::get_webapp_ram_logs,
+            webapp_proxy::clear_webapp_ram_logs,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

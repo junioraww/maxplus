@@ -1566,7 +1566,7 @@
     flex-direction: column;
     overflow: hidden;
     color: #ccc;
-    z-index: 10;
+    z-index: 20;
     top: 0;
     left: 0;
     right: 0;

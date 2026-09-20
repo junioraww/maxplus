@@ -122,7 +122,7 @@
   });
 </script>
 
-<div class="container">
+<div class="container" class:has-chat={$Session.openedChats.length > 0}>
   {#each pages as pageItem, index (pageItem.id)}
     <Card {index} {active}>
       {#if mountedCards.has(pageItem.id)}
@@ -148,5 +148,9 @@
     width: 100%;
     height: 100%;
     overflow: hidden;
+  }
+
+  .container.has-chat {
+    z-index: 20;
   }
 </style>

@@ -536,7 +536,7 @@
                     url={st.url}
                     lottieUrl={st.lottieUrl}
                     size="100%"
-                    autoplay={true}
+                    autoplay={false}
                     loop={true}
                   />
                 </button>

@@ -1,5 +1,6 @@
 import { invoke as tauriInvoke } from "@tauri-apps/api/core";
 import { get } from "svelte/store";
+import { goto } from "$app/navigation";
 
 import {
   error as logError,
@@ -10,24 +11,36 @@ import {
   removeAccount,
   getCurrentAccount,
 } from "$lib/stores/accounts";
+import { get as sessionGet } from "$lib/stores/session";
+
+const inflightRetries = new Map();
 
 export const invoke = async (command, args) => {
   try {
     const response = await tauriInvoke(command, args);
     return response;
   } catch (error) {
-    console.error(error);
-    logError(error);
-
     const type = error?.type;
     const text = typeof error === "string" ? error : (error?.text || error?.message || "");
 
-    if (type === "RequestTimeout")
-      return restart("Сервер не отвечает!\nПереподключение...", command, args);
-    if (type === "ConnectionFailed")
-      return restart("Откис интернет!\nПереподключение...", command, args);
-    if (text && text.includes("proto.state"))
-      return restart("Сломалась сессия!\nПереподключение...", command, args);
+    const isConnError =
+      type === "RequestTimeout" ||
+      type === "ConnectionFailed" ||
+      type === "NotConnected" ||
+      type === "ConnectionClosed" ||
+      type === "SendFailed" ||
+      (text && text.includes("proto.state"));
+
+    if (!isConnError || sessionGet("connected")) {
+      console.error(error);
+      logError(error);
+    }
+
+    if (isConnError) {
+      if (command !== "init" && command !== "sync_client") {
+        return restart(command, args, error);
+      }
+    }
 
     if (text && text.includes("login.token")) {
       alert("Выкинуло из аккаунта!");
@@ -50,14 +63,44 @@ export const invoke = async (command, args) => {
   }
 };
 
-let recentAlert = 0;
+let activeReconnect = null;
 
-async function restart(text, command, args) {
-  if (recentAlert < Date.now() - 5000) {
-    alert(text);
+async function restart(command, args, originalError) {
+  const retryKey = command + ":" + JSON.stringify(args || {});
+  const currentRetries = inflightRetries.get(retryKey) || 0;
+  if (currentRetries >= 2) {
+    inflightRetries.delete(retryKey);
+    return originalError;
   }
-  recentAlert = Date.now();
-  await new Promise(r => setTimeout(r, 3000));
-  await get(API).init(true);
-  return invoke(command, args);
+  inflightRetries.set(retryKey, currentRetries + 1);
+
+  if (!activeReconnect) {
+    activeReconnect = (async () => {
+      try {
+        const api = get(API);
+        if (api && typeof api.reconnect === "function") {
+          await api.reconnect();
+        } else if (api) {
+          await api.init(true);
+        }
+      } finally {
+        activeReconnect = null;
+      }
+    })();
+  }
+  await activeReconnect;
+
+  if (!sessionGet("connected")) {
+    inflightRetries.delete(retryKey);
+    return originalError;
+  }
+
+  try {
+    const res = await invoke(command, args);
+    inflightRetries.delete(retryKey);
+    return res;
+  } catch (err) {
+    inflightRetries.delete(retryKey);
+    return err;
+  }
 }
