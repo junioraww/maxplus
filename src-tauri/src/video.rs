@@ -72,11 +72,28 @@ fn handle_request(request: tiny_http::Request, client: &reqwest::blocking::Clien
         .and_then(|v| v.to_str().ok())
         .and_then(|s| s.parse::<usize>().ok());
 
-    let content_type = res
+    let upstream_ct = res
         .headers()
         .get(CONTENT_TYPE)
-        .map(|h| h.to_str().unwrap_or("video/mp4"))
-        .unwrap_or("video/mp4");
+        .and_then(|h| h.to_str().ok());
+
+    let content_type = match upstream_ct {
+        Some(ct) if ct != "application/octet-stream" => ct,
+        _ => {
+            let lower_url = url.to_lowercase();
+            if lower_url.contains(".ogg") || lower_url.contains(".opus") {
+                "audio/ogg"
+            } else if lower_url.contains(".mp3") {
+                "audio/mpeg"
+            } else if lower_url.contains(".wav") {
+                "audio/wav"
+            } else if lower_url.contains(".webm") {
+                "video/webm"
+            } else {
+                "video/mp4"
+            }
+        }
+    };
 
     let mut headers = vec![
         Header::from_bytes(&b"Content-Type"[..], content_type.as_bytes()).unwrap(),

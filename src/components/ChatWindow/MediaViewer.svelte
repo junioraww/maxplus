@@ -4,7 +4,7 @@
   import { save } from "@tauri-apps/plugin-dialog";
   import { createEventDispatcher } from "svelte";
 
-  import { getAssetUrl } from "$lib/utils/images";
+  import { getAssetUrl, getProxiedMediaUrl } from "$lib/utils/images";
   import { getCurrentAccount } from "$lib/stores/accounts";
   import API from "$lib/stores/api";
 
@@ -40,6 +40,27 @@
   const SAFE_MIN_SCALE = 1;
 
   $: currentMedia = allMedia[index];
+
+  let resolvedPoster = null;
+  $: {
+    const posterSrc = currentMedia?.thumbnail;
+    if (posterSrc) {
+      if (posterSrc.startsWith('data:') || posterSrc.startsWith('blob:') || posterSrc.startsWith('asset:') || posterSrc.startsWith('http://asset.localhost/')) {
+        resolvedPoster = posterSrc;
+      } else if (posterSrc.startsWith('http')) {
+        getAssetUrl(posterSrc).then((url) => {
+          if (url) resolvedPoster = url;
+          else resolvedPoster = getProxiedMediaUrl(posterSrc);
+        }).catch(() => {
+          resolvedPoster = getProxiedMediaUrl(posterSrc);
+        });
+      } else {
+        resolvedPoster = convertFileSrc(posterSrc);
+      }
+    } else {
+      resolvedPoster = null;
+    }
+  }
 
   $: if (index !== undefined) {
     isMetadataLoaded = false;
@@ -440,7 +461,7 @@
               <video
                 bind:this={videoElement}
                 src={videoCache[currentMedia.videoId]}
-                poster={currentMedia.thumbnail}
+                poster={resolvedPoster}
                 class="video-player"
                 class:ready={isVideoReady}
                 autoplay

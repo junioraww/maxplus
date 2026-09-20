@@ -36,3 +36,7 @@ key.properties
 !/app/src/main/res/drawable-nodpi/**
 !/app/src/main/res/mipmap-anydpi-v26/
 !/app/src/main/res/mipmap-anydpi-v26/**
+!/app/src/main/res/xml/
+!/app/src/main/res/xml/**
+!/app/src/main/res/raw/
+!/app/src/main/res/raw/**

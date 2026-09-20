@@ -3,6 +3,7 @@
   import { convertFileSrc, invoke } from '@tauri-apps/api/core';
   import { save } from '@tauri-apps/plugin-dialog';
   import { showAlert } from '$lib/utils/alert';
+  import { getAssetUrl, getProxiedMediaUrl } from '$lib/utils/images';
   import API from '$lib/stores/api';
   import {
     activeMedia,
@@ -47,7 +48,43 @@
     : (attachDur || (videoEl?.duration && isFinite(videoEl.duration) ? videoEl.duration : 0));
   $: currentTime = isCurrentTrack ? ($activeMedia?.currentTime || 0) : 0;
   $: rawUrl = fetchedUrl || attach.baseUrl || attach.url || (attach.localPath ? attach.localPath : null);
-  $: resolvedVideoUrl = rawUrl ? (rawUrl.startsWith('http') || rawUrl.startsWith('blob:') ? rawUrl : convertFileSrc(rawUrl)) : null;
+
+  let resolvedPosterUrl = null;
+  $: {
+    const posterSrc = attach.thumbnail || attach.baseUrl;
+    if (posterSrc) {
+      if (posterSrc.startsWith('data:') || posterSrc.startsWith('blob:') || posterSrc.startsWith('asset:') || posterSrc.startsWith('http://asset.localhost/')) {
+        resolvedPosterUrl = posterSrc;
+      } else if (posterSrc.startsWith('http')) {
+        getAssetUrl(posterSrc).then((url) => {
+          if (url) resolvedPosterUrl = url;
+          else resolvedPosterUrl = getProxiedMediaUrl(posterSrc);
+        }).catch(() => {
+          resolvedPosterUrl = getProxiedMediaUrl(posterSrc);
+        });
+      } else {
+        resolvedPosterUrl = convertFileSrc(posterSrc);
+      }
+    } else {
+      resolvedPosterUrl = null;
+    }
+  }
+
+  let resolvedVideoUrl = null;
+  $: {
+    if (!rawUrl) {
+      resolvedVideoUrl = null;
+    } else if (rawUrl.startsWith('data:') || rawUrl.startsWith('blob:') || rawUrl.startsWith('asset:') || rawUrl.startsWith('http://asset.localhost/')) {
+      resolvedVideoUrl = rawUrl;
+    } else if (rawUrl.startsWith('http')) {
+      resolvedVideoUrl = getProxiedMediaUrl(rawUrl);
+      getAssetUrl(rawUrl).then((cached) => {
+        if (cached) resolvedVideoUrl = cached;
+      }).catch(() => {});
+    } else {
+      resolvedVideoUrl = convertFileSrc(rawUrl);
+    }
+  }
 
   const size = 200;
   const strokeWidth = 4;
@@ -261,7 +298,7 @@
       <video
         bind:this={videoEl}
         src={resolvedVideoUrl}
-        poster={attach.thumbnail || attach.baseUrl}
+        poster={resolvedPosterUrl}
         playsinline
         preload="metadata"
         on:play={() => {

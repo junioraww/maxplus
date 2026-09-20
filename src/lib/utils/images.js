@@ -31,8 +31,11 @@ function enqueueDownload(task) {
 
 export async function getLocalFilePath(src) {
     if (!src) return null;
-    if (src.startsWith("data:") || src.startsWith("blob:") || src.startsWith("asset:")) {
+    if (src.startsWith("data:") || src.startsWith("blob:") || src.startsWith("asset:") || src.startsWith("http://asset.localhost/")) {
         return null;
+    }
+    if (!src.startsWith("http://") && !src.startsWith("https://")) {
+        return src;
     }
 
     if (inflightRequests.has(src)) {
@@ -58,14 +61,34 @@ export async function getLocalFilePath(src) {
 
 export async function getAssetUrl(src) {
     if (!src) return null;
-    if (src.startsWith("data:") || src.startsWith("blob:") || src.startsWith("asset:")) {
+    if (src.startsWith("data:") || src.startsWith("blob:") || src.startsWith("asset:") || src.startsWith("http://asset.localhost/")) {
         return src;
+    }
+    if (!src.startsWith("http://") && !src.startsWith("https://")) {
+        return convertFileSrc(src);
     }
     const path = await getLocalFilePath(src);
     if (path) {
         return convertFileSrc(path);
     }
     return null;
+}
+
+export function getProxiedMediaUrl(src) {
+    if (!src) return null;
+    if (
+        src.startsWith("data:") ||
+        src.startsWith("blob:") ||
+        src.startsWith("asset:") ||
+        src.startsWith("http://asset.localhost/") ||
+        src.startsWith("http://127.0.0.1:11447/")
+    ) {
+        return src;
+    }
+    if (src.startsWith("http://") || src.startsWith("https://")) {
+        return `http://127.0.0.1:11447/${encodeURIComponent(src)}`;
+    }
+    return convertFileSrc(src);
 }
 
 export function getAvatarPlaceholder(id, type = "USER") {
