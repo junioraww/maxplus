@@ -395,9 +395,20 @@ pub fn load_messages(
         let mut result: Vec<Value> = Vec::new();
 
         for file in files[..=index].iter().rev() {
-            let data: Vec<Value> = storage.load(file)
+            let mut data: Vec<Value> = storage.load(file)
                 .and_then(|x| x.as_array().cloned())
                 .unwrap_or_default();
+
+            let orig_len = data.len();
+            data.retain(|x| {
+                let is_sending = x.get("sending").and_then(|s| s.as_bool()).unwrap_or(false)
+                    || x.get("status").and_then(|s| s.as_i64()) == Some(0)
+                    || x.get("status").and_then(|s| s.as_str()) == Some("sending");
+                !is_sending
+            });
+            if data.len() != orig_len {
+                let _ = storage.save(file.clone(), &Value::Array(data.clone()));
+            }
 
             let mut left = 0;
             let mut right = data.len();
@@ -542,7 +553,42 @@ pub fn update_messages(
             .and_then(|x| x.as_array().cloned())
             .unwrap_or_default();
 
+        let incoming_cids: Vec<i64> = incoming.iter()
+            .filter_map(|m| m.get("cid").and_then(|x| x.as_i64()))
+            .collect();
+
+        saved.retain(|m| {
+            let is_sending = m.get("sending").and_then(|x| x.as_bool()).unwrap_or(false)
+                || m.get("status").and_then(|x| x.as_i64()) == Some(0)
+                || m.get("status").and_then(|x| x.as_str()) == Some("sending");
+
+            if is_sending {
+                return false;
+            }
+
+            if let Some(m_cid) = m.get("cid").and_then(|x| x.as_i64()) {
+                if incoming_cids.contains(&m_cid) {
+                    let matching_incoming_id = incoming.iter()
+                        .find(|inc| inc.get("cid").and_then(|x| x.as_i64()) == Some(m_cid))
+                        .and_then(|inc| inc.get("id"));
+                    if matching_incoming_id.is_some() && m.get("id") != matching_incoming_id {
+                        return false;
+                    }
+                }
+            }
+
+            true
+        });
+
         for message in incoming {
+            let is_sending = message.get("sending").and_then(|x| x.as_bool()).unwrap_or(false)
+                || message.get("status").and_then(|x| x.as_i64()) == Some(0)
+                || message.get("status").and_then(|x| x.as_str()) == Some("sending");
+
+            if is_sending {
+                continue;
+            }
+
             let id = message.get("id").cloned();
 
             if let Some(id) = id {
@@ -565,7 +611,12 @@ pub fn update_messages(
                     let was_edited = old.get("edited").and_then(|x| x.as_bool()).unwrap_or(false);
                     let old_edited_at = old.get("edited_at").cloned();
 
-                    if text_changed || atts_changed {
+                    let incoming_has_history = message.get("history")
+                        .and_then(|x| x.as_array())
+                        .map(|a| !a.is_empty())
+                        .unwrap_or(false);
+
+                    if (text_changed || atts_changed) && !incoming_has_history {
                         let at = chrono::Utc::now().timestamp_millis();
                         let text_diff = if text_changed {
                             compute_tokens_diff(&old_text, &new_text)
@@ -601,7 +652,11 @@ pub fn update_messages(
                             let history = obj.entry("history").or_insert_with(|| Value::Array(vec![]));
                             if let Value::Array(arr) = history {
                                 for item in incoming_history {
-                                    if !arr.contains(item) {
+                                    let is_dup = arr.iter().any(|existing| {
+                                        existing == item
+                                            || (existing.get("diff").is_some() && existing.get("diff") == item.get("diff"))
+                                    });
+                                    if !is_dup {
                                         arr.push(item.clone());
                                     }
                                 }

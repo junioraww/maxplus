@@ -1,19 +1,17 @@
 <script>
   import { onDestroy, onMount } from 'svelte';
-  import { invoke } from '@tauri-apps/api/core';
+  import { convertFileSrc, invoke } from '@tauri-apps/api/core';
   import { save } from '@tauri-apps/plugin-dialog';
   import { showAlert } from '$lib/utils/alert';
   import { parseWaveform } from '$lib/utils/waveform';
   import {
     activeMedia,
-    globalSpeed,
-    globalVolume,
-    isMuted,
+    trackSettings,
     snapSpeed,
-    setPlaybackSpeed,
-    cyclePlaybackSpeed,
-    setMediaVolume,
-    toggleMediaMute,
+    setTrackSpeed,
+    cycleTrackSpeed,
+    setTrackVolume,
+    toggleTrackMute,
     registerAudio,
     updateMediaProgress,
     updateMediaPlaybackState,
@@ -36,18 +34,25 @@
   let isDraggingSpeed = false;
   let speedDragStartX = 0;
   let speedDragStartVal = 1.0;
-  let showVolumeSlider = false;
 
-  $: mId = String(messageId || '');
+  $: mId = String(messageId ?? attach.token ?? attach.localPath ?? 'voice');
   $: isCurrentTrack = $activeMedia?.id === mId;
   $: isPlaying = isCurrentTrack && $activeMedia?.isPlaying;
-  $: duration = attach.duration ? attach.duration / 1000 : ($activeMedia?.duration || 0);
+  $: currentSpeed = $trackSettings[mId]?.speed ?? 1.0;
+  $: currentVolume = $trackSettings[mId]?.volume ?? 1.0;
+  $: currentMuted = $trackSettings[mId]?.muted ?? false;
+  $: duration = (audioEl && audioEl.duration && isFinite(audioEl.duration) && audioEl.duration > 0)
+    ? audioEl.duration
+    : (attach.duration
+        ? (attach.duration > 120 ? attach.duration / 1000 : attach.duration)
+        : ($activeMedia?.duration || 0));
   $: currentTime = isCurrentTrack ? ($activeMedia?.currentTime || 0) : 0;
   $: progress = duration > 0 ? Math.min(1, Math.max(0, currentTime / duration)) : 0;
   $: waveBars = parseWaveform(attach.wave || attach.waveform, 45);
   $: transcription = $transcriptions[mId];
 
-  $: mediaUrl = attach.fileUrl || attach.baseUrl || attach.url || (attach.localPath ? attach.localPath : null);
+  $: rawUrl = attach.fileUrl || attach.baseUrl || attach.url || (attach.localPath ? attach.localPath : null);
+  $: mediaUrl = rawUrl ? (rawUrl.startsWith('http') || rawUrl.startsWith('blob:') ? rawUrl : convertFileSrc(rawUrl)) : null;
 
   function formatTime(sec) {
     if (!sec || isNaN(sec)) return '0:00';
@@ -85,7 +90,7 @@
   function handleSpeedPointerDown(e) {
     isDraggingSpeed = true;
     speedDragStartX = e.clientX;
-    speedDragStartVal = $globalSpeed;
+    speedDragStartVal = currentSpeed;
     window.addEventListener('pointermove', handleSpeedPointerMove);
     window.addEventListener('pointerup', handleSpeedPointerUp);
   }
@@ -95,7 +100,7 @@
     const deltaX = e.clientX - speedDragStartX;
     const change = (deltaX / 120);
     const newSpeed = snapSpeed(speedDragStartVal + change);
-    setPlaybackSpeed(newSpeed);
+    setTrackSpeed(mId, newSpeed);
   }
 
   function handleSpeedPointerUp() {
@@ -164,7 +169,9 @@
       on:click|stopPropagation={handleTogglePlay}
       title={isPlaying ? 'Пауза' : 'Воспроизвести'}
     >
-      {#if isPlaying}
+      {#if attach.loading}
+        <div class="mini-spinner"></div>
+      {:else if isPlaying}
         <svg viewBox="0 0 24 24" width="20" height="20">
           <path fill="currentColor" d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>
         </svg>
@@ -177,7 +184,7 @@
 
     <div class="voice-content">
       <div
-        class="voice-waveform"
+        class="voice-waveform-wrap"
         on:click|stopPropagation={handleWaveClick}
         role="progressbar"
         aria-valuenow={progress}
@@ -185,13 +192,26 @@
         aria-valuemax="1"
         tabindex="0"
       >
-        {#each waveBars as bar, index}
-          <div
-            class="wave-bar"
-            class:played={index / waveBars.length <= progress}
-            style="height: {Math.max(4, Math.round(bar * 26))}px;"
-          ></div>
-        {/each}
+        <svg
+          class="voice-waveform-svg"
+          viewBox="0 0 {Math.max(1, waveBars.length * 3)} 30"
+          preserveAspectRatio="none"
+        >
+          {#each waveBars as bar, index}
+            {@const isPlayed = (index + 0.5) / waveBars.length <= progress}
+            {@const barH = Math.max(3, Math.round(bar * 26))}
+            {@const barY = (30 - barH) / 2}
+            <rect
+              x={index * 3}
+              y={barY}
+              width="1.8"
+              height={barH}
+              rx="0.9"
+              class="svg-bar"
+              class:played={isPlayed}
+            />
+          {/each}
+        </svg>
       </div>
 
       <div class="voice-meta">
@@ -204,54 +224,45 @@
             <button
               type="button"
               class="voice-btn speed-btn"
-              class:snapped={$globalSpeed === 1.0}
-              on:click|stopPropagation={cyclePlaybackSpeed}
+              class:snapped={currentSpeed === 1.0}
+              on:click|stopPropagation={() => cycleTrackSpeed(mId)}
               on:pointerdown|stopPropagation={handleSpeedPointerDown}
-              title="Скорость: {$globalSpeed}x (зажмите и тяните влево/вправо)"
+              title="Скорость: {currentSpeed}x"
             >
-              {$globalSpeed}x
+              {currentSpeed}x
             </button>
             {#if isDraggingSpeed}
               <div class="speed-tooltip">
-                {$globalSpeed}x
+                {currentSpeed}x
               </div>
             {/if}
           </div>
 
-          <div
-            class="volume-control-wrapper"
-            on:mouseenter={() => (showVolumeSlider = true)}
-            on:mouseleave={() => (showVolumeSlider = false)}
+          <button
+            type="button"
+            class="voice-btn vol-btn"
+            class:muted={currentMuted || currentVolume === 0}
+            on:click|stopPropagation={() => toggleTrackMute(mId)}
+            on:wheel|preventDefault|stopPropagation={(e) => {
+              const delta = e.deltaY < 0 ? 0.05 : -0.05;
+              setTrackVolume(mId, currentVolume + delta);
+            }}
+            title={currentMuted || currentVolume === 0 ? 'Включить звук' : `Громкость: ${Math.round(currentVolume * 100)}%`}
           >
-            <button
-              type="button"
-              class="voice-btn vol-btn"
-              on:click|stopPropagation={toggleMediaMute}
-              title={$isMuted ? 'Включить звук' : 'Выключить звук'}
-            >
-              {#if $isMuted || $globalVolume === 0}
-                <svg viewBox="0 0 24 24" width="16" height="16">
-                  <path fill="currentColor" d="M16.5 12c0-1.77-1.02-3.29-2.5-4.03v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51C20.63 14.91 21 13.5 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06c1.38-.31 2.63-.95 3.69-1.81L19.73 21 21 19.73l-9-9L4.27 3zM12 4L9.91 6.09 12 8.18V4z"/>
-                </svg>
-              {:else}
-                <svg viewBox="0 0 24 24" width="16" height="16">
-                  <path fill="currentColor" d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/>
-                </svg>
-              {/if}
-            </button>
-            {#if showVolumeSlider}
-              <div class="volume-slider-popup" on:click|stopPropagation>
-                <input
-                  type="range"
-                  min="0"
-                  max="1"
-                  step="0.05"
-                  value={$isMuted ? 0 : $globalVolume}
-                  on:input={(e) => setMediaVolume(parseFloat(e.currentTarget.value))}
-                />
-              </div>
+            {#if currentMuted || currentVolume === 0}
+              <svg viewBox="0 0 24 24" width="16" height="16">
+                <path fill="currentColor" d="M16.5 12c0-1.77-1.02-3.29-2.5-4.03v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51C20.63 14.91 21 13.5 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06c1.38-.31 2.63-.95 3.69-1.81L19.73 21 21 19.73l-9-9L4.27 3zM12 4L9.91 6.09 12 8.18V4z"/>
+              </svg>
+            {:else if currentVolume <= 0.5}
+              <svg viewBox="0 0 24 24" width="16" height="16">
+                <path fill="currentColor" d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02z"/>
+              </svg>
+            {:else}
+              <svg viewBox="0 0 24 24" width="16" height="16">
+                <path fill="currentColor" d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/>
+              </svg>
             {/if}
-          </div>
+          </button>
 
           <button
             type="button"
@@ -284,41 +295,27 @@
       </div>
     </div>
   </div>
-
-  {#if transcription && transcription.expanded}
-    <div class="transcription-box" on:click|stopPropagation={() => toggleTranscriptionExpanded(mId)}>
-      <div class="transcription-header">
-        <span class="transcription-title">Транскрипция</span>
-        <button class="transcription-close-btn" on:click|stopPropagation={() => toggleTranscriptionExpanded(mId)}>✕</button>
-      </div>
-      {#if transcription.status === 'loading'}
-        <div class="transcription-loading">Транскрибация...</div>
-      {:else}
-        <div class="transcription-text">{transcription.text}</div>
-      {/if}
-    </div>
-  {/if}
 </div>
 
 <style>
   .voice-message-bubble {
     display: flex;
     flex-direction: column;
-    min-width: 240px;
-    max-width: 320px;
-    padding: 6px 4px 4px 4px;
+    min-width: 220px;
+    max-width: 300px;
+    padding: 2px 2px 2px 2px;
     user-select: none;
   }
 
   .voice-row {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 8px;
   }
 
   .voice-play-btn {
-    width: 40px;
-    height: 40px;
+    width: 36px;
+    height: 36px;
     border-radius: 50%;
     background: #3b82f6;
     border: none;
@@ -345,33 +342,37 @@
     flex-direction: column;
     flex-grow: 1;
     min-width: 0;
-    gap: 4px;
+    gap: 2px;
   }
 
-  .voice-waveform {
+  .voice-waveform-wrap {
     display: flex;
     align-items: center;
-    gap: 2px;
-    height: 30px;
+    width: 100%;
+    min-width: 0;
+    height: 24px;
     cursor: pointer;
-    padding: 2px 0;
+    overflow: hidden;
   }
 
-  .wave-bar {
-    flex: 1;
-    min-width: 2px;
-    max-width: 4px;
-    border-radius: 2px;
-    background: rgba(255, 255, 255, 0.35);
-    transition: background-color 0.1s;
+  .voice-waveform-svg {
+    width: 100%;
+    height: 100%;
+    display: block;
+    overflow: hidden;
   }
 
-  .is-me .wave-bar {
-    background: rgba(255, 255, 255, 0.4);
+  .svg-bar {
+    fill: rgba(255, 255, 255, 0.35);
+    transition: fill 0.1s;
   }
 
-  .wave-bar.played {
-    background: #38bdf8;
+  .is-me .svg-bar {
+    fill: rgba(255, 255, 255, 0.45);
+  }
+
+  .svg-bar.played {
+    fill: #38bdf8;
   }
 
   .voice-meta {
@@ -437,31 +438,8 @@
     z-index: 100;
   }
 
-  .volume-control-wrapper {
-    position: relative;
-    display: flex;
-    align-items: center;
-  }
-
-  .volume-slider-popup {
-    position: absolute;
-    bottom: 125%;
-    left: 50%;
-    transform: translateX(-50%);
-    background: #1e293b;
-    padding: 6px 8px;
-    border-radius: 8px;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
-    display: flex;
-    align-items: center;
-    z-index: 100;
-  }
-
-  .volume-slider-popup input[type='range'] {
-    width: 70px;
-    height: 4px;
-    cursor: pointer;
-    accent-color: #3b82f6;
+  .vol-btn.muted {
+    opacity: 0.6;
   }
 
   .mini-spinner {
@@ -475,43 +453,5 @@
 
   @keyframes spin {
     to { transform: rotate(360deg); }
-  }
-
-  .transcription-box {
-    margin-top: 6px;
-    padding: 6px 8px;
-    background: rgba(0, 0, 0, 0.2);
-    border-radius: 6px;
-    border-left: 2px solid #38bdf8;
-    font-size: 12px;
-    line-height: 1.4;
-    cursor: pointer;
-  }
-
-  .transcription-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 2px;
-    font-size: 10px;
-    color: rgba(255, 255, 255, 0.5);
-  }
-
-  .transcription-close-btn {
-    background: none;
-    border: none;
-    color: rgba(255, 255, 255, 0.6);
-    cursor: pointer;
-    font-size: 10px;
-  }
-
-  .transcription-loading {
-    color: rgba(255, 255, 255, 0.6);
-    font-style: italic;
-  }
-
-  .transcription-text {
-    color: rgba(255, 255, 255, 0.9);
-    word-break: break-word;
   }
 </style>

@@ -120,7 +120,7 @@ jobs:
 
       - name: Patch Cargo.toml for CI
         run: |
-          sed -i 's|path = "../../rumax"|git = "https://github.com/me0wkie/rumax.git", branch = "main"|g' src-tauri/Cargo.toml
+          sed -i 's|path = "../../rumax"|git = "https://github.com/junioraww/rumax.git", branch = "dev"|g' src-tauri/Cargo.toml
 
           echo "Cargo.toml updated:"
           grep rumax src-tauri/Cargo.toml

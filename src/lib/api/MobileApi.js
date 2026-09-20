@@ -312,7 +312,12 @@ export default class MobileApi extends BaseAPI {
         }
       } else if (opc === 136) {
         const { videoId, fileId } = response.payload;
-        this.notify[videoId || fileId]?.();
+        const id = videoId ?? fileId;
+        if (id != null) {
+          this.notify[id]?.();
+          this.notify[String(id)]?.();
+          if (!isNaN(Number(id))) this.notify[Number(id)]?.();
+        }
       } else if (opc === 277) {
         const p = response.payload;
         if (p?.folders) {
@@ -341,13 +346,25 @@ export default class MobileApi extends BaseAPI {
     });
   }
 
-  /* media processing after upload */
   waitForProcessing(id) {
-    return new Promise(resolve => {
-      this.notify[id] = (() => {
+    return new Promise((resolve) => {
+      const cleanup = () => {
         delete this.notify[id];
+        delete this.notify[String(id)];
+        if (!isNaN(Number(id))) delete this.notify[Number(id)];
+      };
+      const timer = setTimeout(() => {
+        cleanup();
         resolve();
-      });
+      }, 20000);
+      const cb = () => {
+        clearTimeout(timer);
+        cleanup();
+        resolve();
+      };
+      this.notify[id] = cb;
+      this.notify[String(id)] = cb;
+      if (!isNaN(Number(id))) this.notify[Number(id)] = cb;
     });
   }
 
@@ -1018,8 +1035,9 @@ export default class MobileApi extends BaseAPI {
 
     const payload = {
       path,
-      attachType: type === "AUDIO" ? "VIDEO" : type,
+      attachType: type,
       mime,
+      videoType: attach.videoType,
     };
 
     if (type === "PHOTO") {
@@ -1036,23 +1054,45 @@ export default class MobileApi extends BaseAPI {
       payload.fileId = fileId;
     }
 
+    const processingPromise =
+      (type === "VIDEO" && attach.videoType !== 1) ? this.waitForProcessing(payload.videoId) :
+      type === "FILE" ? this.waitForProcessing(payload.fileId) :
+      null;
+
     const data = await invoke("upload", payload);
 
-    if (type === "VIDEO") await this.waitForProcessing(payload.videoId);
-    if (type === "FILE") await this.waitForProcessing(payload.fileId);
+    if (processingPromise) await processingPromise;
 
     if (data.error) {
       alert("Не удалось загрузить " + type + "\n" + data.error);
       return null;
     }
 
+    const normalizedWave = (() => {
+      const res = new Array(80).fill(0);
+      if (Array.isArray(attach.wave) && attach.wave.length > 0) {
+        if (attach.wave.length === 80) {
+          for (let i = 0; i < 80; i++) {
+            res[i] = Math.min(120, Math.max(0, Math.round(Number(attach.wave[i]) || 0)));
+          }
+        } else {
+          const step = attach.wave.length / 80;
+          for (let i = 0; i < 80; i++) {
+            const idx = Math.min(Math.floor(i * step), attach.wave.length - 1);
+            res[i] = Math.min(120, Math.max(0, Math.round(Number(attach.wave[idx]) || 0)));
+          }
+        }
+      }
+      return res;
+    })();
+
     if (type === "AUDIO") {
       return {
         _type: "AUDIO",
         token: payload.token,
-        audioId: payload.videoId,
-        duration: attach.duration,
-        wave: attach.wave,
+        duration: Math.round(attach.duration || 0),
+        wave: normalizedWave,
+        localPath: attach.path,
       };
     }
 
@@ -1061,9 +1101,9 @@ export default class MobileApi extends BaseAPI {
         _type: "VIDEO",
         videoType: 1,
         token: payload.token,
-        videoId: payload.videoId,
-        duration: attach.duration,
-        thumbnail: attach.thumbnail,
+        duration: Math.round(attach.duration || 0),
+        wave: normalizedWave,
+        localPath: attach.path,
       };
     }
 

@@ -37,9 +37,9 @@ export function generateWaveformFromBuffer(audioBuffer, targetLength = 80) {
     peaks[i] = max;
     if (max > globalPeak) globalPeak = max;
   }
-  const factor = globalPeak > 0 ? 255 / globalPeak : 1;
+  const factor = globalPeak > 0 ? 120 / globalPeak : 1;
   for (let i = 0; i < targetLength; i++) {
-    result[i] = Math.round(peaks[i] * factor);
+    result[i] = Math.min(120, Math.max(0, Math.round(peaks[i] * factor)));
   }
   return result;
 }
@@ -54,7 +54,7 @@ export function generateWaveformFromAmplitudes(amplitudes, targetLength = 80) {
   for (let i = 0; i < targetLength; i++) {
     const idx = Math.min(Math.floor(i * step), amplitudes.length - 1);
     const norm = Math.min(1, Math.max(0, amplitudes[idx] / max));
-    result[i] = Math.round(norm * 255);
+    result[i] = Math.min(120, Math.max(0, Math.round(norm * 120)));
   }
   return result;
 }

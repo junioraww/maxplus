@@ -495,19 +495,22 @@
   const decodedMessages = writable({});
 
   const decodeMessagesBatch = async (list) => {
-    const decoded = {};
+    const updates = {};
+    const toRemove = [];
 
     await Promise.all(
       list.map(async msg => {
         const res = await decode_msg(msg);
-        if (res) decoded[msg.id] = res;
+        if (res) updates[msg.id] = res;
+        else toRemove.push(msg.id);
       })
     );
 
-    decodedMessages.update(old => ({
-      ...old,
-      ...decoded
-    }));
+    decodedMessages.update(old => {
+      const next = { ...old, ...updates };
+      for (const id of toRemove) delete next[id];
+      return next;
+    });
   };
 
   const mergeMessages = async (
@@ -551,7 +554,7 @@
       }
 
       const textChanged = old.text && msg.text && old.text !== msg.text;
-      if (textChanged) {
+      if (textChanged && (!Array.isArray(msg.history) || !msg.history.length)) {
         const textDiff = computeTextDiff(old.text, msg.text);
         const at = msg.editTime || msg.edited_at || Date.now();
         newHistory.push({ at, diff: textDiff });
@@ -877,7 +880,7 @@
           wasAtBottom = scrollHeight - scrollTop - clientHeight < 150;
         }
 
-        if (message.status === "EDITED") {
+        if (message.status === "EDITED" || message.edited) {
           messages.update((_messages) => {
             const idx = _messages.findIndex((x) => String(x.id) === String(message.id));
             if (idx !== -1) {
@@ -888,7 +891,7 @@
                   if (!newHistory.some(existing => existing.at === h.at)) newHistory.push(h);
                 }
               }
-              if (old.text && message.text && old.text !== message.text) {
+              if (old.text && message.text && old.text !== message.text && (!Array.isArray(message.history) || !message.history.length)) {
                 const textDiff = computeTextDiff(old.text, message.text);
                 const at = message.editTime || message.edited_at || Date.now();
                 newHistory.push({ at, diff: textDiff });
@@ -905,7 +908,12 @@
             return _messages;
           });
           const decoded = await decode_msg(message);
-          if (decoded) decodedMessages.update(d => ({ ...d, [message.id]: decoded }));
+          decodedMessages.update(d => {
+            const next = { ...d };
+            if (decoded) next[message.id] = decoded;
+            else delete next[message.id];
+            return next;
+          });
           await tick();
           applyPendingHeights();
           computeCumulativeHeights();
@@ -1206,7 +1214,11 @@
       e.target.closest(".inline-keyboard") ||
       e.target.closest(".inline-btn") ||
       e.target.closest(".avatar-msg-btn") ||
-      e.target.closest(".avatar-wrapper")
+      e.target.closest(".avatar-wrapper") ||
+      e.target.closest(".voice-message-bubble") ||
+      e.target.closest(".video-note-bubble") ||
+      e.target.closest(".transcription-card") ||
+      e.target.closest(".transcription-close-btn")
     ) return;
 
     if (clicked) {
@@ -1256,7 +1268,7 @@
       delete onBack.dropout;
     }
 
-    if (attachesDropout && !e.target.closest(".attaches-dropout") && !e.target.closest(".input-button")) {
+    if (attachesDropout && !e.target.closest(".attaches-dropout") && !e.target.closest(".input-button") && !e.target.closest(".attach-toggle-btn")) {
       attachesDropout = null;
     }
   }
@@ -1339,7 +1351,7 @@
     scrollResizeObserver = new ResizeObserver(() => {
       if (!scrollElement || isInitialMounting || isProgrammaticScroll || !all_loaded_newer) return;
       const { scrollTop, scrollHeight, clientHeight } = scrollElement;
-      const atBottom = scrollHeight - scrollTop - clientHeight < 50;
+      const atBottom = scrollHeight - scrollTop - clientHeight < 8;
       if (atBottom && userHasScrolled) {
         scrollToBottom(scrollElement, false);
       }
