@@ -271,7 +271,7 @@
               {getFile}
               attaches={msg.attaches}
               {handleMediaClick}
-              chatId={chat?.id}
+              chatId={msg?.chatId ?? chat?.id}
               messageId={msg?.id}
               {isMe}
             />

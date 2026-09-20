@@ -117,15 +117,12 @@ async fn convert_media_if_needed(path: &str, is_video: bool) -> String {
         return path.to_string();
     }
     let target_ext = if is_video { "mp4" } else { "ogg" };
-    let base = path
-        .strip_suffix(".webm")
-        .or_else(|| path.strip_suffix(".ogg"))
-        .or_else(|| path.strip_suffix(".mp4"))
-        .or_else(|| path.strip_suffix(".wav"))
-        .unwrap_or(path);
-    let out_path = format!("{}_converted.{}", base, target_ext);
+    let p = std::path::Path::new(path);
+    let stem = p.file_stem().and_then(|s| s.to_str()).unwrap_or(path);
+    let parent = p.parent().unwrap_or(std::path::Path::new(""));
+    let out_path = parent.join(format!("{}_converted.{}", stem, target_ext)).to_string_lossy().to_string();
     let status = if is_video {
-        tokio::process::Command::new("ffmpeg")
+        let s1 = tokio::process::Command::new("ffmpeg")
             .args(&[
                 "-y",
                 "-i", path,
@@ -145,7 +142,31 @@ async fn convert_media_if_needed(path: &str, is_video: bool) -> String {
                 &out_path,
             ])
             .status()
-            .await
+            .await;
+        match s1 {
+            Ok(s) if s.success() && std::path::Path::new(&out_path).exists() => Ok(s),
+            _ => {
+                tokio::process::Command::new("ffmpeg")
+                    .args(&[
+                        "-y",
+                        "-i", path,
+                        "-f", "lavfi",
+                        "-i", "anullsrc=channel_layout=mono:sample_rate=48000",
+                        "-vf", "setpts=PTS-STARTPTS,crop=min(iw\\,ih):min(iw\\,ih),scale=480:480,setsar=1",
+                        "-fps_mode", "passthrough",
+                        "-c:v", "libx264",
+                        "-preset", "ultrafast",
+                        "-pix_fmt", "yuv420p",
+                        "-c:a", "aac",
+                        "-b:a", "64k",
+                        "-shortest",
+                        "-movflags", "+faststart",
+                        &out_path,
+                    ])
+                    .status()
+                    .await
+            }
+        }
     } else {
         tokio::process::Command::new("ffmpeg")
             .args(&[
@@ -248,6 +269,7 @@ pub async fn pick(
         let mime_filter: Vec<&str> = match r#type.as_deref() {
             Some("PHOTO") => vec!["image/*"],
             Some("VIDEO") => vec!["video/*"],
+            Some("AUDIO") => vec!["audio/*"],
             Some("JSON") => vec!["application/json"],
             _ => vec!["*/*"],
         };
@@ -314,7 +336,8 @@ pub async fn pick(
 
         let dialog = match r#type.as_deref() {
             Some("PHOTO") => dialog.add_filter("Изображения", &["png", "jpeg", "jpg", "gif", "webp", "bmp"]),
-            Some("VIDEO") => dialog.add_filter("Видео", &["mp4", "avi", "mov", "mvk"]),
+            Some("VIDEO") => dialog.add_filter("Видео", &["mp4", "avi", "mov", "mkv", "webm", "3gp", "ts"]),
+            Some("AUDIO") => dialog.add_filter("Аудио", &["mp3", "ogg", "wav", "m4a", "aac", "flac", "opus", "wma"]),
             Some("JSON") => dialog.add_filter("Конфиг", &["json"]),
             _ => dialog,
         };
@@ -390,6 +413,165 @@ pub async fn save_temp_media(
     }
     Ok(path_str)
 }
+
+#[tauri::command]
+pub async fn prepare_video_for_preview(
+    app: tauri::AppHandle,
+    source_path: String,
+) -> Result<String, String> {
+    let lower = source_path.to_lowercase();
+    if (lower.ends_with(".mp4") || lower.ends_with(".webm") || lower.ends_with(".mov")) && !lower.ends_with(".avi") {
+        return Ok(source_path);
+    }
+    use tauri::Manager;
+    let cache_dir = app
+        .path()
+        .app_cache_dir()
+        .map_err(|e| e.to_string())?
+        .join("temp_media");
+    tokio::fs::create_dir_all(&cache_dir)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let out_path = cache_dir.join(format!("{}_preview.mp4", uuid::Uuid::new_v4()));
+    let out_str = out_path.to_string_lossy().to_string();
+
+    let s1 = tokio::process::Command::new("ffmpeg")
+        .args(&[
+            "-y",
+            "-i", &source_path,
+            "-c:v", "libx264",
+            "-preset", "ultrafast",
+            "-pix_fmt", "yuv420p",
+            "-c:a", "aac",
+            "-b:a", "64k",
+            "-movflags", "+faststart",
+            &out_str,
+        ])
+        .status()
+        .await;
+
+    if let Ok(s) = s1 {
+        if s.success() && std::path::Path::new(&out_str).exists() {
+            return Ok(out_str);
+        }
+    }
+
+    let s2 = tokio::process::Command::new("ffmpeg")
+        .args(&[
+            "-y",
+            "-i", &source_path,
+            "-an",
+            "-c:v", "libx264",
+            "-preset", "ultrafast",
+            "-pix_fmt", "yuv420p",
+            "-movflags", "+faststart",
+            &out_str,
+        ])
+        .status()
+        .await;
+
+    if let Ok(s) = s2 {
+        if s.success() && std::path::Path::new(&out_str).exists() {
+            return Ok(out_str);
+        }
+    }
+
+    Ok(source_path)
+}
+
+#[tauri::command]
+pub async fn crop_video_note(
+    app: tauri::AppHandle,
+    source_path: String,
+    crop_x: u32,
+    crop_y: u32,
+    crop_size: u32,
+    start_sec: f64,
+    end_sec: f64,
+) -> Result<String, String> {
+    use tauri::Manager;
+    let cache_dir = app
+        .path()
+        .app_cache_dir()
+        .map_err(|e| e.to_string())?
+        .join("temp_media");
+    tokio::fs::create_dir_all(&cache_dir)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let out_path = cache_dir.join(format!("{}_cropped.mp4", uuid::Uuid::new_v4()));
+    let out_str = out_path.to_string_lossy().to_string();
+
+    let safe_crop_size = crop_size.max(48);
+    let vf_filter = format!(
+        "crop={}:{}:{}:{},scale=480:480,setsar=1",
+        safe_crop_size, safe_crop_size, crop_x, crop_y
+    );
+
+    let start_str = format!("{:.3}", start_sec.max(0.0));
+    let dur_sec = (end_sec - start_sec).max(0.1);
+    let dur_str = format!("{:.3}", dur_sec);
+
+    let status = tokio::process::Command::new("ffmpeg")
+        .args(&[
+            "-y",
+            "-i", &source_path,
+            "-ss", &start_str,
+            "-t", &dur_str,
+            "-vf", &vf_filter,
+            "-c:v", "libx264",
+            "-preset", "ultrafast",
+            "-b:v", "1500k",
+            "-maxrate", "2000k",
+            "-bufsize", "3000k",
+            "-pix_fmt", "yuv420p",
+            "-c:a", "aac",
+            "-b:a", "64k",
+            "-shortest",
+            "-movflags", "+faststart",
+            &out_str,
+        ])
+        .status()
+        .await;
+
+    match status {
+        Ok(s) if s.success() && std::path::Path::new(&out_str).exists() => Ok(out_str),
+        _ => {
+            let status2 = tokio::process::Command::new("ffmpeg")
+                .args(&[
+                    "-y",
+                    "-i", &source_path,
+                    "-f", "lavfi",
+                    "-i", "anullsrc=channel_layout=mono:sample_rate=48000",
+                    "-ss", &start_str,
+                    "-t", &dur_str,
+                    "-map", "0:v:0",
+                    "-map", "1:a:0",
+                    "-vf", &vf_filter,
+                    "-c:v", "libx264",
+                    "-preset", "ultrafast",
+                    "-b:v", "1500k",
+                    "-maxrate", "2000k",
+                    "-bufsize", "3000k",
+                    "-pix_fmt", "yuv420p",
+                    "-c:a", "aac",
+                    "-b:a", "64k",
+                    "-shortest",
+                    "-movflags", "+faststart",
+                    &out_str,
+                ])
+                .status()
+                .await;
+            match status2 {
+                Ok(s) if s.success() && std::path::Path::new(&out_str).exists() => Ok(out_str),
+                Err(e) => Err(e.to_string()),
+                _ => Err("ffmpeg crop failed".into()),
+            }
+        }
+    }
+}
+
 
 #[tauri::command]
 pub async fn cache_url(

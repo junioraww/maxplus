@@ -19,7 +19,8 @@
   import { generateWaveformFromAmplitudes } from "$lib/utils/waveform.js";
   import { stopCurrentMedia } from "$lib/stores/mediaPlayback.js";
   import { computeTextDiff, computeAttachesDiff } from "$lib/utils/diff.js";
-  import Recorder from "opus-recorder";
+  import { getProxiedMediaUrl } from "$lib/utils/images";
+  import { openVideoCropModal, closeVideoCropModal } from "$lib/stores/videoCrop.js";
 
   export let replyTo;
   export let scrollElement;
@@ -327,8 +328,250 @@
     }
   }
 
+  let hiddenVoiceInputEl;
+  let hiddenVideoInputEl;
+
+  async function loadAudioDataForReview(arrayBuffer, mime) {
+    try {
+      const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      const decoded = await audioCtx.decodeAudioData(arrayBuffer.slice(0));
+      const duration = decoded.duration || 1;
+      const channel = decoded.getChannelData(0);
+      const step = Math.floor(channel.length / 80) || 1;
+      const amps = [];
+      for (let i = 0; i < 80; i++) {
+        let sum = 0;
+        let count = 0;
+        for (let j = 0; j < step && (i * step + j) < channel.length; j++) {
+          sum += Math.abs(channel[i * step + j]);
+          count++;
+        }
+        amps.push(count > 0 ? Math.min(1.0, (sum / count) * 3.5) : 0);
+      }
+      audioCtx.close().catch(() => {});
+
+      const blob = new Blob([arrayBuffer], { type: mime || 'audio/ogg' });
+      reviewAmplitudes = amps;
+      reviewAudioBlob = blob;
+      if (reviewAudioUrl) URL.revokeObjectURL(reviewAudioUrl);
+      reviewAudioUrl = URL.createObjectURL(blob);
+      reviewAudioDuration = duration;
+      reviewAudioTrimStart = 0;
+      reviewAudioTrimEnd = duration;
+      reviewAudioPlaying = false;
+      reviewAudioCurrentTime = 0;
+      isReviewingVoice = true;
+    } catch (err) {
+      console.error(err);
+    }
+  }
+
+  async function importVoiceFromFile() {
+    let rawPath = null;
+    let mime = 'audio/ogg';
+
+    try {
+      const response = await invoke("pick", { type: "AUDIO" });
+      if (response && response !== "CANCEL") {
+        rawPath = decodeURIComponent(response.uri);
+        mime = response.mime_type || 'audio/ogg';
+      }
+    } catch (e) {
+      rawPath = null;
+    }
+
+    if (!rawPath) {
+      if (hiddenVoiceInputEl) {
+        hiddenVoiceInputEl.click();
+      }
+      return;
+    }
+
+    try {
+      let arrayBuffer;
+      try {
+        const fileBytes = await invoke("read_file", { path: rawPath });
+        arrayBuffer = new Uint8Array(fileBytes).buffer;
+      } catch {
+        const res = await fetch(convertFileSrc(rawPath));
+        arrayBuffer = await res.arrayBuffer();
+      }
+      await loadAudioDataForReview(arrayBuffer, mime);
+    } catch (e) {
+      console.error(e);
+    }
+  }
+
+  async function handleVoiceFileInputChange(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const arrayBuffer = await file.arrayBuffer();
+      await loadAudioDataForReview(arrayBuffer, file.type || 'audio/ogg');
+    } catch (err) {
+      console.error(err);
+    } finally {
+      e.target.value = '';
+    }
+  }
+
+  async function importVideoNoteFromFile() {
+    let rawPath = null;
+    let mime = 'video/mp4';
+
+    try {
+      const response = await invoke("pick", { type: "VIDEO" });
+      if (response && response !== "CANCEL") {
+        rawPath = decodeURIComponent(response.uri);
+        mime = response.mime_type || 'video/mp4';
+      }
+    } catch (e) {
+      rawPath = null;
+    }
+
+    if (!rawPath) {
+      if (hiddenVideoInputEl) {
+        hiddenVideoInputEl.click();
+      }
+      return;
+    }
+
+    let previewPath = rawPath;
+    try {
+      previewPath = await invoke("prepare_video_for_preview", { sourcePath: rawPath });
+    } catch {
+      previewPath = rawPath;
+    }
+
+    const previewUrl = getProxiedMediaUrl(previewPath);
+    openVideoCropModal({
+      sourcePath: rawPath,
+      previewUrl,
+      onConfirm: handleCropVideoConfirm,
+      onCancel: closeVideoCropModal,
+    });
+  }
+
+  async function handleVideoFileInputChange(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const arrayBuffer = await file.arrayBuffer();
+      const ext = file.name.split('.').pop() || 'mp4';
+      const savedPath = await invoke('save_temp_media', {
+        bytes: Array.from(new Uint8Array(arrayBuffer)),
+        extension: ext,
+        isVideo: true,
+      });
+      let previewPath = savedPath;
+      try {
+        previewPath = await invoke("prepare_video_for_preview", { sourcePath: savedPath });
+      } catch {
+        previewPath = savedPath;
+      }
+      const previewUrl = getProxiedMediaUrl(previewPath);
+      openVideoCropModal({
+        sourcePath: savedPath,
+        previewUrl,
+        onConfirm: handleCropVideoConfirm,
+        onCancel: closeVideoCropModal,
+      });
+    } catch {
+      const previewUrl = URL.createObjectURL(file);
+      openVideoCropModal({
+        sourcePath: '',
+        previewUrl,
+        onConfirm: handleCropVideoConfirm,
+        onCancel: closeVideoCropModal,
+      });
+    } finally {
+      e.target.value = '';
+    }
+  }
+
+  async function handleCropVideoConfirm(cropData) {
+    closeVideoCropModal();
+    const { croppedPath, durationSec } = cropData;
+    if (!croppedPath) return;
+    const actualPath = croppedPath;
+
+    const trimmedDuration = Math.round(durationSec * 1000);
+    const wave = new Array(80).fill(0);
+
+    const attachItem = {
+      type: 'VIDEO',
+      videoType: 1,
+      path: actualPath,
+      duration: trimmedDuration,
+      wave,
+      mime: 'video/mp4',
+    };
+
+    const tempId = -Date.now();
+    const myId = get(currentUser);
+    messages.update(msgs => [...msgs, {
+      id: tempId,
+      sending: true,
+      attaches: [{ _type: 'VIDEO', videoType: 1, duration: trimmedDuration, loading: true, localPath: actualPath }],
+      text: '',
+      type: 'USER',
+      time: Date.now(),
+      reactionInfo: {},
+      sender: myId,
+    }]);
+    scrollToBottom(scrollElement, false);
+
+    try {
+      const uploaded = await $API.uploadAttachment(attachItem);
+      if (uploaded) {
+        messages.update(msgs => msgs.filter(m => m.id !== tempId));
+        await sendMessage(
+          chat,
+          chatSettings,
+          messages,
+          '',
+          replyTo,
+          [uploaded],
+          [],
+        );
+        replyTo = null;
+        await tick();
+        scrollToBottom(scrollElement, false);
+      } else {
+        messages.update(msgs => {
+          const target = msgs.find(m => m.id === tempId);
+          if (target) {
+            target.sending = false;
+            target.deleted = true;
+            target.status = 'failed';
+          }
+          return [...msgs];
+        });
+      }
+    } catch (e) {
+      messages.update(msgs => {
+        const target = msgs.find(m => m.id === tempId);
+        if (target) {
+          target.sending = false;
+          target.deleted = true;
+          target.status = 'failed';
+        }
+        return [...msgs];
+      });
+    }
+  }
+
   async function selectFile(type) {
     attachesDropout = null;
+
+    if (type === "VOICE_NOTE") {
+      await importVoiceFromFile();
+      return;
+    }
+    if (type === "VIDEO_NOTE") {
+      await importVideoNoteFromFile();
+      return;
+    }
 
     const response = await invoke("pick", type !== "FILE" ? { type } : null);
 
@@ -1037,13 +1280,96 @@
     if (reviewAudioEl) reviewAudioEl.currentTime = reviewAudioTrimEnd;
   }
 
+  async function getTrimmedAudioArrayBuffer(blob, startSec, endSec) {
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const rawBuffer = await blob.arrayBuffer();
+    const decoded = await audioCtx.decodeAudioData(rawBuffer.slice(0));
+    const sampleRate = decoded.sampleRate;
+    const channels = decoded.numberOfChannels;
+    const startSample = Math.max(0, Math.floor(startSec * sampleRate));
+    const endSample = Math.min(decoded.length, Math.floor(endSec * sampleRate));
+    const trimmedLength = Math.max(1, endSample - startSample);
+
+    const offlineCtx = new OfflineAudioContext(channels, trimmedLength, sampleRate);
+    const source = offlineCtx.createBufferSource();
+    source.buffer = decoded;
+    source.connect(offlineCtx.destination);
+    source.start(0, startSec, Math.max(0.1, endSec - startSec));
+    const rendered = await offlineCtx.startRendering();
+    audioCtx.close().catch(() => {});
+
+    return audioBufferToWav(rendered);
+  }
+
+  function audioBufferToWav(buffer) {
+    const numChannels = buffer.numberOfChannels;
+    const sampleRate = buffer.sampleRate;
+    const format = 1;
+    const bitDepth = 16;
+    const bytesPerSample = bitDepth / 8;
+    const blockAlign = numChannels * bytesPerSample;
+    const length = buffer.length;
+    const byteRate = sampleRate * blockAlign;
+    const dataSize = length * blockAlign;
+    const headerSize = 44;
+    const totalSize = headerSize + dataSize;
+    const arrayBuffer = new ArrayBuffer(totalSize);
+    const view = new DataView(arrayBuffer);
+
+    function writeString(offset, string) {
+      for (let i = 0; i < string.length; i++) {
+        view.setUint8(offset + i, string.charCodeAt(i));
+      }
+    }
+
+    writeString(0, 'RIFF');
+    view.setUint32(4, totalSize - 8, true);
+    writeString(8, 'WAVE');
+    writeString(12, 'fmt ');
+    view.setUint32(16, 16, true);
+    view.setUint16(20, format, true);
+    view.setUint16(22, numChannels, true);
+    view.setUint32(24, sampleRate, true);
+    view.setUint32(28, byteRate, true);
+    view.setUint16(32, blockAlign, true);
+    view.setUint16(34, bitDepth, true);
+    writeString(36, 'data');
+    view.setUint32(40, dataSize, true);
+
+    let offset = 44;
+    for (let i = 0; i < length; i++) {
+      for (let channel = 0; channel < numChannels; channel++) {
+        const sample = Math.max(-1, Math.min(1, buffer.getChannelData(channel)[i]));
+        const intSample = sample < 0 ? sample * 0x8000 : sample * 0x7FFF;
+        view.setInt16(offset, intSample, true);
+        offset += 2;
+      }
+    }
+    return arrayBuffer;
+  }
+
   async function sendReviewedVoice() {
     if (!reviewAudioBlob) return;
-    const arrayBuffer = await reviewAudioBlob.arrayBuffer();
+    let arrayBuffer;
+    let ext = 'ogg';
+    const isTrimmed = reviewAudioTrimStart > 0.05 || (reviewAudioDuration > 0 && reviewAudioTrimEnd < reviewAudioDuration - 0.05);
+    if (isTrimmed) {
+      try {
+        arrayBuffer = await getTrimmedAudioArrayBuffer(reviewAudioBlob, reviewAudioTrimStart, reviewAudioTrimEnd);
+        ext = 'wav';
+      } catch {
+        arrayBuffer = await reviewAudioBlob.arrayBuffer();
+        const actualMime = reviewAudioBlob.type || 'audio/webm';
+        ext = actualMime.includes('ogg') ? 'ogg' : 'webm';
+      }
+    } else {
+      arrayBuffer = await reviewAudioBlob.arrayBuffer();
+      const actualMime = reviewAudioBlob.type || 'audio/webm';
+      ext = actualMime.includes('ogg') ? 'ogg' : 'webm';
+    }
     const trimmedDuration = Math.round(Math.max(0.3, reviewAudioTrimEnd - reviewAudioTrimStart) * 1000);
     const wave = Array.from(generateWaveformFromAmplitudes(reviewAmplitudes, 80));
-    const actualMime = reviewAudioBlob.type || 'audio/webm';
-    const ext = actualMime.includes('ogg') ? 'ogg' : 'webm';
+    const actualMime = ext === 'wav' ? 'audio/wav' : (reviewAudioBlob.type || 'audio/webm');
     const savedPath = await invoke('save_temp_media', {
       bytes: Array.from(new Uint8Array(arrayBuffer)),
       extension: ext,
@@ -1554,6 +1880,21 @@
             </svg>
             <span>Видео</span>
           </button>
+          <button type="button" class="dropout-item" on:click={() => selectFile("VOICE_NOTE")}>
+            <svg class="dropout-svg" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/>
+              <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+              <line x1="12" y1="19" x2="12" y2="22"/>
+            </svg>
+            <span>Голосовое из файла</span>
+          </button>
+          <button type="button" class="dropout-item" on:click={() => selectFile("VIDEO_NOTE")}>
+            <svg class="dropout-svg" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="9"/>
+              <polygon points="10 8 16 12 10 16 10 8" fill="currentColor"/>
+            </svg>
+            <span>Видеосообщение из файла</span>
+          </button>
           <button type="button" class="dropout-item" on:click={() => selectFile("FILE")}>
             <svg class="dropout-svg" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/>
@@ -1655,6 +1996,21 @@
       on:insertEmoji={handleInsertEmoji}
     />
   {/if}
+
+  <input
+    bind:this={hiddenVoiceInputEl}
+    type="file"
+    accept="audio/*"
+    style="display: none;"
+    on:change={handleVoiceFileInputChange}
+  />
+  <input
+    bind:this={hiddenVideoInputEl}
+    type="file"
+    accept="video/*"
+    style="display: none;"
+    on:change={handleVideoFileInputChange}
+  />
 </div>
 
 <style>

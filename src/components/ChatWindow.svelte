@@ -4,6 +4,8 @@
     onMount,
     onDestroy,
     tick,
+    beforeUpdate,
+    afterUpdate,
   } from "svelte";
   import { fade, fly } from "svelte/transition";
   import { writable, get } from "svelte/store";
@@ -876,15 +878,24 @@
   $: chatCache = getChat(chat?.id ?? chatId);
 
   let unsubReceivedMessage = null;
-  $: {
+  let currentSubscribedChatId = null;
+  let lastProcessedMessageKey = null;
+
+  $: targetChatId = chat?.id ?? chatId;
+  $: if (targetChatId != null && targetChatId !== currentSubscribedChatId) {
     if (unsubReceivedMessage) {
       unsubReceivedMessage();
       unsubReceivedMessage = null;
     }
-    const currentChatCache = chatCache;
+    currentSubscribedChatId = targetChatId;
+    const currentChatCache = getChat(targetChatId);
     if (currentChatCache?.receivedMessage) {
       unsubReceivedMessage = currentChatCache.receivedMessage.subscribe(async (message) => {
-        if (!message || String(message.chatId) !== String(chat?.id)) return;
+        if (!message || String(message.chatId) !== String(targetChatId)) return;
+
+        const msgKey = `${message.id}_${message.time || message.created_at || ''}_${message.status || ''}`;
+        if (msgKey === lastProcessedMessageKey) return;
+        lastProcessedMessageKey = msgKey;
 
         let wasAtBottom = false;
         if (scrollElement) {
@@ -961,7 +972,8 @@
           applyPendingHeights();
           computeCumulativeHeights();
 
-          if (message.sender === $currentUser || wasAtBottom) {
+          const isRecentSelfMessage = message.sender === $currentUser && (Date.now() - (message.time || Date.now()) < 5000);
+          if (isRecentSelfMessage || wasAtBottom) {
             scrollToBottom(scrollElement, true);
           }
 
@@ -1193,6 +1205,7 @@
     if (isClosingBySwipe || isSwipingChat || currentDragX > 0) return;
     clickStartPos = { x: e.clientX, y: e.clientY };
     if (e.button !== 0) return;
+    if (e.target.closest(".message-row, .message-bubble, button, a, input, textarea, .icon-button, .voice-play-btn, .circular-wrapper, .voice-message-bubble, .video-note-bubble, .reaction, .reactions-picker")) return;
     startY = e.pageY;
     startScrollTop = scrollElement ? scrollElement.scrollTop : null;
   }
@@ -1231,21 +1244,17 @@
     ) return;
 
     if (clicked) {
-      const children = Object.values(visibleMessages);
-
-      const nearest = children.find(el => {
-        const rect = el.getBoundingClientRect();
-        return rect.top < e.clientY && rect.bottom > e.clientY;
-      });
-
-      if (nearest) {
-        const id = nearest.id.split('-')[1];
-        const msg = $messages.find(x => x.id === id);
+      const messageWrapper = e.target.closest(".message-wrapper");
+      if (messageWrapper) {
+        const id = messageWrapper.id?.replace("m-", "");
+        const msg = $messages.find(x => String(x.id) === String(id));
 
         if (e.target.closest(".reaction")) {
-          const reaction = e.target.childNodes[0].nodeValue.trim();
-          await handleReaction(chat, msg, reaction);
-          messages.update(x => x);
+          const reaction = e.target.childNodes[0]?.nodeValue?.trim();
+          if (reaction && msg) {
+            await handleReaction(chat, msg, reaction);
+            messages.update(x => x);
+          }
         }
         else if (msg && !dropoutActiveAt) selectMessage(e, msg);
       }
@@ -1366,14 +1375,47 @@
   }
 
   let scrollResizeObserver;
+  let lastClientHeight = 0;
+
+  let prevActiveMediaBool = null;
+  let scrollAnchorBeforeMediaChange = null;
+
+  beforeUpdate(() => {
+    const isNowActive = Boolean($activeMedia);
+    if (scrollElement && isNowActive !== prevActiveMediaBool && prevActiveMediaBool !== null) {
+      const { scrollTop, scrollHeight, clientHeight } = scrollElement;
+      const distFromBottom = scrollHeight - scrollTop - clientHeight;
+      scrollAnchorBeforeMediaChange = { scrollTop, distFromBottom };
+    } else {
+      scrollAnchorBeforeMediaChange = null;
+    }
+    prevActiveMediaBool = Boolean($activeMedia);
+  });
+
+  afterUpdate(() => {
+    if (!scrollAnchorBeforeMediaChange || !scrollElement) return;
+    const { distFromBottom } = scrollAnchorBeforeMediaChange;
+    const { scrollHeight, clientHeight } = scrollElement;
+    if (distFromBottom < 60) {
+      scrollElement.scrollTop = scrollHeight - clientHeight;
+    } else {
+      scrollElement.scrollTop = scrollHeight - clientHeight - distFromBottom;
+    }
+    scrollAnchorBeforeMediaChange = null;
+  });
 
   function startAutoScrollIfAtBottom() {
     if (!scrollElement) return;
 
+    lastClientHeight = scrollElement.clientHeight;
+
     scrollResizeObserver = new ResizeObserver(() => {
       if (!scrollElement || isInitialMounting || isProgrammaticScroll || !all_loaded_newer) return;
       const { scrollTop, scrollHeight, clientHeight } = scrollElement;
-      const atBottom = scrollHeight - scrollTop - clientHeight < 8;
+      const heightDelta = clientHeight - lastClientHeight;
+      lastClientHeight = clientHeight;
+
+      const atBottom = scrollHeight - scrollTop - clientHeight < Math.max(28, Math.abs(heightDelta) + 8);
       if (atBottom && userHasScrolled) {
         scrollToBottom(scrollElement, false);
       }

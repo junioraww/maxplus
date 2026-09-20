@@ -27,6 +27,10 @@
     startSmoothTicker();
   });
 
+  $: if (audioEl || videoEl) {
+    registerGlobalElements(audioEl, videoEl);
+  }
+
   onDestroy(() => {
     if (animId) cancelAnimationFrame(animId);
   });
@@ -102,50 +106,36 @@
   bind:this={audioEl}
   preload="auto"
   on:play={() => $activeMedia && updateMediaPlaybackState($activeMedia.id, true)}
-  on:pause={() => $activeMedia && updateMediaPlaybackState($activeMedia.id, false)}
   on:timeupdate={handleAudioTimeUpdate}
   on:ended={handleEnded}
   style="display: none;"
 ></audio>
 
-{#if $activeMedia && $activeMedia.type === 'video_note' && $activeMedia.isGlobalPlayback}
-  <div
-    class="global-video-pip"
-    style="transform: translate({pipX}px, {pipY}px);"
-    on:pointerdown={handlePipPointerDown}
-    on:click={handlePipClick}
-  >
-    <div class="pip-video-circle">
-      <video
-        bind:this={videoEl}
-        playsinline
-        preload="auto"
-        on:play={() => $activeMedia && updateMediaPlaybackState($activeMedia.id, true)}
-        on:pause={() => $activeMedia && updateMediaPlaybackState($activeMedia.id, false)}
-        on:timeupdate={handleVideoTimeUpdate}
-        on:ended={handleEnded}
-      ></video>
-      <button
-        class="pip-close-btn"
-        on:click|stopPropagation={stopCurrentMedia}
-        title="Закрыть"
-      >
-        ✕
-      </button>
-    </div>
+<div
+  class="global-video-pip"
+  class:visible={$activeMedia && $activeMedia.type === 'video_note' && $activeMedia.isGlobalPlayback}
+  style="transform: translate({pipX}px, {pipY}px);"
+  on:pointerdown={handlePipPointerDown}
+  on:click={handlePipClick}
+>
+  <div class="pip-video-circle">
+    <video
+      bind:this={videoEl}
+      playsinline
+      preload="auto"
+      on:play={() => $activeMedia && updateMediaPlaybackState($activeMedia.id, true)}
+      on:timeupdate={handleVideoTimeUpdate}
+      on:ended={handleEnded}
+    ></video>
+    <button
+      class="pip-close-btn"
+      on:click|stopPropagation={stopCurrentMedia}
+      title="Закрыть"
+    >
+      ✕
+    </button>
   </div>
-{:else}
-  <video
-    bind:this={videoEl}
-    playsinline
-    preload="auto"
-    on:play={() => $activeMedia && updateMediaPlaybackState($activeMedia.id, true)}
-    on:pause={() => $activeMedia && updateMediaPlaybackState($activeMedia.id, false)}
-    on:timeupdate={handleVideoTimeUpdate}
-    on:ended={handleEnded}
-    style="display: none;"
-  ></video>
-{/if}
+</div>
 
 <style>
   .global-video-pip {
@@ -158,6 +148,10 @@
     cursor: grab;
     user-select: none;
     touch-action: none;
+    display: none;
+  }
+  .global-video-pip.visible {
+    display: block;
   }
   .global-video-pip:active {
     cursor: grabbing;

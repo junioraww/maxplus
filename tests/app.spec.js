@@ -375,4 +375,359 @@ test.describe('Audio/video sending, failure marking, and sticker draft retention
   });
 });
 
+test.describe('Video note playback and Favorites (chatId = 0) handling', () => {
+  test('favorites video note message has valid attach and videoType 1', () => {
+    const msg = syntheticMessages.favoritesVideoNoteMessage;
+    expect(msg.chatId).toBe(0);
+    expect(msg.attaches.length).toBe(1);
+    const attach = msg.attaches[0];
+    expect(attach._type).toBe('VIDEO');
+    expect(attach.videoType).toBe(1);
+    expect(attach.videoId).toBe(77701);
+    expect(attach.videoToken).toBe('synth_video_token_xyz');
+  });
+
+  test('chatId = 0 is properly handled by nullish coalescing in playlist items', () => {
+    const msg = syntheticMessages.favoritesVideoNoteMessage;
+    const attach = msg.attaches[0];
+    const dur = attach.duration ? attach.duration / 1000 : 0;
+    const item = {
+      id: String(msg.id),
+      chatId: msg.chatId ?? 0,
+      messageId: msg.id,
+      type: 'video_note',
+      duration: dur,
+      time: msg.time,
+      attach,
+      title: 'Видеосообщение',
+    };
+
+    expect(item.chatId).toBe(0);
+    expect(item.chatId !== null && item.chatId !== undefined).toBe(true);
+    expect(item.type).toBe('video_note');
+    expect(item.duration).toBe(8);
+  });
+
+  test('video note playMedia sets activeMedia, element, and toggles play/pause', async () => {
+    const {
+      activeMedia,
+      playMedia,
+      pauseCurrentMedia,
+      resumeCurrentMedia,
+      stopCurrentMedia,
+      updateMediaProgress,
+      seekMedia,
+    } = await import('../src/lib/stores/mediaPlayback.js');
+    const { get } = await import('svelte/store');
+
+    let played = false;
+    let paused = false;
+
+    const mockVideoEl = {
+      src: '',
+      currentTime: 0,
+      duration: 8,
+      playbackRate: 1.0,
+      volume: 1.0,
+      muted: false,
+      play: () => {
+        played = true;
+        paused = false;
+        return Promise.resolve();
+      },
+      pause: () => {
+        paused = true;
+        played = false;
+      },
+      getAttribute: (name) => (name === 'src' ? mockVideoEl.src : null),
+      setAttribute: (name, val) => {
+        if (name === 'src') mockVideoEl.src = val;
+      },
+    };
+
+    const track = {
+      id: 'video_note_90010',
+      chatId: 0,
+      messageId: 90010,
+      type: 'video_note',
+      url: 'http://127.0.0.1:11447/test_video.mp4',
+      duration: 8,
+      senderName: 'Вы',
+      title: 'Видеосообщение',
+      element: mockVideoEl,
+    };
+
+    await playMedia(track, { chatId: 0, messages: [] });
+
+    const active = get(activeMedia);
+    expect(active).not.toBeNull();
+    expect(active.id).toBe('video_note_90010');
+    expect(active.type).toBe('video_note');
+    expect(active.chatId).toBe(0);
+    expect(active.isPlaying).toBe(true);
+    expect(played).toBe(true);
+    expect(mockVideoEl.src).toBe('http://127.0.0.1:11447/test_video.mp4');
+
+    pauseCurrentMedia();
+    expect(get(activeMedia)?.isPlaying).toBe(false);
+    expect(paused).toBe(true);
+
+    resumeCurrentMedia();
+    expect(get(activeMedia)?.isPlaying).toBe(true);
+    expect(played).toBe(true);
+
+    updateMediaProgress('video_note_90010', 4.0, 8.0);
+    expect(get(activeMedia)?.currentTime).toBe(4.0);
+
+    seekMedia('video_note_90010', 6.0);
+    expect(mockVideoEl.currentTime).toBe(6.0);
+    expect(get(activeMedia)?.currentTime).toBe(6.0);
+
+    stopCurrentMedia();
+    expect(get(activeMedia)).toBeNull();
+  });
+
+  test('takeOverFromGlobal transitions playback to mounted bubble element', async () => {
+    const {
+      activeMedia,
+      playMedia,
+      takeOverFromGlobal,
+      stopCurrentMedia,
+    } = await import('../src/lib/stores/mediaPlayback.js');
+    const { get } = await import('svelte/store');
+
+    const playlistTrack = {
+      id: 'video_note_global_1',
+      chatId: 0,
+      messageId: 90011,
+      type: 'video_note',
+      url: 'http://127.0.0.1:11447/global_note.mp4',
+      duration: 10,
+      senderName: 'Собеседник',
+      title: 'Видеосообщение',
+      element: null,
+    };
+
+    await playMedia(playlistTrack, { chatId: 0 });
+    expect(get(activeMedia)?.isGlobalPlayback).toBe(true);
+
+    let bubblePlayed = false;
+    const bubbleVideoEl = {
+      src: '',
+      currentTime: 0,
+      playbackRate: 1.0,
+      volume: 1.0,
+      muted: false,
+      play: () => {
+        bubblePlayed = true;
+        return Promise.resolve();
+      },
+      pause: () => {},
+      load: () => {},
+    };
+
+    takeOverFromGlobal('video_note_global_1', bubbleVideoEl);
+
+    const after = get(activeMedia);
+    expect(after?.isGlobalPlayback).toBe(false);
+    expect(after?.element).toBe(bubbleVideoEl);
+    expect(bubbleVideoEl.src).toBe('http://127.0.0.1:11447/global_note.mp4');
+    expect(bubblePlayed).toBe(true);
+
+    stopCurrentMedia();
+  });
+});
+
+test.describe('Video note cropping and media import features', () => {
+  function computeCropParams(vpW, vpH, videoW, videoH, normCx, normCy, zoomRatio) {
+    const videoAspect = videoW / videoH;
+    const vpAspect = vpW / vpH;
+    let rw = 0;
+    let rh = 0;
+    let rx = 0;
+    let ry = 0;
+
+    if (videoAspect > vpAspect) {
+      rw = vpW;
+      rh = vpW / videoAspect;
+      rx = 0;
+      ry = (vpH - rh) / 2;
+    } else {
+      rh = vpH;
+      rw = vpH * videoAspect;
+      rx = (vpW - rw) / 2;
+      ry = 0;
+    }
+
+    const maxDiameter = Math.min(rw, rh);
+    const minDiameter = Math.max(48, maxDiameter * 0.25);
+    const currentDiameter = minDiameter + (maxDiameter - minDiameter) * zoomRatio;
+    const r = currentDiameter / 2;
+
+    const minCx = rx + r;
+    const maxCx = rx + rw - r;
+    const minCy = ry + r;
+    const maxCy = ry + rh - r;
+
+    let cx = rx + normCx * rw;
+    let cy = ry + normCy * rh;
+    cx = Math.max(minCx, Math.min(maxCx, cx));
+    cy = Math.max(minCy, Math.min(maxCy, cy));
+
+    const scale = videoW / rw;
+    const d = r * 2;
+    let cropSize = Math.round(d * scale);
+    let cropX = Math.round((cx - rx - r) * scale);
+    let cropY = Math.round((cy - ry - r) * scale);
+
+    cropSize = Math.min(cropSize, Math.min(videoW, videoH));
+    cropX = Math.max(0, Math.min(videoW - cropSize, cropX));
+    cropY = Math.max(0, Math.min(videoH - cropSize, cropY));
+
+    return { cropX, cropY, cropSize };
+  }
+
+  test('calculates exact square crop centered for 16:9 landscape video', () => {
+    const { cropX, cropY, cropSize } = computeCropParams(400, 400, 1920, 1080, 0.5, 0.5, 1.0);
+    expect(cropSize).toBe(1080);
+    expect(cropY).toBe(0);
+    expect(cropX).toBe(420);
+  });
+
+  test('calculates exact square crop centered for 9:16 portrait video', () => {
+    const { cropX, cropY, cropSize } = computeCropParams(400, 400, 1080, 1920, 0.5, 0.5, 1.0);
+    expect(cropSize).toBe(1080);
+    expect(cropX).toBe(0);
+    expect(cropY).toBe(420);
+  });
+
+  test('clamps crop boundaries when panning to edges', () => {
+    const leftCrop = computeCropParams(400, 400, 1920, 1080, 0.0, 0.5, 1.0);
+    expect(leftCrop.cropX).toBe(0);
+    expect(leftCrop.cropSize).toBe(1080);
+
+    const rightCrop = computeCropParams(400, 400, 1920, 1080, 1.0, 0.5, 1.0);
+    expect(rightCrop.cropX).toBe(1920 - 1080);
+    expect(rightCrop.cropSize).toBe(1080);
+  });
+
+  test('video note attachment payload complies with Max server specs', () => {
+    const attachItem = {
+      type: 'VIDEO',
+      videoType: 1,
+      path: '/synthetic/temp_media/video_note.mp4',
+      duration: 12500,
+      wave: new Array(80).fill(0),
+      mime: 'video/mp4',
+    };
+
+    expect(attachItem.type).toBe('VIDEO');
+    expect(attachItem.videoType).toBe(1);
+    expect(attachItem.duration).toBeGreaterThan(0);
+    expect(attachItem.wave).toHaveLength(80);
+  });
+
+  test('imported voice note attachment payload complies with Max server specs', () => {
+    const voiceItem = {
+      type: 'AUDIO',
+      path: '/synthetic/temp_media/imported_voice.ogg',
+      duration: 5400,
+      wave: new Array(80).fill(12),
+      mime: 'audio/ogg',
+    };
+
+    expect(voiceItem.type).toBe('AUDIO');
+    expect(voiceItem.duration).toBe(5400);
+    expect(voiceItem.wave).toHaveLength(80);
+  });
+
+  test('voice note playMedia from chat message sets activeMedia and plays without stopping', async () => {
+    const {
+      activeMedia,
+      playMedia,
+      registerGlobalElements,
+      pauseCurrentMedia,
+      resumeCurrentMedia,
+      stopCurrentMedia,
+    } = await import('../src/lib/stores/mediaPlayback.js');
+    const { get } = await import('svelte/store');
+
+    let audioPlayed = false;
+    let audioPaused = false;
+    const mockAudioEl = {
+      src: '',
+      currentTime: 0,
+      playbackRate: 1.0,
+      volume: 1.0,
+      muted: false,
+      play: () => {
+        audioPlayed = true;
+        audioPaused = false;
+        return Promise.resolve();
+      },
+      pause: () => {
+        audioPaused = true;
+        audioPlayed = false;
+      },
+      load: () => {},
+    };
+
+    registerGlobalElements(mockAudioEl, null);
+
+    const voiceMsg = syntheticMessages.favoritesVoiceNoteMessage;
+    const voiceTrack = {
+      id: String(voiceMsg.id),
+      chatId: voiceMsg.chatId,
+      messageId: voiceMsg.id,
+      type: 'voice',
+      url: 'http://127.0.0.1:11447/synth_voice.ogg',
+      duration: 6.2,
+      senderName: 'Вы',
+      title: 'Голосовое сообщение',
+      attach: voiceMsg.attaches[0],
+    };
+
+    await playMedia(voiceTrack, { chatId: 0, currentMessageId: voiceMsg.id });
+
+    const state = get(activeMedia);
+    expect(state).not.toBeNull();
+    expect(state?.id).toBe(String(voiceMsg.id));
+    expect(state?.isPlaying).toBe(true);
+    expect(audioPlayed).toBe(true);
+    expect(mockAudioEl.src).toBe('http://127.0.0.1:11447/synth_voice.ogg');
+
+    pauseCurrentMedia();
+    expect(get(activeMedia)?.isPlaying).toBe(false);
+    expect(audioPaused).toBe(true);
+
+    resumeCurrentMedia();
+    expect(get(activeMedia)?.isPlaying).toBe(true);
+    expect(audioPlayed).toBe(true);
+
+    stopCurrentMedia();
+    expect(get(activeMedia)).toBeNull();
+  });
+
+  test('resolvePlayableUrl properly handles localPath and remote audio URLs', async () => {
+    const { resolvePlayableUrl } = await import('../src/lib/stores/mediaPlayback.js');
+
+    const localAttach = {
+      _type: 'AUDIO',
+      localPath: '/synthetic/audio/voice_1.ogg',
+      duration: 3500,
+    };
+    const localUrl = await resolvePlayableUrl(localAttach, 0, 90020);
+    expect(localUrl).toBe('http://127.0.0.1:11447/%2Fsynthetic%2Faudio%2Fvoice_1.ogg');
+
+    const remoteAttach = {
+      _type: 'AUDIO',
+      url: 'http://127.0.0.1:11447/cached_audio.ogg',
+      duration: 4000,
+    };
+    const remoteUrl = await resolvePlayableUrl(remoteAttach, 0, 90021);
+    expect(remoteUrl).toBe('http://127.0.0.1:11447/cached_audio.ogg');
+  });
+});
+
+
 

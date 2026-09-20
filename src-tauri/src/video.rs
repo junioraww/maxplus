@@ -12,7 +12,10 @@ use tiny_http::{Header, Method, Response, Server};
 static MIME_CACHE: LazyLock<RwLock<HashMap<String, String>>> =
     LazyLock::new(|| RwLock::new(HashMap::new()));
 
-fn handle_local_file(request: tiny_http::Request, path: &str) {
+fn handle_local_file(request: tiny_http::Request, mut path: &str) {
+    if let Some(stripped) = path.strip_prefix("file://") {
+        path = stripped;
+    }
     use std::fs::File;
     use std::io::{Seek, SeekFrom};
 
@@ -32,7 +35,25 @@ fn handle_local_file(request: tiny_http::Request, path: &str) {
         }
     };
 
-    let mime = mime_guess::from_path(path).first_or_octet_stream().to_string();
+    let mut mime = mime_guess::from_path(path).first_or_octet_stream().to_string();
+    if mime == "application/octet-stream" || mime == "binary/octet-stream" {
+        let mut peek_buf = [0u8; 16];
+        if let Ok(n) = file.read(&mut peek_buf) {
+            let peeked = &peek_buf[..n];
+            if peeked.starts_with(b"OggS") {
+                mime = "audio/ogg".to_string();
+            } else if peeked.starts_with(b"\x1a\x45\xdf\xa3") {
+                mime = "video/webm".to_string();
+            } else if peeked.len() >= 8 && &peeked[4..8] == b"ftyp" {
+                mime = "video/mp4".to_string();
+            } else if peeked.starts_with(b"ID3") || (peeked.len() >= 2 && peeked[0] == 0xff && (peeked[1] & 0xe0) == 0xe0) {
+                mime = "audio/mpeg".to_string();
+            } else if peeked.starts_with(b"RIFF") {
+                mime = "audio/wav".to_string();
+            }
+            let _ = file.seek(SeekFrom::Start(0));
+        }
+    }
 
     let mut range_header = None;
     for h in request.headers() {
@@ -129,6 +150,16 @@ fn handle_request(request: tiny_http::Request, client: &reqwest::blocking::Clien
     }
     if let Some(local_path) = url.strip_prefix("file://") {
         handle_local_file(request, local_path);
+        return;
+    }
+    if let Some(asset_path) = url.strip_prefix("asset://localhost/") {
+        let decoded = urlencoding::decode(asset_path).unwrap_or(std::borrow::Cow::Borrowed(asset_path));
+        handle_local_file(request, &decoded);
+        return;
+    }
+    if let Some(asset_path) = url.strip_prefix("http://asset.localhost/") {
+        let decoded = urlencoding::decode(asset_path).unwrap_or(std::borrow::Cow::Borrowed(asset_path));
+        handle_local_file(request, &decoded);
         return;
     }
 

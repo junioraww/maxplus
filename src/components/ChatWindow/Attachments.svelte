@@ -210,11 +210,12 @@
         }
       } else if (attach._type === "VIDEO") {
         let videoUrl = null;
-        if (attach.videoId && chatId && (attach.messageId || messageId)) {
+        if (attach.videoId && chatId != null && (attach.messageId || messageId)) {
           const response = await $API.getVideoById(
             chatId,
             attach.messageId || messageId,
             attach.videoId,
+            attach.videoToken || attach.token,
           );
           const qualityPriority = ["MP4_1080", "MP4_720", "MP4_480", "MP4_360"];
           for (const quality of qualityPriority) {

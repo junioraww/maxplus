@@ -143,6 +143,8 @@ pub fn run() {
             files::write_file_string,
             files::write_file_bytes,
             files::save_temp_media,
+            files::prepare_video_for_preview,
+            files::crop_video_note,
             files::cache_url,
             files::fetch_url_text,
             files::fetch_url_bytes,

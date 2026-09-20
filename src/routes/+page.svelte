@@ -134,7 +134,7 @@
     </Card>
   {/each}
 
-  {#each $Session.openedChats as chatId}
+  {#each $Session.openedChats as chatId (chatId)}
     <ChatWindow {chatId}/>
   {/each}
 </div>
