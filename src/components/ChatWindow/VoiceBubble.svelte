@@ -3,6 +3,7 @@
   import { convertFileSrc, invoke } from '@tauri-apps/api/core';
   import { save } from '@tauri-apps/plugin-dialog';
   import { showAlert } from '$lib/utils/alert';
+  import { getAssetUrl, getProxiedMediaUrl } from '$lib/utils/images';
   import { parseWaveform } from '$lib/utils/waveform';
   import {
     activeMedia,
@@ -52,7 +53,22 @@
   $: transcription = $transcriptions[mId];
 
   $: rawUrl = attach.fileUrl || attach.baseUrl || attach.url || (attach.localPath ? attach.localPath : null);
-  $: mediaUrl = rawUrl ? (rawUrl.startsWith('http') || rawUrl.startsWith('blob:') ? rawUrl : convertFileSrc(rawUrl)) : null;
+
+  let mediaUrl = null;
+  $: {
+    if (!rawUrl) {
+      mediaUrl = null;
+    } else if (rawUrl.startsWith('data:') || rawUrl.startsWith('blob:') || rawUrl.startsWith('asset:') || rawUrl.startsWith('http://asset.localhost/')) {
+      mediaUrl = rawUrl;
+    } else if (rawUrl.startsWith('http')) {
+      mediaUrl = getProxiedMediaUrl(rawUrl);
+      getAssetUrl(rawUrl).then((cached) => {
+        if (cached) mediaUrl = cached;
+      }).catch(() => {});
+    } else {
+      mediaUrl = convertFileSrc(rawUrl);
+    }
+  }
 
   function formatTime(sec) {
     if (!sec || isNaN(sec)) return '0:00';

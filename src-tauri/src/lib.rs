@@ -1,6 +1,7 @@
 mod commands;
 mod files;
 mod notifications;
+mod ssl;
 mod state;
 mod stores;
 mod video;
@@ -12,6 +13,7 @@ use tauri::{Emitter, Manager};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    ssl::init_ssl_certificates();
     video::start_video_proxy();
     webapp_proxy::start_webapp_proxy();
 
