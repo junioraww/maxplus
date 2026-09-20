@@ -19,9 +19,15 @@
   let downloadingMap = {};
 
   $: mediaAttaches = (attaches || []).filter(
-    (a) => a._type === "PHOTO" || a._type === "VIDEO" || a._type === "FILE" || a._type === "AUDIO",
+    (a) => {
+      const t = a._type || a.type;
+      return t === "PHOTO" || t === "VIDEO" || t === "FILE" || t === "AUDIO";
+    }
   );
-  $: mediaItems = mediaAttaches.filter(a => a._type === "PHOTO" || (a._type === "VIDEO" && a.videoType !== 1));
+  $: mediaItems = mediaAttaches.filter(a => {
+    const t = a._type || a.type;
+    return t === "PHOTO" || (t === "VIDEO" && a.videoType !== 1 && !a.isNote);
+  });
 
   let placeholderUrls = {};
   function getPlaceholderUrl(previewData) {
@@ -308,11 +314,11 @@
   </div>
 {/each}
 
-{#each attaches.filter(a => a._type === "AUDIO") as attach}
+{#each attaches.filter(a => (a._type || a.type) === "AUDIO") as attach}
   <VoiceBubble {attach} {messageId} {chatId} {isMe} />
 {/each}
 
-{#each attaches.filter(a => a._type === "VIDEO" && a.videoType === 1) as attach}
+{#each attaches.filter(a => ((a._type || a.type) === "VIDEO") && (a.videoType === 1 || a.isNote)) as attach}
   <VideoNoteBubble {attach} {messageId} {chatId} {isMe} />
 {/each}
 

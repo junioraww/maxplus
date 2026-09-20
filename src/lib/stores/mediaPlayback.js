@@ -1,15 +1,34 @@
 import { writable, get } from 'svelte/store';
+import { convertFileSrc } from '@tauri-apps/api/core';
+import { getAssetUrl, getProxiedMediaUrl } from '$lib/utils/images';
+
+async function getApiInstance() {
+  try {
+    const mod = await import('$lib/stores/api');
+    return mod.default ? get(mod.default) : null;
+  } catch {
+    return null;
+  }
+}
 
 export const activeMedia = writable(null);
 export const globalSpeed = writable(1.0);
 export const globalVolume = writable(1.0);
 export const isMuted = writable(false);
-
 export const trackSettings = writable({});
+export const mediaPlaylist = writable({ chatId: null, items: [], currentIndex: -1 });
+export const showPlaylistModal = writable(false);
+export const activeChatMessages = writable([]);
 
 let currentAudioElement = null;
 let currentVideoElement = null;
-let previousUnmutedVolume = 1.0;
+let globalAudioElement = null;
+let globalVideoElement = null;
+
+export function registerGlobalElements(audio, video) {
+  globalAudioElement = audio;
+  globalVideoElement = video;
+}
 
 export function snapSpeed(rawSpeed) {
   const clamped = Math.max(0.5, Math.min(4.0, rawSpeed));
@@ -21,17 +40,17 @@ export function snapSpeed(rawSpeed) {
 
 export function getTrackSpeed(id) {
   const settings = get(trackSettings);
-  return settings[id]?.speed ?? 1.0;
+  return settings[id]?.speed ?? get(globalSpeed) ?? 1.0;
 }
 
 export function getTrackVolume(id) {
   const settings = get(trackSettings);
-  return settings[id]?.volume ?? 1.0;
+  return settings[id]?.volume ?? get(globalVolume) ?? 1.0;
 }
 
 export function isTrackMuted(id) {
   const settings = get(trackSettings);
-  return settings[id]?.muted ?? false;
+  return settings[id]?.muted ?? get(isMuted) ?? false;
 }
 
 export function setTrackSpeed(id, newSpeed) {
@@ -45,10 +64,13 @@ export function setTrackSpeed(id, newSpeed) {
       muted: map[id]?.muted ?? false,
     }
   }));
+  globalSpeed.set(finalSpeed);
 
   const state = get(activeMedia);
-  if (state && state.id === id && state.element) {
-    state.element.playbackRate = finalSpeed;
+  if (state && (state.id === id || !id)) {
+    if (state.element) state.element.playbackRate = finalSpeed;
+    if (globalAudioElement) globalAudioElement.playbackRate = finalSpeed;
+    if (globalVideoElement) globalVideoElement.playbackRate = finalSpeed;
     activeMedia.update(s => s ? { ...s, speed: finalSpeed } : null);
   }
   return finalSpeed;
@@ -81,19 +103,31 @@ export function setTrackVolume(id, newVolume) {
       muted,
     }
   }));
+  globalVolume.set(clamped);
+  isMuted.set(muted);
 
   const state = get(activeMedia);
-  if (state && state.id === id && state.element) {
-    state.element.volume = clamped;
-    state.element.muted = muted;
+  if (state && (state.id === id || !id)) {
+    if (state.element) {
+      state.element.volume = clamped;
+      state.element.muted = muted;
+    }
+    if (globalAudioElement) {
+      globalAudioElement.volume = clamped;
+      globalAudioElement.muted = muted;
+    }
+    if (globalVideoElement) {
+      globalVideoElement.volume = clamped;
+      globalVideoElement.muted = muted;
+    }
     activeMedia.update(s => s ? { ...s, volume: clamped, muted } : null);
   }
 }
 
 export function toggleTrackMute(id) {
   const settings = get(trackSettings);
-  const currentMuted = settings[id]?.muted ?? false;
-  const currentVol = settings[id]?.volume ?? 1.0;
+  const currentMuted = settings[id]?.muted ?? get(isMuted) ?? false;
+  const currentVol = settings[id]?.volume ?? get(globalVolume) ?? 1.0;
 
   if (currentMuted) {
     const restore = currentVol > 0 ? currentVol : 1.0;
@@ -104,67 +138,19 @@ export function toggleTrackMute(id) {
 }
 
 export function setPlaybackSpeed(newSpeed) {
-  const finalSpeed = snapSpeed(newSpeed);
-  globalSpeed.set(finalSpeed);
-  if (currentAudioElement) {
-    currentAudioElement.playbackRate = finalSpeed;
-  }
-  if (currentVideoElement) {
-    currentVideoElement.playbackRate = finalSpeed;
-  }
-  activeMedia.update((state) => {
-    if (!state) return null;
-    return { ...state, speed: finalSpeed };
-  });
-  return finalSpeed;
+  return setTrackSpeed(get(activeMedia)?.id, newSpeed);
 }
 
 export function cyclePlaybackSpeed() {
-  const cur = get(globalSpeed);
-  let next = 1.0;
-  if (Math.abs(cur - 0.5) < 0.1) next = 1.0;
-  else if (Math.abs(cur - 1.0) < 0.1) next = 1.5;
-  else if (Math.abs(cur - 1.5) < 0.1) next = 2.0;
-  else if (Math.abs(cur - 2.0) < 0.1) next = 0.5;
-  else if (cur < 1.0) next = 1.0;
-  else if (cur < 1.5) next = 1.5;
-  else if (cur < 2.0) next = 2.0;
-  else next = 1.0;
-  return setPlaybackSpeed(next);
+  return cycleTrackSpeed(get(activeMedia)?.id);
 }
 
 export function setMediaVolume(newVolume) {
-  const clamped = Math.max(0.0, Math.min(1.0, newVolume));
-  globalVolume.set(clamped);
-  if (clamped > 0) {
-    isMuted.set(false);
-    previousUnmutedVolume = clamped;
-  } else {
-    isMuted.set(true);
-  }
-  if (currentAudioElement) {
-    currentAudioElement.volume = clamped;
-    currentAudioElement.muted = clamped === 0;
-  }
-  if (currentVideoElement) {
-    currentVideoElement.volume = clamped;
-    currentVideoElement.muted = clamped === 0;
-  }
-  activeMedia.update((state) => {
-    if (!state) return null;
-    return { ...state, volume: clamped, muted: clamped === 0 };
-  });
+  setTrackVolume(get(activeMedia)?.id, newVolume);
 }
 
 export function toggleMediaMute() {
-  const currentlyMuted = get(isMuted);
-  if (currentlyMuted) {
-    const restore = previousUnmutedVolume > 0 ? previousUnmutedVolume : 1.0;
-    setMediaVolume(restore);
-  } else {
-    previousUnmutedVolume = get(globalVolume);
-    setMediaVolume(0.0);
-  }
+  toggleTrackMute(get(activeMedia)?.id);
 }
 
 export function stopCurrentMedia() {
@@ -182,33 +168,92 @@ export function stopCurrentMedia() {
     } catch {}
     currentVideoElement = null;
   }
+  if (globalAudioElement) {
+    try {
+      globalAudioElement.pause();
+      globalAudioElement.currentTime = 0;
+      globalAudioElement.removeAttribute('src');
+      globalAudioElement.load();
+    } catch {}
+  }
+  if (globalVideoElement) {
+    try {
+      globalVideoElement.pause();
+      globalVideoElement.currentTime = 0;
+      globalVideoElement.removeAttribute('src');
+      globalVideoElement.load();
+    } catch {}
+  }
   activeMedia.set(null);
 }
 
 export function pauseCurrentMedia() {
-  if (currentAudioElement) {
-    try {
-      currentAudioElement.pause();
-    } catch {}
+  const state = get(activeMedia);
+  if (state?.element) {
+    try { state.element.pause(); } catch {}
   }
-  if (currentVideoElement) {
-    try {
-      currentVideoElement.pause();
-    } catch {}
+  if (globalAudioElement) {
+    try { globalAudioElement.pause(); } catch {}
   }
-  activeMedia.update((state) => {
-    if (!state) return null;
-    return { ...state, isPlaying: false };
-  });
+  if (globalVideoElement) {
+    try { globalVideoElement.pause(); } catch {}
+  }
+  activeMedia.update((s) => (s ? { ...s, isPlaying: false } : null));
+}
+
+export function resumeCurrentMedia() {
+  const state = get(activeMedia);
+  if (!state) return;
+  activeMedia.update((s) => (s ? { ...s, isPlaying: true } : null));
+  const onErr = () => {
+    updateMediaPlaybackState(state.id, false);
+  };
+  if (state.element) {
+    try {
+      const p = state.element.play();
+      if (p && typeof p.catch === 'function') p.catch(onErr);
+    } catch {
+      onErr();
+    }
+  } else if (state.type === 'voice' && globalAudioElement) {
+    try {
+      const p = globalAudioElement.play();
+      if (p && typeof p.catch === 'function') p.catch(onErr);
+    } catch {
+      onErr();
+    }
+  } else if (state.type === 'video_note' && globalVideoElement) {
+    try {
+      const p = globalVideoElement.play();
+      if (p && typeof p.catch === 'function') p.catch(onErr);
+    } catch {
+      onErr();
+    }
+  }
+}
+
+export function togglePlayPause() {
+  const state = get(activeMedia);
+  if (!state) return;
+  if (state.isPlaying) {
+    pauseCurrentMedia();
+  } else {
+    resumeCurrentMedia();
+  }
 }
 
 export function registerAudio(id, element, metadata = {}) {
-  stopCurrentMedia();
+  if (currentVideoElement && currentVideoElement !== element) {
+    try { currentVideoElement.pause(); } catch {}
+    currentVideoElement = null;
+  }
+  if (currentAudioElement && currentAudioElement !== element) {
+    try { currentAudioElement.pause(); } catch {}
+  }
   currentAudioElement = element;
-  const settings = get(trackSettings)[id];
-  const speed = settings?.speed ?? 1.0;
-  const muted = settings?.muted ?? false;
-  const vol = muted ? 0 : (settings?.volume ?? 1.0);
+  const speed = getTrackSpeed(id);
+  const muted = isTrackMuted(id);
+  const vol = muted ? 0 : getTrackVolume(id);
 
   element.playbackRate = speed;
   element.volume = vol;
@@ -229,12 +274,17 @@ export function registerAudio(id, element, metadata = {}) {
 }
 
 export function registerVideo(id, element, metadata = {}) {
-  stopCurrentMedia();
+  if (currentAudioElement && currentAudioElement !== element) {
+    try { currentAudioElement.pause(); } catch {}
+    currentAudioElement = null;
+  }
+  if (currentVideoElement && currentVideoElement !== element) {
+    try { currentVideoElement.pause(); } catch {}
+  }
   currentVideoElement = element;
-  const settings = get(trackSettings)[id];
-  const speed = settings?.speed ?? 1.0;
-  const muted = settings?.muted ?? false;
-  const vol = muted ? 0 : (settings?.volume ?? 1.0);
+  const speed = getTrackSpeed(id);
+  const muted = isTrackMuted(id);
+  const vol = muted ? 0 : getTrackVolume(id);
 
   element.playbackRate = speed;
   element.volume = vol;
@@ -252,6 +302,91 @@ export function registerVideo(id, element, metadata = {}) {
     muted,
     ...metadata,
   });
+}
+
+export function handOffToGlobal(data) {
+  const speed = getTrackSpeed(data.id);
+  const muted = isTrackMuted(data.id);
+  const vol = muted ? 0 : getTrackVolume(data.id);
+
+  if (data.type === 'video_note') {
+    currentVideoElement = null;
+    if (globalVideoElement) {
+      if (data.url && (!globalVideoElement.src || !globalVideoElement.src.includes(data.url))) {
+        globalVideoElement.src = data.url;
+      }
+      globalVideoElement.currentTime = data.currentTime || 0;
+      globalVideoElement.playbackRate = speed;
+      globalVideoElement.volume = vol;
+      globalVideoElement.muted = muted;
+      if (data.isPlaying) {
+        globalVideoElement.play().catch(() => {});
+      }
+    }
+  } else if (data.type === 'voice') {
+    currentAudioElement = null;
+    if (globalAudioElement) {
+      if (data.url && (!globalAudioElement.src || !globalAudioElement.src.includes(data.url))) {
+        globalAudioElement.src = data.url;
+      }
+      globalAudioElement.currentTime = data.currentTime || 0;
+      globalAudioElement.playbackRate = speed;
+      globalAudioElement.volume = vol;
+      globalAudioElement.muted = muted;
+      if (data.isPlaying) {
+        globalAudioElement.play().catch(() => {});
+      }
+    }
+  }
+
+  activeMedia.update((s) => ({
+    ...(s || {}),
+    ...data,
+    element: null,
+    isGlobalPlayback: true,
+    speed,
+    volume: vol,
+    muted,
+  }));
+}
+
+export function takeOverFromGlobal(id, element) {
+  const state = get(activeMedia);
+  if (!state || state.id !== id) return;
+
+  if (state.type === 'video_note') {
+    if (globalVideoElement) {
+      try {
+        state.currentTime = globalVideoElement.currentTime || state.currentTime;
+        globalVideoElement.pause();
+      } catch {}
+    }
+    currentVideoElement = element;
+    element.currentTime = state.currentTime || 0;
+    element.playbackRate = state.speed || 1.0;
+    element.volume = state.muted ? 0 : (state.volume ?? 1.0);
+    element.muted = !!state.muted;
+    if (state.isPlaying) {
+      element.play().catch(() => {});
+    }
+  } else if (state.type === 'voice') {
+    if (globalAudioElement) {
+      try {
+        state.currentTime = globalAudioElement.currentTime || state.currentTime;
+        globalAudioElement.pause();
+      } catch {}
+    }
+    currentAudioElement = element;
+    element.currentTime = state.currentTime || 0;
+    element.playbackRate = state.speed || 1.0;
+    element.volume = state.muted ? 0 : (state.volume ?? 1.0);
+    element.muted = !!state.muted;
+    if (state.isPlaying) {
+      element.play().catch(() => {});
+    }
+  }
+
+  activeMedia.update((s) => (s ? { ...s, element, isGlobalPlayback: false } : null));
 }
 
 export function updateMediaProgress(id, currentTime, duration) {
@@ -277,8 +412,271 @@ export function updateMediaPlaybackState(id, isPlaying) {
 
 export function seekMedia(id, targetTime) {
   const state = get(activeMedia);
-  if (state && state.id === id && state.element) {
-    state.element.currentTime = targetTime;
-    activeMedia.update((s) => (s ? { ...s, currentTime: targetTime } : null));
+  if (!state) return;
+  const clampedTime = Math.max(0, targetTime);
+  if (state.element) {
+    try { state.element.currentTime = clampedTime; } catch {}
+  }
+  if (state.type === 'voice' && globalAudioElement) {
+    try { globalAudioElement.currentTime = clampedTime; } catch {}
+  }
+  if (state.type === 'video_note' && globalVideoElement) {
+    try { globalVideoElement.currentTime = clampedTime; } catch {}
+  }
+  activeMedia.update((s) => (s ? { ...s, currentTime: clampedTime } : null));
+}
+
+export async function resolvePlayableUrl(attach, chatId, messageId) {
+  if (!attach) return null;
+  const raw = attach.localPath || attach.url || attach.baseUrl || attach.fileUrl;
+  if (raw) {
+    return getProxiedMediaUrl(raw);
+  }
+
+  const vId = attach.videoId ?? attach.audioId ?? attach.id ?? attach.video_id;
+  if (vId && chatId && messageId) {
+    try {
+      const api = await getApiInstance();
+      const token = attach.videoToken ?? attach.token ?? null;
+      const res = await api.getVideoById(chatId, messageId, vId, token);
+      const qualityPriority = ['MP4_720', 'MP4_480', 'MP4_360', 'MP4_240', 'MP4_1080', 'OGG', 'MP3', 'AUDIO', 'audio', 'EXTERNAL', 'url', 'baseUrl', 'fileUrl'];
+      let picked = null;
+      for (const q of qualityPriority) {
+        if (res && res[q]) { picked = res[q]; break; }
+      }
+      if (!picked && res && res.HLS) picked = res.HLS;
+      if (!picked && res && typeof res === 'object') {
+        picked = Object.values(res).find(v => typeof v === 'string' && (v.startsWith('http://') || v.startsWith('https://')));
+      }
+      if (picked) {
+        return getProxiedMediaUrl(picked);
+      }
+    } catch {}
+  }
+  return null;
+}
+
+function parseMediaItems(messages, chatId) {
+  if (!messages || !Array.isArray(messages)) return [];
+  const items = [];
+  for (const m of messages) {
+    if (!m || !m.attaches || !Array.isArray(m.attaches)) continue;
+    for (const attach of m.attaches) {
+      const type = (attach._type || attach.type || '').toUpperCase();
+      const vType = Number(attach.videoType ?? attach.video_type);
+      if (type === 'AUDIO' || type === 'VOICE') {
+        const dur = attach.duration ? (attach.duration > 120 ? attach.duration / 1000 : attach.duration) : 0;
+        const id = String(m.id ?? attach.audioId ?? attach.videoId ?? attach.token ?? Math.random());
+        items.push({
+          id,
+          chatId: chatId || m.chatId,
+          messageId: m.id,
+          type: 'voice',
+          duration: dur,
+          time: Number(m.time || m.created_at || 0),
+          senderName: m.senderName || (m.sender ? String(m.sender) : ''),
+          senderId: m.sender,
+          attach,
+          title: 'Голосовое сообщение',
+        });
+      } else if (type === 'VIDEO' && (vType === 1 || attach.isNote || attach.videoType === 'VIDEO_NOTE' || attach.is_note)) {
+        const dur = attach.duration ? (attach.duration > 120 ? attach.duration / 1000 : attach.duration) : 0;
+        const id = String(m.id ?? attach.videoId ?? attach.token ?? Math.random());
+        items.push({
+          id,
+          chatId: chatId || m.chatId,
+          messageId: m.id,
+          type: 'video_note',
+          duration: dur,
+          time: Number(m.time || m.created_at || 0),
+          senderName: m.senderName || (m.sender ? String(m.sender) : ''),
+          senderId: m.sender,
+          attach,
+          title: 'Видеосообщение',
+        });
+      }
+    }
+  }
+  items.sort((a, b) => (a.time || 0) - (b.time || 0));
+  return items;
+}
+
+export async function buildChatPlaylist(chatId, currentMessageId, initialMessages = []) {
+  if (!initialMessages || initialMessages.length === 0) {
+    initialMessages = get(activeChatMessages) || [];
+  }
+  let combined = parseMediaItems(initialMessages, chatId);
+
+  const cur = get(activeMedia);
+  if (cur && (cur.chatId === chatId || !cur.chatId)) {
+    if (!combined.some(i => String(i.id) === String(cur.id) || (cur.messageId && String(i.messageId) === String(cur.messageId)))) {
+      combined.push({
+        id: cur.id,
+        chatId: chatId || cur.chatId,
+        messageId: cur.messageId,
+        type: cur.type,
+        duration: cur.duration || 0,
+        time: cur.time || Date.now(),
+        senderName: cur.senderName,
+        senderId: cur.senderId,
+        attach: cur.attach,
+        title: cur.title,
+      });
+      combined.sort((a, b) => (a.time || 0) - (b.time || 0));
+    }
+  }
+
+  try {
+    const api = await getApiInstance();
+    if (api && api.getChatMedia) {
+      const resp = await api.getChatMedia(chatId, currentMessageId, ['AUDIO', 'VIDEO'], 50, 50);
+      const list = (resp && Array.isArray(resp.messages)) ? resp.messages : (Array.isArray(resp) ? resp : []);
+      if (list.length > 0) {
+        const remote = parseMediaItems(list, chatId);
+        const seen = new Set(combined.map(i => `${i.messageId}_${i.type}`));
+        for (const it of remote) {
+          const key = `${it.messageId}_${it.type}`;
+          if (!seen.has(key)) {
+            seen.add(key);
+            combined.push(it);
+          }
+        }
+        combined.sort((a, b) => (a.time || 0) - (b.time || 0));
+      }
+    }
+  } catch {}
+
+  const currentIdx = combined.findIndex(
+    i => String(i.messageId) === String(currentMessageId) || (cur && String(i.id) === String(cur.id))
+  );
+
+  mediaPlaylist.set({
+    chatId,
+    items: combined,
+    currentIndex: currentIdx >= 0 ? currentIdx : 0,
+  });
+
+  return combined;
+}
+
+export async function playMedia(track, playlistContext = {}) {
+  const current = get(activeMedia);
+  if (current && current.id === track.id) {
+    togglePlayPause();
+    return;
+  }
+
+  let playUrl = track.url;
+  if (!playUrl && track.attach) {
+    playUrl = await resolvePlayableUrl(track.attach, track.chatId, track.messageId);
+  }
+
+  stopCurrentMedia();
+
+  const speed = getTrackSpeed(track.id);
+  const muted = isTrackMuted(track.id);
+  const vol = muted ? 0 : getTrackVolume(track.id);
+
+  const newState = {
+    ...track,
+    url: playUrl,
+    speed,
+    volume: vol,
+    muted,
+    isPlaying: true,
+    currentTime: 0,
+  };
+
+  activeMedia.set(newState);
+
+  const onPlayErr = () => {
+    updateMediaPlaybackState(track.id, false);
+  };
+
+  if (track.element) {
+    if (playUrl && (!track.element.src || !track.element.src.includes(playUrl))) {
+      track.element.src = playUrl;
+    }
+    track.element.currentTime = 0;
+    track.element.playbackRate = speed;
+    track.element.volume = vol;
+    track.element.muted = muted;
+    try {
+      const p = track.element.play();
+      if (p && typeof p.catch === 'function') p.catch(onPlayErr);
+    } catch {
+      onPlayErr();
+    }
+  } else if (track.type === 'voice' && globalAudioElement) {
+    if (playUrl) {
+      globalAudioElement.src = playUrl;
+      globalAudioElement.currentTime = 0;
+      globalAudioElement.playbackRate = speed;
+      globalAudioElement.volume = vol;
+      globalAudioElement.muted = muted;
+      try {
+        const p = globalAudioElement.play();
+        if (p && typeof p.catch === 'function') p.catch(onPlayErr);
+      } catch {
+        onPlayErr();
+      }
+    }
+  } else if (track.type === 'video_note' && globalVideoElement) {
+    if (playUrl) {
+      globalVideoElement.src = playUrl;
+      globalVideoElement.currentTime = 0;
+      globalVideoElement.playbackRate = speed;
+      globalVideoElement.volume = vol;
+      globalVideoElement.muted = muted;
+      try {
+        const p = globalVideoElement.play();
+        if (p && typeof p.catch === 'function') p.catch(onPlayErr);
+      } catch {
+        onPlayErr();
+      }
+    }
+  }
+
+  const effectiveChatId = playlistContext.chatId || track.chatId;
+  if (effectiveChatId) {
+    const listMessages = (playlistContext.messages && playlistContext.messages.length > 0)
+      ? playlistContext.messages
+      : (get(activeChatMessages) || []);
+    buildChatPlaylist(
+      effectiveChatId,
+      track.messageId,
+      listMessages
+    );
+  }
+}
+
+export async function playPlaylistItem(index) {
+  const pl = get(mediaPlaylist);
+  if (!pl || !pl.items || index < 0 || index >= pl.items.length) return;
+  const item = pl.items[index];
+  mediaPlaylist.update(p => ({ ...p, currentIndex: index }));
+  await playMedia(item, { chatId: pl.chatId, messages: pl.items });
+}
+
+export async function playNextMedia() {
+  const pl = get(mediaPlaylist);
+  if (!pl || !pl.items || pl.items.length === 0) {
+    stopCurrentMedia();
+    return;
+  }
+  const nextIdx = pl.currentIndex + 1;
+  if (nextIdx < pl.items.length) {
+    await playPlaylistItem(nextIdx);
+  } else {
+    stopCurrentMedia();
+  }
+}
+
+export async function playPrevMedia() {
+  const pl = get(mediaPlaylist);
+  if (!pl || !pl.items || pl.items.length === 0) return;
+  const prevIdx = pl.currentIndex - 1;
+  if (prevIdx >= 0) {
+    await playPlaylistItem(prevIdx);
   }
 }

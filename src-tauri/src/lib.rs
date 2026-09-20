@@ -92,6 +92,7 @@ pub fn run() {
             commands::search_public,
             commands::search_msg,
             commands::get_chats,
+            commands::get_chat_media,
             commands::get_sessions,
             commands::close_all_sessions,
             commands::get_photo_upload,

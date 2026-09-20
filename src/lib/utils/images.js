@@ -79,13 +79,11 @@ export function getProxiedMediaUrl(src) {
     if (
         src.startsWith("data:") ||
         src.startsWith("blob:") ||
-        src.startsWith("asset:") ||
-        src.startsWith("http://asset.localhost/") ||
         src.startsWith("http://127.0.0.1:11447/")
     ) {
         return src;
     }
-    if (src.startsWith("http://") || src.startsWith("https://")) {
+    if (src.startsWith("http://") || src.startsWith("https://") || src.startsWith("/") || src.startsWith("file://")) {
         return `http://127.0.0.1:11447/${encodeURIComponent(src)}`;
     }
     return convertFileSrc(src);
