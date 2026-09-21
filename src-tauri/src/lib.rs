@@ -66,6 +66,7 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            commands::get_system_trace_info,
             commands::get_video_secret,
             commands::init,
             commands::start_auth,
@@ -142,6 +143,7 @@ pub fn run() {
             files::read_file,
             files::write_file_string,
             files::write_file_bytes,
+            files::save_trace_zip,
             files::save_temp_media,
             files::prepare_video_for_preview,
             files::crop_video_note,

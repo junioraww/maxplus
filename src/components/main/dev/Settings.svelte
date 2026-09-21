@@ -5,6 +5,11 @@
     get as sessionGet,
     set as sessionSet,
   } from "$lib/stores/session";
+  import {
+    isTracing,
+    startTrace,
+    stopTraceAndExport,
+  } from "$lib/services/trace";
 
   let visualMarker = sessionGet("visualMarker");
 
@@ -29,6 +34,22 @@
   <a>Настройки отладки</a>
 
   <div class="buttons">
+    <div class="group">
+      <div
+        on:click={async () => {
+          if ($isTracing) {
+            sessionSet("devSettings", false);
+            await stopTraceAndExport();
+          } else {
+            sessionSet("devSettings", false);
+            await startTrace();
+          }
+        }}
+        class="button"
+      >
+        <a>{$isTracing ? "Остановить запись трейса" : "Запустить трассировку (full trace)"}</a>
+      </div>
+    </div>
     <div class="group">
       <div on:click={swapVisualMarker} class="button">
         <a>{visualMarker ? "Отключить" : "Включить"} визуальные маркеры</a>

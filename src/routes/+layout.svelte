@@ -20,6 +20,7 @@
   import GlobalMediaPlayer from "$components/media/GlobalMediaPlayer.svelte";
   import MediaPlaylistModal from "$components/media/MediaPlaylistModal.svelte";
   import VideoCropModal from "$components/media/VideoCropModal.svelte";
+  import TraceOverlay from "$components/main/dev/TraceOverlay.svelte";
   import { videoCropState, closeVideoCropModal } from "$lib/stores/videoCrop.js";
 
   import Session from "$lib/stores/session";
@@ -99,6 +100,7 @@
 <Alerts />
 <GlobalMediaPlayer />
 <MediaPlaylistModal />
+<TraceOverlay />
 
 {#if $videoCropState.isOpen}
   <VideoCropModal

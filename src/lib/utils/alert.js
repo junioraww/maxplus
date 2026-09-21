@@ -1,6 +1,6 @@
 import { writable } from 'svelte/store';
 
-import { error } from "$lib/stores/logs.js";
+import { error } from "../stores/logs.js";
 
 export const alerts = writable([]);
 
