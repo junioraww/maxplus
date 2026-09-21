@@ -746,7 +746,426 @@ test.describe('Video note cropping and media import features', () => {
     await expect(preloadTrack(nextItem)).resolves.not.toThrow();
     await expect(preloadTrack(null)).resolves.not.toThrow();
   });
+
+  test('video note fast-switch preserves src and transitions seamlessly without delay', async () => {
+    const {
+      activeMedia,
+      playMedia,
+      handOffToGlobal,
+      takeOverFromGlobal,
+      stopCurrentMedia,
+    } = await import('../src/lib/stores/mediaPlayback.js');
+    const { get } = await import('svelte/store');
+
+    let bubblePaused = false;
+    let bubblePlayed = false;
+    const bubbleEl = {
+      src: 'http://127.0.0.1:11447/synth_fast_switch.mp4',
+      currentTime: 4.5,
+      playbackRate: 1.0,
+      volume: 1.0,
+      muted: false,
+      readyState: 4,
+      play: () => {
+        bubblePlayed = true;
+        return Promise.resolve();
+      },
+      pause: () => {
+        bubblePaused = true;
+      },
+    };
+
+    let globalPlayed = false;
+    let globalPaused = false;
+    const globalEl = {
+      src: 'http://127.0.0.1:11447/synth_fast_switch.mp4',
+      currentTime: 0,
+      playbackRate: 1.0,
+      volume: 1.0,
+      muted: false,
+      readyState: 4,
+      play: () => {
+        globalPlayed = true;
+        return Promise.resolve();
+      },
+      pause: () => {
+        globalPaused = true;
+      },
+    };
+
+    const track = {
+      id: 'synth_switch_track_1',
+      chatId: 501,
+      messageId: 601,
+      type: 'video_note',
+      url: 'http://127.0.0.1:11447/synth_fast_switch.mp4',
+      duration: 15,
+      element: bubbleEl,
+    };
+
+    await playMedia(track, { chatId: 501 });
+    expect(get(activeMedia)?.isPlaying).toBe(true);
+    expect(get(activeMedia)?.isGlobalPlayback).toBe(false);
+
+    bubbleEl.currentTime = 4.5;
+
+    handOffToGlobal({
+      id: 'synth_switch_track_1',
+      type: 'video_note',
+      url: 'http://127.0.0.1:11447/synth_fast_switch.mp4',
+      currentTime: bubbleEl.currentTime,
+      duration: 15,
+      isPlaying: true,
+    });
+
+    expect(bubblePaused).toBe(true);
+    expect(get(activeMedia)?.isGlobalPlayback).toBe(true);
+    expect(get(activeMedia)?.currentTime).toBe(4.5);
+
+    takeOverFromGlobal('synth_switch_track_1', bubbleEl);
+
+    expect(get(activeMedia)?.isGlobalPlayback).toBe(false);
+    expect(get(activeMedia)?.element).toBe(bubbleEl);
+    expect(bubblePlayed).toBe(true);
+
+    stopCurrentMedia();
+    expect(get(activeMedia)).toBeNull();
+  });
+
+  test('resolvePlayableUrl deduplicates concurrent and repeated calls for same media', async () => {
+    const { resolvePlayableUrl } = await import('../src/lib/stores/mediaPlayback.js');
+
+    const syntheticAttach = {
+      _type: 'VIDEO',
+      videoType: 1,
+      videoId: 987654,
+      videoUrl: 'http://127.0.0.1:11447/synth_dedup.mp4',
+      duration: 12000,
+    };
+
+    const startTime = Date.now();
+    const [url1, url2] = await Promise.all([
+      resolvePlayableUrl(syntheticAttach, 100, 200),
+      resolvePlayableUrl(syntheticAttach, 100, 200),
+    ]);
+    const elapsed = Date.now() - startTime;
+
+    expect(url1).toBe('http://127.0.0.1:11447/synth_dedup.mp4');
+    expect(url2).toBe('http://127.0.0.1:11447/synth_dedup.mp4');
+    expect(elapsed).toBeLessThan(100);
+
+    const cachedUrl = await resolvePlayableUrl(syntheticAttach, 100, 200);
+    expect(cachedUrl).toBe('http://127.0.0.1:11447/synth_dedup.mp4');
+  });
 });
 
+test.describe('Canvas multi-sink and smooth audio cross-fading', () => {
+  test('registerVideoCanvas and unregisterVideoCanvas manage canvas sinks correctly', async () => {
+    const {
+      registerVideoCanvas,
+      unregisterVideoCanvas,
+      getVideoCanvases,
+    } = await import('../src/lib/stores/mediaPlayback.js');
 
+    const mockCanvas1 = { id: 'canvas1', width: 200, height: 200, getContext: () => null };
+    const mockCanvas2 = { id: 'canvas2', width: 110, height: 110, getContext: () => null };
+
+    registerVideoCanvas('synth_canvas_track_1', mockCanvas1);
+    expect(getVideoCanvases('synth_canvas_track_1')).toHaveLength(1);
+    expect(getVideoCanvases('synth_canvas_track_1')[0]).toBe(mockCanvas1);
+
+    registerVideoCanvas('synth_canvas_track_1', mockCanvas2);
+    expect(getVideoCanvases('synth_canvas_track_1')).toHaveLength(2);
+
+    unregisterVideoCanvas('synth_canvas_track_1', mockCanvas1);
+    expect(getVideoCanvases('synth_canvas_track_1')).toHaveLength(1);
+    expect(getVideoCanvases('synth_canvas_track_1')[0]).toBe(mockCanvas2);
+
+    unregisterVideoCanvas('synth_canvas_track_1', mockCanvas2);
+    expect(getVideoCanvases('synth_canvas_track_1')).toHaveLength(0);
+  });
+
+  test('drawVideoFrameToCanvas draws centered square crop to 2D context', async () => {
+    const { drawVideoFrameToCanvas } = await import('../src/lib/stores/mediaPlayback.js');
+
+    let drawCalls = [];
+    const mockVideo = {
+      videoWidth: 1920,
+      videoHeight: 1080,
+    };
+
+    const mockCanvas = {
+      width: 200,
+      height: 200,
+      getContext: (type) => {
+        if (type !== '2d') return null;
+        return {
+          drawImage: (...args) => {
+            drawCalls.push(args);
+          },
+        };
+      },
+    };
+
+    drawVideoFrameToCanvas(mockVideo, mockCanvas);
+    expect(drawCalls.length).toBe(1);
+
+    const [v, sx, sy, sWidth, sHeight, dx, dy, dWidth, dHeight] = drawCalls[0];
+    expect(v).toBe(mockVideo);
+    expect(sx).toBe(420);
+    expect(sy).toBe(0);
+    expect(sWidth).toBe(1080);
+    expect(sHeight).toBe(1080);
+    expect(dx).toBe(0);
+    expect(dy).toBe(0);
+    expect(dWidth).toBe(200);
+    expect(dHeight).toBe(200);
+  });
+
+  test('renderAllCanvasesForTrack dispatches frames to all registered canvases', async () => {
+    const {
+      registerGlobalElements,
+      registerVideoCanvas,
+      unregisterVideoCanvas,
+      renderAllCanvasesForTrack,
+    } = await import('../src/lib/stores/mediaPlayback.js');
+
+    let canvas1Drawn = false;
+    let canvas2Drawn = false;
+
+    const mockCanvas1 = {
+      width: 200,
+      height: 200,
+      getContext: () => ({
+        drawImage: () => {
+          canvas1Drawn = true;
+        },
+      }),
+    };
+
+    const mockCanvas2 = {
+      width: 110,
+      height: 110,
+      getContext: () => ({
+        drawImage: () => {
+          canvas2Drawn = true;
+        },
+      }),
+    };
+
+    const mockVideo = {
+      videoWidth: 720,
+      videoHeight: 720,
+      readyState: 4,
+    };
+
+    registerGlobalElements(null, mockVideo);
+    registerVideoCanvas('synth_render_test', mockCanvas1);
+    registerVideoCanvas('synth_render_test', mockCanvas2);
+
+    renderAllCanvasesForTrack('synth_render_test');
+
+    expect(canvas1Drawn).toBe(true);
+    expect(canvas2Drawn).toBe(true);
+
+    unregisterVideoCanvas('synth_render_test', mockCanvas1);
+    unregisterVideoCanvas('synth_render_test', mockCanvas2);
+  });
+
+  test('fadeVolume smoothly interpolates volume and completes with callback', async () => {
+    const { fadeVolume } = await import('../src/lib/stores/mediaPlayback.js');
+
+    const mockAudio = {
+      volume: 1.0,
+    };
+
+    let completed = false;
+    await new Promise((resolve) => {
+      fadeVolume(mockAudio, 1.0, 0.0, 40, () => {
+        completed = true;
+        resolve();
+      });
+    });
+
+    expect(completed).toBe(true);
+    expect(mockAudio.volume).toBeCloseTo(0.0, 1);
+  });
+
+  test('smooth audio cross-fading stops outgoing and begins incoming', async () => {
+    const {
+      registerGlobalElements,
+      playMedia,
+      stopCurrentMedia,
+    } = await import('../src/lib/stores/mediaPlayback.js');
+
+    let voicePaused = false;
+    let voiceVolumeLog = [];
+    const mockAudio = {
+      src: '',
+      volume: 1.0,
+      currentTime: 0,
+      paused: false,
+      playbackRate: 1.0,
+      muted: false,
+      play: () => {
+        mockAudio.paused = false;
+        return Promise.resolve();
+      },
+      pause: () => {
+        voicePaused = true;
+        mockAudio.paused = true;
+      },
+      load: () => {},
+      removeAttribute: () => {},
+    };
+
+    let videoPlayed = false;
+    const mockVideo = {
+      src: '',
+      volume: 0,
+      currentTime: 0,
+      paused: true,
+      playbackRate: 1.0,
+      muted: false,
+      readyState: 4,
+      videoWidth: 600,
+      videoHeight: 600,
+      play: () => {
+        videoPlayed = true;
+        mockVideo.paused = false;
+        return Promise.resolve();
+      },
+      pause: () => {
+        mockVideo.paused = true;
+      },
+      load: () => {},
+      removeAttribute: () => {},
+    };
+
+    registerGlobalElements(mockAudio, mockVideo);
+
+    await playMedia({
+      id: 'synth_voice_fade',
+      chatId: 99,
+      type: 'voice',
+      url: 'http://127.0.0.1:11447/synth_voice.ogg',
+      duration: 5,
+      element: mockAudio,
+    });
+
+    expect(mockAudio.src).toBe('http://127.0.0.1:11447/synth_voice.ogg');
+
+    await playMedia({
+      id: 'synth_video_fade',
+      chatId: 99,
+      type: 'video_note',
+      url: 'http://127.0.0.1:11447/synth_video.mp4',
+      duration: 10,
+      element: mockVideo,
+    });
+
+    expect(videoPlayed).toBe(true);
+    expect(mockVideo.src).toBe('http://127.0.0.1:11447/synth_video.mp4');
+
+    stopCurrentMedia();
+  });
+
+  test('fast canvas switch seamlessly transitions between chat bubble canvas and PiP canvas without reloading video', async () => {
+    const {
+      activeMedia,
+      registerGlobalElements,
+      registerVideoCanvas,
+      unregisterVideoCanvas,
+      getVideoCanvases,
+      playMedia,
+      handOffToGlobal,
+      takeOverFromGlobal,
+      stopCurrentMedia,
+    } = await import('../src/lib/stores/mediaPlayback.js');
+    const { get } = await import('svelte/store');
+
+    const mockMasterVideo = {
+      src: '',
+      currentTime: 3.0,
+      playbackRate: 1.0,
+      volume: 1.0,
+      muted: false,
+      readyState: 4,
+      videoWidth: 480,
+      videoHeight: 480,
+      play: () => Promise.resolve(),
+      pause: () => {},
+      load: () => {},
+      removeAttribute: () => {},
+    };
+
+    registerGlobalElements(null, mockMasterVideo);
+
+    let chatFrames = 0;
+    const chatCanvas = {
+      width: 200,
+      height: 200,
+      getContext: () => ({
+        drawImage: () => {
+          chatFrames++;
+        },
+      }),
+    };
+
+    let pipFrames = 0;
+    const pipCanvas = {
+      width: 110,
+      height: 110,
+      getContext: () => ({
+        drawImage: () => {
+          pipFrames++;
+        },
+      }),
+    };
+
+    const track = {
+      id: 'synth_continuous_note',
+      chatId: 10,
+      messageId: 20,
+      type: 'video_note',
+      url: 'http://127.0.0.1:11447/synth_continuous.mp4',
+      duration: 12,
+    };
+
+    registerVideoCanvas(track.id, chatCanvas);
+    await playMedia(track, { chatId: 10 });
+
+    expect(get(activeMedia)?.isPlaying).toBe(true);
+    expect(get(activeMedia)?.isGlobalPlayback).toBe(false);
+    expect(mockMasterVideo.src).toBe('http://127.0.0.1:11447/synth_continuous.mp4');
+
+    unregisterVideoCanvas(track.id, chatCanvas);
+    registerVideoCanvas(track.id, pipCanvas);
+    handOffToGlobal({
+      id: track.id,
+      type: 'video_note',
+      url: track.url,
+      currentTime: 3.0,
+      duration: 12,
+      isPlaying: true,
+    });
+
+    expect(get(activeMedia)?.isGlobalPlayback).toBe(true);
+    expect(getVideoCanvases(track.id)).toHaveLength(1);
+    expect(getVideoCanvases(track.id)[0]).toBe(pipCanvas);
+    expect(mockMasterVideo.src).toBe('http://127.0.0.1:11447/synth_continuous.mp4');
+
+    takeOverFromGlobal(track.id);
+    registerVideoCanvas(track.id, chatCanvas);
+    unregisterVideoCanvas(track.id, pipCanvas);
+
+    expect(get(activeMedia)?.isGlobalPlayback).toBe(false);
+    expect(getVideoCanvases(track.id)).toHaveLength(1);
+    expect(getVideoCanvases(track.id)[0]).toBe(chatCanvas);
+
+    stopCurrentMedia();
+    unregisterVideoCanvas(track.id, chatCanvas);
+    expect(get(activeMedia)).toBeNull();
+  });
+});
 

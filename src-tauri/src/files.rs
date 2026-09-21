@@ -1,4 +1,10 @@
+use std::collections::HashMap;
+use std::sync::{Arc, LazyLock};
+use tokio::sync::Mutex;
 use crate::state::AppState;
+
+static IN_FLIGHT_CACHE: LazyLock<Mutex<HashMap<String, Arc<tokio::sync::Notify>>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
 
 fn unwrap_media_source(raw: &str) -> (Option<String>, Option<String>) {
     let mut s = raw.to_string();
@@ -580,13 +586,67 @@ pub async fn cache_url(
     src: String,
     chat_id: Option<i64>,
     media_type: Option<String>,
+    key: Option<String>,
 ) -> Result<String, String> {
     let acc = account.unwrap_or(0);
+    let cache_key = key.unwrap_or_else(|| {
+        if let Some(pos) = src.find('?') {
+            src[..pos].to_string()
+        } else {
+            src.clone()
+        }
+    });
+
+    if let Ok(Some(existing_path)) = crate::stores::get_cached_file(app.clone(), acc, cache_key.clone()) {
+        if std::path::Path::new(&existing_path).exists() {
+            return Ok(existing_path);
+        }
+    }
     if let Ok(Some(existing_path)) = crate::stores::get_cached_file(app.clone(), acc, src.clone()) {
         if std::path::Path::new(&existing_path).exists() {
             return Ok(existing_path);
         }
     }
+
+    let notify = {
+        let mut map = IN_FLIGHT_CACHE.lock().await;
+        if let Some(n) = map.get(&cache_key) {
+            Some(Arc::clone(n))
+        } else {
+            let n = Arc::new(tokio::sync::Notify::new());
+            map.insert(cache_key.clone(), Arc::clone(&n));
+            None
+        }
+    };
+
+    if let Some(n) = notify {
+        n.notified().await;
+        if let Ok(Some(existing_path)) = crate::stores::get_cached_file(app.clone(), acc, cache_key.clone()) {
+            if std::path::Path::new(&existing_path).exists() {
+                return Ok(existing_path);
+            }
+        }
+        if let Ok(Some(existing_path)) = crate::stores::get_cached_file(app.clone(), acc, src.clone()) {
+            if std::path::Path::new(&existing_path).exists() {
+                return Ok(existing_path);
+            }
+        }
+    }
+
+    struct CacheCleanupGuard(String);
+    impl Drop for CacheCleanupGuard {
+        fn drop(&mut self) {
+            let k = self.0.clone();
+            tokio::spawn(async move {
+                let mut map = IN_FLIGHT_CACHE.lock().await;
+                if let Some(n) = map.remove(&k) {
+                    n.notify_waiters();
+                }
+            });
+        }
+    }
+
+    let _guard = CacheCleanupGuard(cache_key.clone());
 
     let client = rumax::shared_http_client();
     let resp = client.get(&src)
@@ -599,7 +659,12 @@ pub async fn cache_url(
     }
 
     let bytes = resp.bytes().await.map_err(|e| e.to_string())?.to_vec();
-    crate::stores::set_cached_file_with_meta(app, acc, src, bytes, chat_id, media_type)
+    let size_kb = (bytes.len() + 1023) / 1024;
+    let saved_path = crate::stores::set_cached_file_with_meta(app.clone(), acc, cache_key.clone(), bytes, chat_id, media_type.clone())?;
+    if cache_key != src {
+        let _ = crate::stores::add_cache_index_alias(app, acc, src, saved_path.clone(), size_kb, chat_id, media_type);
+    }
+    Ok(saved_path)
 }
 
 #[tauri::command]
