@@ -166,6 +166,26 @@ fn handle_request(request: tiny_http::Request, client: &reqwest::blocking::Clien
         return;
     }
 
+    if url.starts_with("http://") || url.starts_with("https://") {
+        let clean = if let Some(pos) = url.find('?') {
+            &url[..pos]
+        } else {
+            &url[..]
+        };
+        if let Some(data_dir) = dirs::data_local_dir().or_else(dirs::data_dir) {
+            let p1 = data_dir.join("org.meowkie.max/cache/0/files").join(crate::stores::hash(&url));
+            if p1.exists() && std::fs::metadata(&p1).map(|m| m.len()).unwrap_or(0) > 0 {
+                handle_local_file(request, &p1.to_string_lossy());
+                return;
+            }
+            let p2 = data_dir.join("org.meowkie.max/cache/0/files").join(crate::stores::hash(clean));
+            if p2.exists() && std::fs::metadata(&p2).map(|m| m.len()).unwrap_or(0) > 0 {
+                handle_local_file(request, &p2.to_string_lossy());
+                return;
+            }
+        }
+    }
+
     let mut rb = client
         .get(&url)
         .header(
@@ -305,6 +325,12 @@ fn handle_request(request: tiny_http::Request, client: &reqwest::blocking::Clien
 
     if let Some(cr) = res.headers().get(CONTENT_RANGE) {
         if let Ok(h) = Header::from_bytes(&b"Content-Range"[..], cr.as_bytes()) {
+            headers.push(h);
+        }
+    }
+
+    if let Some(cl) = res.headers().get(CONTENT_LENGTH) {
+        if let Ok(h) = Header::from_bytes(&b"Content-Length"[..], cl.as_bytes()) {
             headers.push(h);
         }
     }

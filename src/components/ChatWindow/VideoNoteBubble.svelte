@@ -1,6 +1,6 @@
 <script>
   import { onDestroy, onMount } from 'svelte';
-  import { convertFileSrc, invoke } from '@tauri-apps/api/core';
+  import { invoke } from '@tauri-apps/api/core';
   import { save } from '@tauri-apps/plugin-dialog';
   import { showAlert } from '$lib/utils/alert';
   import { getProxiedMediaUrl } from '$lib/utils/images';
@@ -8,13 +8,13 @@
   import {
     activeMedia,
     trackSettings,
-    updateMediaProgress,
-    updateMediaPlaybackState,
     seekMedia,
     playMedia,
     pauseCurrentMedia,
     resumeCurrentMedia,
-    playNextMedia,
+    registerVideoCanvas,
+    unregisterVideoCanvas,
+    getMasterMediaCurrentTime,
     handOffToGlobal,
     takeOverFromGlobal,
   } from '$lib/stores/mediaPlayback';
@@ -25,7 +25,7 @@
   export let isMe = false;
 
   let containerEl;
-  let videoEl;
+  let canvasEl;
   let isHovered = false;
   let fetchedUrl = null;
   let isVisibleOnScreen = true;
@@ -40,19 +40,17 @@
   $: attachDur = attach.duration
     ? (attach.duration > 120 ? attach.duration / 1000 : attach.duration)
     : ($activeMedia?.duration || 0);
-  $: duration = (videoEl && videoEl.duration && isFinite(videoEl.duration) && videoEl.duration > 0 && (!attachDur || Math.abs(videoEl.duration - attachDur) < 2))
-    ? videoEl.duration
-    : (attachDur || (videoEl?.duration && isFinite(videoEl.duration) ? videoEl.duration : 0));
+  $: duration = attachDur || ($activeMedia?.duration || 0);
 
   let animFrame = null;
   let localProgress = 0;
   let localTime = 0;
 
   function updateLocalProgress() {
-    if (isPlaying && videoEl) {
-      const cur = videoEl.currentTime || 0;
-      const dur = (videoEl.duration && isFinite(videoEl.duration) && videoEl.duration > 0)
-        ? videoEl.duration
+    if (isPlaying) {
+      const cur = getMasterMediaCurrentTime();
+      const dur = ($activeMedia?.duration && isFinite($activeMedia.duration) && $activeMedia.duration > 0)
+        ? $activeMedia.duration
         : duration;
       if (dur > 0) {
         localProgress = Math.min(1, Math.max(0, cur / dur));
@@ -74,10 +72,10 @@
       cancelAnimationFrame(animFrame);
       animFrame = null;
     }
-    if (isCurrentTrack && videoEl) {
-      const cur = videoEl.currentTime || ($activeMedia?.currentTime ?? 0);
-      const dur = (videoEl.duration && isFinite(videoEl.duration) && videoEl.duration > 0)
-        ? videoEl.duration
+    if (isCurrentTrack) {
+      const cur = getMasterMediaCurrentTime();
+      const dur = ($activeMedia?.duration && isFinite($activeMedia.duration) && $activeMedia.duration > 0)
+        ? $activeMedia.duration
         : duration;
       if (dur > 0) {
         localProgress = Math.min(1, Math.max(0, cur / dur));
@@ -87,6 +85,10 @@
       localProgress = 0;
       localTime = 0;
     }
+  }
+
+  $: if (canvasEl && mId) {
+    registerVideoCanvas(mId, canvasEl);
   }
 
   let previewDataUrl = null;
@@ -127,12 +129,6 @@
   let resolvedVideoUrl = null;
   $: resolvedVideoUrl = toPlayableUrl(rawUrl);
 
-  $: if (resolvedVideoUrl && videoEl && (!videoEl.src || videoEl.src === '' || (!isPlaying && !isCurrentTrack))) {
-    if (videoEl.src !== resolvedVideoUrl) {
-      videoEl.src = resolvedVideoUrl;
-    }
-  }
-
   const size = 200;
   const strokeWidth = 4;
   const radius = (size - strokeWidth) / 2 - 1;
@@ -148,85 +144,120 @@
     return `${m}:${s < 10 ? '0' : ''}${s}`;
   }
 
+  const bubbleInFlightMap = new Map();
+
   async function ensureVideoUrl() {
-    if (fetchedUrl) return toPlayableUrl(fetchedUrl);
+    if (fetchedUrl && (fetchedUrl.startsWith('/') || fetchedUrl.startsWith('file://') || fetchedUrl.includes('/cache/'))) {
+      return toPlayableUrl(fetchedUrl);
+    }
     if (attach.localPath) return toPlayableUrl(attach.localPath);
     const vId = attach.videoId ?? attach.id ?? attach.video_id ?? 0;
     const token = attach.videoToken ?? attach.token ?? null;
-    if ((vId || token) && chatId != null && messageId != null) {
-      try {
-        const response = await $API.getVideoById(chatId, messageId, vId || 0, token);
-        const qualityPriority = ['MP4_720', 'MP4_480', 'MP4_360', 'MP4_240', 'MP4_144', 'MP4_1080', 'EXTERNAL', 'url', 'baseUrl', 'fileUrl'];
-        let picked = null;
-        for (const q of qualityPriority) {
-          if (response && response[q]) { picked = response[q]; break; }
-        }
-        if (!picked && response && response.HLS) picked = response.HLS;
-        if (!picked && response && typeof response === 'object') {
-          picked = Object.values(response).find(v => typeof v === 'string' && (v.startsWith('http://') || v.startsWith('https://')) && !v.endsWith('.jpg') && !v.endsWith('.png') && !v.endsWith('.webp'));
-        }
-        if (picked) {
-          fetchedUrl = picked;
-          if (picked.startsWith('http://') || picked.startsWith('https://')) {
-            invoke('cache_url', {
-              src: picked,
-              chatId: chatId != null ? Number(chatId) : null,
-              mediaType: 'video_note',
-            }).then((cached) => {
-              if (cached) fetchedUrl = cached;
-            }).catch(() => {});
+    const cacheKey = `video_note_${chatId ?? 0}_${messageId ?? 0}_${vId || '0'}`;
+
+    if (bubbleInFlightMap.has(cacheKey)) {
+      return await bubbleInFlightMap.get(cacheKey);
+    }
+
+    const task = (async () => {
+      if ((vId || token) && chatId != null && messageId != null) {
+        try {
+          const response = await $API.getVideoById(chatId, messageId, vId || 0, token);
+          const qualityPriority = ['MP4_720', 'MP4_480', 'MP4_360', 'MP4_240', 'MP4_144', 'MP4_1080', 'EXTERNAL', 'url', 'baseUrl', 'fileUrl'];
+          let picked = null;
+          for (const q of qualityPriority) {
+            if (response && response[q]) { picked = response[q]; break; }
           }
-          return toPlayableUrl(picked);
-        }
-      } catch (err) {}
-    }
-    const fallback = attach.videoUrl || attach.fileUrl || attach.url || attach.baseUrl;
-    if (fallback && (fallback.startsWith('http://') || fallback.startsWith('https://'))) {
-      fetchedUrl = fallback;
-      invoke('cache_url', {
-        src: fallback,
-        chatId: chatId != null ? Number(chatId) : null,
-        mediaType: 'video_note',
-      }).then((cached) => {
-        if (cached) fetchedUrl = cached;
-      }).catch(() => {});
-      return toPlayableUrl(fallback);
-    }
-    return resolvedVideoUrl || toPlayableUrl(rawUrl);
+          if (!picked && response && response.HLS) picked = response.HLS;
+          if (!picked && response && typeof response === 'object') {
+            picked = Object.values(response).find(v => typeof v === 'string' && (v.startsWith('http://') || v.startsWith('https://')) && !v.endsWith('.jpg') && !v.endsWith('.png') && !v.endsWith('.webp'));
+          }
+          if (picked) {
+            fetchedUrl = picked;
+            if (picked.startsWith('http://') || picked.startsWith('https://')) {
+              invoke('cache_url', {
+                src: picked,
+                chatId: chatId != null ? Number(chatId) : null,
+                mediaType: 'video_note',
+                key: cacheKey,
+              }).then((cached) => {
+                if (cached) fetchedUrl = cached;
+              }).catch(() => {});
+            }
+            return toPlayableUrl(picked);
+          }
+        } catch (err) {}
+      }
+      const fallback = attach.videoUrl || attach.fileUrl || attach.url || attach.baseUrl;
+      if (fallback && (fallback.startsWith('http://') || fallback.startsWith('https://'))) {
+        fetchedUrl = fallback;
+        invoke('cache_url', {
+          src: fallback,
+          chatId: chatId != null ? Number(chatId) : null,
+          mediaType: 'video_note',
+          key: cacheKey,
+        }).then((cached) => {
+          if (cached) fetchedUrl = cached;
+        }).catch(() => {});
+        return toPlayableUrl(fallback);
+      }
+      return resolvedVideoUrl || toPlayableUrl(rawUrl);
+    })().finally(() => {
+      bubbleInFlightMap.delete(cacheKey);
+    });
+
+    bubbleInFlightMap.set(cacheKey, task);
+    return await task;
   }
+
+  let isLoading = false;
 
   async function handleTogglePlay() {
     if (isCurrentTrack) {
       if (isPlaying) {
         pauseCurrentMedia();
-        if (videoEl) videoEl.pause();
       } else {
         resumeCurrentMedia();
-        if (videoEl) videoEl.play().catch(() => {});
       }
       return;
     }
 
-    const url = (await ensureVideoUrl()) || resolvedVideoUrl || (rawUrl ? toPlayableUrl(rawUrl) : null);
-    if (!url) return;
-
-    if (videoEl && videoEl.src !== url) {
-      videoEl.src = url;
+    const currentUrl = resolvedVideoUrl || (rawUrl ? toPlayableUrl(rawUrl) : null);
+    if (currentUrl) {
+      await playMedia({
+        id: mId,
+        chatId,
+        messageId,
+        type: 'video_note',
+        url: currentUrl,
+        poster: resolvedPosterUrl,
+        duration,
+        senderName: isMe ? 'Вы' : (attach.senderName || 'Собеседник'),
+        title: 'Видеосообщение',
+        attach,
+      }, { chatId, currentMessageId: messageId });
+      return;
     }
 
-    await playMedia({
-      id: mId,
-      chatId,
-      messageId,
-      type: 'video_note',
-      url,
-      poster: resolvedPosterUrl,
-      duration,
-      senderName: isMe ? 'Вы' : (attach.senderName || 'Собеседник'),
-      title: 'Видеосообщение',
-      attach,
-      element: videoEl,
-    }, { chatId, currentMessageId: messageId });
+    isLoading = true;
+    try {
+      const url = await ensureVideoUrl();
+      if (!url) return;
+      await playMedia({
+        id: mId,
+        chatId,
+        messageId,
+        type: 'video_note',
+        url,
+        poster: resolvedPosterUrl,
+        duration,
+        senderName: isMe ? 'Вы' : (attach.senderName || 'Собеседник'),
+        title: 'Видеосообщение',
+        attach,
+      }, { chatId, currentMessageId: messageId });
+    } finally {
+      isLoading = false;
+    }
   }
 
   async function handleProgressClick(e) {
@@ -253,40 +284,25 @@
     localTime = targetTime;
 
     if (!isCurrentTrack) {
-      const url = (await ensureVideoUrl()) || resolvedVideoUrl || (rawUrl ? toPlayableUrl(rawUrl) : null);
-      if (url && videoEl && videoEl.src !== url) {
-        videoEl.src = url;
+      const url = resolvedVideoUrl || (rawUrl ? toPlayableUrl(rawUrl) : null);
+      if (url) {
+        await playMedia({
+          id: mId,
+          chatId,
+          messageId,
+          type: 'video_note',
+          url,
+          poster: resolvedPosterUrl,
+          duration,
+          senderName: isMe ? 'Вы' : (attach.senderName || 'Собеседник'),
+          title: 'Видеосообщение',
+          attach,
+        }, { chatId, currentMessageId: messageId });
       }
-      await playMedia({
-        id: mId,
-        chatId,
-        messageId,
-        type: 'video_note',
-        url,
-        poster: resolvedPosterUrl,
-        duration,
-        senderName: isMe ? 'Вы' : (attach.senderName || 'Собеседник'),
-        title: 'Видеосообщение',
-        attach,
-        element: videoEl,
-      }, { chatId, currentMessageId: messageId });
-    }
-
-    if (videoEl) {
-      if (videoEl.readyState >= 1) {
-        try { videoEl.currentTime = targetTime; } catch {}
-      } else {
-        videoEl.addEventListener('loadedmetadata', () => {
-          try { videoEl.currentTime = targetTime; } catch {}
-        }, { once: true });
-      }
+      ensureVideoUrl().catch(() => {});
     }
 
     seekMedia(mId, targetTime);
-  }
-
-  $: if (isCurrentTrack && videoEl && isVisibleOnScreen && ($activeMedia?.isGlobalPlayback || $activeMedia?.element !== videoEl)) {
-    takeOverFromGlobal(mId, videoEl);
   }
 
   async function handleDownload() {
@@ -319,8 +335,11 @@
   }
 
   onMount(() => {
-    if (isCurrentTrack && videoEl && isVisibleOnScreen) {
-      takeOverFromGlobal(mId, videoEl);
+    if (!resolvedVideoUrl && !fetchedUrl) {
+      ensureVideoUrl().catch(() => {});
+    }
+    if (isCurrentTrack) {
+      takeOverFromGlobal(mId);
     }
     if (typeof IntersectionObserver !== 'undefined' && containerEl) {
       observer = new IntersectionObserver((entries) => {
@@ -328,23 +347,20 @@
           isVisibleOnScreen = entry.isIntersecting && entry.intersectionRatio > 0.05;
           if (isCurrentTrack) {
             if (!isVisibleOnScreen && isPlaying) {
-              if (videoEl) {
-                try { videoEl.pause(); } catch {}
-              }
               handOffToGlobal({
                 id: mId,
                 type: 'video_note',
                 url: resolvedVideoUrl || rawUrl,
                 poster: resolvedPosterUrl,
-                currentTime: videoEl?.currentTime || localTime,
+                currentTime: localTime,
                 duration,
                 speed: currentSpeed,
                 volume: currentVolume,
                 muted: currentMuted,
                 isPlaying: true,
               });
-            } else if (isVisibleOnScreen && $activeMedia?.isGlobalPlayback && videoEl) {
-              takeOverFromGlobal(mId, videoEl);
+            } else if (isVisibleOnScreen && $activeMedia?.isGlobalPlayback) {
+              takeOverFromGlobal(mId);
             }
           }
         }
@@ -365,16 +381,16 @@
       observer.disconnect();
       observer = null;
     }
+    if (canvasEl && mId) {
+      unregisterVideoCanvas(mId, canvasEl);
+    }
     if (isCurrentTrack) {
-      if (videoEl) {
-        try { videoEl.pause(); } catch {}
-      }
       handOffToGlobal({
         id: mId,
         type: 'video_note',
         url: resolvedVideoUrl || rawUrl,
         poster: resolvedPosterUrl,
-        currentTime: videoEl?.currentTime || localTime,
+        currentTime: localTime,
         duration,
         speed: currentSpeed,
         volume: currentVolume,
@@ -422,22 +438,21 @@
     </svg>
 
     <div class="video-crop-container">
-      <video
-        bind:this={videoEl}
-        poster={resolvedPosterUrl}
-        playsinline
-        preload="metadata"
-        on:timeupdate={() => updateMediaProgress(mId, videoEl?.currentTime || 0, videoEl?.duration || duration)}
-        on:play={() => updateMediaPlaybackState(mId, true)}
-        on:pause={() => updateMediaPlaybackState(mId, false)}
-        on:ended={() => {
-          updateMediaPlaybackState(mId, false);
-          if (videoEl) videoEl.currentTime = 0;
-          playNextMedia();
-        }}
-      ></video>
+      {#if resolvedPosterUrl}
+        <img
+          class="video-poster-img"
+          src={resolvedPosterUrl}
+          alt=""
+        />
+      {/if}
+      <canvas
+        bind:this={canvasEl}
+        width={size}
+        height={size}
+        class="video-canvas"
+      ></canvas>
 
-      {#if attach.loading}
+      {#if attach.loading || isLoading}
         <div class="video-loading-overlay">
           <div class="video-loading-spinner"></div>
         </div>
@@ -525,10 +540,24 @@
     justify-content: center;
   }
 
-  .video-crop-container video {
+  .video-poster-img {
+    position: absolute;
+    inset: 0;
     width: 100%;
     height: 100%;
     object-fit: cover;
+    border-radius: 50%;
+    pointer-events: none;
+  }
+
+  .video-canvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+    border-radius: 50%;
   }
 
   .play-overlay {
@@ -616,46 +645,5 @@
 
   .note-btn:hover {
     background: rgba(255, 255, 255, 0.25);
-  }
-
-  .speed-btn {
-    font-weight: 600;
-  }
-
-  .speed-btn.snapped {
-    color: #38bdf8;
-  }
-
-  .speed-control-wrapper {
-    position: relative;
-    display: flex;
-    align-items: center;
-  }
-
-  .volume-control-wrapper {
-    position: relative;
-    display: flex;
-    align-items: center;
-  }
-
-  .vol-tooltip {
-    position: absolute;
-    bottom: 125%;
-    left: 50%;
-    transform: translateX(-50%);
-    background: rgba(15, 23, 42, 0.9);
-    color: #38bdf8;
-    padding: 3px 6px;
-    border-radius: 4px;
-    font-size: 11px;
-    font-weight: bold;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
-    pointer-events: none;
-    white-space: nowrap;
-    z-index: 100;
-  }
-
-  .vol-btn.muted {
-    opacity: 0.6;
   }
 </style>

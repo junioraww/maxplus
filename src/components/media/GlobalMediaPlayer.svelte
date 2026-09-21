@@ -3,17 +3,18 @@
   import {
     activeMedia,
     registerGlobalElements,
+    registerVideoCanvas,
+    unregisterVideoCanvas,
     updateMediaPlaybackState,
     updateMediaProgress,
     playNextMedia,
     stopCurrentMedia,
     togglePlayPause,
-    seekMedia,
   } from '$lib/stores/mediaPlayback';
-  import { openChat } from '$lib/stores/session';
 
   let audioEl;
   let videoEl;
+  let pipCanvasEl;
   let animId = null;
 
   let isPipDragging = false;
@@ -32,8 +33,21 @@
     registerGlobalElements(audioEl, videoEl);
   }
 
+  $: pipVisible = !!($activeMedia && $activeMedia.type === 'video_note' && $activeMedia.isGlobalPlayback);
+
+  $: if (pipCanvasEl && $activeMedia?.id) {
+    if (pipVisible) {
+      registerVideoCanvas($activeMedia.id, pipCanvasEl);
+    } else {
+      unregisterVideoCanvas($activeMedia.id, pipCanvasEl);
+    }
+  }
+
   onDestroy(() => {
     if (animId) cancelAnimationFrame(animId);
+    if (pipCanvasEl && $activeMedia?.id) {
+      unregisterVideoCanvas($activeMedia.id, pipCanvasEl);
+    }
   });
 
   function startSmoothTicker() {
@@ -43,7 +57,7 @@
       if (state && state.isPlaying) {
         let cur = 0;
         let dur = state.duration || 0;
-        const el = state.element || (state.type === 'voice' ? audioEl : videoEl);
+        const el = state.type === 'voice' ? audioEl : (videoEl || state.element);
         if (el && el.currentTime !== undefined) {
           cur = el.currentTime;
           if (el.duration && isFinite(el.duration) && el.duration > 0) {
@@ -101,7 +115,7 @@
     window.removeEventListener('pointerup', handlePipPointerUp);
   }
 
-  function handlePipClick(e) {
+  function handlePipClick() {
     if (hasDragged) return;
     togglePlayPause();
   }
@@ -116,30 +130,37 @@
   style="display: none;"
 ></audio>
 
+<video
+  bind:this={videoEl}
+  playsinline
+  preload="auto"
+  on:play={() => $activeMedia && updateMediaPlaybackState($activeMedia.id, true)}
+  on:timeupdate={handleVideoTimeUpdate}
+  on:ended={handleEnded}
+  style="position: fixed; top: -9999px; left: -9999px; width: 1px; height: 1px; opacity: 0; pointer-events: none;"
+></video>
+
 <div
   class="global-video-pip"
-  class:visible={$activeMedia && $activeMedia.type === 'video_note' && $activeMedia.isGlobalPlayback}
+  class:visible={pipVisible}
   style="transform: translate({pipX}px, {pipY}px);"
   on:pointerdown={handlePipPointerDown}
   on:click={handlePipClick}
 >
   <div class="pip-video-circle">
-    <video
-      bind:this={videoEl}
-      playsinline
-      preload="auto"
-      on:play={() => $activeMedia && updateMediaPlaybackState($activeMedia.id, true)}
-      on:timeupdate={handleVideoTimeUpdate}
-      on:ended={handleEnded}
-    ></video>
-    <button
-      class="pip-close-btn"
-      on:click|stopPropagation={stopCurrentMedia}
-      title="Закрыть"
-    >
-      ✕
-    </button>
+    <canvas
+      bind:this={pipCanvasEl}
+      width={110}
+      height={110}
+    ></canvas>
   </div>
+  <button
+    class="pip-close-btn"
+    on:click|stopPropagation={stopCurrentMedia}
+    title="Закрыть"
+  >
+    ✕
+  </button>
 </div>
 
 <style>
@@ -154,6 +175,7 @@
     user-select: none;
     touch-action: none;
     display: none;
+    overflow: visible;
   }
   .global-video-pip.visible {
     display: block;
@@ -171,31 +193,36 @@
     border: 2px solid rgba(255, 255, 255, 0.8);
     background: #000;
   }
-  .pip-video-circle video {
+  .pip-video-circle canvas {
     width: 100%;
     height: 100%;
     object-fit: cover;
+    display: block;
+    border-radius: 50%;
   }
   .pip-close-btn {
     position: absolute;
-    top: 4px;
-    right: 4px;
-    width: 22px;
-    height: 22px;
+    top: -4px;
+    right: -4px;
+    width: 26px;
+    height: 26px;
     border-radius: 50%;
-    background: rgba(0, 0, 0, 0.65);
+    background: rgba(15, 23, 42, 0.92);
     color: #fff;
-    border: none;
+    border: 1.5px solid rgba(255, 255, 255, 0.6);
     cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 11px;
+    font-size: 13px;
     line-height: 1;
     padding: 0;
-    transition: background 0.15s;
+    z-index: 50;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+    transition: background 0.15s, transform 0.1s;
   }
   .pip-close-btn:hover {
-    background: rgba(230, 50, 50, 0.9);
+    background: rgba(239, 68, 68, 0.95);
+    transform: scale(1.1);
   }
 </style>

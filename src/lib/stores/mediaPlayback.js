@@ -25,9 +25,239 @@ let currentVideoElement = null;
 let globalAudioElement = null;
 let globalVideoElement = null;
 
+const activeVideoCanvases = new Map();
+const activeAudioFades = new Set();
+const playingAudioElements = new Set();
+
+let videoCallbackId = null;
+let videoRafId = null;
+
 export function registerGlobalElements(audio, video) {
   globalAudioElement = audio;
   globalVideoElement = video;
+}
+
+export function drawVideoFrameToCanvas(video, canvas) {
+  if (!video || !canvas) return;
+  const vw = video.videoWidth;
+  const vh = video.videoHeight;
+  if (!vw || !vh || vw <= 0 || vh <= 0) return;
+
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return;
+
+  const side = Math.min(vw, vh);
+  const sx = (vw - side) / 2;
+  const sy = (vh - side) / 2;
+  const cw = canvas.width || 200;
+  const ch = canvas.height || 200;
+
+  try {
+    ctx.drawImage(video, sx, sy, side, side, 0, 0, cw, ch);
+  } catch {}
+}
+
+export function renderAllCanvasesForTrack(id) {
+  if (!id || !globalVideoElement) return;
+  const canvases = activeVideoCanvases.get(String(id));
+  if (!canvases || canvases.size === 0) return;
+  if (globalVideoElement.readyState < 2 && globalVideoElement.videoWidth <= 0) return;
+  for (const canvas of canvases) {
+    drawVideoFrameToCanvas(globalVideoElement, canvas);
+  }
+}
+
+export function registerVideoCanvas(id, canvasEl) {
+  if (!id || !canvasEl) return;
+  const key = String(id);
+  if (!activeVideoCanvases.has(key)) {
+    activeVideoCanvases.set(key, new Set());
+  }
+  activeVideoCanvases.get(key).add(canvasEl);
+
+  const cur = get(activeMedia);
+  if (cur && String(cur.id) === key && globalVideoElement) {
+    if (globalVideoElement.readyState >= 2 || globalVideoElement.videoWidth > 0) {
+      drawVideoFrameToCanvas(globalVideoElement, canvasEl);
+    }
+  }
+}
+
+export function unregisterVideoCanvas(id, canvasEl) {
+  if (!id || !canvasEl) return;
+  const key = String(id);
+  const set = activeVideoCanvases.get(key);
+  if (set) {
+    set.delete(canvasEl);
+    if (set.size === 0) {
+      activeVideoCanvases.delete(key);
+    }
+  }
+}
+
+export function getVideoCanvases(id) {
+  if (!id) return [];
+  const set = activeVideoCanvases.get(String(id));
+  return set ? Array.from(set) : [];
+}
+
+export function stopVideoRenderLoop() {
+  if (globalVideoElement && typeof globalVideoElement.cancelVideoFrameCallback === 'function' && videoCallbackId !== null) {
+    try {
+      globalVideoElement.cancelVideoFrameCallback(videoCallbackId);
+    } catch {}
+  }
+  if (typeof cancelAnimationFrame === 'function' && videoRafId !== null) {
+    try {
+      cancelAnimationFrame(videoRafId);
+    } catch {}
+  }
+  videoCallbackId = null;
+  videoRafId = null;
+}
+
+export function startVideoRenderLoop() {
+  stopVideoRenderLoop();
+  if (!globalVideoElement) return;
+
+  const onFrame = () => {
+    const state = get(activeMedia);
+    if (!state || !state.isPlaying || !globalVideoElement) {
+      stopVideoRenderLoop();
+      return;
+    }
+    renderAllCanvasesForTrack(state.id);
+    if (typeof globalVideoElement.requestVideoFrameCallback === 'function') {
+      videoCallbackId = globalVideoElement.requestVideoFrameCallback(onFrame);
+    } else if (typeof requestAnimationFrame === 'function') {
+      videoRafId = requestAnimationFrame(onFrame);
+    }
+  };
+
+  if (typeof globalVideoElement.requestVideoFrameCallback === 'function') {
+    videoCallbackId = globalVideoElement.requestVideoFrameCallback(onFrame);
+  } else if (typeof requestAnimationFrame === 'function') {
+    videoRafId = requestAnimationFrame(onFrame);
+  }
+}
+
+export function fadeVolume(element, fromVol, toVol, durationMs = 160, onDone = null) {
+  if (!element) {
+    if (onDone) onDone();
+    return () => {};
+  }
+
+  const startVal = Math.max(0, Math.min(1, fromVol));
+  const endVal = Math.max(0, Math.min(1, toVol));
+  const startTime = Date.now();
+
+  try {
+    element.volume = startVal;
+  } catch {}
+
+  let timerId = null;
+  let cancelled = false;
+
+  const cancel = () => {
+    cancelled = true;
+    if (timerId) clearInterval(timerId);
+    activeAudioFades.delete(cancel);
+  };
+  activeAudioFades.add(cancel);
+
+  timerId = setInterval(() => {
+    if (cancelled) return;
+    const elapsed = Date.now() - startTime;
+    const progress = Math.min(1, elapsed / Math.max(1, durationMs));
+    const currentVol = startVal + (endVal - startVal) * progress;
+    try {
+      element.volume = Math.max(0, Math.min(1, currentVol));
+    } catch {}
+
+    if (progress >= 1) {
+      clearInterval(timerId);
+      activeAudioFades.delete(cancel);
+      if (onDone) onDone();
+    }
+  }, 16);
+
+  return cancel;
+}
+
+function fadeOutAndStop(el, durationMs = 160, keepSrc = false) {
+  if (!el) return;
+  const curVol = (typeof el.volume === 'number') ? el.volume : 1.0;
+  if (curVol <= 0.01 || el.paused) {
+    try {
+      el.pause();
+      if (!keepSrc) {
+        el.currentTime = 0;
+        el.removeAttribute('src');
+        el.load();
+      }
+    } catch {}
+    playingAudioElements.delete(el);
+    return;
+  }
+
+  fadeVolume(el, curVol, 0, durationMs, () => {
+    try {
+      el.pause();
+      if (!keepSrc) {
+        el.currentTime = 0;
+        el.removeAttribute('src');
+        el.load();
+      }
+    } catch {}
+    playingAudioElements.delete(el);
+  });
+}
+
+function fadeInAndPlay(el, targetVolume, durationMs = 160, onPlayErr = null) {
+  if (!el) return;
+  playingAudioElements.add(el);
+  if (targetVolume <= 0) {
+    try {
+      el.volume = 0;
+      el.muted = true;
+      const p = el.play();
+      if (p && typeof p.catch === 'function') p.catch(onPlayErr || (() => {}));
+    } catch (err) {
+      if (onPlayErr) onPlayErr(err);
+    }
+    return;
+  }
+
+  try {
+    el.volume = 0;
+    el.muted = false;
+    const p = el.play();
+    const handleStartFade = () => {
+      fadeVolume(el, 0, targetVolume, durationMs);
+    };
+    if (p && typeof p.then === 'function') {
+      p.then(handleStartFade).catch(onPlayErr || (() => {}));
+    } else {
+      handleStartFade();
+    }
+  } catch (err) {
+    if (onPlayErr) onPlayErr(err);
+  }
+}
+
+export function getMasterMediaCurrentTime() {
+  const state = get(activeMedia);
+  if (!state) return 0;
+  if (state.type === 'video_note' && globalVideoElement && typeof globalVideoElement.currentTime === 'number') {
+    return globalVideoElement.currentTime;
+  }
+  if (state.type === 'voice' && globalAudioElement && typeof globalAudioElement.currentTime === 'number') {
+    return globalAudioElement.currentTime;
+  }
+  if (state.element && typeof state.element.currentTime === 'number') {
+    return state.element.currentTime;
+  }
+  return state.currentTime || 0;
 }
 
 export function snapSpeed(rawSpeed) {
@@ -154,37 +384,43 @@ export function toggleMediaMute() {
 }
 
 export function stopCurrentMedia() {
-  if (currentAudioElement) {
-    try {
-      currentAudioElement.pause();
-      currentAudioElement.currentTime = 0;
-    } catch {}
-    currentAudioElement = null;
+  stopVideoRenderLoop();
+  for (const cancel of activeAudioFades) {
+    cancel();
   }
-  if (currentVideoElement) {
-    try {
-      currentVideoElement.pause();
-      currentVideoElement.currentTime = 0;
-    } catch {}
-    currentVideoElement = null;
+  activeAudioFades.clear();
+
+  const allElements = new Set([
+    currentAudioElement,
+    currentVideoElement,
+    globalAudioElement,
+    globalVideoElement,
+    ...playingAudioElements,
+  ]);
+
+  for (const el of allElements) {
+    if (el) {
+      try {
+        el.pause();
+        el.currentTime = 0;
+        el.removeAttribute('src');
+        el.load();
+      } catch {}
+    }
   }
-  if (globalAudioElement) {
-    try {
-      globalAudioElement.pause();
-      globalAudioElement.currentTime = 0;
-    } catch {}
-  }
-  if (globalVideoElement) {
-    try {
-      globalVideoElement.pause();
-      globalVideoElement.currentTime = 0;
-    } catch {}
-  }
+
+  currentAudioElement = null;
+  currentVideoElement = null;
+  playingAudioElements.clear();
   activeMedia.set(null);
 }
 
 export function pauseCurrentMedia() {
   const state = get(activeMedia);
+  stopVideoRenderLoop();
+  for (const cancel of activeAudioFades) {
+    cancel();
+  }
   if (state?.element) {
     try { state.element.pause(); } catch {}
   }
@@ -201,29 +437,35 @@ export function resumeCurrentMedia() {
   const state = get(activeMedia);
   if (!state) return;
   activeMedia.update((s) => (s ? { ...s, isPlaying: true } : null));
+
   const onErr = () => {
     updateMediaPlaybackState(state.id, false);
+    stopVideoRenderLoop();
   };
-  if (state.element) {
-    try {
-      const p = state.element.play();
-      if (p && typeof p.catch === 'function') p.catch(onErr);
-    } catch {
-      onErr();
+
+  const speed = getTrackSpeed(state.id);
+  const muted = isTrackMuted(state.id);
+  const vol = muted ? 0 : getTrackVolume(state.id);
+
+  let target = state.element;
+  if (!target) {
+    target = state.type === 'voice' ? globalAudioElement : globalVideoElement;
+  }
+
+  if (target) {
+    target.playbackRate = speed;
+    fadeInAndPlay(target, vol, 160, onErr);
+    if (state.type === 'video_note') {
+      startVideoRenderLoop();
     }
-  } else if (state.type === 'voice' && globalAudioElement) {
-    try {
-      const p = globalAudioElement.play();
-      if (p && typeof p.catch === 'function') p.catch(onErr);
-    } catch {
-      onErr();
-    }
-  } else if (state.type === 'video_note' && globalVideoElement) {
-    try {
-      const p = globalVideoElement.play();
-      if (p && typeof p.catch === 'function') p.catch(onErr);
-    } catch {
-      onErr();
+  } else {
+    if (state.type === 'voice' && globalAudioElement) {
+      globalAudioElement.playbackRate = speed;
+      fadeInAndPlay(globalAudioElement, vol, 160, onErr);
+    } else if (state.type === 'video_note' && globalVideoElement) {
+      globalVideoElement.playbackRate = speed;
+      fadeInAndPlay(globalVideoElement, vol, 160, onErr);
+      startVideoRenderLoop();
     }
   }
 }
@@ -300,16 +542,17 @@ export function registerVideo(id, element, metadata = {}) {
   });
 }
 
-export function handOffToGlobal(data) {
+export function handOffToGlobal(data = {}) {
   const speed = getTrackSpeed(data.id);
   const muted = isTrackMuted(data.id);
   const vol = muted ? 0 : getTrackVolume(data.id);
 
   if (data.type === 'video_note') {
-    if (currentVideoElement) {
-      try { currentVideoElement.pause(); } catch {}
+    if (currentVideoElement && currentVideoElement !== globalVideoElement) {
+      try {
+        currentVideoElement.pause();
+      } catch {}
     }
-    currentVideoElement = null;
     if (globalVideoElement) {
       const targetTime = data.currentTime || 0;
       const applyState = () => {
@@ -320,13 +563,14 @@ export function handOffToGlobal(data) {
           globalVideoElement.muted = muted;
           if (data.isPlaying) {
             globalVideoElement.play().catch(() => {});
+            startVideoRenderLoop();
           }
         } catch {}
       };
 
       if (data.url && (!globalVideoElement.src || !globalVideoElement.src.includes(data.url))) {
         globalVideoElement.src = data.url;
-        if (globalVideoElement.readyState === undefined || globalVideoElement.readyState >= 1 || typeof globalVideoElement.addEventListener !== 'function') {
+        if (globalVideoElement.readyState >= 1 || typeof globalVideoElement.addEventListener !== 'function') {
           applyState();
         } else {
           globalVideoElement.addEventListener('loadedmetadata', applyState, { once: true });
@@ -336,10 +580,11 @@ export function handOffToGlobal(data) {
       }
     }
   } else if (data.type === 'voice') {
-    if (currentAudioElement) {
-      try { currentAudioElement.pause(); } catch {}
+    if (currentAudioElement && currentAudioElement !== globalAudioElement) {
+      try {
+        currentAudioElement.pause();
+      } catch {}
     }
-    currentAudioElement = null;
     if (globalAudioElement) {
       if (data.url && (!globalAudioElement.src || !globalAudioElement.src.includes(data.url))) {
         globalAudioElement.src = data.url;
@@ -357,7 +602,6 @@ export function handOffToGlobal(data) {
   activeMedia.update((s) => ({
     ...(s || {}),
     ...data,
-    element: null,
     isGlobalPlayback: true,
     speed,
     volume: vol,
@@ -370,56 +614,63 @@ export function takeOverFromGlobal(id, element) {
   if (!state || state.id !== id) return;
 
   if (state.type === 'video_note') {
-    let targetTime = state.currentTime || 0;
-    if (globalVideoElement) {
-      try {
-        if (globalVideoElement.currentTime > 0) {
-          targetTime = globalVideoElement.currentTime;
-        }
-        globalVideoElement.pause();
-      } catch {}
-    }
-    currentVideoElement = element;
-    const applyState = () => {
-      try {
-        if (targetTime > 0) element.currentTime = targetTime;
-        element.playbackRate = state.speed || 1.0;
-        element.volume = state.muted ? 0 : (state.volume ?? 1.0);
-        element.muted = !!state.muted;
-        if (state.isPlaying) {
-          element.play().catch(() => {});
-        }
-      } catch {}
-    };
+    if (element && element !== globalVideoElement) {
+      let targetTime = state.currentTime || 0;
+      if (globalVideoElement) {
+        try {
+          if (globalVideoElement.currentTime > 0) {
+            targetTime = globalVideoElement.currentTime;
+          }
+        } catch {}
+      }
+      currentVideoElement = element;
+      const applyState = () => {
+        try {
+          if (targetTime > 0) element.currentTime = targetTime;
+          element.playbackRate = state.speed || 1.0;
+          element.volume = state.muted ? 0 : (state.volume ?? 1.0);
+          element.muted = !!state.muted;
+          if (state.isPlaying && typeof element.play === 'function') {
+            element.play().catch(() => {});
+          }
+        } catch {}
+      };
 
-    if (state.url && (!element.src || !element.src.includes(state.url))) {
-      element.src = state.url;
-      if (element.readyState === undefined || element.readyState >= 1 || typeof element.addEventListener !== 'function') {
-        applyState();
+      if (state.url && (!element.src || !element.src.includes(state.url))) {
+        element.src = state.url;
+        if (element.readyState >= 1 || typeof element.addEventListener !== 'function') {
+          applyState();
+        } else {
+          element.addEventListener('loadedmetadata', applyState, { once: true });
+        }
       } else {
-        element.addEventListener('loadedmetadata', applyState, { once: true });
+        applyState();
       }
     } else {
-      applyState();
+      if (globalVideoElement && state.isPlaying) {
+        startVideoRenderLoop();
+      }
     }
   } else if (state.type === 'voice') {
-    if (globalAudioElement) {
-      try {
-        state.currentTime = globalAudioElement.currentTime || state.currentTime;
-        globalAudioElement.pause();
-      } catch {}
-    }
-    currentAudioElement = element;
-    element.currentTime = state.currentTime || 0;
-    element.playbackRate = state.speed || 1.0;
-    element.volume = state.muted ? 0 : (state.volume ?? 1.0);
-    element.muted = !!state.muted;
-    if (state.isPlaying) {
-      element.play().catch(() => {});
+    if (element && element !== globalAudioElement) {
+      if (globalAudioElement) {
+        try {
+          state.currentTime = globalAudioElement.currentTime || state.currentTime;
+          globalAudioElement.pause();
+        } catch {}
+      }
+      currentAudioElement = element;
+      element.currentTime = state.currentTime || 0;
+      element.playbackRate = state.speed || 1.0;
+      element.volume = state.muted ? 0 : (state.volume ?? 1.0);
+      element.muted = !!state.muted;
+      if (state.isPlaying && typeof element.play === 'function') {
+        element.play().catch(() => {});
+      }
     }
   }
 
-  activeMedia.update((s) => (s ? { ...s, element, isGlobalPlayback: false } : null));
+  activeMedia.update((s) => (s ? { ...s, element: element || s.element, isGlobalPlayback: false } : null));
 }
 
 export function updateMediaProgress(id, currentTime, duration) {
@@ -466,6 +717,7 @@ export function seekMedia(id, targetTime) {
   }
   if (state.type === 'video_note' && globalVideoElement) {
     applySeek(globalVideoElement);
+    renderAllCanvasesForTrack(id);
   }
   activeMedia.update((s) => (s ? { ...s, currentTime: clampedTime } : null));
 }
@@ -474,6 +726,9 @@ function toPlayableUrl(path) {
   if (!path) return null;
   return getProxiedMediaUrl(path);
 }
+
+const resolvedUrlCache = new Map();
+const inFlightResolutions = new Map();
 
 export async function resolvePlayableUrl(attach, chatId, messageId) {
   if (!attach) return null;
@@ -484,46 +739,72 @@ export async function resolvePlayableUrl(attach, chatId, messageId) {
   const isVideoNote = (attach.videoType === 1 || attach.isNote || attach._type === 'VIDEO' || attach.type === 'VIDEO');
   const vId = attach.videoId ?? attach.audioId ?? attach.id ?? attach.video_id ?? 0;
   const token = attach.videoToken ?? attach.token ?? null;
-  if ((vId || token) && chatId != null && messageId != null) {
-    try {
-      const api = await getApiInstance();
-      const res = await api.getVideoById(chatId, messageId, vId, token);
-      const qualityPriority = ['MP4_720', 'MP4_480', 'MP4_360', 'MP4_240', 'MP4_144', 'MP4_1080', 'OGG', 'MP3', 'AUDIO', 'audio', 'EXTERNAL', 'url', 'baseUrl', 'fileUrl'];
-      let picked = null;
-      for (const q of qualityPriority) {
-        if (res && res[q]) { picked = res[q]; break; }
-      }
-      if (!picked && res && res.HLS) picked = res.HLS;
-      if (!picked && res && typeof res === 'object') {
-        picked = Object.values(res).find(v => typeof v === 'string' && (v.startsWith('http://') || v.startsWith('https://')));
-      }
-      const mediaType = isVideoNote ? 'video_note' : 'voice';
-      if (picked) {
-        if (picked.startsWith('http://') || picked.startsWith('https://')) {
-          invoke('cache_url', {
-            src: picked,
-            chatId: chatId != null ? Number(chatId) : null,
-            mediaType,
-          }).catch(() => {});
-        }
-        return toPlayableUrl(picked);
-      }
-    } catch {}
+  const mediaKey = `${isVideoNote ? 'video_note' : 'voice'}_${chatId ?? 0}_${messageId ?? 0}_${vId || '0'}`;
+
+  if (resolvedUrlCache.has(mediaKey)) {
+    return resolvedUrlCache.get(mediaKey);
   }
 
-  const mediaType = isVideoNote ? 'video_note' : 'voice';
-  const fallback = isVideoNote ? (attach.videoUrl || attach.fileUrl) : (attach.url || attach.fileUrl || attach.baseUrl);
-  if (fallback) {
-    if (fallback.startsWith('http://') || fallback.startsWith('https://')) {
-      invoke('cache_url', {
-        src: fallback,
-        chatId: chatId != null ? Number(chatId) : null,
-        mediaType,
-      }).catch(() => {});
-    }
-    return toPlayableUrl(fallback);
+  if (inFlightResolutions.has(mediaKey)) {
+    return await inFlightResolutions.get(mediaKey);
   }
-  return null;
+
+  const resolvePromise = (async () => {
+    const mediaType = isVideoNote ? 'video_note' : 'voice';
+    if ((vId || token) && chatId != null && messageId != null) {
+      try {
+        const api = await getApiInstance();
+        const res = await api.getVideoById(chatId, messageId, vId, token);
+        const qualityPriority = ['MP4_720', 'MP4_480', 'MP4_360', 'MP4_240', 'MP4_144', 'MP4_1080', 'OGG', 'MP3', 'AUDIO', 'audio', 'EXTERNAL', 'url', 'baseUrl', 'fileUrl'];
+        let picked = null;
+        for (const q of qualityPriority) {
+          if (res && res[q]) { picked = res[q]; break; }
+        }
+        if (!picked && res && res.HLS) picked = res.HLS;
+        if (!picked && res && typeof res === 'object') {
+          picked = Object.values(res).find(v => typeof v === 'string' && (v.startsWith('http://') || v.startsWith('https://')));
+        }
+        if (picked) {
+          if (picked.startsWith('http://') || picked.startsWith('https://')) {
+            invoke('cache_url', {
+              src: picked,
+              chatId: chatId != null ? Number(chatId) : null,
+              mediaType,
+              key: mediaKey,
+            }).then((cached) => {
+              if (cached) resolvedUrlCache.set(mediaKey, toPlayableUrl(cached));
+            }).catch(() => {});
+          }
+          const playable = toPlayableUrl(picked);
+          resolvedUrlCache.set(mediaKey, playable);
+          return playable;
+        }
+      } catch {}
+    }
+
+    const fallback = isVideoNote ? (attach.videoUrl || attach.fileUrl) : (attach.url || attach.fileUrl || attach.baseUrl);
+    if (fallback) {
+      if (fallback.startsWith('http://') || fallback.startsWith('https://')) {
+        invoke('cache_url', {
+          src: fallback,
+          chatId: chatId != null ? Number(chatId) : null,
+          mediaType,
+          key: mediaKey,
+        }).then((cached) => {
+          if (cached) resolvedUrlCache.set(mediaKey, toPlayableUrl(cached));
+        }).catch(() => {});
+      }
+      const playable = toPlayableUrl(fallback);
+      resolvedUrlCache.set(mediaKey, playable);
+      return playable;
+    }
+    return null;
+  })().finally(() => {
+    inFlightResolutions.delete(mediaKey);
+  });
+
+  inFlightResolutions.set(mediaKey, resolvePromise);
+  return await resolvePromise;
 }
 
 function parseMediaItems(messages, chatId) {
@@ -688,30 +969,43 @@ export async function playMedia(track, playlistContext = {}) {
     playUrl = await resolvePlayableUrl(track.attach, track.chatId, track.messageId);
   }
 
-  if (currentAudioElement && currentAudioElement !== track.element) {
-    try {
-      currentAudioElement.pause();
-      currentAudioElement.currentTime = 0;
-    } catch {}
-    currentAudioElement = null;
-  }
-  if (currentVideoElement && currentVideoElement !== track.element) {
-    try {
-      currentVideoElement.pause();
-      currentVideoElement.currentTime = 0;
-    } catch {}
-    currentVideoElement = null;
-  }
-  if (track.type !== 'voice' && globalAudioElement) {
-    try { globalAudioElement.pause(); } catch {}
-  }
-  if (track.type !== 'video_note' && globalVideoElement) {
-    try { globalVideoElement.pause(); } catch {}
-  }
-
   const speed = getTrackSpeed(track.id);
   const muted = isTrackMuted(track.id);
   const vol = muted ? 0 : getTrackVolume(track.id);
+
+  let targetElement = null;
+  if (track.type === 'voice') {
+    targetElement = track.element || globalAudioElement;
+  } else if (track.type === 'video_note') {
+    targetElement = globalVideoElement || track.element;
+  } else {
+    targetElement = track.element || globalVideoElement;
+  }
+
+  const candidatesToStop = new Set([
+    currentAudioElement,
+    currentVideoElement,
+    globalAudioElement,
+    globalVideoElement,
+    ...playingAudioElements,
+  ]);
+
+  for (const el of candidatesToStop) {
+    if (el && el !== targetElement) {
+      fadeOutAndStop(el, 160);
+    }
+  }
+
+  if (track.type === 'voice') {
+    currentAudioElement = targetElement;
+    currentVideoElement = null;
+  } else {
+    currentVideoElement = targetElement;
+    currentAudioElement = null;
+  }
+
+  const hasCanvases = track.type === 'video_note' && activeVideoCanvases.has(String(track.id)) && activeVideoCanvases.get(String(track.id)).size > 0;
+  const isGlobal = track.isGlobalPlayback !== undefined ? !!track.isGlobalPlayback : (track.element ? false : (track.type === 'video_note' ? !hasCanvases : true));
 
   const newState = {
     ...track,
@@ -721,7 +1015,8 @@ export async function playMedia(track, playlistContext = {}) {
     muted,
     isPlaying: true,
     currentTime: 0,
-    isGlobalPlayback: !track.element,
+    element: track.element || targetElement,
+    isGlobalPlayback: isGlobal,
   };
 
   activeMedia.set(newState);
@@ -729,57 +1024,26 @@ export async function playMedia(track, playlistContext = {}) {
   const onPlayErr = (err) => {
     if (err && err.name === 'AbortError') return;
     updateMediaPlaybackState(track.id, false);
+    stopVideoRenderLoop();
   };
 
-  if (track.type === 'voice' && globalAudioElement && !track.element) {
-    if (playUrl) {
-      if (!globalAudioElement.src || !globalAudioElement.src.includes(playUrl)) {
-        globalAudioElement.src = playUrl;
-      }
-      globalAudioElement.currentTime = 0;
-      globalAudioElement.playbackRate = speed;
-      globalAudioElement.volume = vol;
-      globalAudioElement.muted = muted;
-      try {
-        const p = globalAudioElement.play();
-        if (p && typeof p.catch === 'function') p.catch(onPlayErr);
-      } catch (err) {
-        onPlayErr(err);
-      }
+  if (targetElement) {
+    if (playUrl && (!targetElement.src || !targetElement.src.includes(playUrl))) {
+      targetElement.src = playUrl;
     }
-  } else if (track.element) {
-    if (track.type === 'voice') {
-      currentAudioElement = track.element;
-    } else {
-      currentVideoElement = track.element;
-    }
-    if (playUrl && (!track.element.src || !track.element.src.includes(playUrl))) {
-      track.element.src = playUrl;
-    }
-    track.element.currentTime = 0;
-    track.element.playbackRate = speed;
-    track.element.volume = vol;
-    track.element.muted = muted;
-    try {
-      const p = track.element.play();
-      if (p && typeof p.catch === 'function') p.catch(onPlayErr);
-    } catch {
-      onPlayErr();
-    }
-  } else if (track.type === 'video_note' && globalVideoElement) {
-    if (playUrl) {
-      if (!globalVideoElement.src || !globalVideoElement.src.includes(playUrl)) {
-        globalVideoElement.src = playUrl;
-      }
-      globalVideoElement.currentTime = 0;
-      globalVideoElement.playbackRate = speed;
-      globalVideoElement.volume = vol;
-      globalVideoElement.muted = muted;
-      try {
-        const p = globalVideoElement.play();
-        if (p && typeof p.catch === 'function') p.catch(onPlayErr);
-      } catch {
-        onPlayErr();
+    targetElement.currentTime = 0;
+    targetElement.playbackRate = speed;
+
+    fadeInAndPlay(targetElement, vol, 160, onPlayErr);
+
+    if (track.type === 'video_note') {
+      startVideoRenderLoop();
+      if (typeof targetElement.addEventListener === 'function') {
+        const renderOnce = () => {
+          renderAllCanvasesForTrack(track.id);
+        };
+        targetElement.addEventListener('loadeddata', renderOnce, { once: true });
+        targetElement.addEventListener('canplay', renderOnce, { once: true });
       }
     }
   }

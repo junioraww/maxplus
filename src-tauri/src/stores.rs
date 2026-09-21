@@ -1318,8 +1318,10 @@ pub fn set_cached_file_with_meta(
 
     let file = paths.cache_file(&hash(&src));
 
-    fs::write(&file, &bytes)
-        .map_err(|e| e.to_string())?;
+    if !file.exists() || fs::metadata(&file).map(|m| m.len()).unwrap_or(0) == 0 {
+        fs::write(&file, &bytes)
+            .map_err(|e| e.to_string())?;
+    }
 
     let mut index = storage
         .load(paths.cache_index())
@@ -1341,6 +1343,39 @@ pub fn set_cached_file_with_meta(
     storage.save(paths.cache_index(), &index)?;
 
     Ok(file.to_string_lossy().to_string())
+}
+
+pub fn add_cache_index_alias(
+    app: AppHandle,
+    account: u64,
+    alias: String,
+    file_path: String,
+    size_kb: usize,
+    chat_id: Option<i64>,
+    media_type: Option<String>,
+) -> Result<(), String> {
+    let key = crypto_key(&app, account);
+    let storage = Storage::new(key);
+    let paths = Paths::new(&app, account);
+
+    let mut index = storage
+        .load(paths.cache_index())
+        .unwrap_or(json!({}));
+
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+
+    index[&alias] = json!([
+        file_path,
+        size_kb,
+        chat_id,
+        media_type,
+        now
+    ]);
+
+    storage.save(paths.cache_index(), &index)
 }
 
 #[tauri::command]
