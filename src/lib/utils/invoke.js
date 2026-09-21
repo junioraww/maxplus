@@ -6,6 +6,7 @@ import {
   error as logError,
   add as addLog,
 } from "$lib/stores/logs";
+import { recordApiRequest, recordApiResponse } from "$lib/services/trace";
 import API from "$lib/stores/api";
 import {
   removeAccount,
@@ -16,10 +17,14 @@ import { get as sessionGet } from "$lib/stores/session";
 const inflightRetries = new Map();
 
 export const invoke = async (command, args) => {
+  const reqStart = Date.now();
+  recordApiRequest(command, args);
   try {
     const response = await tauriInvoke(command, args);
+    recordApiResponse(command, response, Date.now() - reqStart);
     return response;
   } catch (error) {
+    recordApiResponse(command, null, Date.now() - reqStart, error);
     const type = error?.type;
     const text = typeof error === "string" ? error : (error?.text || error?.message || "");
 

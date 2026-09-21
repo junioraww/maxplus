@@ -390,6 +390,52 @@ pub async fn write_file_bytes(path: String, content: Vec<u8>) -> Result<(), Stri
 }
 
 #[tauri::command]
+pub async fn save_trace_zip(
+    app: tauri::AppHandle,
+    name: String,
+    bytes: Vec<u8>,
+) -> Result<String, String> {
+    #[cfg(target_os = "android")]
+    {
+        use tauri_plugin_android_fs::{AndroidFsExt, PublicGeneralPurposeDir};
+        let api = app.android_fs_async();
+        if !api.public_storage().request_permission().await.map_err(|e| e.to_string())? {
+            return Err("Permission denied".into());
+        }
+        let uri = api
+            .public_storage()
+            .create_new_file_with_pending(
+                None,
+                PublicGeneralPurposeDir::Download,
+                &name,
+                Some("application/zip"),
+            )
+            .await
+            .map_err(|e| e.to_string())?;
+
+        use std::io::Write;
+        let mut file = api
+            .open_file_writable(&uri)
+            .await
+            .map_err(|e| e.to_string())?;
+        file.write_all(&bytes).map_err(|e| e.to_string())?;
+        api.public_storage().set_pending(&uri, false).await.map_err(|e| e.to_string())?;
+        api.public_storage().scan(&uri).await.ok();
+        Ok(uri.uri.as_str().to_string())
+    }
+    #[cfg(not(target_os = "android"))]
+    {
+        use std::io::Write;
+        let mut path = dirs::download_dir().ok_or("Cannot find download dir")?;
+        path.push(&name);
+        let mut file = std::fs::File::create(&path).map_err(|e| e.to_string())?;
+        file.write_all(&bytes).map_err(|e| e.to_string())?;
+        Ok(path.to_string_lossy().to_string())
+    }
+}
+
+
+#[tauri::command]
 pub async fn save_temp_media(
     app: tauri::AppHandle,
     bytes: Vec<u8>,

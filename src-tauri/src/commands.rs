@@ -182,3 +182,59 @@ pub async fn get_video_secret(secret: tauri::State<'_, String>) -> Result<String
     Ok(secret.inner().clone())
 }
 
+#[tauri::command]
+pub async fn get_system_trace_info(app: AppHandle) -> Result<Value, String> {
+    let os_name = std::env::consts::OS;
+    let arch = std::env::consts::ARCH;
+    let family = std::env::consts::FAMILY;
+    let cpu_cores = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(1);
+    let app_version = app.package_info().version.to_string();
+
+    let local_ip = std::net::UdpSocket::bind("0.0.0.0:0")
+        .and_then(|s| {
+            s.connect("8.8.8.8:80")?;
+            s.local_addr()
+        })
+        .map(|a| a.ip().to_string())
+        .unwrap_or_else(|_| "127.0.0.1".to_string());
+
+    let public_ip = match reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(3))
+        .build()
+    {
+        Ok(client) => match client.get("https://api.ipify.org?format=json").send().await {
+            Ok(resp) => resp
+                .json::<Value>()
+                .await
+                .ok()
+                .and_then(|v| v["ip"].as_str().map(|s| s.to_string())),
+            Err(_) => None,
+        },
+        Err(_) => None,
+    };
+
+    let mut os_details = serde_json::Map::new();
+    #[cfg(target_os = "linux")]
+    {
+        if let Ok(content) = tokio::fs::read_to_string("/etc/os-release").await {
+            for line in content.lines() {
+                if let Some((k, v)) = line.split_once('=') {
+                    os_details.insert(k.to_string(), Value::String(v.trim_matches('"').to_string()));
+                }
+            }
+        }
+    }
+
+    Ok(json!({
+        "os": os_name,
+        "arch": arch,
+        "family": family,
+        "cpu_cores": cpu_cores,
+        "app_version": app_version,
+        "local_ip": local_ip,
+        "public_ip": public_ip,
+        "os_details": os_details,
+    }))
+}
+
+
