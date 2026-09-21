@@ -175,6 +175,7 @@ pub fn run() {
             stores::decrypt_account,
             stores::get_cached_file,
             stores::set_cached_file,
+            stores::delete_chat_cache,
             stores::load_dictionary,
             stores::save_dictionary,
             stores::set_dictionary_url,

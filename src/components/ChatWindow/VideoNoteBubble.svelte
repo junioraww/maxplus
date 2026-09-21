@@ -24,11 +24,12 @@
   export let chatId;
   export let isMe = false;
 
+  let containerEl;
   let videoEl;
   let isHovered = false;
-  let animFrameId = null;
-  let smoothProgress = 0;
   let fetchedUrl = null;
+  let isVisibleOnScreen = true;
+  let observer = null;
 
   $: mId = String(messageId ?? attach.token ?? attach.videoId ?? attach.localPath ?? 'video_note');
   $: isCurrentTrack = $activeMedia?.id === mId;
@@ -42,12 +43,81 @@
   $: duration = (videoEl && videoEl.duration && isFinite(videoEl.duration) && videoEl.duration > 0 && (!attachDur || Math.abs(videoEl.duration - attachDur) < 2))
     ? videoEl.duration
     : (attachDur || (videoEl?.duration && isFinite(videoEl.duration) ? videoEl.duration : 0));
-  $: currentTime = isCurrentTrack ? ($activeMedia?.currentTime ?? (videoEl?.currentTime || 0)) : 0;
-  $: posterSrc = attach.thumbnail || attach.baseUrl || (attach.url && (attach.url.endsWith('.jpg') || attach.url.endsWith('.png') || attach.url.endsWith('.webp')) ? attach.url : null);
+
+  let animFrame = null;
+  let localProgress = 0;
+  let localTime = 0;
+
+  function updateLocalProgress() {
+    if (isPlaying && videoEl) {
+      const cur = videoEl.currentTime || 0;
+      const dur = (videoEl.duration && isFinite(videoEl.duration) && videoEl.duration > 0)
+        ? videoEl.duration
+        : duration;
+      if (dur > 0) {
+        localProgress = Math.min(1, Math.max(0, cur / dur));
+        localTime = cur;
+      }
+      animFrame = requestAnimationFrame(updateLocalProgress);
+    }
+  }
+
+  $: if (isPlaying) {
+    if (typeof cancelAnimationFrame === 'function' && animFrame) {
+      cancelAnimationFrame(animFrame);
+    }
+    if (typeof requestAnimationFrame === 'function') {
+      animFrame = requestAnimationFrame(updateLocalProgress);
+    }
+  } else {
+    if (typeof cancelAnimationFrame === 'function' && animFrame) {
+      cancelAnimationFrame(animFrame);
+      animFrame = null;
+    }
+    if (isCurrentTrack && videoEl) {
+      const cur = videoEl.currentTime || ($activeMedia?.currentTime ?? 0);
+      const dur = (videoEl.duration && isFinite(videoEl.duration) && videoEl.duration > 0)
+        ? videoEl.duration
+        : duration;
+      if (dur > 0) {
+        localProgress = Math.min(1, Math.max(0, cur / dur));
+        localTime = cur;
+      }
+    } else if (!isCurrentTrack) {
+      localProgress = 0;
+      localTime = 0;
+    }
+  }
+
+  let previewDataUrl = null;
+  $: if (attach?.previewData) {
+    try {
+      let bytes;
+      if (typeof attach.previewData === 'string') {
+        if (attach.previewData.startsWith('data:')) {
+          previewDataUrl = attach.previewData;
+        } else {
+          bytes = Uint8Array.from(atob(attach.previewData), c => c.charCodeAt(0));
+          const blob = new Blob([bytes], { type: 'image/webp' });
+          previewDataUrl = URL.createObjectURL(blob);
+        }
+      } else if (Array.isArray(attach.previewData)) {
+        bytes = new Uint8Array(attach.previewData);
+        const blob = new Blob([bytes], { type: 'image/webp' });
+        previewDataUrl = URL.createObjectURL(blob);
+      }
+    } catch {
+      previewDataUrl = null;
+    }
+  } else {
+    previewDataUrl = null;
+  }
+
+  $: posterSrc = previewDataUrl || attach.thumbnail || attach.baseUrl || (attach.url && (attach.url.endsWith('.jpg') || attach.url.endsWith('.png') || attach.url.endsWith('.webp')) ? attach.url : null);
   $: rawUrl = fetchedUrl || (attach.localPath ? attach.localPath : null) || attach.videoUrl || attach.fileUrl || ((attach.url && attach.url !== attach.baseUrl && !attach.url.endsWith('.jpg') && !attach.url.endsWith('.jpeg') && !attach.url.endsWith('.png') && !attach.url.endsWith('.webp')) ? attach.url : null);
 
   let resolvedPosterUrl = null;
-  $: resolvedPosterUrl = posterSrc ? getProxiedMediaUrl(posterSrc) : null;
+  $: resolvedPosterUrl = posterSrc ? (posterSrc.startsWith('blob:') || posterSrc.startsWith('data:') ? posterSrc : getProxiedMediaUrl(posterSrc)) : null;
 
   function toPlayableUrl(path) {
     if (!path) return null;
@@ -57,56 +127,18 @@
   let resolvedVideoUrl = null;
   $: resolvedVideoUrl = toPlayableUrl(rawUrl);
 
+  $: if (resolvedVideoUrl && videoEl && (!videoEl.src || videoEl.src === '' || (!isPlaying && !isCurrentTrack))) {
+    if (videoEl.src !== resolvedVideoUrl) {
+      videoEl.src = resolvedVideoUrl;
+    }
+  }
+
   const size = 200;
   const strokeWidth = 4;
   const radius = (size - strokeWidth) / 2 - 1;
   const circumference = 2 * Math.PI * radius;
 
-  let lastAnchorTime = 0;
-  let lastVideoTime = 0;
-
-  function runSmoothProgress() {
-    if (animFrameId) cancelAnimationFrame(animFrameId);
-    if (!isPlaying) return;
-
-    lastAnchorTime = performance.now();
-    lastVideoTime = videoEl?.currentTime || 0;
-
-    const tick = (now) => {
-      if (!isPlaying) return;
-      const currentVidTime = videoEl?.currentTime || 0;
-      if (Math.abs(currentVidTime - lastVideoTime) > 0.005) {
-        lastVideoTime = currentVidTime;
-        lastAnchorTime = now;
-      }
-      const rate = videoEl?.playbackRate || currentSpeed || 1.0;
-      const elapsed = Math.max(0, (now - lastAnchorTime) / 1000) * rate;
-      const realDur = (videoEl?.duration && isFinite(videoEl.duration) && videoEl.duration > 0)
-        ? videoEl.duration
-        : duration;
-      if (realDur > 0) {
-        const estimated = Math.min(realDur, Math.max(0, lastVideoTime + elapsed));
-        smoothProgress = Math.min(1, Math.max(0, estimated / realDur));
-      }
-      animFrameId = requestAnimationFrame(tick);
-    };
-    animFrameId = requestAnimationFrame(tick);
-  }
-
-  $: if (isPlaying) {
-    runSmoothProgress();
-  } else {
-    if (animFrameId) {
-      cancelAnimationFrame(animFrameId);
-      animFrameId = null;
-    }
-    const realDur = (videoEl && videoEl.duration && isFinite(videoEl.duration) && videoEl.duration > 0)
-      ? videoEl.duration
-      : duration;
-    smoothProgress = realDur > 0 ? Math.min(1, Math.max(0, (videoEl?.currentTime ?? currentTime) / realDur)) : 0;
-  }
-
-  $: strokeDashoffset = circumference - smoothProgress * circumference;
+  $: strokeDashoffset = circumference - (isCurrentTrack ? localProgress : 0) * circumference;
 
   function formatTime(sec) {
     if (!sec || isNaN(sec)) return '0:00';
@@ -134,17 +166,31 @@
           picked = Object.values(response).find(v => typeof v === 'string' && (v.startsWith('http://') || v.startsWith('https://')) && !v.endsWith('.jpg') && !v.endsWith('.png') && !v.endsWith('.webp'));
         }
         if (picked) {
-          let localTarget = picked;
+          fetchedUrl = picked;
           if (picked.startsWith('http://') || picked.startsWith('https://')) {
-            try {
-              const cached = await invoke('cache_url', { src: picked });
-              if (cached) localTarget = cached;
-            } catch (e) {}
+            invoke('cache_url', {
+              src: picked,
+              chatId: chatId != null ? Number(chatId) : null,
+              mediaType: 'video_note',
+            }).then((cached) => {
+              if (cached) fetchedUrl = cached;
+            }).catch(() => {});
           }
-          fetchedUrl = localTarget;
-          return toPlayableUrl(localTarget);
+          return toPlayableUrl(picked);
         }
       } catch (err) {}
+    }
+    const fallback = attach.videoUrl || attach.fileUrl || attach.url || attach.baseUrl;
+    if (fallback && (fallback.startsWith('http://') || fallback.startsWith('https://'))) {
+      fetchedUrl = fallback;
+      invoke('cache_url', {
+        src: fallback,
+        chatId: chatId != null ? Number(chatId) : null,
+        mediaType: 'video_note',
+      }).then((cached) => {
+        if (cached) fetchedUrl = cached;
+      }).catch(() => {});
+      return toPlayableUrl(fallback);
     }
     return resolvedVideoUrl || toPlayableUrl(rawUrl);
   }
@@ -164,7 +210,7 @@
     const url = (await ensureVideoUrl()) || resolvedVideoUrl || (rawUrl ? toPlayableUrl(rawUrl) : null);
     if (!url) return;
 
-    if (videoEl && (!videoEl.src || !videoEl.src.includes(url))) {
+    if (videoEl && videoEl.src !== url) {
       videoEl.src = url;
     }
 
@@ -183,7 +229,63 @@
     }, { chatId, currentMessageId: messageId });
   }
 
-  $: if (isCurrentTrack && videoEl && ($activeMedia?.isGlobalPlayback || $activeMedia?.element !== videoEl)) {
+  async function handleProgressClick(e) {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const cx = rect.left + rect.width / 2;
+    const cy = rect.top + rect.height / 2;
+    const clickX = e.clientX - cx;
+    const clickY = e.clientY - cy;
+    const dist = Math.hypot(clickX, clickY);
+
+    if (dist < radius - 18) {
+      handleTogglePlay();
+      return;
+    }
+
+    if (!duration || duration <= 0) return;
+
+    let angle = Math.atan2(clickY, clickX) + Math.PI / 2;
+    if (angle < 0) angle += 2 * Math.PI;
+    const targetRatio = Math.max(0, Math.min(1, angle / (2 * Math.PI)));
+    const targetTime = targetRatio * duration;
+
+    localProgress = targetRatio;
+    localTime = targetTime;
+
+    if (!isCurrentTrack) {
+      const url = (await ensureVideoUrl()) || resolvedVideoUrl || (rawUrl ? toPlayableUrl(rawUrl) : null);
+      if (url && videoEl && videoEl.src !== url) {
+        videoEl.src = url;
+      }
+      await playMedia({
+        id: mId,
+        chatId,
+        messageId,
+        type: 'video_note',
+        url,
+        poster: resolvedPosterUrl,
+        duration,
+        senderName: isMe ? 'Вы' : (attach.senderName || 'Собеседник'),
+        title: 'Видеосообщение',
+        attach,
+        element: videoEl,
+      }, { chatId, currentMessageId: messageId });
+    }
+
+    if (videoEl) {
+      if (videoEl.readyState >= 1) {
+        try { videoEl.currentTime = targetTime; } catch {}
+      } else {
+        videoEl.addEventListener('loadedmetadata', () => {
+          try { videoEl.currentTime = targetTime; } catch {}
+        }, { once: true });
+      }
+    }
+
+    seekMedia(mId, targetTime);
+  }
+
+  $: if (isCurrentTrack && videoEl && isVisibleOnScreen && ($activeMedia?.isGlobalPlayback || $activeMedia?.element !== videoEl)) {
     takeOverFromGlobal(mId, videoEl);
   }
 
@@ -217,32 +319,74 @@
   }
 
   onMount(() => {
-    ensureVideoUrl();
-    if (isCurrentTrack && videoEl) {
+    if (isCurrentTrack && videoEl && isVisibleOnScreen) {
       takeOverFromGlobal(mId, videoEl);
+    }
+    if (typeof IntersectionObserver !== 'undefined' && containerEl) {
+      observer = new IntersectionObserver((entries) => {
+        for (const entry of entries) {
+          isVisibleOnScreen = entry.isIntersecting && entry.intersectionRatio > 0.05;
+          if (isCurrentTrack) {
+            if (!isVisibleOnScreen && isPlaying) {
+              if (videoEl) {
+                try { videoEl.pause(); } catch {}
+              }
+              handOffToGlobal({
+                id: mId,
+                type: 'video_note',
+                url: resolvedVideoUrl || rawUrl,
+                poster: resolvedPosterUrl,
+                currentTime: videoEl?.currentTime || localTime,
+                duration,
+                speed: currentSpeed,
+                volume: currentVolume,
+                muted: currentMuted,
+                isPlaying: true,
+              });
+            } else if (isVisibleOnScreen && $activeMedia?.isGlobalPlayback && videoEl) {
+              takeOverFromGlobal(mId, videoEl);
+            }
+          }
+        }
+      }, { threshold: [0, 0.05, 0.5, 1.0] });
+      observer.observe(containerEl);
     }
   });
 
   onDestroy(() => {
-    if (animFrameId) cancelAnimationFrame(animFrameId);
-    if (isCurrentTrack && isPlaying) {
+    if (previewDataUrl && previewDataUrl.startsWith('blob:')) {
+      try { URL.revokeObjectURL(previewDataUrl); } catch {}
+    }
+    if (animFrame && typeof cancelAnimationFrame === 'function') {
+      cancelAnimationFrame(animFrame);
+      animFrame = null;
+    }
+    if (observer) {
+      observer.disconnect();
+      observer = null;
+    }
+    if (isCurrentTrack) {
+      if (videoEl) {
+        try { videoEl.pause(); } catch {}
+      }
       handOffToGlobal({
         id: mId,
         type: 'video_note',
         url: resolvedVideoUrl || rawUrl,
         poster: resolvedPosterUrl,
-        currentTime: videoEl?.currentTime || currentTime,
+        currentTime: videoEl?.currentTime || localTime,
         duration,
         speed: currentSpeed,
         volume: currentVolume,
         muted: currentMuted,
-        isPlaying: true,
+        isPlaying,
       });
     }
   });
 </script>
 
 <div
+  bind:this={containerEl}
   class="video-note-bubble"
   class:is-me={isMe}
   on:mouseenter={() => (isHovered = true)}
@@ -257,6 +401,7 @@
       class="progress-ring"
       width={size}
       height={size}
+      on:click|stopPropagation={handleProgressClick}
     >
       <circle
         class="progress-ring-bg"
@@ -279,27 +424,15 @@
     <div class="video-crop-container">
       <video
         bind:this={videoEl}
-        src={resolvedVideoUrl}
         poster={resolvedPosterUrl}
         playsinline
         preload="metadata"
         on:timeupdate={() => updateMediaProgress(mId, videoEl?.currentTime || 0, videoEl?.duration || duration)}
-        on:play={() => {
-          lastAnchorTime = performance.now();
-          lastVideoTime = videoEl?.currentTime || 0;
-          updateMediaPlaybackState(mId, true);
-        }}
+        on:play={() => updateMediaPlaybackState(mId, true)}
         on:pause={() => updateMediaPlaybackState(mId, false)}
-        on:seeked={() => {
-          lastAnchorTime = performance.now();
-          lastVideoTime = videoEl?.currentTime || 0;
-          const realDur = (videoEl?.duration && isFinite(videoEl.duration) && videoEl.duration > 0) ? videoEl.duration : duration;
-          if (realDur > 0) smoothProgress = Math.min(1, Math.max(0, lastVideoTime / realDur));
-        }}
         on:ended={() => {
           updateMediaPlaybackState(mId, false);
           if (videoEl) videoEl.currentTime = 0;
-          smoothProgress = 0;
           playNextMedia();
         }}
       ></video>
@@ -322,7 +455,7 @@
 
   <div class="video-note-controls" class:visible={isHovered || isPlaying}>
     <span class="video-note-time">
-      {isPlaying ? formatTime(currentTime) : formatTime(duration)}
+      {isPlaying ? formatTime(localTime) : formatTime(duration)}
     </span>
 
     <div class="video-note-actions">
@@ -363,7 +496,7 @@
     left: 0;
     z-index: 10;
     transform: rotate(-90deg);
-    pointer-events: none;
+    pointer-events: stroke;
   }
 
   .progress-ring-bg {

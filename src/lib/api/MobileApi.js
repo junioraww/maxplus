@@ -590,18 +590,25 @@ export default class MobileApi extends BaseAPI {
       }
 
       const cachedContacts = await getCachedContacts();
+      const cachedIds = new Set(
+        (Array.isArray(cachedContacts) ? cachedContacts : [])
+          .map((c) => (typeof c === "object" && c !== null ? Number(c.id) : Number(c)))
+          .filter((id) => id > 0)
+      );
       let requireInfo = new Set();
 
       if (chats.length) {
-        console.log('new chats', chats)
         await saveChats(chats);
 
         chats.forEach((chat) => {
-          if (chat.type === "DIALOG") {
+          if (chat.type === "DIALOG" && chat.participants) {
             Object.keys(chat.participants).forEach((member) => {
-              if (!cachedContacts.includes(+member)) requireInfo.add(+member);
+              const memId = Number(member);
+              if (memId > 0 && !cachedIds.has(memId)) {
+                requireInfo.add(memId);
+              }
             });
-          };
+          }
         });
       }
 
@@ -1209,6 +1216,17 @@ export default class MobileApi extends BaseAPI {
 
     await invoke("leave_channel", { channelId });
 
+    try {
+      const account = await getCurrentAccount();
+      if (account?.id) {
+        await invoke("delete_chat_cache", {
+          account: Number(account.id),
+          chatId: Number(channelId),
+          mediaType: null,
+        });
+      }
+    } catch {}
+
     currentRealChats.update(chats => {
       const idx = chats.indexOf(chat.id);
       if (idx !== -1) chats.splice(idx, 1);
@@ -1224,6 +1242,17 @@ export default class MobileApi extends BaseAPI {
 
     await invoke("leave_group", { chatId });
 
+    try {
+      const account = await getCurrentAccount();
+      if (account?.id) {
+        await invoke("delete_chat_cache", {
+          account: Number(account.id),
+          chatId: Number(chatId),
+          mediaType: null,
+        });
+      }
+    } catch {}
+
     currentRealChats.update(chats => {
       const idx = chats.indexOf(chat.id);
       if (idx !== -1) chats.splice(idx, 1);
@@ -1236,6 +1265,17 @@ export default class MobileApi extends BaseAPI {
     const chatId = chat.id;
 
     await invoke("leave_group", { chatId, forAll: true });
+
+    try {
+      const account = await getCurrentAccount();
+      if (account?.id) {
+        await invoke("delete_chat_cache", {
+          account: Number(account.id),
+          chatId: Number(chatId),
+          mediaType: null,
+        });
+      }
+    } catch {}
 
     currentRealChats.update(chats => {
       const idx = chats.indexOf(chat.id);

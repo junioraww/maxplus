@@ -1296,6 +1296,17 @@ pub fn set_cached_file(
     src: String,
     bytes: Vec<u8>,
 ) -> Result<String, String> {
+    set_cached_file_with_meta(app, account, src, bytes, None, None)
+}
+
+pub fn set_cached_file_with_meta(
+    app: AppHandle,
+    account: u64,
+    src: String,
+    bytes: Vec<u8>,
+    chat_id: Option<i64>,
+    media_type: Option<String>,
+) -> Result<String, String> {
     let key = crypto_key(&app, account);
 
     let storage = Storage::new(key);
@@ -1314,14 +1325,69 @@ pub fn set_cached_file(
         .load(paths.cache_index())
         .unwrap_or(json!({}));
 
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+
     index[&src] = json!([
         file.to_string_lossy(),
-        (bytes.len() + 1023) / 1024
+        (bytes.len() + 1023) / 1024,
+        chat_id,
+        media_type,
+        now
     ]);
 
     storage.save(paths.cache_index(), &index)?;
 
     Ok(file.to_string_lossy().to_string())
+}
+
+#[tauri::command]
+pub fn delete_chat_cache(
+    app: AppHandle,
+    account: u64,
+    chat_id: i64,
+    media_type: Option<String>,
+) -> Result<usize, String> {
+    let key = crypto_key(&app, account);
+    let storage = Storage::new(key);
+    let paths = Paths::new(&app, account);
+
+    let mut index = storage
+        .load(paths.cache_index())
+        .unwrap_or(json!({}));
+
+    let mut to_remove = Vec::new();
+    let mut deleted_count = 0;
+
+    if let Some(map) = index.as_object_mut() {
+        for (src, entry) in map.iter() {
+            if let Some(arr) = entry.as_array() {
+                let entry_chat_id = arr.get(2).and_then(|v| v.as_i64());
+                let entry_type = arr.get(3).and_then(|v| v.as_str());
+
+                if entry_chat_id == Some(chat_id) {
+                    if let Some(ref m_type) = media_type {
+                        if entry_type != Some(m_type.as_str()) {
+                            continue;
+                        }
+                    }
+                    if let Some(file_path) = arr.get(0).and_then(|v| v.as_str()) {
+                        let _ = fs::remove_file(file_path);
+                    }
+                    to_remove.push(src.clone());
+                    deleted_count += 1;
+                }
+            }
+        }
+        for src in to_remove {
+            map.remove(&src);
+        }
+    }
+
+    storage.save(paths.cache_index(), &index)?;
+    Ok(deleted_count)
 }
 
 pub(crate) fn hash(src: &str) -> String {

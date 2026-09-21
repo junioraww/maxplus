@@ -578,6 +578,8 @@ pub async fn cache_url(
     app: tauri::AppHandle,
     account: Option<u64>,
     src: String,
+    chat_id: Option<i64>,
+    media_type: Option<String>,
 ) -> Result<String, String> {
     let acc = account.unwrap_or(0);
     if let Ok(Some(existing_path)) = crate::stores::get_cached_file(app.clone(), acc, src.clone()) {
@@ -597,7 +599,7 @@ pub async fn cache_url(
     }
 
     let bytes = resp.bytes().await.map_err(|e| e.to_string())?.to_vec();
-    crate::stores::set_cached_file(app, acc, src, bytes)
+    crate::stores::set_cached_file_with_meta(app, acc, src, bytes, chat_id, media_type)
 }
 
 #[tauri::command]

@@ -67,6 +67,9 @@ fn handle_local_file(request: tiny_http::Request, mut path: &str) {
         Header::from_bytes(&b"Access-Control-Allow-Origin"[..], b"*").unwrap(),
         Header::from_bytes(&b"Accept-Ranges"[..], b"bytes").unwrap(),
         Header::from_bytes(&b"Content-Type"[..], mime.as_bytes()).unwrap(),
+        Header::from_bytes(&b"Cache-Control"[..], b"no-store, no-cache, must-revalidate").unwrap(),
+        Header::from_bytes(&b"Pragma"[..], b"no-cache").unwrap(),
+        Header::from_bytes(&b"Expires"[..], b"0").unwrap(),
     ];
 
     if let Some(rh) = range_header {
@@ -295,6 +298,9 @@ fn handle_request(request: tiny_http::Request, client: &reqwest::blocking::Clien
         )
         .unwrap(),
         Header::from_bytes(&b"Accept-Ranges"[..], b"bytes").unwrap(),
+        Header::from_bytes(&b"Cache-Control"[..], b"no-store, no-cache, must-revalidate").unwrap(),
+        Header::from_bytes(&b"Pragma"[..], b"no-cache").unwrap(),
+        Header::from_bytes(&b"Expires"[..], b"0").unwrap(),
     ];
 
     if let Some(cr) = res.headers().get(CONTENT_RANGE) {

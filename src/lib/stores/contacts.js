@@ -56,15 +56,40 @@ export const updateContact = async contact => {
   if (!contact.id) throw new Error("No contact id!");
   const store = await getContact(contact.id);
   store.set(contact);
-  if (!cachedContacts.includes(contact.id)) {
-    cachedContacts.push(contact.id);
+  const idx = cachedContacts.findIndex(c => (typeof c === 'object' && c !== null ? c.id === contact.id : c === contact.id));
+  if (idx === -1) {
+    cachedContacts.push(contact);
+  } else {
+    cachedContacts[idx] = contact;
   }
-}
+};
 
 let contactsLoaded = false;
 let cachedContacts = [];
+let cachedContactsPromise = null;
 
 export const getCachedContacts = async () => {
-  const account = await getCurrentAccount();
-  return invoke("get_contacts", { account: +account.id });
-}
+  if (contactsLoaded && cachedContacts.length > 0) {
+    return cachedContacts;
+  }
+  if (cachedContactsPromise) return cachedContactsPromise;
+
+  cachedContactsPromise = (async () => {
+    try {
+      const account = await getCurrentAccount();
+      if (!account?.id) return [];
+      const res = await invoke("get_contacts", { account: +account.id });
+      if (Array.isArray(res)) {
+        cachedContacts = res;
+        contactsLoaded = true;
+      }
+      return cachedContacts;
+    } catch {
+      return cachedContacts;
+    } finally {
+      cachedContactsPromise = null;
+    }
+  })();
+
+  return cachedContactsPromise;
+};

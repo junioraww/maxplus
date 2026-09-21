@@ -306,21 +306,39 @@ export function handOffToGlobal(data) {
   const vol = muted ? 0 : getTrackVolume(data.id);
 
   if (data.type === 'video_note') {
+    if (currentVideoElement) {
+      try { currentVideoElement.pause(); } catch {}
+    }
     currentVideoElement = null;
     if (globalVideoElement) {
+      const targetTime = data.currentTime || 0;
+      const applyState = () => {
+        try {
+          if (targetTime > 0) globalVideoElement.currentTime = targetTime;
+          globalVideoElement.playbackRate = speed;
+          globalVideoElement.volume = vol;
+          globalVideoElement.muted = muted;
+          if (data.isPlaying) {
+            globalVideoElement.play().catch(() => {});
+          }
+        } catch {}
+      };
+
       if (data.url && (!globalVideoElement.src || !globalVideoElement.src.includes(data.url))) {
         globalVideoElement.src = data.url;
-        try { globalVideoElement.load(); } catch {}
-      }
-      globalVideoElement.currentTime = data.currentTime || 0;
-      globalVideoElement.playbackRate = speed;
-      globalVideoElement.volume = vol;
-      globalVideoElement.muted = muted;
-      if (data.isPlaying) {
-        globalVideoElement.play().catch(() => {});
+        if (globalVideoElement.readyState === undefined || globalVideoElement.readyState >= 1 || typeof globalVideoElement.addEventListener !== 'function') {
+          applyState();
+        } else {
+          globalVideoElement.addEventListener('loadedmetadata', applyState, { once: true });
+        }
+      } else {
+        applyState();
       }
     }
   } else if (data.type === 'voice') {
+    if (currentAudioElement) {
+      try { currentAudioElement.pause(); } catch {}
+    }
     currentAudioElement = null;
     if (globalAudioElement) {
       if (data.url && (!globalAudioElement.src || !globalAudioElement.src.includes(data.url))) {
@@ -352,23 +370,37 @@ export function takeOverFromGlobal(id, element) {
   if (!state || state.id !== id) return;
 
   if (state.type === 'video_note') {
+    let targetTime = state.currentTime || 0;
     if (globalVideoElement) {
       try {
-        state.currentTime = globalVideoElement.currentTime || state.currentTime;
+        if (globalVideoElement.currentTime > 0) {
+          targetTime = globalVideoElement.currentTime;
+        }
         globalVideoElement.pause();
       } catch {}
     }
     currentVideoElement = element;
+    const applyState = () => {
+      try {
+        if (targetTime > 0) element.currentTime = targetTime;
+        element.playbackRate = state.speed || 1.0;
+        element.volume = state.muted ? 0 : (state.volume ?? 1.0);
+        element.muted = !!state.muted;
+        if (state.isPlaying) {
+          element.play().catch(() => {});
+        }
+      } catch {}
+    };
+
     if (state.url && (!element.src || !element.src.includes(state.url))) {
       element.src = state.url;
-      try { element.load(); } catch {}
-    }
-    element.currentTime = state.currentTime || 0;
-    element.playbackRate = state.speed || 1.0;
-    element.volume = state.muted ? 0 : (state.volume ?? 1.0);
-    element.muted = !!state.muted;
-    if (state.isPlaying) {
-      element.play().catch(() => {});
+      if (element.readyState === undefined || element.readyState >= 1 || typeof element.addEventListener !== 'function') {
+        applyState();
+      } else {
+        element.addEventListener('loadedmetadata', applyState, { once: true });
+      }
+    } else {
+      applyState();
     }
   } else if (state.type === 'voice') {
     if (globalAudioElement) {
@@ -415,14 +447,25 @@ export function seekMedia(id, targetTime) {
   const state = get(activeMedia);
   if (!state) return;
   const clampedTime = Math.max(0, targetTime);
+  const applySeek = (el) => {
+    if (!el) return;
+    if (el.readyState === undefined || el.readyState >= 1 || typeof el.addEventListener !== 'function') {
+      try { el.currentTime = clampedTime; } catch {}
+    } else {
+      el.addEventListener('loadedmetadata', () => {
+        try { el.currentTime = clampedTime; } catch {}
+      }, { once: true });
+    }
+  };
+
   if (state.element) {
-    try { state.element.currentTime = clampedTime; } catch {}
+    applySeek(state.element);
   }
   if (state.type === 'voice' && globalAudioElement) {
-    try { globalAudioElement.currentTime = clampedTime; } catch {}
+    applySeek(globalAudioElement);
   }
   if (state.type === 'video_note' && globalVideoElement) {
-    try { globalVideoElement.currentTime = clampedTime; } catch {}
+    applySeek(globalVideoElement);
   }
   activeMedia.update((s) => (s ? { ...s, currentTime: clampedTime } : null));
 }
@@ -454,25 +497,29 @@ export async function resolvePlayableUrl(attach, chatId, messageId) {
       if (!picked && res && typeof res === 'object') {
         picked = Object.values(res).find(v => typeof v === 'string' && (v.startsWith('http://') || v.startsWith('https://')));
       }
+      const mediaType = isVideoNote ? 'video_note' : 'voice';
       if (picked) {
         if (picked.startsWith('http://') || picked.startsWith('https://')) {
-          try {
-            const cached = await invoke('cache_url', { src: picked });
-            if (cached) return toPlayableUrl(cached);
-          } catch (e) {}
+          invoke('cache_url', {
+            src: picked,
+            chatId: chatId != null ? Number(chatId) : null,
+            mediaType,
+          }).catch(() => {});
         }
         return toPlayableUrl(picked);
       }
     } catch {}
   }
 
+  const mediaType = isVideoNote ? 'video_note' : 'voice';
   const fallback = isVideoNote ? (attach.videoUrl || attach.fileUrl) : (attach.url || attach.fileUrl || attach.baseUrl);
   if (fallback) {
     if (fallback.startsWith('http://') || fallback.startsWith('https://')) {
-      try {
-        const cached = await invoke('cache_url', { src: fallback });
-        if (cached) return toPlayableUrl(cached);
-      } catch (e) {}
+      invoke('cache_url', {
+        src: fallback,
+        chatId: chatId != null ? Number(chatId) : null,
+        mediaType,
+      }).catch(() => {});
     }
     return toPlayableUrl(fallback);
   }
@@ -483,7 +530,12 @@ function parseMediaItems(messages, chatId) {
   if (!messages || !Array.isArray(messages)) return [];
   const items = [];
   for (const m of messages) {
-    if (!m || !m.attaches || !Array.isArray(m.attaches)) continue;
+    if (!m) continue;
+    if (m.attach && (m.type === 'voice' || m.type === 'video_note')) {
+      items.push(m);
+      continue;
+    }
+    if (!m.attaches || !Array.isArray(m.attaches)) continue;
     for (const attach of m.attaches) {
       const type = (attach._type || attach.type || '').toUpperCase();
       const vType = Number(attach.videoType ?? attach.video_type);
@@ -524,7 +576,27 @@ function parseMediaItems(messages, chatId) {
   return items;
 }
 
-export async function buildChatPlaylist(chatId, currentMessageId, initialMessages = []) {
+const preloadedMedia = new Map();
+const preloadedAudioElements = new Map();
+
+export async function preloadTrack(item) {
+  if (!item || !item.id || preloadedMedia.has(item.id)) return;
+  try {
+    const url = await resolvePlayableUrl(item.attach, item.chatId, item.messageId);
+    if (url) {
+      preloadedMedia.set(item.id, url);
+      if (typeof document !== 'undefined') {
+        const el = item.type === 'video_note' ? document.createElement('video') : new Audio();
+        el.preload = 'auto';
+        el.src = url;
+        try { el.load(); } catch {}
+        preloadedAudioElements.set(item.id, el);
+      }
+    }
+  } catch {}
+}
+
+export async function buildChatPlaylist(chatId, currentMessageId, initialMessages = [], forcedIndex = -1) {
   if (!initialMessages || initialMessages.length === 0) {
     initialMessages = get(activeChatMessages) || [];
   }
@@ -569,20 +641,37 @@ export async function buildChatPlaylist(chatId, currentMessageId, initialMessage
     }
   } catch {}
 
-  const currentIdx = combined.findIndex(
-    i => String(i.messageId) === String(currentMessageId) || (cur && String(i.id) === String(cur.id))
-  );
-
   const prevPl = get(mediaPlaylist);
   const sameItems = prevPl && prevPl.chatId === chatId && prevPl.items &&
     prevPl.items.length === combined.length &&
     prevPl.items.every((it, idx) => String(it.id) === String(combined[idx]?.id));
 
+  let currentIdx;
+  if (forcedIndex >= 0 && prevPl?.items?.[forcedIndex]) {
+    const forcedId = String(prevPl.items[forcedIndex].id);
+    const found = combined.findIndex(i => String(i.id) === forcedId);
+    currentIdx = found >= 0 ? found : forcedIndex;
+  } else {
+    currentIdx = combined.findIndex(
+      i => (currentMessageId && String(i.messageId) === String(currentMessageId)) || (cur && String(i.id) === String(cur.id))
+    );
+    if (currentIdx < 0 && prevPl?.currentIndex >= 0 && (prevPl.chatId === chatId || chatId == null)) {
+      currentIdx = prevPl.currentIndex;
+    }
+  }
+
+  const resolvedItems = sameItems ? prevPl.items : combined;
+  const targetIdx = currentIdx >= 0 ? currentIdx : 0;
+
   mediaPlaylist.set({
     chatId,
-    items: sameItems ? prevPl.items : combined,
-    currentIndex: currentIdx >= 0 ? currentIdx : 0,
+    items: resolvedItems,
+    currentIndex: targetIdx,
   });
+
+  if (targetIdx + 1 < resolvedItems.length) {
+    preloadTrack(resolvedItems[targetIdx + 1]);
+  }
 
   return combined;
 }
@@ -594,7 +683,7 @@ export async function playMedia(track, playlistContext = {}) {
     return;
   }
 
-  let playUrl = track.url;
+  let playUrl = track.url || preloadedMedia.get(track.id);
   if (!playUrl && track.attach) {
     playUrl = await resolvePlayableUrl(track.attach, track.chatId, track.messageId);
   }
@@ -642,7 +731,7 @@ export async function playMedia(track, playlistContext = {}) {
     updateMediaPlaybackState(track.id, false);
   };
 
-  if (track.type === 'voice' && globalAudioElement) {
+  if (track.type === 'voice' && globalAudioElement && !track.element) {
     if (playUrl) {
       if (!globalAudioElement.src || !globalAudioElement.src.includes(playUrl)) {
         globalAudioElement.src = playUrl;
@@ -703,8 +792,14 @@ export async function playMedia(track, playlistContext = {}) {
     buildChatPlaylist(
       effectiveChatId,
       track.messageId,
-      listMessages
+      listMessages,
+      playlistContext.forcedIndex ?? -1,
     );
+  }
+
+  const pl = get(mediaPlaylist);
+  if (pl && pl.items && pl.currentIndex >= 0 && pl.currentIndex + 1 < pl.items.length) {
+    preloadTrack(pl.items[pl.currentIndex + 1]);
   }
 }
 
@@ -713,7 +808,7 @@ export async function playPlaylistItem(index) {
   if (!pl || !pl.items || index < 0 || index >= pl.items.length) return;
   const item = pl.items[index];
   mediaPlaylist.update(p => ({ ...p, currentIndex: index }));
-  await playMedia(item, { chatId: pl.chatId, messages: pl.items });
+  await playMedia(item, { chatId: pl.chatId, messages: pl.items, forcedIndex: index });
 }
 
 export async function playNextMedia() {

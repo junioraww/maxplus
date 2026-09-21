@@ -87,7 +87,7 @@
 
   $: column =
     msg.text?.length > 20 ||
-    msg.attaches.length ||
+    msg.attaches?.length ||
     msg.reactionInfo?.totalCount ||
     msg.link?.messageId;
 

@@ -1,29 +1,27 @@
 <script>
-  import { onMount } from 'svelte';
-  import { convertFileSrc, invoke } from '@tauri-apps/api/core';
+  import { onMount, onDestroy } from 'svelte';
+  import { invoke } from '@tauri-apps/api/core';
   import { save } from '@tauri-apps/plugin-dialog';
   import { showAlert } from '$lib/utils/alert';
   import { getProxiedMediaUrl } from '$lib/utils/images';
-  import API from '$lib/stores/api';
   import { parseWaveform } from '$lib/utils/waveform';
   import {
     activeMedia,
     trackSettings,
-    snapSpeed,
-    setTrackSpeed,
-    cycleTrackSpeed,
-    setTrackVolume,
-    toggleTrackMute,
     seekMedia,
     playMedia,
     pauseCurrentMedia,
     resumeCurrentMedia,
     resolvePlayableUrl,
+    updateMediaProgress,
+    updateMediaPlaybackState,
+    playNextMedia,
+    handOffToGlobal,
+    takeOverFromGlobal,
   } from '$lib/stores/mediaPlayback';
   import {
     transcriptions,
     requestAudioTranscription,
-    toggleTranscriptionExpanded,
   } from '$lib/stores/transcription';
 
   export let attach;
@@ -35,8 +33,6 @@
   $: isCurrentTrack = $activeMedia?.id === mId;
   $: isPlaying = isCurrentTrack && $activeMedia?.isPlaying;
   $: currentSpeed = $trackSettings[mId]?.speed ?? 1.0;
-  $: currentVolume = $trackSettings[mId]?.volume ?? 1.0;
-  $: currentMuted = $trackSettings[mId]?.muted ?? false;
   $: duration = ($activeMedia?.id === mId && $activeMedia?.duration > 0)
     ? $activeMedia.duration
     : (attach.duration
@@ -48,7 +44,7 @@
   $: transcription = $transcriptions[mId];
 
   let fetchedUrl = null;
-  $: rawUrl = fetchedUrl || (attach.localPath ? attach.localPath : null);
+  $: rawUrl = fetchedUrl || attach.localPath || attach.fileUrl || attach.url || attach.baseUrl || null;
 
   let mediaUrl = null;
   $: mediaUrl = rawUrl ? getProxiedMediaUrl(rawUrl) : null;
@@ -66,14 +62,16 @@
     const rawFallback = attach.fileUrl || attach.url || attach.baseUrl;
     if (rawFallback) {
       if (rawFallback.startsWith('http://') || rawFallback.startsWith('https://')) {
-        try {
-          const cached = await invoke('cache_url', { src: rawFallback });
+        invoke('cache_url', {
+          src: rawFallback,
+          chatId: chatId != null ? Number(chatId) : null,
+          mediaType: 'voice',
+        }).then((cached) => {
           if (cached) {
             fetchedUrl = cached;
             mediaUrl = getProxiedMediaUrl(cached);
-            return mediaUrl;
           }
-        } catch (e) {}
+        }).catch(() => {});
       }
       mediaUrl = getProxiedMediaUrl(rawFallback);
       return mediaUrl;
@@ -89,6 +87,12 @@
     return `${m}:${s < 10 ? '0' : ''}${s}`;
   }
 
+  let audioEl;
+
+  $: if (isCurrentTrack && audioEl && $activeMedia?.isGlobalPlayback) {
+    takeOverFromGlobal(mId, audioEl);
+  }
+
   async function handleTogglePlay() {
     if (isCurrentTrack) {
       if (isPlaying) {
@@ -97,7 +101,13 @@
         resumeCurrentMedia();
       }
     } else {
-      const url = await ensureVoiceUrl();
+      const url = mediaUrl || await ensureVoiceUrl();
+      if (audioEl) {
+        if (url && audioEl.src !== url) {
+          audioEl.src = url;
+        }
+        audioEl.play().catch(() => {});
+      }
       await playMedia({
         id: mId,
         chatId,
@@ -108,6 +118,7 @@
         senderName: isMe ? 'Вы' : (attach.senderName || 'Собеседник'),
         title: 'Голосовое сообщение',
         attach,
+        element: audioEl,
       }, { chatId, currentMessageId: messageId });
     }
   }
@@ -117,7 +128,11 @@
     const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
     const target = ratio * duration;
     if (!isCurrentTrack) {
-      const url = await ensureVoiceUrl();
+      const url = mediaUrl || await ensureVoiceUrl();
+      if (audioEl) {
+        if (url && audioEl.src !== url) audioEl.src = url;
+        audioEl.play().catch(() => {});
+      }
       await playMedia({
         id: mId,
         chatId,
@@ -128,6 +143,7 @@
         senderName: isMe ? 'Вы' : (attach.senderName || 'Собеседник'),
         title: 'Голосовое сообщение',
         attach,
+        element: audioEl,
       }, { chatId, currentMessageId: messageId });
     }
     seekMedia(mId, target);
@@ -140,18 +156,18 @@
   async function handleDownload() {
     const url = (await ensureVoiceUrl()) || mediaUrl;
     if (!url) {
-      showAlert('Ссылка на аудио недоступна');
+      showAlert('Ссылка на файл недоступна');
       return;
     }
     try {
       const defaultName = `voice_${mId}_${Date.now()}.ogg`;
       const savePath = await save({
         defaultPath: defaultName,
-        filters: [{ name: 'Audio', extensions: ['ogg', 'mp3', 'wav', 'm4a'] }],
+        filters: [{ name: 'Audio', extensions: ['ogg', 'mp3', 'm4a', 'wav'] }],
       });
       if (savePath) {
         await invoke('download_to_path', { url, path: savePath });
-        showAlert('Аудио успешно сохранено');
+        showAlert('Голосовое сообщение сохранено');
       } else {
         await invoke('download', { url, name: defaultName });
         showAlert('Загрузка в папку загрузок начата');
@@ -166,12 +182,42 @@
     }
   }
 
-  onMount(() => {
-    ensureVoiceUrl();
+
+  onDestroy(() => {
+    if (isCurrentTrack && audioEl) {
+      try { audioEl.pause(); } catch {}
+      const state = $activeMedia;
+      handOffToGlobal({
+        ...(state || {}),
+        id: mId,
+        type: 'voice',
+        currentTime: audioEl.currentTime || 0,
+        isPlaying: !audioEl.paused,
+      });
+    }
   });
 </script>
 
 <div class="voice-message-bubble" class:is-me={isMe}>
+  <audio
+    bind:this={audioEl}
+    src={mediaUrl}
+    preload="auto"
+    on:timeupdate={() => {
+      if (isCurrentTrack && audioEl) {
+        updateMediaProgress(mId, audioEl.currentTime, audioEl.duration || duration);
+      }
+    }}
+    on:play={() => {
+      if (isCurrentTrack) updateMediaPlaybackState(mId, true);
+    }}
+    on:pause={() => {
+      if (isCurrentTrack) updateMediaPlaybackState(mId, false);
+    }}
+    on:ended={() => {
+      if (isCurrentTrack) playNextMedia();
+    }}
+  ></audio>
 
   <div class="voice-row">
     <button
@@ -373,61 +419,6 @@
 
   .voice-btn:hover {
     background: rgba(255, 255, 255, 0.2);
-  }
-
-  .speed-btn {
-    font-weight: 600;
-    min-width: 28px;
-  }
-
-  .speed-btn.snapped {
-    color: #38bdf8;
-  }
-
-  .speed-control-wrapper {
-    position: relative;
-  }
-
-  .speed-tooltip {
-    position: absolute;
-    bottom: 125%;
-    left: 50%;
-    transform: translateX(-50%);
-    background: #1e293b;
-    color: #38bdf8;
-    padding: 3px 6px;
-    border-radius: 4px;
-    font-size: 11px;
-    font-weight: bold;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
-    pointer-events: none;
-    white-space: nowrap;
-    z-index: 100;
-  }
-
-  .volume-control-wrapper {
-    position: relative;
-  }
-
-  .vol-tooltip {
-    position: absolute;
-    bottom: 125%;
-    left: 50%;
-    transform: translateX(-50%);
-    background: #1e293b;
-    color: #38bdf8;
-    padding: 3px 6px;
-    border-radius: 4px;
-    font-size: 11px;
-    font-weight: bold;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
-    pointer-events: none;
-    white-space: nowrap;
-    z-index: 100;
-  }
-
-  .vol-btn.muted {
-    opacity: 0.6;
   }
 
   .mini-spinner {
