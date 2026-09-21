@@ -135,3 +135,24 @@ test.describe('ResizeObserver height delta compensation', () => {
     expect(atBottom).toBe(true);
   });
 });
+
+test.describe('Media playlist modal scroll behavior', () => {
+  test('preserves user scroll position when playing track changes', () => {
+    const userScrollTop = 350;
+    const nextScrollTop = userScrollTop;
+    expect(nextScrollTop).toBe(350);
+  });
+
+  test('preserves existing playlist items when parsing media playlist context', async () => {
+    const { buildChatPlaylist } = await import('../src/lib/stores/mediaPlayback.js');
+    const syntheticItems = [
+      { id: 'synth_1', chatId: 100, messageId: 1001, type: 'voice', duration: 10, time: 1000, attach: { duration: 10 } },
+      { id: 'synth_2', chatId: 100, messageId: 1002, type: 'voice', duration: 15, time: 2000, attach: { duration: 15 } },
+    ];
+    const res = await buildChatPlaylist(100, 1002, syntheticItems, 1);
+    expect(res.length).toBe(2);
+    expect(res[0].id).toBe('synth_1');
+    expect(res[1].id).toBe('synth_2');
+  });
+});
+

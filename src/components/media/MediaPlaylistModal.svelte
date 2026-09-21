@@ -1,5 +1,4 @@
 <script>
-  import { tick } from 'svelte';
   import {
     mediaPlaylist,
     showPlaylistModal,
@@ -7,29 +6,9 @@
     activeMedia,
   } from '$lib/stores/mediaPlayback';
 
-  let listEl;
-  let rowEls = [];
-
-  $: playlist = $mediaPlaylist;
-  $: items = playlist?.items || [];
-  $: currentIndex = playlist?.currentIndex ?? -1;
+  $: items = $mediaPlaylist?.items || [];
+  $: currentIndex = $mediaPlaylist?.currentIndex ?? -1;
   $: isPlaying = $activeMedia?.isPlaying ?? false;
-
-  let lastScrolledIndex = -1;
-  $: if (currentIndex >= 0 && currentIndex !== lastScrolledIndex && rowEls[currentIndex] && listEl) {
-    lastScrolledIndex = currentIndex;
-    tick().then(() => {
-      const row = rowEls[currentIndex];
-      if (!listEl || !row) return;
-      const listRect = listEl.getBoundingClientRect();
-      const rowRect = row.getBoundingClientRect();
-      if (rowRect.top < listRect.top) {
-        listEl.scrollTop -= (listRect.top - rowRect.top);
-      } else if (rowRect.bottom > listRect.bottom) {
-        listEl.scrollTop += (rowRect.bottom - listRect.bottom);
-      }
-    });
-  }
 
   function closeModal() {
     showPlaylistModal.set(false);
@@ -59,7 +38,7 @@
         <button class="modal-close-btn" on:click={closeModal} title="Закрыть">✕</button>
       </div>
 
-      <div class="modal-body" bind:this={listEl}>
+      <div class="modal-body">
         {#if items.length === 0}
           <div class="empty-state">Нет голосовых и кружочков в очереди!</div>
         {:else}
@@ -68,7 +47,6 @@
               <div
                 class="playlist-row"
                 class:active={index === currentIndex}
-                bind:this={rowEls[index]}
                 on:click={() => handleSelectTrack(index)}
               >
                 <div class="row-left">
@@ -176,6 +154,7 @@
     flex: 1;
     overflow-y: auto;
     padding: 8px 0;
+    overflow-anchor: none;
   }
   .empty-state {
     padding: 32px 16px;
@@ -260,11 +239,11 @@
     border-radius: 1px;
     animation: wave 0.8s ease-in-out infinite alternate;
   }
-  .sound-wave-anim i:nth-child(1) { height: 6px; animation-delay: 0.1s; }
-  .sound-wave-anim i:nth-child(2) { height: 14px; animation-delay: 0.3s; }
-  .sound-wave-anim i:nth-child(3) { height: 9px; animation-delay: 0.2s; }
+  .sound-wave-anim i:nth-child(1) { animation-delay: 0.1s; }
+  .sound-wave-anim i:nth-child(2) { animation-delay: 0.3s; }
+  .sound-wave-anim i:nth-child(3) { animation-delay: 0.2s; }
   @keyframes wave {
-    0% { height: 4px; }
+    0% { height: 6px; }
     100% { height: 14px; }
   }
 </style>

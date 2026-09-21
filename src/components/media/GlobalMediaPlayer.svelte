@@ -17,6 +17,7 @@
   let animId = null;
 
   let isPipDragging = false;
+  let hasDragged = false;
   let pipX = 0;
   let pipY = 0;
   let dragStartX = 0;
@@ -36,6 +37,7 @@
   });
 
   function startSmoothTicker() {
+    let lastTime = 0;
     const tick = () => {
       const state = $activeMedia;
       if (state && state.isPlaying) {
@@ -48,7 +50,10 @@
             dur = el.duration;
           }
         }
-        updateMediaProgress(state.id, cur, dur);
+        if (Math.abs(cur - lastTime) >= 0.25) {
+          lastTime = cur;
+          updateMediaProgress(state.id, cur, dur);
+        }
       }
       animId = requestAnimationFrame(tick);
     };
@@ -76,6 +81,7 @@
   function handlePipPointerDown(e) {
     if (e.button !== 0) return;
     isPipDragging = true;
+    hasDragged = false;
     dragStartX = e.clientX - pipX;
     dragStartY = e.clientY - pipY;
     window.addEventListener('pointermove', handlePipPointerMove);
@@ -84,6 +90,7 @@
 
   function handlePipPointerMove(e) {
     if (!isPipDragging) return;
+    hasDragged = true;
     pipX = e.clientX - dragStartX;
     pipY = e.clientY - dragStartY;
   }
@@ -95,10 +102,8 @@
   }
 
   function handlePipClick(e) {
-    if (Math.abs(pipX) > 5 || Math.abs(pipY) > 5) return;
-    if ($activeMedia && $activeMedia.chatId) {
-      openChat($activeMedia.chatId);
-    }
+    if (hasDragged) return;
+    togglePlayPause();
   }
 </script>
 

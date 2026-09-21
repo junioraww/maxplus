@@ -727,6 +727,25 @@ test.describe('Video note cropping and media import features', () => {
     const remoteUrl = await resolvePlayableUrl(remoteAttach, 0, 90021);
     expect(remoteUrl).toBe('http://127.0.0.1:11447/cached_audio.ogg');
   });
+
+
+  test('preloadTrack safely preloads next playlist track without throwing', async () => {
+    const { preloadTrack } = await import('../src/lib/stores/mediaPlayback.js');
+    const nextItem = {
+      id: 'synth_preload_1',
+      chatId: 999,
+      messageId: 8888,
+      type: 'voice',
+      attach: {
+        _type: 'AUDIO',
+        localPath: '/synthetic/cache/voice_next.ogg',
+        duration: 2000,
+      },
+    };
+
+    await expect(preloadTrack(nextItem)).resolves.not.toThrow();
+    await expect(preloadTrack(null)).resolves.not.toThrow();
+  });
 });
 
 

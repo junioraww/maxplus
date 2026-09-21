@@ -145,6 +145,7 @@ export function parseHeader(byte) {
 }
 
 export async function decode_msg(msg, password) {
+  if (!msg?.text || typeof msg.text !== "string") return null;
   try {
     let obfuscator = await detectObfuscation(msg.text);
     if (!obfuscator) return null;
@@ -153,7 +154,7 @@ export async function decode_msg(msg, password) {
     if (!text) return null;
     return { text, obf: obfuscator.name };
   } catch (e) {
-    console.error(e)
+    console.error(e);
     return null;
   }
 }

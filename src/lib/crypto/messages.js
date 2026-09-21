@@ -37,7 +37,7 @@ class Chinese extends Obfuscator {
   }
 
   detect(text) {
-    if (text.length < 5) return false;
+    if (!text || typeof text !== "string" || text.length < 5) return false;
 
     for (const ch of text.slice(0, 5)) {
       const idx = zhMap.get(ch);
@@ -95,13 +95,14 @@ class Words extends Obfuscator {
   }
 
   async detect(text) {
+    if (!text || typeof text !== "string") return false;
     if (text.indexOf('\n') !== -1) return false;
     if (text.indexOf(' ') === -1) return false;
 
     const DICT = await this.getDictionary();
     if (!DICT || !this.dict8Map) return false;
 
-    const idx = text.indexOf(' '); // fuck me
+    const idx = text.indexOf(' ');
     const word = clean(text.slice(0, idx)).toLowerCase();
 
     const prefixIdx = this.dict8Map.get(word);
@@ -136,6 +137,7 @@ const obfuscators = {
 }
 
 export async function detectObfuscation(text) {
+  if (!text || typeof text !== "string") return null;
   for (const name in obfuscators) {
     const obfuscator = obfuscators[name];
     if (!obfuscator) continue;
