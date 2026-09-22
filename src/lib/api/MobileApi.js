@@ -49,7 +49,8 @@ import {
 import {
   setupPushNotifications,
   newMessage,
-  applyUserConfig
+  applyUserConfig,
+  loadAccountNotificationSettings
 } from "$lib/utils/notifications";
 import {
   getMessagePreview
@@ -378,6 +379,8 @@ export default class MobileApi extends BaseAPI {
     if (!account?.meta?.device)
       throw new Error("No device entry");
 
+    loadAccountNotificationSettings(account.id);
+
     if (this.unlisten) await this.unlisten();
     this.startListener();
 
@@ -598,9 +601,17 @@ export default class MobileApi extends BaseAPI {
       let requireInfo = new Set();
 
       if (chats.length) {
-        await saveChats(chats);
+        const configChats = config?.chats || {};
+        const mergedChats = chats.map((chat) => {
+          const chatConfig = configChats[String(chat.id)];
+          if (chatConfig && chatConfig.dontDisturbUntil != null) {
+            return { ...chat, dontDisturbUntil: chatConfig.dontDisturbUntil };
+          }
+          return chat;
+        });
+        await saveChats(mergedChats);
 
-        chats.forEach((chat) => {
+        mergedChats.forEach((chat) => {
           if (chat.type === "DIALOG" && chat.participants) {
             Object.keys(chat.participants).forEach((member) => {
               const memId = Number(member);
@@ -657,7 +668,7 @@ export default class MobileApi extends BaseAPI {
       }
 
       if (config?.user) {
-        applyUserConfig(config.user);
+        applyUserConfig(config.user, account.id);
       }
 
       const entryBanners = config?.server?.["settings-entry-banners"];
@@ -847,7 +858,7 @@ export default class MobileApi extends BaseAPI {
     currentSessionChats.update((chats) => {
       if (!chats) return chats;
       return chats.map((c) => {
-        if (c.id === chatId) {
+        if (String(c.id) === String(chatId)) {
           updatedChat = { ...c, dontDisturbUntil };
           return updatedChat;
         }
@@ -862,7 +873,8 @@ export default class MobileApi extends BaseAPI {
 
   async updateUserSettings(settings) {
     await this.waitSync();
-    return await invoke("update_user_settings", { settings });
+    const account = await getCurrentAccount();
+    return await invoke("update_user_settings", { accountId: account.id, settings });
   }
 
   async getFolders(folderSync = null) {
