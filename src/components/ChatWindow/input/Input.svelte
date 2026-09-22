@@ -2089,7 +2089,6 @@
     max-width: 100%;
     min-width: 0;
     box-sizing: border-box;
-    overflow: hidden;
   }
 
   .input-controls {
@@ -2315,6 +2314,7 @@
     padding: 8px 12px;
     flex-shrink: 0;
     overflow-x: auto;
+    z-index: 1;
     background-color: #17191d;
     border-bottom: 1px solid rgba(255, 255, 255, 0.04);
   }
