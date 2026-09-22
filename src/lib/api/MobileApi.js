@@ -835,6 +835,11 @@ export default class MobileApi extends BaseAPI {
     return await invoke("suspend_bot", { botId });
   }
 
+  async resolveLink(link) {
+    await this.waitSync();
+    return await invoke("resolve_link", { link });
+  }
+
   async setChatMute(chatId, dontDisturbUntil) {
     await this.waitSync();
     const res = await invoke("set_chat_mute", { chatId, dontDisturbUntil });
@@ -1407,11 +1412,18 @@ export default class MobileApi extends BaseAPI {
   }
 
   async processExternalCallback(url) {
-    const uri = new URL(url);
-    if (uri.searchParams.get("externalCallback") !== "1") {
+    let normalized = String(url).trim();
+    if (normalized.startsWith("max://")) {
+      const withoutScheme = normalized.slice(6);
+      normalized = withoutScheme.startsWith("max.ru")
+        ? `https://${withoutScheme}`
+        : `https://max.ru/${withoutScheme.replace(/^\/+/, "")}`;
+    }
+    const uri = new URL(normalized);
+    if (uri.searchParams.get("externalCallback") !== "1" && !normalized.includes("externalCallback=1")) {
       throw new Error("Некорректный callback адрес");
     }
-    const raw = await this.submitExternalCallback(url);
+    const raw = await this.submitExternalCallback(normalized);
     let botId = null;
     let startParam = null;
 
@@ -1422,7 +1434,7 @@ export default class MobileApi extends BaseAPI {
         startParam = (obj.startParam ?? obj.start_param)?.toString() || null;
         return;
       }
-      for (const k of ["data", "result", "response"]) {
+      for (const k of ["data", "result", "response", "payload"]) {
         if (obj[k]) parsePayload(obj[k]);
       }
     };
@@ -1430,9 +1442,14 @@ export default class MobileApi extends BaseAPI {
     parsePayload(raw);
 
     if (!botId) {
-      throw new Error("Не удалось определить приложение для авторизации");
+      const stored = localStorage.getItem("max_app_digital_id");
+      botId = stored ? Number(stored) : 8250447;
     }
-    return await this.launchWebApp(botId, { startParam });
+    const launch = await this.launchWebApp(botId, { startParam });
+    return {
+      ...launch,
+      startParam,
+    };
   }
 }
 

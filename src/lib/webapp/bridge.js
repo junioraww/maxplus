@@ -103,6 +103,7 @@ export function createBridgeClient({
   onBackButtonChange = () => {},
   onClosingBehaviorChange = () => {},
   onPhoneRequested = async () => null,
+  onOpenLink = async () => {},
   postToFrame = () => {},
 }) {
   let customBackButton = false;
@@ -331,10 +332,14 @@ export function createBridgeClient({
       case "WebAppOpenMaxLink": {
         const url = payload.url;
         if (url) {
-          try {
-            await openUrl(url);
-          } catch {
-            window.open(url, "_blank");
+          if (typeof onOpenLink === "function") {
+            onOpenLink(url);
+          } else {
+            try {
+              await openUrl(url);
+            } catch {
+              window.open(url, "_blank");
+            }
           }
         }
         break;

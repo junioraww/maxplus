@@ -26,6 +26,66 @@ export async function openMiniApp({
   const existing = currentApps.find((a) => Number(a.botId) === Number(botId));
 
   if (existing) {
+    if (url && existing.url !== url) {
+      activeWebApps.update((apps) =>
+        apps.map((a) =>
+          a.id === existing.id
+            ? {
+                ...a,
+                url,
+                startParam: startParam ?? a.startParam,
+                state: "sheet",
+                dragOffsetY: 0,
+                reloadKey: a.reloadKey + 1,
+                error: null,
+                loading: false,
+              }
+            : a
+        )
+      );
+      return existing.id;
+    }
+
+    if (startParam && startParam !== existing.startParam) {
+      activeWebApps.update((apps) =>
+        apps.map((a) =>
+          a.id === existing.id
+            ? { ...a, state: "sheet", dragOffsetY: 0, loading: true, error: null }
+            : a
+        )
+      );
+      try {
+        const apiInstance = get(API);
+        const launch = await apiInstance.launchWebApp(botId, { startParam, chatId });
+        activeWebApps.update((apps) =>
+          apps.map((a) =>
+            a.id === existing.id
+              ? {
+                  ...a,
+                  url: launch.url,
+                  queryId: launch.queryId,
+                  startParam,
+                  state: "sheet",
+                  dragOffsetY: 0,
+                  reloadKey: a.reloadKey + 1,
+                  loading: false,
+                  error: null,
+                }
+              : a
+          )
+        );
+      } catch (err) {
+        activeWebApps.update((apps) =>
+          apps.map((a) =>
+            a.id === existing.id
+              ? { ...a, loading: false, error: err?.message || "Ошибка загрузки" }
+              : a
+          )
+        );
+      }
+      return existing.id;
+    }
+
     activeWebApps.update((apps) =>
       apps.map((a) =>
         a.id === existing.id

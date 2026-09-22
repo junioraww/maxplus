@@ -2,5 +2,5 @@
   "identifier": "mobile-capability",
   "platforms": ["android", "iOS"],
   "windows": ["main"],
-  "permissions": ["barcode-scanner:default", "biometric:default"]
+  "permissions": ["barcode-scanner:default", "biometric:default", "deep-link:default"]
 }

@@ -43,6 +43,7 @@ export default class API {
     getBotInfo() { throw "getBotInfo: Unimplemented" }
     getChatBotCommands() { throw "getChatBotCommands: Unimplemented" }
     suspendBot() { throw "suspendBot: Unimplemented" }
+    resolveLink() { throw "resolveLink: Unimplemented" }
     setChatMute() { throw "setChatMute: Unimplemented" }
 
     onCall() { throw "onCall: Unimplemented" }

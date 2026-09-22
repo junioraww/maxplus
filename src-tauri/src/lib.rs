@@ -17,7 +17,19 @@ pub fn run() {
     video::start_video_proxy();
     webapp_proxy::start_webapp_proxy();
 
-    let builder = tauri::Builder::default()
+    let builder = tauri::Builder::default();
+
+    #[cfg(desktop)]
+    let builder = builder.plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+        let _ = app.get_webview_window("main").map(|w| {
+            let _ = w.show();
+            let _ = w.unminimize();
+            let _ = w.set_focus();
+        });
+    }));
+
+    let builder = builder
+        .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_upload::init())
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_dialog::init())
@@ -40,6 +52,11 @@ pub fn run() {
 
     builder
         .setup(|app| {
+            #[cfg(any(windows, target_os = "linux"))]
+            {
+                use tauri_plugin_deep_link::DeepLinkExt;
+                let _ = app.deep_link().register_all();
+            }
             let (client, mut event_stream) = tauri::async_runtime::block_on(async {
                 let client = rumax::MaxClient::new();
                 let stream = client.subscribe();

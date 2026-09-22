@@ -110,17 +110,58 @@ struct ProxyState {
     last_origin: Mutex<String>,
 }
 
+static RE_DOMAIN: OnceLock<Regex> = OnceLock::new();
+static RE_SECURE: OnceLock<Regex> = OnceLock::new();
+static RE_PATH: OnceLock<Regex> = OnceLock::new();
+static RE_SAMESITE: OnceLock<Regex> = OnceLock::new();
+
+fn clean_set_cookie_header(raw: &str) -> String {
+    let re_dom = RE_DOMAIN.get_or_init(|| Regex::new(r"(?i)\bDomain=[^;]+;?\s*").unwrap());
+    let re_sec = RE_SECURE.get_or_init(|| Regex::new(r"(?i)\bSecure;?\s*").unwrap());
+    let re_path = RE_PATH.get_or_init(|| Regex::new(r"(?i)\bPath=[^;]+;?\s*").unwrap());
+    let re_same = RE_SAMESITE.get_or_init(|| Regex::new(r"(?i)\bSameSite=[^;]+;?\s*").unwrap());
+
+    let mut cleaned = re_dom.replace_all(raw, "").to_string();
+    cleaned = re_sec.replace_all(&cleaned, "").to_string();
+    cleaned = re_path.replace_all(&cleaned, "").to_string();
+    cleaned = re_same.replace_all(&cleaned, "").to_string();
+
+    let trimmed = cleaned.trim().trim_end_matches(';').trim();
+    format!("{}; Path=/; SameSite=Lax", trimmed)
+}
+
+fn resolve_location_url(base_url: &str, loc: &str) -> String {
+    let loc = loc.trim();
+    if loc.starts_with("//") {
+        let scheme = if base_url.starts_with("http://") { "http:" } else { "https:" };
+        format!("{}{}", scheme, loc)
+    } else if loc.starts_with('/') {
+        let origin = get_origin_from_url(base_url);
+        format!("{}{}", origin, loc)
+    } else if !loc.contains("://") {
+        if let Ok(base_parsed) = url::Url::parse(base_url) {
+            if let Ok(joined) = base_parsed.join(loc) {
+                return joined.to_string();
+            }
+        }
+        let origin = get_origin_from_url(base_url);
+        format!("{}/{}", origin.trim_end_matches('/'), loc)
+    } else {
+        loc.to_string()
+    }
+}
+
 const SHIM_SCRIPT: &str = concat!(
     r#"<meta name="referrer" content="unsafe-url">"#,
     r#"<script>(function(){if(window.__mpwb)return;window.__mpwb=true;"#,
     r#"var q=[];function flush(){for(var i=0;i<q.length;){var b=q[i][2]?window.PrivateWebApp:window.WebApp;"#,
     r#"if(b&&typeof b.sendEvent==='function'){try{b.sendEvent(q[i][0],q[i][1]);}catch(e){}q.splice(i,1);}else{i++;}}}setInterval(flush,50);"#,
     r#"function deliver(n,d,p){q.push([n,d,!!p]);flush();}window.__mpDeliver=deliver;"#,
-    r#"function toParent(n,d){var o={};try{o=typeof d==='string'?JSON.parse(d):(d||{});}catch(e){}"#,
+    r#"function toParent(n,d){if(window.parent===window)return;var o={};try{o=typeof d==='string'?JSON.parse(d):(d||{});}catch(e){}"#,
     r#"var m=Object.assign({},o);m.type=n;try{window.parent.postMessage(JSON.stringify(m),'*');}catch(e){}}"#,
     r#"window.WebViewHandler={postEvent:function(n,d){toParent(n,d);},resolveShare:function(){}};"#,
     r#"window.PrivateWebViewHandler={postEvent:function(n,d){toParent(n,d);}};if(!window.AndroidPerf){window.AndroidPerf={trackFcp:function(){}};}"#,
-    r#"window.addEventListener('message',function(e){if(!e.data)return;var d;try{d=typeof e.data==='string'?JSON.parse(e.data):e.data;}catch(x){return;}"#,
+    r#"window.addEventListener('message',function(e){if(!e.data||e.source===window)return;var d;try{d=typeof e.data==='string'?JSON.parse(e.data):e.data;}catch(x){return;}"#,
     r#"if(d&&d.__mpDeliver&&typeof d.name==='string'){deliver(d.name,d.data,!!d.priv);}});"#,
     r#"function resolveTarget(u){"#,
     r#"if(!u||typeof u!=='string')return '';"#,
@@ -133,18 +174,21 @@ const SHIM_SCRIPT: &str = concat!(
     r#"}return u;}"#,
     r#"if(window.__mpOrigin){return window.__mpOrigin+(u.charAt(0)==='/'?'':'/')+u;}"#,
     r#"return '';}"#,
+    r#"window.open=function(u){var t=resolveTarget(u)||u;if(t){toParent('web_app_open_link',{url:String(t)});}return null;};"#,
+    r#"document.addEventListener('click',function(e){var a=e.target&&e.target.closest?e.target.closest('a'):null;if(!a)return;var h=a.getAttribute('href');if(!h||h.charAt(0)==='#'||h.indexOf('javascript:')===0)return;var tgt=a.getAttribute('target');var isMax=(h.indexOf('max.ru')!==-1||h.indexOf('max://')===0||(a.href&&a.href.indexOf('max.ru')!==-1)||(a.href&&a.href.indexOf('max://')===0));if(tgt==='_blank'||tgt==='_new'||isMax){var targetUrl=resolveTarget(h)||resolveTarget(a.href)||a.href;if(targetUrl){e.preventDefault();e.stopPropagation();toParent('web_app_open_link',{url:targetUrl});}}},true);"#,
+    r#"if(window.__mpRealUrl){toParent('web_app_page_navigated',{url:window.__mpRealUrl});}"#,
     r#"var of=window.fetch;if(of){window.fetch=function(u,i){try{"#,
     r#"var s=typeof u==='string'?u:(u&&u.url?u.url:'');"#,
     r#"var t=resolveTarget(s);"#,
     r#"if(t){var p='http://127.0.0.1:11448/proxy?url='+encodeURIComponent(t);"#,
     r#"if(typeof u==='string'){u=p;}else if(u&&typeof u==='object'){"#,
     r#"try{u=new Request(p,u);}catch(x){u=p;}}}"#,
-    r#"}catch(e){}return of.call(this,u,i);};}"#,
+    r#"}catch(e){}return of.call(this,u,i);};try{window.fetch.toString=function(){return 'function fetch() { [native code] }';};}catch(e){}}"#,
     r#"var ox=XMLHttpRequest.prototype.open;if(ox){XMLHttpRequest.prototype.open=function(m,u){try{"#,
     r#"if(typeof u==='string'){"#,
     r#"var t=resolveTarget(u);"#,
     r#"if(t){u='http://127.0.0.1:11448/proxy?url='+encodeURIComponent(t);}"#,
-    r#"}}catch(e){}var a=Array.prototype.slice.call(arguments);a[1]=u;return ox.apply(this,a);};}"#,
+    r#"}}catch(e){}var a=Array.prototype.slice.call(arguments);a[1]=u;return ox.apply(this,a);};try{ox.toString=function(){return 'function open() { [native code] }';};}catch(e){}}"#,
     r#"}());</script>"#
 );
 
@@ -249,6 +293,23 @@ fn handle_request(
         let _ = request.respond(Response::from_string("Missing target URL").with_status_code(400));
         return;
     };
+
+    if target_url.contains("externalCallback=1") {
+        let callback_html = format!(
+            r#"<!DOCTYPE html><html><head><meta charset="utf-8"><script>try{{window.parent.postMessage(JSON.stringify({{type:"web_app_external_callback",url:"{}"}}),"*");}}catch(e){{}}</script></head><body></body></html>"#,
+            target_url.replace('"', "%22")
+        );
+        let bytes = callback_html.into_bytes();
+        let len = bytes.len();
+        let resp_headers = vec![
+            Header::from_bytes(&b"Content-Type"[..], b"text/html; charset=utf-8").unwrap(),
+            Header::from_bytes(&b"Access-Control-Allow-Origin"[..], b"*").unwrap(),
+            Header::from_bytes(&b"Content-Length"[..], len.to_string().as_bytes()).unwrap(),
+        ];
+        let response = Response::new(200.into(), resp_headers, Cursor::new(bytes), Some(len), None);
+        let _ = request.respond(response);
+        return;
+    }
 
     let start_instant = std::time::Instant::now();
     let timestamp = chrono::Local::now().format("%H:%M:%S%.3f").to_string();
@@ -424,6 +485,8 @@ fn handle_request(
         .unwrap_or("")
         .to_string();
 
+    let final_url = res.url().as_str().replace('"', "%22");
+
     let mut headers = vec![
         Header::from_bytes(&b"Access-Control-Allow-Origin"[..], b"*").unwrap(),
         Header::from_bytes(
@@ -456,11 +519,49 @@ fn handle_request(
         }
         if name.eq_ignore_ascii_case("set-cookie") {
             let val = v.to_str().unwrap_or("");
-            let re_dom = Regex::new(r"(?i)Domain=[^;]+;?\s*").unwrap();
-            let re_sec = Regex::new(r"(?i)Secure;?\s*").unwrap();
-            let cleaned = re_dom.replace_all(val, "");
-            let cleaned = re_sec.replace_all(&cleaned, "");
+            let cleaned = clean_set_cookie_header(val);
             if let Ok(h) = Header::from_bytes(name.as_bytes(), cleaned.as_bytes()) {
+                headers.push(h);
+            }
+            continue;
+        }
+        if name.eq_ignore_ascii_case("location") {
+            let loc_val = v.to_str().unwrap_or("");
+            let resolved_loc = resolve_location_url(&target_url, loc_val);
+            if resolved_loc.contains("externalCallback=1") {
+                let callback_html = format!(
+                    r#"<!DOCTYPE html><html><head><meta charset="utf-8"><script>try{{window.parent.postMessage(JSON.stringify({{type:"web_app_external_callback",url:"{}"}}),"*");}}catch(e){{}}</script></head><body></body></html>"#,
+                    resolved_loc.replace('"', "%22")
+                );
+                let mut resp_headers = vec![
+                    Header::from_bytes(&b"Content-Type"[..], b"text/html; charset=utf-8").unwrap(),
+                    Header::from_bytes(&b"Access-Control-Allow-Origin"[..], b"*").unwrap(),
+                ];
+                for (ck, cv) in res.headers() {
+                    if ck.as_str().eq_ignore_ascii_case("set-cookie") {
+                        if let Ok(cval) = cv.to_str() {
+                            let cleaned = clean_set_cookie_header(cval);
+                            if let Ok(h) = Header::from_bytes(b"Set-Cookie", cleaned.as_bytes()) {
+                                resp_headers.push(h);
+                            }
+                        }
+                    }
+                }
+                let bytes = callback_html.into_bytes();
+                let len = bytes.len();
+                if let Ok(h) = Header::from_bytes(&b"Content-Length"[..], len.to_string().as_bytes()) {
+                    resp_headers.push(h);
+                }
+                let response = Response::new(200.into(), resp_headers, Cursor::new(bytes), Some(len), None);
+                let _ = request.respond(response);
+                return;
+            }
+            let proxy_loc = if resolved_loc.starts_with("http://") || resolved_loc.starts_with("https://") {
+                format!("http://127.0.0.1:11448/proxy?url={}", urlencoding::encode(&resolved_loc))
+            } else {
+                resolved_loc
+            };
+            if let Ok(h) = Header::from_bytes(b"Location", proxy_loc.as_bytes()) {
                 headers.push(h);
             }
             continue;
@@ -529,9 +630,12 @@ fn handle_request(
         let mut text = String::from_utf8_lossy(&bytes).to_string();
         let lower = text.to_ascii_lowercase();
         let origin_var = if !page_origin.is_empty() {
-            format!(r#"<script>window.__mpOrigin="{}";</script>"#, page_origin)
+            format!(
+                r#"<script>window.__mpOrigin="{}";window.__mpRealUrl="{}";</script>"#,
+                page_origin, final_url
+            )
         } else {
-            String::new()
+            format!(r#"<script>window.__mpRealUrl="{}";</script>"#, final_url)
         };
         let full_shim = format!("{}{}", origin_var, SHIM_SCRIPT);
         let inject_pos = lower
@@ -617,8 +721,8 @@ fn handle_request(
 pub fn start_webapp_proxy() {
     thread::spawn(move || {
         let mut builder = reqwest::blocking::Client::builder()
-            .connect_timeout(Duration::from_secs(10))
-            .redirect(reqwest::redirect::Policy::limited(10));
+            .connect_timeout(Duration::from_secs(15))
+            .redirect(reqwest::redirect::Policy::none());
         if let Ok(cert) = reqwest::Certificate::from_pem(rumax::MINTSIFRY_ROOT_CA) {
             builder = builder.add_root_certificate(cert);
         }

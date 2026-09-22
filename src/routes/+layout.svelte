@@ -24,13 +24,17 @@
   import { videoCropState, closeVideoCropModal } from "$lib/stores/videoCrop.js";
 
   import Session from "$lib/stores/session";
+  import { initDeepLink } from "$lib/utils/deepLink.js";
 
   let settings;
   const onBack = {};
+  let cleanupDeepLink = null;
 
   setContext("onBack", onBack);
 
   onMount(async () => {
+    cleanupDeepLink = await initDeepLink();
+
     listen("max", async (event) => {
       addLog(event.payload);
     });
@@ -65,6 +69,7 @@
   });
 
   onDestroy(() => {
+    if (cleanupDeepLink) cleanupDeepLink();
     $API.unlisten();
   });
 

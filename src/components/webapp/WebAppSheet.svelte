@@ -11,15 +11,30 @@
     collapseMiniApp,
     closeMiniApp,
     reloadMiniApp,
+    openMiniApp,
     updateAppMeta,
     resolveWebAppUrl,
   } from "$lib/stores/webapp.js";
   import { createBridgeClient } from "$lib/webapp/bridge.js";
+  import { processMaxLink } from "$lib/utils/maxLink.js";
   import ConfirmModal from "$components/main/ConfirmModal.svelte";
 
   export let app;
 
   let iframeElement;
+  let linkCounter = 0;
+  let openedLinksStack = [];
+  $: currentInnerItem = openedLinksStack.length > 0 ? openedLinksStack[openedLinksStack.length - 1] : null;
+  $: currentInnerUrl = currentInnerItem?.currentUrl || currentInnerItem?.initialUrl || null;
+  $: innerUrlHostname = currentInnerUrl
+    ? (() => {
+        try {
+          return new URL(currentInnerUrl).hostname;
+        } catch {
+          return currentInnerUrl;
+        }
+      })()
+    : "";
   let showMenu = false;
   let showConfirmClose = false;
   let showPhoneConfirm = false;
@@ -60,7 +75,39 @@
       } catch {}
     }
 
-    if (data.type === "webAppEvent") {
+    if (data.type === "web_app_external_callback" && data.url) {
+      handleExternalCallbackUrl(data.url);
+      return;
+    }
+
+    if (data.type === "web_app_open_link" && data.url) {
+      if (typeof data.url === "string" && data.url.includes("externalCallback=1")) {
+        handleExternalCallbackUrl(data.url);
+        return;
+      }
+      handleOpenTargetUrl(data.url);
+      return;
+    }
+
+    if (data.type === "web_app_page_navigated" && data.url) {
+      if (typeof data.url === "string" && data.url.includes("externalCallback=1")) {
+        handleExternalCallbackUrl(data.url);
+        return;
+      }
+      if (openedLinksStack.length > 0) {
+        const lastIdx = openedLinksStack.length - 1;
+        if (openedLinksStack[lastIdx].currentUrl !== data.url) {
+          openedLinksStack[lastIdx] = {
+            ...openedLinksStack[lastIdx],
+            currentUrl: data.url,
+          };
+          openedLinksStack = [...openedLinksStack];
+        }
+      }
+      return;
+    }
+
+    if (data.type === "web_appEvent") {
       bridge?.handleIncomingMessage(data.name, data.data, !!data.priv);
       return;
     }
@@ -78,6 +125,103 @@
     if (data.name && typeof data.name === "string") {
       bridge?.handleIncomingMessage(data.name, data.data || data, !!data.priv);
       return;
+    }
+  }
+
+  function normalizeExternalUrl(raw) {
+    if (!raw || typeof raw !== "string") return "";
+    let clean = raw.trim();
+    if (clean.includes("127.0.0.1:11448/proxy") || clean.includes("localhost:11448/proxy")) {
+      try {
+        const u = new URL(clean);
+        const extracted = u.searchParams.get("url") || u.searchParams.get("target");
+        if (extracted) clean = extracted;
+      } catch {}
+    }
+    return clean;
+  }
+
+  async function handleExternalCallbackUrl(rawUrl) {
+    const url = normalizeExternalUrl(rawUrl);
+    if (!url) return;
+    try {
+      const launch = await $API.processExternalCallback(url);
+      if (launch?.url) {
+        app.url = launch.url;
+        app.reloadKey += 1;
+      }
+    } catch (err) {
+      console.error(err);
+    }
+    openedLinksStack = [];
+  }
+
+  function isExternalAuthUrl(url) {
+    if (!url || typeof url !== "string") return false;
+    const lower = url.toLowerCase();
+    return lower.includes("esia.gosuslugi.ru") || lower.includes("gosuslugi.ru");
+  }
+
+  async function handleOpenTargetUrl(rawUrl) {
+    const url = normalizeExternalUrl(rawUrl);
+    if (!url) return;
+    if (url.includes("externalCallback=1")) {
+      await handleExternalCallbackUrl(url);
+      return;
+    }
+    const handled = await processMaxLink(url, {
+      currentUserId: $currentUser,
+      api: $API,
+      onOpenChat: async (chatId) => {
+        await openChat(chatId);
+        minimizeMiniApp(app.id);
+      },
+      onLaunchApp: async ({ botId, startParam, title }) => {
+        await openMiniApp({ botId, startParam, title, entryPoint: "link" });
+      },
+    });
+    if (handled) return;
+
+    if (isExternalAuthUrl(url)) {
+      try {
+        await openUrl(url);
+      } catch {
+        window.open(url, "_blank");
+      }
+      return;
+    }
+
+    if (openedLinksStack.length > 0) {
+      const top = openedLinksStack[openedLinksStack.length - 1];
+      if (top.initialUrl === url || top.currentUrl === url) {
+        return;
+      }
+    }
+
+    linkCounter += 1;
+    openedLinksStack = [
+      ...openedLinksStack,
+      {
+        id: `link_${Date.now()}_${linkCounter}`,
+        initialUrl: url,
+        currentUrl: url,
+      },
+    ];
+  }
+
+  function handleGoBack() {
+    if (openedLinksStack.length > 0) {
+      openedLinksStack = openedLinksStack.slice(0, -1);
+    }
+  }
+
+  async function handleOpenPageInBrowser() {
+    const target = currentInnerUrl || app.url;
+    if (!target) return;
+    try {
+      await openUrl(target);
+    } catch {
+      window.open(target, "_blank");
     }
   }
 
@@ -132,6 +276,9 @@
           phoneResolvePromise = resolve;
           showPhoneConfirm = true;
         });
+      },
+      onOpenLink: async (url) => {
+        await handleOpenTargetUrl(url);
       },
       postToFrame,
     });
@@ -225,6 +372,10 @@
   }
 
   function handleLeftBtnClick() {
+    if (currentInnerUrl) {
+      handleGoBack();
+      return;
+    }
     if (app.customBackButton) {
       bridge?.triggerBackPressed();
     } else {
@@ -391,9 +542,9 @@
           <button
             class="header-btn"
             on:click|stopPropagation={handleLeftBtnClick}
-            title={app.customBackButton ? "Назад" : "Закрыть"}
+            title={currentInnerUrl ? "Назад" : (app.customBackButton ? "Назад" : "Закрыть")}
           >
-            {#if app.customBackButton}
+            {#if currentInnerUrl || app.customBackButton}
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
                 <line x1="19" y1="12" x2="5" y2="12"></line>
                 <polyline points="12 19 5 12 12 5"></polyline>
@@ -405,10 +556,24 @@
               </svg>
             {/if}
           </button>
-          <span class="sheet-title">{app.title}</span>
+          <span class="sheet-title" title={currentInnerUrl || app.title}>
+            {currentInnerUrl ? (innerUrlHostname || currentInnerUrl) : app.title}
+          </span>
         </div>
 
         <div class="header-right">
+          <button
+            class="header-btn"
+            on:click|stopPropagation={handleOpenPageInBrowser}
+            title="Открыть в браузере"
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+              <polyline points="15 3 21 3 21 9"></polyline>
+              <line x1="10" y1="14" x2="21" y2="3"></line>
+            </svg>
+          </button>
+
           <button
             class="header-btn"
             on:click|stopPropagation={triggerMinimize}
@@ -434,6 +599,14 @@
 
             {#if showMenu}
               <div class="dropdown-menu">
+                <button class="menu-item" on:click|stopPropagation={() => { showMenu = false; handleOpenPageInBrowser(); }}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+                    <polyline points="15 3 21 3 21 9"></polyline>
+                    <line x1="10" y1="14" x2="21" y2="3"></line>
+                  </svg>
+                  <span>Открыть в браузере</span>
+                </button>
                 <button class="menu-item" on:click|stopPropagation={handleShowBot}>
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
@@ -511,10 +684,22 @@
             src={resolveWebAppUrl(app.url)}
             title={app.title}
             class="app-frame"
+            style:display={currentInnerUrl ? "none" : "block"}
             allow="camera; microphone; geolocation; clipboard-read; clipboard-write; autoplay; fullscreen"
             sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals allow-downloads"
           ></iframe>
         {/key}
+        {#if currentInnerItem}
+          {#key currentInnerItem.id}
+            <iframe
+              src={resolveWebAppUrl(currentInnerItem.initialUrl)}
+              title={innerUrlHostname || currentInnerItem.currentUrl}
+              class="app-frame inner-app-frame"
+              allow="camera; microphone; geolocation; clipboard-read; clipboard-write; autoplay; fullscreen"
+              sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals allow-downloads"
+            ></iframe>
+          {/key}
+        {/if}
       {/if}
     </div>
   </div>
