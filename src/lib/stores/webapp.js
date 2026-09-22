@@ -215,12 +215,5 @@ export async function openDigitalIdApp() {
   });
 }
 
-export function resolveWebAppUrl(url) {
-  if (!url || typeof url !== "string") return url;
-  if (!url.startsWith("https://") && !url.startsWith("http://")) return url;
-  if (url.startsWith("http://127.0.0.1") || url.startsWith("http://localhost")) return url;
-  const hashIndex = url.indexOf("#");
-  const base = hashIndex >= 0 ? url.slice(0, hashIndex) : url;
-  const hash = hashIndex >= 0 ? url.slice(hashIndex) : "";
-  return `http://127.0.0.1:11448/proxy?url=${encodeURIComponent(base)}${hash}`;
-}
+export { resolveWebAppUrl } from "$lib/utils/maxLink.js";
+

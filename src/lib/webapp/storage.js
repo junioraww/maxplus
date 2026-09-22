@@ -33,10 +33,14 @@ export function saveStorageKey(userId, botId, isSecure, key, value) {
   const storageKey = buildStorageKey(userId, botId, isSecure, key);
 
   if (value === null || value === undefined) {
-    localStorage.removeItem(storageKey);
-    const keys = getStoredKeys(userId, botId, isSecure).filter((k) => k !== key);
-    setStoredKeys(userId, botId, isSecure, keys);
-    return true;
+    try {
+      localStorage.removeItem(storageKey);
+      const keys = getStoredKeys(userId, botId, isSecure).filter((k) => k !== key);
+      setStoredKeys(userId, botId, isSecure, keys);
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   const keys = getStoredKeys(userId, botId, isSecure);
@@ -56,16 +60,24 @@ export function saveStorageKey(userId, botId, isSecure, key, value) {
 
 export function getStorageKey(userId, botId, isSecure, key) {
   if (!key) return null;
-  return localStorage.getItem(buildStorageKey(userId, botId, isSecure, key));
+  try {
+    return localStorage.getItem(buildStorageKey(userId, botId, isSecure, key));
+  } catch {
+    return null;
+  }
 }
 
 export function clearStorageKeys(userId, botId, isSecure) {
   const keys = getStoredKeys(userId, botId, isSecure);
-  for (const k of keys) {
-    localStorage.removeItem(buildStorageKey(userId, botId, isSecure, k));
+  try {
+    for (const k of keys) {
+      localStorage.removeItem(buildStorageKey(userId, botId, isSecure, k));
+    }
+    setStoredKeys(userId, botId, isSecure, []);
+    return true;
+  } catch {
+    return false;
   }
-  setStoredKeys(userId, botId, isSecure, []);
-  return true;
 }
 
 function buildBiometryKey(userId, botId) {
