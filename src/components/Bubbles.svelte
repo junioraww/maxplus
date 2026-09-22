@@ -114,10 +114,47 @@
     }
   }
 
-  function loop() {
+  let lastFrameTime = 0;
+  const frameInterval = 1000 / 30;
+  let isVisible = true;
+  let isPageVisible = true;
+  let observer = null;
+
+  function loop(timestamp = 0) {
+    if (!isVisible || !isPageVisible) {
+      rafId = null;
+      return;
+    }
+    rafId = requestAnimationFrame(loop);
+    const elapsed = timestamp - lastFrameTime;
+    if (elapsed < frameInterval) return;
+    lastFrameTime = timestamp - (elapsed % frameInterval);
+
     update();
     draw();
-    rafId = requestAnimationFrame(loop);
+  }
+
+  function startLoop() {
+    if (!rafId && isVisible && isPageVisible) {
+      lastFrameTime = performance.now();
+      rafId = requestAnimationFrame(loop);
+    }
+  }
+
+  function stopLoop() {
+    if (rafId) {
+      cancelAnimationFrame(rafId);
+      rafId = null;
+    }
+  }
+
+  function handleVisibilityChange() {
+    isPageVisible = document.visibilityState !== "hidden";
+    if (isPageVisible) {
+      startLoop();
+    } else {
+      stopLoop();
+    }
   }
 
   function onPointerMove(e) {
@@ -142,18 +179,38 @@
     initParticles();
 
     window.addEventListener("resize", resize, { passive: true });
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    if (typeof IntersectionObserver !== "undefined" && canvas) {
+      observer = new IntersectionObserver((entries) => {
+        for (const entry of entries) {
+          isVisible = entry.isIntersecting;
+          if (isVisible) {
+            startLoop();
+          } else {
+            stopLoop();
+          }
+        }
+      });
+      observer.observe(canvas);
+    }
 
     if (parallax) {
       window.addEventListener("pointermove", onPointerMove, { passive: true });
       window.addEventListener("touchmove", onPointerMove, { passive: true });
     }
 
-    loop();
+    startLoop();
   });
 
   onDestroy(() => {
-    if (rafId) cancelAnimationFrame(rafId);
+    stopLoop();
+    if (observer) {
+      observer.disconnect();
+      observer = null;
+    }
     window.removeEventListener("resize", resize);
+    document.removeEventListener("visibilitychange", handleVisibilityChange);
     window.removeEventListener("pointermove", onPointerMove);
     window.removeEventListener("touchmove", onPointerMove);
   });

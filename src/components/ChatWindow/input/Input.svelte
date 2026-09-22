@@ -2085,6 +2085,11 @@
     background: #17191d;
     border-top: 1px solid rgba(255, 255, 255, 0.06);
     z-index: 10;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+    overflow: hidden;
   }
 
   .input-controls {
@@ -2093,6 +2098,10 @@
     gap: 8px;
     position: relative;
     padding: 8px 12px 10px;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
   }
 
   .input-container {
@@ -2625,13 +2634,16 @@
   .recording-bar {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 8px;
     background-color: #1e2025;
     border-radius: 18px;
-    flex-grow: 1;
+    flex: 1 1 0%;
+    min-width: 0;
+    max-width: 100%;
     min-height: 48px;
-    padding: 0 16px;
+    padding: 0 12px;
     box-sizing: border-box;
+    overflow: hidden;
   }
 
   .rec-dot {
@@ -2657,16 +2669,22 @@
   }
 
   .rec-wave-svg {
-    flex: 1;
-    height: 24px;
+    flex: 1 1 0%;
+    width: 0;
     min-width: 0;
-    overflow: visible;
+    max-width: 100%;
+    height: 24px;
+    overflow: hidden;
   }
 
   .rec-video-label {
     font-size: 13px;
     color: #94a3b8;
-    flex: 1;
+    flex: 1 1 0%;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .rec-cancel-slide {
@@ -2677,11 +2695,16 @@
     color: #64748b;
     white-space: nowrap;
     transition: transform 0.05s linear;
+    flex-shrink: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   .rec-slide-chevron {
     font-size: 16px;
     animation: slide-chevron 1.2s infinite;
+    flex-shrink: 0;
   }
 
   @keyframes slide-chevron {
@@ -2718,6 +2741,7 @@
     align-items: center;
     justify-content: center;
     margin-left: auto;
+    flex-shrink: 0;
   }
 
   .rec-trash-btn:hover {
@@ -2735,6 +2759,7 @@
     align-items: center;
     justify-content: center;
     transition: background 0.15s ease;
+    flex-shrink: 0;
   }
 
   .rec-stop-btn:hover {
@@ -2745,6 +2770,7 @@
     background: #248bfe;
     color: #fff;
     animation: rec-btn-pulse 1.5s infinite;
+    flex-shrink: 0;
   }
 
   @keyframes rec-btn-pulse {

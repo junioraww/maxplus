@@ -103,9 +103,6 @@
   const messages = writable([]);
   $: if ($messages) {
     activeChatMessages.set($messages);
-    if ($messages.length > 0 && $activeMedia && ($activeMedia.chatId === (chat?.id ?? chatId) || !$activeMedia.chatId)) {
-      buildChatPlaylist(chat?.id ?? chatId, $activeMedia.messageId, $messages);
-    }
   }
   let initialized = false;
 
@@ -145,15 +142,27 @@
   let touchStartX = 0;
   let touchStartY = 0;
   let currentDragX = 0;
+  let isTouchTracking = false;
   let isSwipingChat = false;
   let isScrollingChat = false;
   let isClosingBySwipe = false;
   let chatWindowWidth = 0;
 
   function handleTouchStart(e) {
-    if (e.touches.length !== 1) return;
-    if (viewerOpen || settingsShown || dropoutActiveAt || isClosingBySwipe) return;
+    if (e.touches.length !== 1) {
+      isTouchTracking = false;
+      return;
+    }
+    if (viewerOpen || settingsShown || dropoutActiveAt || isClosingBySwipe) {
+      isTouchTracking = false;
+      return;
+    }
+    if (e.target.closest("input, textarea, button, a, .icon-button, .scroll-down-container, .media-playback-header, .timeline-track-container, .speed-control-wrapper, .volume-control-wrapper, .hdr-btn")) {
+      isTouchTracking = false;
+      return;
+    }
 
+    isTouchTracking = true;
     touchStartX = e.touches[0].clientX;
     touchStartY = e.touches[0].clientY;
     currentDragX = 0;
@@ -163,7 +172,7 @@
   }
 
   function handleTouchMove(e) {
-    if (isScrollingChat || isClosingBySwipe) return;
+    if (!isTouchTracking || isScrollingChat || isClosingBySwipe) return;
     if (e.touches.length !== 1) return;
 
     const currentX = e.touches[0].clientX;
@@ -195,6 +204,7 @@
   }
 
   function handleTouchEnd() {
+    isTouchTracking = false;
     if (!isSwipingChat || isClosingBySwipe) {
       isSwipingChat = false;
       isScrollingChat = false;
@@ -217,6 +227,7 @@
   }
 
   function handleTouchCancel() {
+    isTouchTracking = false;
     if (!isClosingBySwipe) {
       isSwipingChat = false;
       isScrollingChat = false;
@@ -232,7 +243,7 @@
   function handleMouseDown(e) {
     if (isClosingBySwipe || viewerOpen || settingsShown || dropoutActiveAt) return;
     if (e.button !== 0) return;
-    if (e.target.closest("input, textarea, button, a, .icon-button, .scroll-down-container")) return;
+    if (e.target.closest("input, textarea, button, a, .icon-button, .scroll-down-container, .media-playback-header, .timeline-track-container, .speed-control-wrapper, .volume-control-wrapper")) return;
 
     const isHeader = Boolean(e.target.closest("header"));
     const isLeftEdge = e.clientX <= 60;

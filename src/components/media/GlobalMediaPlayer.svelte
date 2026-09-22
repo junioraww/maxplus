@@ -26,7 +26,6 @@
 
   onMount(() => {
     registerGlobalElements(audioEl, videoEl);
-    startSmoothTicker();
   });
 
   $: if (audioEl || videoEl) {
@@ -50,24 +49,41 @@
     }
   });
 
+  $: if ($activeMedia?.isPlaying) {
+    if (!animId) {
+      startSmoothTicker();
+    }
+  } else {
+    if (animId) {
+      cancelAnimationFrame(animId);
+      animId = null;
+    }
+  }
+
   function startSmoothTicker() {
+    if (animId) {
+      cancelAnimationFrame(animId);
+      animId = null;
+    }
     let lastTime = 0;
     const tick = () => {
       const state = $activeMedia;
-      if (state && state.isPlaying) {
-        let cur = 0;
-        let dur = state.duration || 0;
-        const el = state.type === 'voice' ? audioEl : (videoEl || state.element);
-        if (el && el.currentTime !== undefined) {
-          cur = el.currentTime;
-          if (el.duration && isFinite(el.duration) && el.duration > 0) {
-            dur = el.duration;
-          }
+      if (!state || !state.isPlaying) {
+        animId = null;
+        return;
+      }
+      let cur = 0;
+      let dur = state.duration || 0;
+      const el = state.type === 'voice' ? audioEl : (videoEl || state.element);
+      if (el && el.currentTime !== undefined) {
+        cur = el.currentTime;
+        if (el.duration && isFinite(el.duration) && el.duration > 0) {
+          dur = el.duration;
         }
-        if (Math.abs(cur - lastTime) >= 0.25) {
-          lastTime = cur;
-          updateMediaProgress(state.id, cur, dur);
-        }
+      }
+      if (Math.abs(cur - lastTime) >= 0.25) {
+        lastTime = cur;
+        updateMediaProgress(state.id, cur, dur);
       }
       animId = requestAnimationFrame(tick);
     };
@@ -154,13 +170,6 @@
       height={110}
     ></canvas>
   </div>
-  <button
-    class="pip-close-btn"
-    on:click|stopPropagation={stopCurrentMedia}
-    title="Закрыть"
-  >
-    ✕
-  </button>
 </div>
 
 <style>
@@ -199,30 +208,5 @@
     object-fit: cover;
     display: block;
     border-radius: 50%;
-  }
-  .pip-close-btn {
-    position: absolute;
-    top: -4px;
-    right: -4px;
-    width: 26px;
-    height: 26px;
-    border-radius: 50%;
-    background: rgba(15, 23, 42, 0.92);
-    color: #fff;
-    border: 1.5px solid rgba(255, 255, 255, 0.6);
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 13px;
-    line-height: 1;
-    padding: 0;
-    z-index: 50;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
-    transition: background 0.15s, transform 0.1s;
-  }
-  .pip-close-btn:hover {
-    background: rgba(239, 68, 68, 0.95);
-    transform: scale(1.1);
   }
 </style>
