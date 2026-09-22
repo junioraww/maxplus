@@ -119,36 +119,32 @@ export function createBridgeClient({
   }
 
   function emitToWebApp(method, data = {}, isPrivate = false) {
-    const stringRequestId =
+    const rawRequestId =
       data.requestId !== undefined && data.requestId !== null
-        ? String(data.requestId)
+        ? data.requestId
         : undefined;
 
     const enrichedData = {
       ...data,
-      ...(stringRequestId !== undefined ? { requestId: stringRequestId } : {}),
+      ...(rawRequestId !== undefined ? { requestId: rawRequestId } : {}),
     };
 
     const message = {
-      ...enrichedData,
       __mpDeliver: true,
       name: method,
       data: JSON.stringify(enrichedData),
       priv: isPrivate,
-      type: method,
     };
 
     postToFrame(JSON.stringify(message));
   }
-
-
 
   function sendOk(method, requestId, status, isPrivate = false) {
     emitToWebApp(
       method,
       {
         status,
-        ...(requestId !== undefined && requestId !== null ? { requestId: String(requestId) } : {}),
+        ...(requestId !== undefined && requestId !== null ? { requestId } : {}),
       },
       isPrivate
     );
@@ -160,7 +156,7 @@ export function createBridgeClient({
     emitToWebApp(
       method,
       {
-        requestId: String(requestId),
+        requestId,
         error: { code: `client.${slug}.${code}` },
       },
       isPrivate
@@ -192,7 +188,7 @@ export function createBridgeClient({
 
     const requestId =
       payload.requestId !== undefined && payload.requestId !== null
-        ? String(payload.requestId)
+        ? payload.requestId
         : null;
     const method = normalizeMethod(rawMethod);
 
