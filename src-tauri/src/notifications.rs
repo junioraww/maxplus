@@ -369,6 +369,42 @@ pub extern "system" fn Java_org_meowkie_max_NotificationHelper_isChatMutedNative
 }
 
 #[cfg(target_os = "android")]
+#[no_mangle]
+pub extern "system" fn Java_org_meowkie_max_NotificationHelper_isNotificationsEnabledNative<'local>(
+    mut unowned_env: EnvUnowned<'local>,
+    _this: JObject<'local>,
+    account: i64,
+    app_dir: JString<'local>,
+) -> jboolean {
+    let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let rust_app_dir: String = match unowned_env.with_env(|_env| -> Result<_, jni::errors::Error> {
+            let a = app_dir.try_to_string(_env)?;
+            Ok(a)
+        }).into_outcome() {
+            jni::Outcome::Ok(v) => v,
+            _ => return true,
+        };
+
+        let root = crate::stores::resolve_app_root(&rust_app_dir);
+        let creds = crate::stores::get_background_creds(&rust_app_dir, account as u64);
+        let local_id = creds.as_ref().map(|c| c.0).unwrap_or(account as u64);
+        let user_settings_path = root.join("data").join(local_id.to_string()).join("user_settings");
+
+        let storage = crate::stores::Storage::new(None);
+        if let Some(val) = storage.load(&user_settings_path) {
+            if let Some(val_str) = val.get("CHATS_PUSH_NOTIFICATION").and_then(|v| v.as_str()) {
+                if val_str == "OFF" {
+                    return false;
+                }
+            }
+        }
+        true
+    }));
+
+    res.unwrap_or(true)
+}
+
+#[cfg(target_os = "android")]
 use tauri::Emitter;
 
 static GLOBAL_APP_HANDLE: std::sync::OnceLock<tauri::AppHandle> = std::sync::OnceLock::new();

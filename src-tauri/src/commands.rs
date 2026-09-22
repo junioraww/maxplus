@@ -1,4 +1,4 @@
-use crate::stores::{load_sync_state, save_sync_state};
+use crate::stores::{load_sync_state, save_sync_state, save_user_settings};
 use crate::state::AppState;
 use serde_json::{json, Value};
 use std::collections::HashMap;
@@ -75,7 +75,6 @@ delegate_cmd!(get_bot_info(bot_id: u64) => get_bot_info(bot_id));
 delegate_cmd!(get_chat_bot_commands(chat_id: i64) => get_chat_bot_commands(chat_id));
 delegate_cmd!(suspend_bot(bot_id: u64) => suspend_bot(bot_id));
 delegate_cmd!(set_chat_mute(chat_id: i64, dont_disturb_until: i64) => set_chat_mute(chat_id, dont_disturb_until));
-delegate_cmd!(update_user_settings(settings: HashMap<String, serde_json::Value>) => update_user_settings(settings));
 delegate_cmd!(get_folders(folder_sync: Option<i64>) => get_folders(folder_sync));
 delegate_cmd!(get_folder_by_id(folder_ids: Vec<String>) => get_folder_by_id(folder_ids));
 delegate_cmd!(update_folder(id: String, title: String, include: Vec<i64>, filters: Vec<i64>, options: Vec<i64>, favorites: Vec<i64>) => update_folder(id, title, include, filters, options, favorites));
@@ -159,6 +158,10 @@ pub async fn sync_client(
         }
     }
 
+    if let Some(user_config) = final_payload.get("config").and_then(|c| c.get("user")) {
+        let _ = save_user_settings(&app, account_id, user_config);
+    }
+
     Ok(final_payload)
 }
 
@@ -168,7 +171,18 @@ pub async fn set_chats_for_telemetry(state: State<'_, AppState>, chats: Vec<Tele
     Ok("Set".into())
 }
 
-
+#[tauri::command]
+pub async fn update_user_settings(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    account_id: u64,
+    settings: HashMap<String, serde_json::Value>,
+) -> Result<Value, Value> {
+    let r = state.client.update_user_settings(settings.clone()).await.map_err(|e| e.to_json())?;
+    let settings_val = serde_json::to_value(&settings).unwrap_or(json!({}));
+    let _ = save_user_settings(&app, account_id, &settings_val);
+    Ok(r.payload)
+}
 
 #[tauri::command]
 pub async fn set_token(state: State<'_, AppState>, token: String) -> Result<String, String> {

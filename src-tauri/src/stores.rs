@@ -199,6 +199,10 @@ impl Paths {
     pub fn sync_state(&self) -> PathBuf {
         self.root.join("sync_state")
     }
+
+    pub fn user_settings(&self) -> PathBuf {
+        self.root.join("user_settings")
+    }
 }
 
 #[tauri::command]
@@ -258,7 +262,7 @@ pub fn save_chats(
     let storage = Storage::new(key);
     let paths = Paths::new(&app, account);
 
-    for chat in chats {
+    for mut chat in chats {
         let chat_id = chat.get("id").and_then(|v| {
             v.as_i64()
             .or_else(|| v.as_str().and_then(|s| s.parse::<i64>().ok()))
@@ -266,6 +270,18 @@ pub fn save_chats(
 
         if let Some(id) = chat_id {
             let path = paths.info(id);
+            let missing_ddu = chat.get("dontDisturbUntil").map(|v| v.is_null()).unwrap_or(true);
+            if missing_ddu {
+                if let Some(existing) = storage.load(&path) {
+                    if let Some(ddu) = existing.get("dontDisturbUntil") {
+                        if !ddu.is_null() {
+                            if let Some(obj) = chat.as_object_mut() {
+                                obj.insert("dontDisturbUntil".to_string(), ddu.clone());
+                            }
+                        }
+                    }
+                }
+            }
             storage.save(path, &chat)?;
         }
     }
@@ -1570,6 +1586,33 @@ pub fn save_sync_state<T: serde::Serialize>(
     let key = crypto_key(app, account);
     let val = serde_json::to_value(state).map_err(|e| e.to_string())?;
     Storage::new(key).save(Paths::new(app, account).sync_state(), &val)
+}
+
+pub fn save_user_settings(
+    app: &AppHandle,
+    account: u64,
+    settings: &Value,
+) -> Result<(), String> {
+    let key = crypto_key(app, account);
+    let paths = Paths::new(app, account);
+    let storage = Storage::new(key);
+    let mut current = storage.load(paths.user_settings()).unwrap_or(json!({}));
+    if let (Some(dest), Some(src)) = (current.as_object_mut(), settings.as_object()) {
+        for (k, v) in src {
+            dest.insert(k.clone(), v.clone());
+        }
+    } else {
+        current = settings.clone();
+    }
+    storage.save(paths.user_settings(), &current)
+}
+
+pub fn load_user_settings(
+    app: &AppHandle,
+    account: u64,
+) -> Option<Value> {
+    let key = crypto_key(app, account);
+    Storage::new(key).load(Paths::new(app, account).user_settings())
 }
 
 #[cfg(target_os = "android")]

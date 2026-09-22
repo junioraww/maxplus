@@ -29,6 +29,7 @@ class NotificationHelper(private val ctx: Context) {
   }
 
   private external fun isChatMutedNative(account: Long, chatId: Long, appDir: String): Boolean
+  private external fun isNotificationsEnabledNative(account: Long, appDir: String): Boolean
   
   companion object {
     const val CHANNEL_ID = "MESSAGES_CHANNEL_ID"
@@ -118,6 +119,15 @@ class NotificationHelper(private val ctx: Context) {
     val account = (data["c"] ?: data["account_id"])?.toLongOrNull() ?: 0L
 
     try {
+      if (!isNotificationsEnabledNative(account, ctx.applicationInfo.dataDir)) {
+        Log.d("MaxPlus", "handleIncomingMessage: notifications disabled for account $account")
+        return
+      }
+    } catch (e: Throwable) {
+      Log.e("MaxPlus", "isNotificationsEnabledNative error", e)
+    }
+
+    try {
       if (isChatMutedNative(account, chatId, ctx.applicationInfo.dataDir)) {
         Log.d("MaxPlus", "handleIncomingMessage: chat $chatId is muted")
         return
@@ -125,6 +135,7 @@ class NotificationHelper(private val ctx: Context) {
     } catch (e: Throwable) {
       Log.e("MaxPlus", "isChatMutedNative error", e)
     }
+
 
     val mid = data["msgid"] ?: data["mid"] ?: ""
     val text = data["msg"] ?: data["body"] ?: data["text"] ?: "Сообщение"
@@ -202,8 +213,10 @@ class NotificationHelper(private val ctx: Context) {
     
     val isGroup = chatId < 0 || title != newest.senderName
     val style = NotificationCompat.MessagingStyle(userPerson)
-      .setConversationTitle(title)
       .setGroupConversation(isGroup)
+    if (isGroup) {
+      style.conversationTitle = title
+    }
     
     for (h in history) {
       val isMe = h.senderId == "me" || h.senderName == "Вы"
@@ -245,8 +258,6 @@ class NotificationHelper(private val ctx: Context) {
 
     val builder = NotificationCompat.Builder(ctx, CHANNEL_ID)
       .setSmallIcon(R.drawable.ic_notification)
-      .setContentTitle(title)
-      .setContentText(newest.text)
       .setLargeIcon(chatAvatar)
       .setStyle(style)
       .setContentIntent(contentIntent)
