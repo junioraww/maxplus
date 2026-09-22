@@ -21,6 +21,8 @@
   import { computeTextDiff, computeAttachesDiff } from "$lib/utils/diff.js";
   import { getProxiedMediaUrl } from "$lib/utils/images";
   import { openVideoCropModal, closeVideoCropModal } from "$lib/stores/videoCrop.js";
+  import { encodeAudioBufferToOggOpus, convertAudioBlobToOggOpus } from "$lib/utils/audioEncoder.js";
+  import { Mp4Encoder, isWebCodecsMp4Available } from "$lib/utils/mp4Encoder.js";
 
   export let replyTo;
   export let scrollElement;
@@ -573,7 +575,7 @@
       return;
     }
 
-    const response = await invoke("pick", type !== "FILE" ? { type } : null);
+    const response = await invoke("pick", type !== "FILE" ? { type } : null).catch(() => null);
 
     if (!response || response === "CANCEL") return;
     const { uri, mime_type: mime } = response;
@@ -618,6 +620,11 @@
   let isFallbackVideo = false;
   let fallbackInterval = null;
   let videoFacingMode = 'user';
+  let recordSquareCanvas = null;
+  let recordSquareCtx = null;
+  let recordSquareAnimId = null;
+  let recordSquareStream = null;
+  let mp4Encoder = null;
 
   $: if (videoPreviewEl && mediaStream && recordMode === 'video') {
     if (videoPreviewEl.srcObject !== mediaStream) {
@@ -792,6 +799,17 @@
             }
           }
         }
+        try {
+          audioContext = new (window.AudioContext || window.webkitAudioContext)();
+          const audioTracks = mediaStream.getAudioTracks();
+          if (audioTracks.length > 0) {
+            const audioOnlyStream = new MediaStream([audioTracks[0]]);
+            const source = audioContext.createMediaStreamSource(audioOnlyStream);
+            analyserNode = audioContext.createAnalyser();
+            analyserNode.fftSize = 64;
+            source.connect(analyserNode);
+          }
+        } catch {}
       }
     } catch (err) {
       if (recordMode === 'voice') {
@@ -823,30 +841,74 @@
         }
       }
 
-      if (!opusRecorder) {
-        let mimeType = '';
-        if (recordMode === 'voice') {
-          if (typeof MediaRecorder !== 'undefined') {
-            if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) mimeType = 'audio/webm;codecs=opus';
-            else if (MediaRecorder.isTypeSupported('audio/ogg;codecs=opus')) mimeType = 'audio/ogg;codecs=opus';
-            else if (MediaRecorder.isTypeSupported('audio/webm')) mimeType = 'audio/webm';
-          }
-        } else {
-          if (typeof MediaRecorder !== 'undefined') {
-            if (MediaRecorder.isTypeSupported('video/webm;codecs=vp8,opus')) mimeType = 'video/webm;codecs=vp8,opus';
-            else if (MediaRecorder.isTypeSupported('video/webm')) mimeType = 'video/webm';
-            else if (MediaRecorder.isTypeSupported('video/mp4')) mimeType = 'video/mp4';
+      if (recordMode === 'video' && !isFallbackVideo) {
+        if (typeof document !== 'undefined' && typeof HTMLCanvasElement !== 'undefined') {
+          recordSquareCanvas = document.createElement('canvas');
+          recordSquareCanvas.width = 480;
+          recordSquareCanvas.height = 480;
+          recordSquareCtx = recordSquareCanvas.getContext('2d', { alpha: false });
+
+          const drawSquareLoop = () => {
+            if (videoPreviewEl && videoPreviewEl.videoWidth > 0 && videoPreviewEl.videoHeight > 0) {
+              const vw = videoPreviewEl.videoWidth;
+              const vh = videoPreviewEl.videoHeight;
+              const size = Math.min(vw, vh);
+              const sx = Math.floor((vw - size) / 2);
+              const sy = Math.floor((vh - size) / 2);
+              recordSquareCtx.drawImage(videoPreviewEl, sx, sy, size, size, 0, 0, 480, 480);
+            } else if (fallbackCanvasEl) {
+              recordSquareCtx.drawImage(fallbackCanvasEl, 0, 0, 480, 480);
+            }
+            recordSquareAnimId = requestAnimationFrame(drawSquareLoop);
+          };
+          drawSquareLoop();
+
+          if (typeof recordSquareCanvas.captureStream === 'function') {
+            try {
+              recordSquareStream = recordSquareCanvas.captureStream(30);
+              const audioTracks = mediaStream.getAudioTracks();
+              if (audioTracks.length > 0) {
+                recordSquareStream.addTrack(audioTracks[0]);
+              }
+            } catch {
+              recordSquareStream = null;
+            }
           }
         }
+      }
 
-        mediaRecorder = new MediaRecorder(mediaStream, mimeType ? { mimeType } : {});
-        mediaRecorder.ondataavailable = (e) => {
-          if (e.data && e.data.size > 0) {
-            recordedChunks.push(e.data);
+      if (!opusRecorder) {
+        if (recordMode === 'video' && isWebCodecsMp4Available()) {
+          mp4Encoder = new Mp4Encoder({ width: 480, height: 480, fps: 30 });
+          await mp4Encoder.start(mediaStream);
+        } else {
+          let mimeType = '';
+          if (recordMode === 'voice') {
+            if (typeof MediaRecorder !== 'undefined') {
+              if (MediaRecorder.isTypeSupported('audio/ogg;codecs=opus')) mimeType = 'audio/ogg;codecs=opus';
+              else if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) mimeType = 'audio/webm;codecs=opus';
+              else if (MediaRecorder.isTypeSupported('audio/webm')) mimeType = 'audio/webm';
+            }
+          } else {
+            if (typeof MediaRecorder !== 'undefined') {
+              if (MediaRecorder.isTypeSupported('video/mp4;codecs=avc1,mp4a.40.2')) mimeType = 'video/mp4;codecs=avc1,mp4a.40.2';
+              else if (MediaRecorder.isTypeSupported('video/mp4;codecs=avc1')) mimeType = 'video/mp4;codecs=avc1';
+              else if (MediaRecorder.isTypeSupported('video/mp4')) mimeType = 'video/mp4';
+              else if (MediaRecorder.isTypeSupported('video/webm;codecs=vp8,opus')) mimeType = 'video/webm;codecs=vp8,opus';
+              else if (MediaRecorder.isTypeSupported('video/webm')) mimeType = 'video/webm';
+            }
           }
-        };
 
-        mediaRecorder.start(100);
+          const streamToRecord = (recordMode === 'video' && !isFallbackVideo && recordSquareStream) ? recordSquareStream : mediaStream;
+          mediaRecorder = new MediaRecorder(streamToRecord, mimeType ? { mimeType } : {});
+          mediaRecorder.ondataavailable = (e) => {
+            if (e.data && e.data.size > 0) {
+              recordedChunks.push(e.data);
+            }
+          };
+
+          mediaRecorder.start(100);
+        }
       }
       isRecording = true;
       recordStartTime = Date.now();
@@ -884,6 +946,16 @@
 
   function stopRecordingTracks() {
     if (animFrameId) cancelAnimationFrame(animFrameId);
+    if (recordSquareAnimId) {
+      cancelAnimationFrame(recordSquareAnimId);
+      recordSquareAnimId = null;
+    }
+    if (recordSquareStream && recordSquareStream !== mediaStream) {
+      recordSquareStream.getTracks().forEach((t) => t.stop());
+      recordSquareStream = null;
+    }
+    recordSquareCanvas = null;
+    recordSquareCtx = null;
     if (recordTimer) clearInterval(recordTimer);
     if (fallbackInterval) {
       clearInterval(fallbackInterval);
@@ -908,6 +980,10 @@
     isRecording = false;
     isLocked = false;
     stopRecordingTracks();
+    if (mp4Encoder) {
+      mp4Encoder.abort();
+      mp4Encoder = null;
+    }
     if (opusRecorder) {
       try { opusRecorder.close(); } catch {}
       opusRecorder = null;
@@ -928,6 +1004,16 @@
     isLocked = false;
     if (recordTimer) clearInterval(recordTimer);
 
+    let mp4RecordedBlob = null;
+    if (mp4Encoder) {
+      try {
+        mp4RecordedBlob = await mp4Encoder.stop();
+      } catch (e) {
+        console.error(e);
+      }
+      mp4Encoder = null;
+    }
+
     if (opusRecorder) {
       await new Promise((resolve) => {
         opusRecorder.onstop = resolve;
@@ -935,9 +1021,6 @@
       });
     }
 
-    if (mediaRecorder && mediaRecorder.state === 'recording') {
-      try { mediaRecorder.requestData(); } catch {}
-    }
     if (mediaRecorder && mediaRecorder.state !== 'inactive') {
       await new Promise((resolve) => {
         mediaRecorder.onstop = resolve;
@@ -947,28 +1030,40 @@
 
     stopRecordingTracks();
 
-    if (finalElapsed < 800 || (recordedChunks.length === 0 && !opusRecordedBlob)) {
+    if (finalElapsed < 800 || (recordedChunks.length === 0 && !opusRecordedBlob && !mp4RecordedBlob)) {
       if (opusRecorder) {
         try { opusRecorder.close(); } catch {}
         opusRecorder = null;
       }
       opusRecordedBlob = null;
+      mp4RecordedBlob = null;
       recordedChunks = [];
       liveAmplitudes = [];
       return;
     }
 
     const isVoice = recordMode === 'voice';
-    const actualMime = (isVoice && opusRecordedBlob) ? 'audio/ogg' : (mediaRecorder?.mimeType || (isVoice ? 'audio/webm' : 'video/webm'));
-    const ext = isVoice ? 'ogg' : (actualMime.includes('webm') ? 'webm' : 'mp4');
-    const blob = (isVoice && opusRecordedBlob) ? opusRecordedBlob : new Blob(recordedChunks, { type: actualMime });
+    const actualMime = (isVoice && opusRecordedBlob)
+      ? 'audio/ogg'
+      : (mp4RecordedBlob ? 'video/mp4' : (mediaRecorder?.mimeType || (isVoice ? 'audio/ogg' : 'video/mp4')));
+    let finalBlob = (isVoice && opusRecordedBlob)
+      ? opusRecordedBlob
+      : (mp4RecordedBlob || new Blob(recordedChunks, { type: actualMime }));
+    let ext = isVoice ? 'ogg' : 'mp4';
+    let finalMime = isVoice ? 'audio/ogg' : 'video/mp4';
+
+    if (isVoice && !opusRecordedBlob) {
+      try {
+        finalBlob = await convertAudioBlobToOggOpus(finalBlob);
+      } catch {}
+    }
 
     if (wasLocked && isVoice) {
       reviewAmplitudes = [...liveAmplitudes];
       liveAmplitudes = [];
       recordedChunks = [];
-      reviewAudioBlob = blob;
-      reviewAudioUrl = URL.createObjectURL(blob);
+      reviewAudioBlob = finalBlob;
+      reviewAudioUrl = URL.createObjectURL(finalBlob);
       reviewAudioDuration = Math.max(0.5, finalElapsed / 1000);
       reviewAudioTrimStart = 0;
       reviewAudioTrimEnd = reviewAudioDuration;
@@ -982,7 +1077,7 @@
     liveAmplitudes = [];
     recordedChunks = [];
 
-    const arrayBuffer = await blob.arrayBuffer();
+    const arrayBuffer = await finalBlob.arrayBuffer();
     const savedPath = await invoke('save_temp_media', {
       bytes: Array.from(new Uint8Array(arrayBuffer)),
       extension: ext,
@@ -994,14 +1089,14 @@
       path: savedPath,
       duration: finalElapsed,
       wave,
-      mime: actualMime,
+      mime: finalMime,
     } : {
       type: 'VIDEO',
       videoType: 1,
       path: savedPath,
       duration: finalElapsed,
       wave,
-      mime: actualMime,
+      mime: finalMime,
     };
 
     const tempId = -Date.now();
@@ -1066,9 +1161,16 @@
     if (recordTimer) clearInterval(recordTimer);
     reviewAmplitudes = [...liveAmplitudes];
 
-    if (mediaRecorder && mediaRecorder.state === 'recording') {
-      try { mediaRecorder.requestData(); } catch {}
+    let mp4RecordedBlob = null;
+    if (mp4Encoder) {
+      try {
+        mp4RecordedBlob = await mp4Encoder.stop();
+      } catch (e) {
+        console.error(e);
+      }
+      mp4Encoder = null;
     }
+
     if (mediaRecorder && mediaRecorder.state !== 'inactive') {
       await new Promise((resolve) => {
         mediaRecorder.onstop = resolve;
@@ -1078,14 +1180,15 @@
 
     stopRecordingTracks();
 
-    if (finalElapsed < 800 || recordedChunks.length === 0) {
+    if (finalElapsed < 800 || (!mp4RecordedBlob && recordedChunks.length === 0)) {
       recordedChunks = [];
       liveAmplitudes = [];
       return;
     }
 
-    const actualMime = mediaRecorder?.mimeType || 'video/webm';
-    reviewVideoBlob = new Blob(recordedChunks, { type: actualMime });
+    const actualMime = mp4RecordedBlob ? 'video/mp4' : (mediaRecorder?.mimeType || 'video/mp4');
+    let vBlob = mp4RecordedBlob || new Blob(recordedChunks, { type: actualMime });
+    reviewVideoBlob = vBlob;
     reviewVideoUrl = URL.createObjectURL(reviewVideoBlob);
     reviewVideoDuration = Math.max(0.8, finalElapsed / 1000);
     reviewTrimStart = 0;
@@ -1151,13 +1254,40 @@
     if (!reviewVideoBlob) return;
     const arrayBuffer = await reviewVideoBlob.arrayBuffer();
     const uint8 = new Uint8Array(arrayBuffer);
-    const actualMime = reviewVideoBlob.type || 'video/webm';
-    const ext = actualMime.includes('webm') ? 'webm' : 'mp4';
-    const savedPath = await invoke('save_temp_media', {
+    const rawPath = await invoke('save_temp_media', {
       bytes: Array.from(uint8),
-      extension: ext,
-      isVideo: true,
+      extension: 'mp4',
+      isVideo: false,
     });
+
+    const isTrimmed = reviewTrimStart > 0.05 || (reviewVideoDuration > 0 && reviewTrimEnd < reviewVideoDuration - 0.05);
+    let finalPath = rawPath;
+    if (isTrimmed) {
+      try {
+        finalPath = await invoke('crop_video_note', {
+          sourcePath: rawPath,
+          cropX: 0,
+          cropY: 0,
+          cropSize: 480,
+          startSec: reviewTrimStart,
+          endSec: reviewTrimEnd,
+        });
+      } catch {
+        finalPath = await invoke('save_temp_media', {
+          bytes: Array.from(uint8),
+          extension: 'mp4',
+          isVideo: true,
+        });
+      }
+    } else {
+      finalPath = await invoke('save_temp_media', {
+        bytes: Array.from(uint8),
+        extension: 'mp4',
+        isVideo: true,
+      });
+    }
+
+    const savedPath = finalPath;
 
     const trimmedDuration = Math.round(Math.max(0.5, reviewTrimEnd - reviewTrimStart) * 1000);
     const wave = isReviewMuted
@@ -1170,7 +1300,7 @@
       path: savedPath,
       duration: trimmedDuration,
       wave,
-      mime: actualMime,
+      mime: 'video/mp4',
     };
 
     discardReview();
@@ -1280,96 +1410,30 @@
     if (reviewAudioEl) reviewAudioEl.currentTime = reviewAudioTrimEnd;
   }
 
-  async function getTrimmedAudioArrayBuffer(blob, startSec, endSec) {
-    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    const rawBuffer = await blob.arrayBuffer();
-    const decoded = await audioCtx.decodeAudioData(rawBuffer.slice(0));
-    const sampleRate = decoded.sampleRate;
-    const channels = decoded.numberOfChannels;
-    const startSample = Math.max(0, Math.floor(startSec * sampleRate));
-    const endSample = Math.min(decoded.length, Math.floor(endSec * sampleRate));
-    const trimmedLength = Math.max(1, endSample - startSample);
-
-    const offlineCtx = new OfflineAudioContext(channels, trimmedLength, sampleRate);
-    const source = offlineCtx.createBufferSource();
-    source.buffer = decoded;
-    source.connect(offlineCtx.destination);
-    source.start(0, startSec, Math.max(0.1, endSec - startSec));
-    const rendered = await offlineCtx.startRendering();
-    audioCtx.close().catch(() => {});
-
-    return audioBufferToWav(rendered);
-  }
-
-  function audioBufferToWav(buffer) {
-    const numChannels = buffer.numberOfChannels;
-    const sampleRate = buffer.sampleRate;
-    const format = 1;
-    const bitDepth = 16;
-    const bytesPerSample = bitDepth / 8;
-    const blockAlign = numChannels * bytesPerSample;
-    const length = buffer.length;
-    const byteRate = sampleRate * blockAlign;
-    const dataSize = length * blockAlign;
-    const headerSize = 44;
-    const totalSize = headerSize + dataSize;
-    const arrayBuffer = new ArrayBuffer(totalSize);
-    const view = new DataView(arrayBuffer);
-
-    function writeString(offset, string) {
-      for (let i = 0; i < string.length; i++) {
-        view.setUint8(offset + i, string.charCodeAt(i));
-      }
-    }
-
-    writeString(0, 'RIFF');
-    view.setUint32(4, totalSize - 8, true);
-    writeString(8, 'WAVE');
-    writeString(12, 'fmt ');
-    view.setUint32(16, 16, true);
-    view.setUint16(20, format, true);
-    view.setUint16(22, numChannels, true);
-    view.setUint32(24, sampleRate, true);
-    view.setUint32(28, byteRate, true);
-    view.setUint16(32, blockAlign, true);
-    view.setUint16(34, bitDepth, true);
-    writeString(36, 'data');
-    view.setUint32(40, dataSize, true);
-
-    let offset = 44;
-    for (let i = 0; i < length; i++) {
-      for (let channel = 0; channel < numChannels; channel++) {
-        const sample = Math.max(-1, Math.min(1, buffer.getChannelData(channel)[i]));
-        const intSample = sample < 0 ? sample * 0x8000 : sample * 0x7FFF;
-        view.setInt16(offset, intSample, true);
-        offset += 2;
-      }
-    }
-    return arrayBuffer;
-  }
-
   async function sendReviewedVoice() {
     if (!reviewAudioBlob) return;
     let arrayBuffer;
-    let ext = 'ogg';
+    const ext = 'ogg';
+    const actualMime = 'audio/ogg';
     const isTrimmed = reviewAudioTrimStart > 0.05 || (reviewAudioDuration > 0 && reviewAudioTrimEnd < reviewAudioDuration - 0.05);
-    if (isTrimmed) {
-      try {
-        arrayBuffer = await getTrimmedAudioArrayBuffer(reviewAudioBlob, reviewAudioTrimStart, reviewAudioTrimEnd);
-        ext = 'wav';
-      } catch {
-        arrayBuffer = await reviewAudioBlob.arrayBuffer();
-        const actualMime = reviewAudioBlob.type || 'audio/webm';
-        ext = actualMime.includes('ogg') ? 'ogg' : 'webm';
-      }
-    } else {
+
+    try {
+      const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      const rawBuffer = await reviewAudioBlob.arrayBuffer();
+      const decoded = await audioCtx.decodeAudioData(rawBuffer.slice(0));
+      audioCtx.close().catch(() => {});
+      const oggBlob = await encodeAudioBufferToOggOpus(
+        decoded,
+        isTrimmed ? reviewAudioTrimStart : 0,
+        isTrimmed ? reviewAudioTrimEnd : reviewAudioDuration
+      );
+      arrayBuffer = await oggBlob.arrayBuffer();
+    } catch {
       arrayBuffer = await reviewAudioBlob.arrayBuffer();
-      const actualMime = reviewAudioBlob.type || 'audio/webm';
-      ext = actualMime.includes('ogg') ? 'ogg' : 'webm';
     }
+
     const trimmedDuration = Math.round(Math.max(0.3, reviewAudioTrimEnd - reviewAudioTrimStart) * 1000);
     const wave = Array.from(generateWaveformFromAmplitudes(reviewAmplitudes, 80));
-    const actualMime = ext === 'wav' ? 'audio/wav' : (reviewAudioBlob.type || 'audio/webm');
     const savedPath = await invoke('save_temp_media', {
       bytes: Array.from(new Uint8Array(arrayBuffer)),
       extension: ext,

@@ -5,6 +5,15 @@ export default defineConfig({
   fullyParallel: true,
   reporter: 'list',
   use: {
+    browserName: 'firefox',
     trace: 'off',
   },
+  projects: [
+    {
+      name: 'firefox',
+      use: {
+        browserName: 'firefox',
+      },
+    },
+  ],
 });

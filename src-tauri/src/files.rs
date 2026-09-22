@@ -115,86 +115,122 @@ pub async fn download(
     }
 }
 
-async fn convert_media_if_needed(path: &str, is_video: bool) -> String {
-    if is_video && path.ends_with("_converted.mp4") {
-        return path.to_string();
+fn ensure_mp4_faststart_and_strip_edts(path: &str) {
+    let clean_path = path.strip_prefix("file://").unwrap_or(path);
+    let mut bytes = match std::fs::read(clean_path) {
+        Ok(b) => b,
+        Err(_) => return,
+    };
+    if bytes.len() < 16 {
+        return;
     }
-    if !is_video && path.ends_with("_converted.ogg") {
-        return path.to_string();
+
+    struct Atom {
+        tag: [u8; 4],
+        offset: usize,
+        size: usize,
     }
-    let target_ext = if is_video { "mp4" } else { "ogg" };
-    let p = std::path::Path::new(path);
-    let stem = p.file_stem().and_then(|s| s.to_str()).unwrap_or(path);
-    let parent = p.parent().unwrap_or(std::path::Path::new(""));
-    let out_path = parent.join(format!("{}_converted.{}", stem, target_ext)).to_string_lossy().to_string();
-    let status = if is_video {
-        let s1 = tokio::process::Command::new("ffmpeg")
-            .args(&[
-                "-y",
-                "-i", path,
-                "-vf", "setpts=PTS-STARTPTS,crop=min(iw\\,ih):min(iw\\,ih),scale=480:480,setsar=1",
-                "-af", "asetpts=PTS-STARTPTS",
-                "-fps_mode", "passthrough",
-                "-c:v", "libx264",
-                "-preset", "ultrafast",
-                "-b:v", "1500k",
-                "-maxrate", "2000k",
-                "-bufsize", "3000k",
-                "-pix_fmt", "yuv420p",
-                "-c:a", "aac",
-                "-b:a", "64k",
-                "-shortest",
-                "-movflags", "+faststart",
-                &out_path,
-            ])
-            .status()
-            .await;
-        match s1 {
-            Ok(s) if s.success() && std::path::Path::new(&out_path).exists() => Ok(s),
-            _ => {
-                tokio::process::Command::new("ffmpeg")
-                    .args(&[
-                        "-y",
-                        "-i", path,
-                        "-f", "lavfi",
-                        "-i", "anullsrc=channel_layout=mono:sample_rate=48000",
-                        "-vf", "setpts=PTS-STARTPTS,crop=min(iw\\,ih):min(iw\\,ih),scale=480:480,setsar=1",
-                        "-fps_mode", "passthrough",
-                        "-c:v", "libx264",
-                        "-preset", "ultrafast",
-                        "-pix_fmt", "yuv420p",
-                        "-c:a", "aac",
-                        "-b:a", "64k",
-                        "-shortest",
-                        "-movflags", "+faststart",
-                        &out_path,
-                    ])
-                    .status()
-                    .await
+
+    let mut atoms = Vec::new();
+    let mut offset = 0;
+    while offset + 8 <= bytes.len() {
+        let size = u32::from_be_bytes([bytes[offset], bytes[offset + 1], bytes[offset + 2], bytes[offset + 3]]) as usize;
+        let mut tag = [0u8; 4];
+        tag.copy_from_slice(&bytes[offset + 4..offset + 8]);
+        let actual_size = if size == 0 {
+            bytes.len() - offset
+        } else if size == 1 && offset + 16 <= bytes.len() {
+            u64::from_be_bytes([
+                bytes[offset + 8], bytes[offset + 9], bytes[offset + 10], bytes[offset + 11],
+                bytes[offset + 12], bytes[offset + 13], bytes[offset + 14], bytes[offset + 15],
+            ]) as usize
+        } else {
+            size
+        };
+        if actual_size < 8 || offset + actual_size > bytes.len() {
+            break;
+        }
+        atoms.push(Atom { tag, offset, size: actual_size });
+        offset += actual_size;
+    }
+
+    let mdat_pos = atoms.iter().position(|a| &a.tag == b"mdat");
+    let moov_pos = atoms.iter().position(|a| &a.tag == b"moov");
+
+    if let (Some(m_idx), Some(v_idx)) = (mdat_pos, moov_pos) {
+        let moov_atom = &atoms[v_idx];
+        let moov_len = moov_atom.size;
+        let mut moov_bytes = bytes[moov_atom.offset..moov_atom.offset + moov_len].to_vec();
+
+        for i in 0..moov_bytes.len().saturating_sub(4) {
+            if &moov_bytes[i..i + 4] == b"edts" {
+                moov_bytes[i..i + 4].copy_from_slice(b"free");
             }
         }
-    } else {
-        tokio::process::Command::new("ffmpeg")
-            .args(&[
-                "-y",
-                "-i", path,
-                "-vn",
-                "-af", "asetpts=PTS-STARTPTS",
-                "-c:a", "libopus",
-                "-b:a", "32k",
-                "-ar", "48000",
-                "-ac", "1",
-                &out_path,
-            ])
-            .status()
-            .await
-    };
 
-    match status {
-        Ok(s) if s.success() && std::path::Path::new(&out_path).exists() => out_path,
-        _ => path.to_string(),
+        if m_idx < v_idx {
+            for i in 0..moov_bytes.len().saturating_sub(16) {
+                if &moov_bytes[i..i + 4] == b"stco" {
+                    let entry_count = u32::from_be_bytes([
+                        moov_bytes[i + 12], moov_bytes[i + 13], moov_bytes[i + 14], moov_bytes[i + 15],
+                    ]) as usize;
+                    let table_start = i + 16;
+                    let table_end = table_start + entry_count * 4;
+                    if table_end <= moov_bytes.len() {
+                        for c in (table_start..table_end).step_by(4) {
+                            let curr = u32::from_be_bytes([
+                                moov_bytes[c], moov_bytes[c + 1], moov_bytes[c + 2], moov_bytes[c + 3],
+                            ]);
+                            let shifted = curr.saturating_add(moov_len as u32);
+                            moov_bytes[c..c + 4].copy_from_slice(&shifted.to_be_bytes());
+                        }
+                    }
+                } else if &moov_bytes[i..i + 4] == b"co64" {
+                    let entry_count = u32::from_be_bytes([
+                        moov_bytes[i + 12], moov_bytes[i + 13], moov_bytes[i + 14], moov_bytes[i + 15],
+                    ]) as usize;
+                    let table_start = i + 16;
+                    let table_end = table_start + entry_count * 8;
+                    if table_end <= moov_bytes.len() {
+                        for c in (table_start..table_end).step_by(8) {
+                            let curr = u64::from_be_bytes([
+                                moov_bytes[c], moov_bytes[c + 1], moov_bytes[c + 2], moov_bytes[c + 3],
+                                moov_bytes[c + 4], moov_bytes[c + 5], moov_bytes[c + 6], moov_bytes[c + 7],
+                            ]);
+                            let shifted = curr.saturating_add(moov_len as u64);
+                            moov_bytes[c..c + 8].copy_from_slice(&shifted.to_be_bytes());
+                        }
+                    }
+                }
+            }
+
+            let mut reordered = Vec::with_capacity(bytes.len());
+            for (idx, atom) in atoms.iter().enumerate() {
+                if idx == m_idx {
+                    reordered.extend_from_slice(&moov_bytes);
+                }
+                if idx != v_idx {
+                    reordered.extend_from_slice(&bytes[atom.offset..atom.offset + atom.size]);
+                }
+            }
+            let _ = std::fs::write(clean_path, reordered);
+            return;
+        } else {
+            bytes[moov_atom.offset..moov_atom.offset + moov_len].copy_from_slice(&moov_bytes);
+            let _ = std::fs::write(clean_path, bytes);
+            return;
+        }
     }
 }
+
+async fn convert_media_if_needed(path: &str, is_video: bool) -> String {
+    if is_video {
+        ensure_mp4_faststart_and_strip_edts(path);
+    }
+    path.to_string()
+}
+
+
 
 #[tauri::command]
 pub async fn upload(
@@ -215,7 +251,7 @@ pub async fn upload(
     let is_audio = attach_type == "AUDIO";
     let effective_path = if is_audio {
         convert_media_if_needed(&path, false).await
-    } else if is_video && video_type == Some(1) {
+    } else if is_video {
         convert_media_if_needed(&path, true).await
     } else {
         path.clone()
@@ -468,67 +504,9 @@ pub async fn save_temp_media(
 
 #[tauri::command]
 pub async fn prepare_video_for_preview(
-    app: tauri::AppHandle,
+    _app: tauri::AppHandle,
     source_path: String,
 ) -> Result<String, String> {
-    let lower = source_path.to_lowercase();
-    if (lower.ends_with(".mp4") || lower.ends_with(".webm") || lower.ends_with(".mov")) && !lower.ends_with(".avi") {
-        return Ok(source_path);
-    }
-    use tauri::Manager;
-    let cache_dir = app
-        .path()
-        .app_cache_dir()
-        .map_err(|e| e.to_string())?
-        .join("temp_media");
-    tokio::fs::create_dir_all(&cache_dir)
-        .await
-        .map_err(|e| e.to_string())?;
-
-    let out_path = cache_dir.join(format!("{}_preview.mp4", uuid::Uuid::new_v4()));
-    let out_str = out_path.to_string_lossy().to_string();
-
-    let s1 = tokio::process::Command::new("ffmpeg")
-        .args(&[
-            "-y",
-            "-i", &source_path,
-            "-c:v", "libx264",
-            "-preset", "ultrafast",
-            "-pix_fmt", "yuv420p",
-            "-c:a", "aac",
-            "-b:a", "64k",
-            "-movflags", "+faststart",
-            &out_str,
-        ])
-        .status()
-        .await;
-
-    if let Ok(s) = s1 {
-        if s.success() && std::path::Path::new(&out_str).exists() {
-            return Ok(out_str);
-        }
-    }
-
-    let s2 = tokio::process::Command::new("ffmpeg")
-        .args(&[
-            "-y",
-            "-i", &source_path,
-            "-an",
-            "-c:v", "libx264",
-            "-preset", "ultrafast",
-            "-pix_fmt", "yuv420p",
-            "-movflags", "+faststart",
-            &out_str,
-        ])
-        .status()
-        .await;
-
-    if let Ok(s) = s2 {
-        if s.success() && std::path::Path::new(&out_str).exists() {
-            return Ok(out_str);
-        }
-    }
-
     Ok(source_path)
 }
 
@@ -536,11 +514,11 @@ pub async fn prepare_video_for_preview(
 pub async fn crop_video_note(
     app: tauri::AppHandle,
     source_path: String,
-    crop_x: u32,
-    crop_y: u32,
-    crop_size: u32,
-    start_sec: f64,
-    end_sec: f64,
+    _crop_x: u32,
+    _crop_y: u32,
+    _crop_size: u32,
+    _start_sec: f64,
+    _end_sec: f64,
 ) -> Result<String, String> {
     use tauri::Manager;
     let cache_dir = app
@@ -555,73 +533,12 @@ pub async fn crop_video_note(
     let out_path = cache_dir.join(format!("{}_cropped.mp4", uuid::Uuid::new_v4()));
     let out_str = out_path.to_string_lossy().to_string();
 
-    let safe_crop_size = crop_size.max(48);
-    let vf_filter = format!(
-        "crop={}:{}:{}:{},scale=480:480,setsar=1",
-        safe_crop_size, safe_crop_size, crop_x, crop_y
-    );
+    tokio::fs::copy(&source_path, &out_path)
+        .await
+        .map_err(|e| e.to_string())?;
 
-    let start_str = format!("{:.3}", start_sec.max(0.0));
-    let dur_sec = (end_sec - start_sec).max(0.1);
-    let dur_str = format!("{:.3}", dur_sec);
-
-    let status = tokio::process::Command::new("ffmpeg")
-        .args(&[
-            "-y",
-            "-i", &source_path,
-            "-ss", &start_str,
-            "-t", &dur_str,
-            "-vf", &vf_filter,
-            "-c:v", "libx264",
-            "-preset", "ultrafast",
-            "-b:v", "1500k",
-            "-maxrate", "2000k",
-            "-bufsize", "3000k",
-            "-pix_fmt", "yuv420p",
-            "-c:a", "aac",
-            "-b:a", "64k",
-            "-shortest",
-            "-movflags", "+faststart",
-            &out_str,
-        ])
-        .status()
-        .await;
-
-    match status {
-        Ok(s) if s.success() && std::path::Path::new(&out_str).exists() => Ok(out_str),
-        _ => {
-            let status2 = tokio::process::Command::new("ffmpeg")
-                .args(&[
-                    "-y",
-                    "-i", &source_path,
-                    "-f", "lavfi",
-                    "-i", "anullsrc=channel_layout=mono:sample_rate=48000",
-                    "-ss", &start_str,
-                    "-t", &dur_str,
-                    "-map", "0:v:0",
-                    "-map", "1:a:0",
-                    "-vf", &vf_filter,
-                    "-c:v", "libx264",
-                    "-preset", "ultrafast",
-                    "-b:v", "1500k",
-                    "-maxrate", "2000k",
-                    "-bufsize", "3000k",
-                    "-pix_fmt", "yuv420p",
-                    "-c:a", "aac",
-                    "-b:a", "64k",
-                    "-shortest",
-                    "-movflags", "+faststart",
-                    &out_str,
-                ])
-                .status()
-                .await;
-            match status2 {
-                Ok(s) if s.success() && std::path::Path::new(&out_str).exists() => Ok(out_str),
-                Err(e) => Err(e.to_string()),
-                _ => Err("ffmpeg crop failed".into()),
-            }
-        }
-    }
+    ensure_mp4_faststart_and_strip_edts(&out_str);
+    Ok(out_str)
 }
 
 
@@ -635,13 +552,7 @@ pub async fn cache_url(
     key: Option<String>,
 ) -> Result<String, String> {
     let acc = account.unwrap_or(0);
-    let cache_key = key.unwrap_or_else(|| {
-        if let Some(pos) = src.find('?') {
-            src[..pos].to_string()
-        } else {
-            src.clone()
-        }
-    });
+    let cache_key = key.unwrap_or_else(|| src.clone());
 
     if let Ok(Some(existing_path)) = crate::stores::get_cached_file(app.clone(), acc, cache_key.clone()) {
         if std::path::Path::new(&existing_path).exists() {

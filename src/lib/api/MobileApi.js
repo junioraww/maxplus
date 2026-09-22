@@ -1136,6 +1136,16 @@ export default class MobileApi extends BaseAPI {
       };
     }
 
+    if (type === "VIDEO") {
+      return {
+        _type: "VIDEO",
+        videoType: 0,
+        token: payload.token,
+        videoId: payload.videoId,
+        ...data,
+      };
+    }
+
     return { _type: type, ...data };
   }
 

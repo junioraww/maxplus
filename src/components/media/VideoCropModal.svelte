@@ -1,6 +1,7 @@
 <script>
   import { onMount, onDestroy, tick } from 'svelte';
   import { invoke } from '@tauri-apps/api/core';
+  import { cropVideoToMp4 } from '$lib/utils/videoEncoder.js';
 
   export let isOpen = false;
   export let sourcePath = '';
@@ -21,6 +22,8 @@
 
   let trimStart = 0;
   let trimEnd = 0;
+  let hasLoaded = false;
+  let activeThumb = 'end';
 
   let normCx = 0.5;
   let normCy = 0.5;
@@ -87,17 +90,24 @@
     circlePx = { cx, cy, r };
   }
 
+  $: if (previewUrl) {
+    hasLoaded = false;
+  }
+
   function handleVideoLoadedMetadata() {
     if (!videoEl) return;
     videoWidth = videoEl.videoWidth || 640;
     videoHeight = videoEl.videoHeight || 480;
     videoDuration = videoEl.duration || 0;
-    trimStart = 0;
-    trimEnd = Math.min(videoDuration, 60);
-    currentTime = 0;
-    normCx = 0.5;
-    normCy = 0.5;
-    zoomRatio = 1.0;
+    if (!hasLoaded) {
+      hasLoaded = true;
+      trimStart = 0;
+      trimEnd = Math.min(videoDuration, 60);
+      currentTime = 0;
+      normCx = 0.5;
+      normCy = 0.5;
+      zoomRatio = 1.0;
+    }
     updateRenderedLayout();
   }
 
@@ -134,7 +144,7 @@
     if (trimEnd - trimStart > 60) {
       trimEnd = trimStart + 60;
     }
-    if (videoEl) {
+    if (videoEl && Math.abs(videoEl.currentTime - trimStart) > 0.2) {
       videoEl.currentTime = trimStart;
     }
   }
@@ -146,8 +156,30 @@
     if (trimEnd - trimStart > 60) {
       trimStart = Math.max(0, trimEnd - 60);
     }
-    if (videoEl) {
+    if (videoEl && Math.abs(videoEl.currentTime - trimEnd) > 0.2) {
       videoEl.currentTime = trimEnd;
+    }
+  }
+
+  function handleTrackPointerDown(e) {
+    if (e.target.tagName === 'INPUT') return;
+    const track = e.currentTarget.getBoundingClientRect();
+    if (track.width <= 0 || !videoDuration) return;
+    const ratio = Math.max(0, Math.min(1, (e.clientX - track.left) / track.width));
+    const clickTime = ratio * videoDuration;
+    const distToStart = Math.abs(clickTime - trimStart);
+    const distToEnd = Math.abs(clickTime - trimEnd);
+    if (distToStart < distToEnd) {
+      activeThumb = 'start';
+      trimStart = Math.max(0, Math.min(clickTime, trimEnd - 0.5));
+      if (videoEl) videoEl.currentTime = trimStart;
+    } else {
+      activeThumb = 'end';
+      trimEnd = Math.min(videoDuration, Math.max(clickTime, trimStart + 0.5));
+      if (trimEnd - trimStart > 60) {
+        trimStart = Math.max(0, trimEnd - 60);
+      }
+      if (videoEl) videoEl.currentTime = trimEnd;
     }
   }
 
@@ -270,19 +302,20 @@
 
       const durationSec = Math.max(0.5, trimEnd - trimStart);
 
-      let croppedPath = null;
-      try {
-        croppedPath = await invoke('crop_video_note', {
-          sourcePath,
-          cropX,
-          cropY,
-          cropSize,
-          startSec: trimStart,
-          endSec: trimEnd,
-        });
-      } catch (invErr) {
-        croppedPath = null;
-      }
+      const croppedBytes = await cropVideoToMp4(videoEl, {
+        cropX,
+        cropY,
+        cropSize,
+        startSec: trimStart,
+        endSec: trimEnd,
+        targetFps: 30,
+      });
+
+      const croppedPath = await invoke('save_temp_media', {
+        bytes: Array.from(croppedBytes),
+        extension: 'mp4',
+        isVideo: true,
+      });
 
       if (!croppedPath) {
         throw new Error("Не удалось обработать видеосообщение");
@@ -357,9 +390,9 @@
         <video
           bind:this={videoEl}
           src={previewUrl}
+          crossorigin="anonymous"
           preload="auto"
           playsinline
-          muted
           loop={false}
           on:loadedmetadata={handleVideoLoadedMetadata}
           on:loadeddata={handleVideoLoadedMetadata}
@@ -411,25 +444,33 @@
           <span class="trim-badge">{(trimEnd - trimStart).toFixed(1)} сек</span>
         </div>
 
-        <div class="trim-container">
+        <div class="trim-container" on:pointerdown={handleTrackPointerDown}>
           <div class="trim-slider-track">
+            <div
+              class="trim-selected-range"
+              style="left: {(trimStart / (videoDuration || 1)) * 100}%; width: {((trimEnd - trimStart) / (videoDuration || 1)) * 100}%;"
+            ></div>
             <input
               type="range"
               min="0"
               max={videoDuration || 1}
               step="0.1"
-              value={trimStart}
+              bind:value={trimStart}
               on:input={handleTrimStartInput}
               class="range-slider range-slider-start"
+              style="z-index: {activeThumb === 'start' ? 3 : 2};"
+              on:pointerdown={() => activeThumb = 'start'}
             />
             <input
               type="range"
               min="0"
               max={videoDuration || 1}
               step="0.1"
-              value={trimEnd}
+              bind:value={trimEnd}
               on:input={handleTrimEndInput}
               class="range-slider range-slider-end"
+              style="z-index: {activeThumb === 'end' ? 3 : 2};"
+              on:pointerdown={() => activeThumb = 'end'}
             />
           </div>
         </div>
@@ -632,6 +673,15 @@
     height: 8px;
     background: rgba(255, 255, 255, 0.12);
     border-radius: 4px;
+    cursor: pointer;
+  }
+
+  .trim-selected-range {
+    position: absolute;
+    height: 100%;
+    background: #4da3ff;
+    border-radius: 4px;
+    pointer-events: none;
   }
 
   .range-slider {
