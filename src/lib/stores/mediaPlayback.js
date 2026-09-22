@@ -1,6 +1,8 @@
 import { writable, get } from 'svelte/store';
 import { convertFileSrc, invoke } from '@tauri-apps/api/core';
 import { getAssetUrl, getProxiedMediaUrl } from '$lib/utils/images';
+import { getContactDirect } from '$lib/stores/contacts';
+import { currentUser } from '$lib/stores/api';
 
 async function getApiInstance() {
   try {
@@ -9,6 +11,34 @@ async function getApiInstance() {
   } catch {
     return null;
   }
+}
+
+export function resolveSenderDisplayName(senderId, fallbackName = '') {
+  if (senderId != null) {
+    const myId = get(currentUser);
+    if (myId && Number(senderId) === Number(myId)) {
+      return 'Вы';
+    }
+  }
+  if (fallbackName && isNaN(Number(fallbackName)) && fallbackName !== '0') {
+    return fallbackName;
+  }
+  return '';
+}
+
+export async function fetchSenderDisplayName(senderId, fallbackName = '') {
+  const syncName = resolveSenderDisplayName(senderId, fallbackName);
+  if (syncName) return syncName;
+  if (!senderId || Number(senderId) <= 0) return fallbackName || 'Чат';
+  try {
+    const contact = await getContactDirect(senderId);
+    if (contact?.names?.[0]) {
+      const n = contact.names[0];
+      const fullName = `${n.firstName || ''} ${n.lastName || ''}`.trim();
+      return fullName || n.name || fallbackName || 'Собеседник';
+    }
+  } catch {}
+  return fallbackName || 'Собеседник';
 }
 
 export const activeMedia = writable(null);
@@ -37,11 +67,19 @@ export function registerGlobalElements(audio, video) {
   globalVideoElement = video;
 }
 
+export function getGlobalVideoElement() {
+  return globalVideoElement;
+}
+
 export function drawVideoFrameToCanvas(video, canvas) {
   if (!video || !canvas) return;
   const vw = video.videoWidth;
   const vh = video.videoHeight;
   if (!vw || !vh || vw <= 0 || vh <= 0) return;
+
+  const cw = canvas.width || 200;
+  const ch = canvas.height || 200;
+  if (cw <= 0 || ch <= 0) return;
 
   const ctx = canvas.getContext('2d');
   if (!ctx) return;
@@ -49,8 +87,6 @@ export function drawVideoFrameToCanvas(video, canvas) {
   const side = Math.min(vw, vh);
   const sx = (vw - side) / 2;
   const sy = (vh - side) / 2;
-  const cw = canvas.width || 200;
-  const ch = canvas.height || 200;
 
   try {
     ctx.drawImage(video, sx, sy, side, side, 0, 0, cw, ch);
@@ -80,6 +116,9 @@ export function registerVideoCanvas(id, canvasEl) {
     if (globalVideoElement.readyState >= 2 || globalVideoElement.videoWidth > 0) {
       drawVideoFrameToCanvas(globalVideoElement, canvasEl);
     }
+    if (cur.isPlaying && cur.type === 'video_note' && !videoRafId && !videoCallbackId) {
+      startVideoRenderLoop();
+    }
   }
 }
 
@@ -102,14 +141,14 @@ export function getVideoCanvases(id) {
 }
 
 export function stopVideoRenderLoop() {
-  if (globalVideoElement && typeof globalVideoElement.cancelVideoFrameCallback === 'function' && videoCallbackId !== null) {
-    try {
-      globalVideoElement.cancelVideoFrameCallback(videoCallbackId);
-    } catch {}
-  }
   if (typeof cancelAnimationFrame === 'function' && videoRafId !== null) {
     try {
       cancelAnimationFrame(videoRafId);
+    } catch {}
+  }
+  if (globalVideoElement && typeof globalVideoElement.cancelVideoFrameCallback === 'function' && videoCallbackId !== null) {
+    try {
+      globalVideoElement.cancelVideoFrameCallback(videoCallbackId);
     } catch {}
   }
   videoCallbackId = null;
@@ -126,18 +165,28 @@ export function startVideoRenderLoop() {
       stopVideoRenderLoop();
       return;
     }
+    const canvases = activeVideoCanvases.get(String(state.id));
+    if (!canvases || canvases.size === 0) {
+      stopVideoRenderLoop();
+      return;
+    }
     renderAllCanvasesForTrack(state.id);
-    if (typeof globalVideoElement.requestVideoFrameCallback === 'function') {
-      videoCallbackId = globalVideoElement.requestVideoFrameCallback(onFrame);
-    } else if (typeof requestAnimationFrame === 'function') {
+    if (typeof requestAnimationFrame === 'function') {
       videoRafId = requestAnimationFrame(onFrame);
+    } else if (typeof globalVideoElement.requestVideoFrameCallback === 'function') {
+      videoCallbackId = globalVideoElement.requestVideoFrameCallback(onFrame);
     }
   };
 
-  if (typeof globalVideoElement.requestVideoFrameCallback === 'function') {
-    videoCallbackId = globalVideoElement.requestVideoFrameCallback(onFrame);
-  } else if (typeof requestAnimationFrame === 'function') {
+  const curState = get(activeMedia);
+  if (!curState || !curState.isPlaying) return;
+  const currentCanvases = activeVideoCanvases.get(String(curState.id));
+  if (!currentCanvases || currentCanvases.size === 0) return;
+
+  if (typeof requestAnimationFrame === 'function') {
     videoRafId = requestAnimationFrame(onFrame);
+  } else if (typeof globalVideoElement.requestVideoFrameCallback === 'function') {
+    videoCallbackId = globalVideoElement.requestVideoFrameCallback(onFrame);
   }
 }
 
@@ -548,27 +597,31 @@ export function handOffToGlobal(data = {}) {
   const vol = muted ? 0 : getTrackVolume(data.id);
 
   if (data.type === 'video_note') {
-    if (currentVideoElement && currentVideoElement !== globalVideoElement) {
-      try {
-        currentVideoElement.pause();
-      } catch {}
-    }
     if (globalVideoElement) {
-      const targetTime = data.currentTime || 0;
-      const applyState = () => {
-        try {
-          if (targetTime > 0) globalVideoElement.currentTime = targetTime;
-          globalVideoElement.playbackRate = speed;
-          globalVideoElement.volume = vol;
-          globalVideoElement.muted = muted;
-          if (data.isPlaying) {
-            globalVideoElement.play().catch(() => {});
-            startVideoRenderLoop();
-          }
-        } catch {}
-      };
+      const isAlreadyPlayingSame = Boolean(
+        (data.id && globalVideoElement.dataset.trackId === String(data.id)) ||
+        (data.url && globalVideoElement.src && globalVideoElement.src.includes(data.url))
+      );
 
-      if (data.url && (!globalVideoElement.src || !globalVideoElement.src.includes(data.url))) {
+      if (data.id) {
+        globalVideoElement.dataset.trackId = String(data.id);
+      }
+
+      if (!isAlreadyPlayingSame && data.url) {
+        const targetTime = data.currentTime || 0;
+        const applyState = () => {
+          try {
+            if (targetTime > 0) globalVideoElement.currentTime = targetTime;
+            globalVideoElement.playbackRate = speed;
+            globalVideoElement.volume = vol;
+            globalVideoElement.muted = muted;
+            if (data.isPlaying) {
+              globalVideoElement.play().catch(() => {});
+              startVideoRenderLoop();
+            }
+          } catch {}
+        };
+
         globalVideoElement.src = data.url;
         if (globalVideoElement.readyState >= 1 || typeof globalVideoElement.addEventListener !== 'function') {
           applyState();
@@ -576,7 +629,13 @@ export function handOffToGlobal(data = {}) {
           globalVideoElement.addEventListener('loadedmetadata', applyState, { once: true });
         }
       } else {
-        applyState();
+        globalVideoElement.playbackRate = speed;
+        globalVideoElement.volume = vol;
+        globalVideoElement.muted = muted;
+        if (data.isPlaying && globalVideoElement.paused) {
+          globalVideoElement.play().catch(() => {});
+        }
+        startVideoRenderLoop();
       }
     }
   } else if (data.type === 'voice') {
@@ -586,14 +645,17 @@ export function handOffToGlobal(data = {}) {
       } catch {}
     }
     if (globalAudioElement) {
-      if (data.url && (!globalAudioElement.src || !globalAudioElement.src.includes(data.url))) {
+      const isAlreadyPlayingSame = Boolean(
+        data.url && globalAudioElement.src && globalAudioElement.src.includes(data.url)
+      );
+      if (!isAlreadyPlayingSame && data.url) {
         globalAudioElement.src = data.url;
+        globalAudioElement.currentTime = data.currentTime || 0;
       }
-      globalAudioElement.currentTime = data.currentTime || 0;
       globalAudioElement.playbackRate = speed;
       globalAudioElement.volume = vol;
       globalAudioElement.muted = muted;
-      if (data.isPlaying) {
+      if (data.isPlaying && globalAudioElement.paused) {
         globalAudioElement.play().catch(() => {});
       }
     }
@@ -614,45 +676,17 @@ export function takeOverFromGlobal(id, element) {
   if (!state || state.id !== id) return;
 
   if (state.type === 'video_note') {
-    if (element && element !== globalVideoElement) {
-      let targetTime = state.currentTime || 0;
-      if (globalVideoElement) {
-        try {
-          if (globalVideoElement.currentTime > 0) {
-            targetTime = globalVideoElement.currentTime;
-          }
-        } catch {}
-      }
-      currentVideoElement = element;
-      const applyState = () => {
-        try {
-          if (targetTime > 0) element.currentTime = targetTime;
-          element.playbackRate = state.speed || 1.0;
-          element.volume = state.muted ? 0 : (state.volume ?? 1.0);
-          element.muted = !!state.muted;
-          if (state.isPlaying && typeof element.play === 'function') {
-            element.play().catch(() => {});
-          }
-        } catch {}
-      };
-
-      if (state.url && (!element.src || !element.src.includes(state.url))) {
-        element.src = state.url;
-        if (element.readyState >= 1 || typeof element.addEventListener !== 'function') {
-          applyState();
-        } else {
-          element.addEventListener('loadedmetadata', applyState, { once: true });
-        }
-      } else {
-        applyState();
-      }
-    } else {
-      if (globalVideoElement && state.isPlaying) {
-        startVideoRenderLoop();
-      }
+    renderAllCanvasesForTrack(id);
+    if (globalVideoElement && state.isPlaying) {
+      startVideoRenderLoop();
     }
   } else if (state.type === 'voice') {
     if (element && element !== globalAudioElement) {
+      const isElementReady = element.src && (element.src.includes(state.url) || element.readyState >= 1);
+      if (!isElementReady) {
+        activeMedia.update((s) => (s ? { ...s, isGlobalPlayback: false } : null));
+        return;
+      }
       if (globalAudioElement) {
         try {
           state.currentTime = globalAudioElement.currentTime || state.currentTime;
@@ -822,34 +856,54 @@ function parseMediaItems(messages, chatId) {
       const vType = Number(attach.videoType ?? attach.video_type);
       if (type === 'AUDIO' || type === 'VOICE') {
         const dur = attach.duration ? (attach.duration > 120 ? attach.duration / 1000 : attach.duration) : 0;
-        const id = String(m.id ?? attach.audioId ?? attach.videoId ?? attach.token ?? Math.random());
-        items.push({
+        const id = String(m.id || attach.audioId || attach.videoId || attach.token || attach.localPath || Math.random());
+        const initialSender = resolveSenderDisplayName(m.sender, m.senderName) || (m.senderName && isNaN(Number(m.senderName)) ? m.senderName : 'Собеседник');
+        const item = {
           id,
           chatId: chatId ?? m.chatId,
           messageId: m.id,
           type: 'voice',
           duration: dur,
           time: Number(m.time || m.created_at || 0),
-          senderName: m.senderName || (m.sender ? String(m.sender) : ''),
+          senderName: initialSender,
           senderId: m.sender,
           attach,
           title: 'Голосовое сообщение',
-        });
+        };
+        items.push(item);
+        if (m.sender && (!initialSender || initialSender === 'Собеседник')) {
+          fetchSenderDisplayName(m.sender, m.senderName).then(name => {
+            if (name && item.senderName !== name) {
+              item.senderName = name;
+              activeMedia.update(s => (s && s.id === item.id ? { ...s, senderName: name } : s));
+            }
+          });
+        }
       } else if (type === 'VIDEO' && (vType === 1 || attach.isNote || attach.videoType === 'VIDEO_NOTE' || attach.is_note)) {
         const dur = attach.duration ? (attach.duration > 120 ? attach.duration / 1000 : attach.duration) : 0;
-        const id = String(m.id ?? attach.videoId ?? attach.token ?? Math.random());
-        items.push({
+        const id = String(m.id || attach.videoId || attach.token || attach.audioId || attach.localPath || Math.random());
+        const initialSender = resolveSenderDisplayName(m.sender, m.senderName) || (m.senderName && isNaN(Number(m.senderName)) ? m.senderName : 'Собеседник');
+        const item = {
           id,
           chatId: chatId ?? m.chatId,
           messageId: m.id,
           type: 'video_note',
           duration: dur,
           time: Number(m.time || m.created_at || 0),
-          senderName: m.senderName || (m.sender ? String(m.sender) : ''),
+          senderName: initialSender,
           senderId: m.sender,
           attach,
           title: 'Видеосообщение',
-        });
+        };
+        items.push(item);
+        if (m.sender && (!initialSender || initialSender === 'Собеседник')) {
+          fetchSenderDisplayName(m.sender, m.senderName).then(name => {
+            if (name && item.senderName !== name) {
+              item.senderName = name;
+              activeMedia.update(s => (s && s.id === item.id ? { ...s, senderName: name } : s));
+            }
+          });
+        }
       }
     }
   }
@@ -975,7 +1029,7 @@ export async function playMedia(track, playlistContext = {}) {
 
   let targetElement = null;
   if (track.type === 'voice') {
-    targetElement = track.element || globalAudioElement;
+    targetElement = globalAudioElement || track.element;
   } else if (track.type === 'video_note') {
     targetElement = globalVideoElement || track.element;
   } else {
@@ -1007,34 +1061,71 @@ export async function playMedia(track, playlistContext = {}) {
   const hasCanvases = track.type === 'video_note' && activeVideoCanvases.has(String(track.id)) && activeVideoCanvases.get(String(track.id)).size > 0;
   const isGlobal = track.isGlobalPlayback !== undefined ? !!track.isGlobalPlayback : (track.element ? false : (track.type === 'video_note' ? !hasCanvases : true));
 
+  const resolvedSender = resolveSenderDisplayName(track.senderId, track.senderName) ||
+    (track.senderName && isNaN(Number(track.senderName)) ? track.senderName : 'Собеседник');
+
   const newState = {
     ...track,
+    senderName: resolvedSender,
     url: playUrl,
     speed,
     volume: vol,
     muted,
     isPlaying: true,
     currentTime: 0,
-    element: track.element || targetElement,
+    element: targetElement,
     isGlobalPlayback: isGlobal,
   };
 
   activeMedia.set(newState);
 
+  if (track.senderId && (!resolvedSender || resolvedSender === 'Собеседник')) {
+    fetchSenderDisplayName(track.senderId, track.senderName).then((name) => {
+      if (name) {
+        activeMedia.update((s) => (s && s.id === track.id ? { ...s, senderName: name } : s));
+      }
+    });
+  }
+
   const onPlayErr = (err) => {
-    if (err && err.name === 'AbortError') return;
+    if (err && (err.name === 'AbortError' || err.name === 'NotAllowedError')) return;
     updateMediaPlaybackState(track.id, false);
     stopVideoRenderLoop();
   };
 
   if (targetElement) {
-    if (playUrl && (!targetElement.src || !targetElement.src.includes(playUrl))) {
-      targetElement.src = playUrl;
+    const isSameTrack = (targetElement.dataset?.trackId === String(track.id)) ||
+      (playUrl && targetElement.src && targetElement.src.includes(playUrl));
+
+    if (targetElement.dataset) {
+      targetElement.dataset.trackId = String(track.id);
     }
-    targetElement.currentTime = 0;
+
+    if (!isSameTrack && playUrl) {
+      targetElement.src = playUrl;
+      targetElement.currentTime = 0;
+    }
     targetElement.playbackRate = speed;
 
-    fadeInAndPlay(targetElement, vol, 160, onPlayErr);
+    const triggerPlay = () => {
+      fadeInAndPlay(targetElement, vol, 160, onPlayErr);
+    };
+
+    if (targetElement.readyState >= 1) {
+      triggerPlay();
+    } else {
+      let started = false;
+      const onReady = () => {
+        if (started) return;
+        started = true;
+        targetElement.removeEventListener('loadedmetadata', onReady);
+        targetElement.removeEventListener('canplay', onReady);
+        triggerPlay();
+      };
+      targetElement.addEventListener('loadedmetadata', onReady, { once: true });
+      targetElement.addEventListener('canplay', onReady, { once: true });
+      setTimeout(onReady, 250);
+    }
 
     if (track.type === 'video_note') {
       startVideoRenderLoop();

@@ -37,19 +37,25 @@ fn handle_local_file(request: tiny_http::Request, mut path: &str) {
 
     let mut mime = mime_guess::from_path(path).first_or_octet_stream().to_string();
     if mime == "application/octet-stream" || mime == "binary/octet-stream" {
-        let mut peek_buf = [0u8; 16];
+        let mut peek_buf = [0u8; 64];
         if let Ok(n) = file.read(&mut peek_buf) {
             let peeked = &peek_buf[..n];
             if peeked.starts_with(b"OggS") {
                 mime = "audio/ogg".to_string();
             } else if peeked.starts_with(b"\x1a\x45\xdf\xa3") {
                 mime = "video/webm".to_string();
-            } else if peeked.len() >= 8 && &peeked[4..8] == b"ftyp" {
+            } else if (peeked.len() >= 8 && &peeked[4..8] == b"ftyp")
+                || peeked.windows(4).any(|w| w == b"ftyp" || w == b"moov")
+            {
                 mime = "video/mp4".to_string();
-            } else if peeked.starts_with(b"ID3") || (peeked.len() >= 2 && peeked[0] == 0xff && (peeked[1] & 0xe0) == 0xe0) {
+            } else if peeked.starts_with(b"ID3")
+                || (peeked.len() >= 2 && peeked[0] == 0xff && (peeked[1] & 0xe0) == 0xe0)
+            {
                 mime = "audio/mpeg".to_string();
             } else if peeked.starts_with(b"RIFF") {
                 mime = "audio/wav".to_string();
+            } else {
+                mime = "video/mp4".to_string();
             }
             let _ = file.seek(SeekFrom::Start(0));
         }
@@ -67,6 +73,7 @@ fn handle_local_file(request: tiny_http::Request, mut path: &str) {
         Header::from_bytes(&b"Access-Control-Allow-Origin"[..], b"*").unwrap(),
         Header::from_bytes(&b"Accept-Ranges"[..], b"bytes").unwrap(),
         Header::from_bytes(&b"Content-Type"[..], mime.as_bytes()).unwrap(),
+        Header::from_bytes(&b"Content-Disposition"[..], b"inline").unwrap(),
         Header::from_bytes(&b"Cache-Control"[..], b"no-store, no-cache, must-revalidate").unwrap(),
         Header::from_bytes(&b"Pragma"[..], b"no-cache").unwrap(),
         Header::from_bytes(&b"Expires"[..], b"0").unwrap(),
@@ -75,33 +82,55 @@ fn handle_local_file(request: tiny_http::Request, mut path: &str) {
     if let Some(rh) = range_header {
         if let Some(range_spec) = rh.strip_prefix("bytes=") {
             let parts: Vec<&str> = range_spec.split('-').collect();
-            let start = parts.get(0).and_then(|s| s.parse::<u64>().ok()).unwrap_or(0);
-            let end = parts.get(1).and_then(|s| s.parse::<u64>().ok()).unwrap_or(file_len.saturating_sub(1));
-            let end = std::cmp::min(end, file_len.saturating_sub(1));
+            if parts.len() == 2 {
+                let s_str = parts[0].trim();
+                let e_str = parts[1].trim();
 
-            if start <= end && start < file_len {
-                let length = end - start + 1;
-                let _ = file.seek(SeekFrom::Start(start));
-                let take_reader = file.take(length);
+                let (start, end) = if s_str.is_empty() {
+                    let suffix = e_str.parse::<u64>().unwrap_or(0);
+                    let s = file_len.saturating_sub(suffix);
+                    let e = file_len.saturating_sub(1);
+                    (s, e)
+                } else if e_str.is_empty() {
+                    let s = s_str.parse::<u64>().unwrap_or(0);
+                    let e = file_len.saturating_sub(1);
+                    (s, e)
+                } else {
+                    let s = s_str.parse::<u64>().unwrap_or(0);
+                    let e = e_str.parse::<u64>().unwrap_or(file_len.saturating_sub(1));
+                    (s, std::cmp::min(e, file_len.saturating_sub(1)))
+                };
 
-                headers.push(Header::from_bytes(
-                    &b"Content-Range"[..],
-                    format!("bytes {}-{}/{}", start, end, file_len).as_bytes(),
-                ).unwrap());
-                headers.push(Header::from_bytes(
-                    &b"Content-Length"[..],
-                    length.to_string().as_bytes(),
-                ).unwrap());
+                if start <= end && start < file_len {
+                    let length = end - start + 1;
+                    let _ = file.seek(SeekFrom::Start(start));
+                    let take_reader = file.take(length);
 
-                let res = Response::new(
-                    206.into(),
-                    headers,
-                    take_reader,
-                    Some(length as usize),
-                    None,
-                );
-                let _ = request.respond(res);
-                return;
+                    headers.push(
+                        Header::from_bytes(
+                            &b"Content-Range"[..],
+                            format!("bytes {}-{}/{}", start, end, file_len).as_bytes(),
+                        )
+                        .unwrap(),
+                    );
+                    headers.push(
+                        Header::from_bytes(
+                            &b"Content-Length"[..],
+                            length.to_string().as_bytes(),
+                        )
+                        .unwrap(),
+                    );
+
+                    let res = Response::new(
+                        206.into(),
+                        headers,
+                        take_reader,
+                        Some(length as usize),
+                        None,
+                    );
+                    let _ = request.respond(res);
+                    return;
+                }
             }
         }
     }

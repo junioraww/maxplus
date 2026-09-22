@@ -89,7 +89,7 @@
 
   let audioEl;
 
-  $: if (isCurrentTrack && audioEl && $activeMedia?.isGlobalPlayback) {
+  $: if (isCurrentTrack && audioEl && mediaUrl && $activeMedia?.isGlobalPlayback && audioEl.readyState >= 1) {
     takeOverFromGlobal(mId, audioEl);
   }
 

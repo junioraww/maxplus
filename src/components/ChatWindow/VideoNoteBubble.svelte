@@ -31,9 +31,9 @@
   let isVisibleOnScreen = true;
   let observer = null;
 
-  $: mId = String(messageId ?? attach.token ?? attach.videoId ?? attach.localPath ?? 'video_note');
-  $: isCurrentTrack = $activeMedia?.id === mId;
-  $: isPlaying = isCurrentTrack && $activeMedia?.isPlaying;
+  $: mId = String(messageId ?? attach.videoId ?? attach.token ?? attach.audioId ?? attach.localPath ?? 'video_note');
+  $: isCurrentTrack = $activeMedia?.id === mId || (messageId != null && String($activeMedia?.messageId) === String(messageId));
+  $: isPlaying = isCurrentTrack && !!$activeMedia?.isPlaying;
   $: currentSpeed = $trackSettings[mId]?.speed ?? 1.0;
   $: currentVolume = $trackSettings[mId]?.volume ?? 1.0;
   $: currentMuted = $trackSettings[mId]?.muted ?? false;
@@ -42,53 +42,27 @@
     : ($activeMedia?.duration || 0);
   $: duration = attachDur || ($activeMedia?.duration || 0);
 
-  let animFrame = null;
   let localProgress = 0;
   let localTime = 0;
 
-  function updateLocalProgress() {
-    if (isPlaying) {
-      const cur = getMasterMediaCurrentTime();
-      const dur = ($activeMedia?.duration && isFinite($activeMedia.duration) && $activeMedia.duration > 0)
-        ? $activeMedia.duration
-        : duration;
-      if (dur > 0) {
-        localProgress = Math.min(1, Math.max(0, cur / dur));
-        localTime = cur;
-      }
-      animFrame = requestAnimationFrame(updateLocalProgress);
-    }
-  }
-
-  $: if (isPlaying) {
-    if (typeof cancelAnimationFrame === 'function' && animFrame) {
-      cancelAnimationFrame(animFrame);
-    }
-    if (typeof requestAnimationFrame === 'function') {
-      animFrame = requestAnimationFrame(updateLocalProgress);
-    }
+  $: if (isCurrentTrack) {
+    const cur = $activeMedia?.currentTime ?? getMasterMediaCurrentTime();
+    const dur = ($activeMedia?.duration && isFinite($activeMedia.duration) && $activeMedia.duration > 0)
+      ? $activeMedia.duration
+      : duration;
+    localTime = cur;
+    localProgress = dur > 0 ? Math.min(1, Math.max(0, cur / dur)) : 0;
   } else {
-    if (typeof cancelAnimationFrame === 'function' && animFrame) {
-      cancelAnimationFrame(animFrame);
-      animFrame = null;
-    }
-    if (isCurrentTrack) {
-      const cur = getMasterMediaCurrentTime();
-      const dur = ($activeMedia?.duration && isFinite($activeMedia.duration) && $activeMedia.duration > 0)
-        ? $activeMedia.duration
-        : duration;
-      if (dur > 0) {
-        localProgress = Math.min(1, Math.max(0, cur / dur));
-        localTime = cur;
-      }
-    } else if (!isCurrentTrack) {
-      localProgress = 0;
-      localTime = 0;
-    }
+    localProgress = 0;
+    localTime = 0;
   }
 
-  $: if (canvasEl && mId) {
-    registerVideoCanvas(mId, canvasEl);
+  $: activeTrackId = $activeMedia?.id;
+  $: if (canvasEl && (mId || activeTrackId)) {
+    if (mId) registerVideoCanvas(mId, canvasEl);
+    if (isCurrentTrack && activeTrackId && activeTrackId !== mId) {
+      registerVideoCanvas(activeTrackId, canvasEl);
+    }
   }
 
   let previewDataUrl = null;
@@ -339,7 +313,7 @@
       ensureVideoUrl().catch(() => {});
     }
     if (isCurrentTrack) {
-      takeOverFromGlobal(mId);
+      takeOverFromGlobal($activeMedia?.id || mId);
     }
     if (typeof IntersectionObserver !== 'undefined' && containerEl) {
       observer = new IntersectionObserver((entries) => {
@@ -348,19 +322,13 @@
           if (isCurrentTrack) {
             if (!isVisibleOnScreen && isPlaying) {
               handOffToGlobal({
-                id: mId,
+                id: $activeMedia?.id || mId,
                 type: 'video_note',
                 url: resolvedVideoUrl || rawUrl,
-                poster: resolvedPosterUrl,
-                currentTime: localTime,
-                duration,
-                speed: currentSpeed,
-                volume: currentVolume,
-                muted: currentMuted,
                 isPlaying: true,
               });
             } else if (isVisibleOnScreen && $activeMedia?.isGlobalPlayback) {
-              takeOverFromGlobal(mId);
+              takeOverFromGlobal($activeMedia?.id || mId);
             }
           }
         }
@@ -373,10 +341,6 @@
     if (previewDataUrl && previewDataUrl.startsWith('blob:')) {
       try { URL.revokeObjectURL(previewDataUrl); } catch {}
     }
-    if (animFrame && typeof cancelAnimationFrame === 'function') {
-      cancelAnimationFrame(animFrame);
-      animFrame = null;
-    }
     if (observer) {
       observer.disconnect();
       observer = null;
@@ -384,18 +348,15 @@
     if (canvasEl && mId) {
       unregisterVideoCanvas(mId, canvasEl);
     }
-    if (isCurrentTrack) {
+    if (canvasEl && $activeMedia?.id && $activeMedia.id !== mId) {
+      unregisterVideoCanvas($activeMedia.id, canvasEl);
+    }
+    if (isCurrentTrack && isPlaying) {
       handOffToGlobal({
-        id: mId,
+        id: $activeMedia.id || mId,
         type: 'video_note',
         url: resolvedVideoUrl || rawUrl,
-        poster: resolvedPosterUrl,
-        currentTime: localTime,
-        duration,
-        speed: currentSpeed,
-        volume: currentVolume,
-        muted: currentMuted,
-        isPlaying,
+        isPlaying: true,
       });
     }
   });

@@ -49,19 +49,49 @@
       ? Math.min(100, Math.max(0, (smoothTime / duration) * 100))
       : 0;
 
+  $: if (isPlaying || isSeeking) {
+    if (!animId) {
+      startSmoothTicker();
+    }
+  } else {
+    if (animId) {
+      cancelAnimationFrame(animId);
+      animId = null;
+    }
+  }
+
   onMount(() => {
-    startSmoothTicker();
+    if (isPlaying || isSeeking) {
+      startSmoothTicker();
+    }
   });
 
   onDestroy(() => {
     if (animId) cancelAnimationFrame(animId);
+    window.removeEventListener('pointermove', handleTrackPointerMove);
+    window.removeEventListener('pointerup', handleTrackPointerUp);
+    window.removeEventListener('pointercancel', handleTrackPointerUp);
+    window.removeEventListener('pointermove', handleSpeedPointerMove);
+    window.removeEventListener('pointerup', handleSpeedPointerUp);
+    window.removeEventListener('pointercancel', handleSpeedPointerUp);
+    window.removeEventListener('pointermove', handleVolumePointerMove);
+    window.removeEventListener('pointerup', handleVolumePointerUp);
+    window.removeEventListener('pointercancel', handleVolumePointerUp);
   });
 
   function startSmoothTicker() {
+    if (animId) {
+      cancelAnimationFrame(animId);
+      animId = null;
+    }
     let lastRealTime = 0;
     let lastAnchor = performance.now();
 
     const tick = (now) => {
+      if (!isPlaying && !isSeeking) {
+        animId = null;
+        return;
+      }
       if (!isSeeking && currentTrack) {
         const targetTime = currentTrack.currentTime || 0;
         if (Math.abs(targetTime - lastRealTime) > 0.05) {
@@ -94,10 +124,15 @@
   function handleTrackPointerDown(e) {
     if (e.button !== 0 || !trackEl) return;
     e.preventDefault();
+    e.stopPropagation();
     isSeeking = true;
+    try {
+      trackEl.setPointerCapture(e.pointerId);
+    } catch {}
     updateSeekFromPointer(e);
     window.addEventListener('pointermove', handleTrackPointerMove, { passive: false });
     window.addEventListener('pointerup', handleTrackPointerUp);
+    window.addEventListener('pointercancel', handleTrackPointerUp);
   }
 
   function updateSeekFromPointer(e) {
@@ -111,29 +146,48 @@
   function handleTrackPointerMove(e) {
     if (!isSeeking) return;
     e.preventDefault();
+    e.stopPropagation();
     updateSeekFromPointer(e);
   }
 
   function handleTrackPointerUp(e) {
     if (!isSeeking) return;
     isSeeking = false;
-    updateSeekFromPointer(e);
+    if (e) {
+      updateSeekFromPointer(e);
+      try {
+        if (trackEl && e.pointerId != null) {
+          trackEl.releasePointerCapture(e.pointerId);
+        }
+      } catch {}
+    }
     if (activeId) {
       seekMedia(activeId, seekRatio * duration);
     }
     window.removeEventListener('pointermove', handleTrackPointerMove);
     window.removeEventListener('pointerup', handleTrackPointerUp);
+    window.removeEventListener('pointercancel', handleTrackPointerUp);
   }
+
+  let speedTargetEl = null;
 
   function handleSpeedPointerDown(e) {
     if (e.button !== 0) return;
     e.preventDefault();
     e.stopPropagation();
+    if (isSeeking) {
+      handleTrackPointerUp();
+    }
     isDraggingSpeed = true;
     speedDragStartX = e.clientX;
     speedDragStartVal = currentSpeed;
+    speedTargetEl = e.currentTarget;
+    try {
+      speedTargetEl.setPointerCapture(e.pointerId);
+    } catch {}
     window.addEventListener('pointermove', handleSpeedPointerMove, { passive: false });
     window.addEventListener('pointerup', handleSpeedPointerUp);
+    window.addEventListener('pointercancel', handleSpeedPointerUp);
   }
 
   function handleSpeedPointerMove(e) {
@@ -146,11 +200,20 @@
     setPlaybackSpeed(newSpeed);
   }
 
-  function handleSpeedPointerUp() {
+  function handleSpeedPointerUp(e) {
     isDraggingSpeed = false;
+    if (e && speedTargetEl) {
+      try {
+        speedTargetEl.releasePointerCapture(e.pointerId);
+      } catch {}
+    }
+    speedTargetEl = null;
     window.removeEventListener('pointermove', handleSpeedPointerMove);
     window.removeEventListener('pointerup', handleSpeedPointerUp);
+    window.removeEventListener('pointercancel', handleSpeedPointerUp);
   }
+
+  let volTargetEl = null;
 
   function handleVolumePointerDown(e) {
     if (e.button !== 0) return;
@@ -159,8 +222,13 @@
     isDraggingVolume = true;
     volDragStartY = e.clientY;
     volDragStartVal = currentVolume;
+    volTargetEl = e.currentTarget;
+    try {
+      volTargetEl.setPointerCapture(e.pointerId);
+    } catch {}
     window.addEventListener('pointermove', handleVolumePointerMove, { passive: false });
     window.addEventListener('pointerup', handleVolumePointerUp);
+    window.addEventListener('pointercancel', handleVolumePointerUp);
   }
 
   function handleVolumePointerMove(e) {
@@ -175,10 +243,17 @@
 
   function handleVolumePointerUp(e) {
     if (!isDraggingVolume) return;
-    const moved = Math.abs(volDragStartY - e.clientY);
+    const moved = e ? Math.abs(volDragStartY - e.clientY) : 0;
     isDraggingVolume = false;
+    if (e && volTargetEl) {
+      try {
+        volTargetEl.releasePointerCapture(e.pointerId);
+      } catch {}
+    }
+    volTargetEl = null;
     window.removeEventListener('pointermove', handleVolumePointerMove);
     window.removeEventListener('pointerup', handleVolumePointerUp);
+    window.removeEventListener('pointercancel', handleVolumePointerUp);
     if (moved < 3) {
       toggleMediaMute();
     }
