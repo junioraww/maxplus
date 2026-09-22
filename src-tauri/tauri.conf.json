@@ -47,5 +47,27 @@
         "bundleMediaFramework": false
       }
     }
+  },
+  "plugins": {
+    "deep-link": {
+      "desktop": {
+        "schemes": ["max"]
+      },
+      "mobile": [
+        {
+          "scheme": ["max"]
+        },
+        {
+          "host": "max.ru",
+          "scheme": ["https", "http"],
+          "appLink": false
+        },
+        {
+          "host": "www.max.ru",
+          "scheme": ["https", "http"],
+          "appLink": false
+        }
+      ]
+    }
   }
 }

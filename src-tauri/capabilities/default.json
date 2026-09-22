@@ -13,6 +13,7 @@
     {
       "identifier": "http:default",
       "allow": [{ "url": "https://**" }]
-    }
+    },
+    "deep-link:default"
   ]
 }
