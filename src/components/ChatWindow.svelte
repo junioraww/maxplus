@@ -7,7 +7,6 @@
     beforeUpdate,
     afterUpdate,
   } from "svelte";
-  import { fade, fly } from "svelte/transition";
   import { writable, get } from "svelte/store";
 
   import Message from "$components/ChatWindow/Message.svelte";
@@ -25,43 +24,41 @@
   import {
     getContact
   } from "$lib/stores/contacts";
-  import Session, {
+  import {
     openChat,
     closeChat,
     get as sessionGet,
   } from "$lib/stores/session";
   import { handleReaction } from "$components/ChatWindow/actions.js";
-  import { checkForEncryptionRequest } from "$components/ChatWindow/e2e.js";
-  import { batchDecrypt } from "$lib/crypto/messages.js";
   import { convertFileSrc } from "@tauri-apps/api/core";
   import { getProxiedMediaUrl } from "$lib/utils/images.js";
-  import { getCurrentAccount } from "$lib/stores/accounts.js";
   import { scrollToBottom } from "$lib/utils/scroll.js";
-  import { getChatScroll, saveChatScroll } from "$lib/stores/chatScroll.js";
-  import * as Caching from "$lib/utils/caching.js";
+  import { getChatScroll } from "$lib/stores/chatScroll.js";
   import Settings from "$components/ChatWindow/Settings.svelte";
   import E2eModal from "$components/ChatWindow/E2eModal.svelte";
   import Dropout from "$components/ChatWindow/Dropout.svelte";
-  import Signature from "$components/main/Signature.svelte";
   import MediaViewer from "$components/ChatWindow/MediaViewer.svelte";
   import MediaPlaybackHeader from "$components/media/MediaPlaybackHeader.svelte";
-  import { activeMedia, activeChatMessages, buildChatPlaylist } from "$lib/stores/mediaPlayback";
+  import { activeMedia, activeChatMessages } from "$lib/stores/mediaPlayback";
   import DateSeparator from "$components/ChatWindow/DateSeparator.svelte";
   import Input from "$components/ChatWindow/input/Input.svelte";
   import BotStart from "$components/ChatWindow/BotStart.svelte";
-  import Avatar from "$components/main/Avatar.svelte";
   import StickerPackModal from "$components/ChatWindow/Stickers/StickerPackModal.svelte";
   import EditHistoryModal from "$components/ChatWindow/EditHistoryModal.svelte";
   import { computeTextDiff } from "$lib/utils/diff.js";
   import { clearChatNotification } from "$lib/utils/notifications.js";
+
+  import ChatHeader from "$components/ChatWindow/ChatHeader.svelte";
+  import ScrollDownButton from "$components/ChatWindow/ScrollDownButton.svelte";
+  import { swipeToClose } from "$components/ChatWindow/swipeToClose.js";
+  import { createVirtualScrollManager, DEFAULT_HEIGHT } from "$components/ChatWindow/chatVirtualScroll.js";
+  import { createMessagesLoader, BATCH_SIZE } from "$components/ChatWindow/chatMessagesLoader.js";
 
   export let chatId;
 
   $: chat = $currentSessionChats?.find((c) => String(c.id) === String(chatId));
 
   let title;
-
-  let startSecretChatRequest = null;
   let gotSecretChatRequest = null;
 
   let replyTo = null;
@@ -83,12 +80,7 @@
     };
   }
 
-  let loading = false;
-  let all_loaded = false;
-  let loadingNewer = false;
-  let all_loaded_newer = true;
   let allRendered = false;
-
   let scrollElement;
   let scrollLoaderTimeout;
   let scrollBottomLoaderTimeout;
@@ -96,18 +88,12 @@
 
   let viewerOpen = false;
   let viewerIndex = 0;
-
-  let lastDate;
-
   let clickStartPos = { x: 0, y: 0 };
 
   const messages = writable([]);
   $: if ($messages) {
     activeChatMessages.set($messages);
   }
-  let initialized = false;
-
-  const BATCH_SIZE = 40;
 
   $: avatarUserId = (() => {
     if (chat?.type !== "DIALOG") return undefined;
@@ -126,7 +112,6 @@
   })();
 
   $: unreadBadgeCount = Math.max(0, Number($currentSessionChats?.find((x) => x.id === chat?.id)?.newMessages ?? chat?.newMessages ?? 0));
-
   $: chatSettings = getChatSettings(chat?.id ?? chatId);
 
   const onBack = getContext("onBack");
@@ -140,190 +125,11 @@
     closeChat(chat?.id ?? chatId);
   }
 
-  let touchStartX = 0;
-  let touchStartY = 0;
   let currentDragX = 0;
-  let isTouchTracking = false;
   let isSwipingChat = false;
-  let isScrollingChat = false;
   let isClosingBySwipe = false;
-  let chatWindowWidth = 0;
 
-  function handleTouchStart(e) {
-    if (e.touches.length !== 1) {
-      isTouchTracking = false;
-      return;
-    }
-    if (viewerOpen || settingsShown || dropoutActiveAt || isClosingBySwipe) {
-      isTouchTracking = false;
-      return;
-    }
-    if (e.target.closest("input, textarea, button, a, .icon-button, .scroll-down-container, .media-playback-header, .timeline-track-container, .speed-control-wrapper, .volume-control-wrapper, .hdr-btn")) {
-      isTouchTracking = false;
-      return;
-    }
-
-    isTouchTracking = true;
-    touchStartX = e.touches[0].clientX;
-    touchStartY = e.touches[0].clientY;
-    currentDragX = 0;
-    isSwipingChat = false;
-    isScrollingChat = false;
-    chatWindowWidth = window.innerWidth;
-  }
-
-  function handleTouchMove(e) {
-    if (!isTouchTracking || isScrollingChat || isClosingBySwipe) return;
-    if (e.touches.length !== 1) return;
-
-    const currentX = e.touches[0].clientX;
-    const currentY = e.touches[0].clientY;
-    const diffX = currentX - touchStartX;
-    const diffY = currentY - touchStartY;
-
-    if (!isSwipingChat) {
-      if (Math.abs(diffX) > 10 || Math.abs(diffY) > 10) {
-        if (diffX > 10 && diffX > Math.abs(diffY) * 1.1) {
-          isSwipingChat = true;
-        } else {
-          isScrollingChat = true;
-          return;
-        }
-      } else {
-        return;
-      }
-    }
-
-    if (isSwipingChat) {
-      if (diffX > 0) {
-        currentDragX = diffX;
-      } else {
-        currentDragX = 0;
-      }
-      if (e.cancelable) e.preventDefault();
-    }
-  }
-
-  function handleTouchEnd() {
-    isTouchTracking = false;
-    if (!isSwipingChat || isClosingBySwipe) {
-      isSwipingChat = false;
-      isScrollingChat = false;
-      return;
-    }
-
-    const threshold = chatWindowWidth * 0.3;
-    if (currentDragX >= threshold) {
-      isClosingBySwipe = true;
-      isSwipingChat = false;
-      currentDragX = chatWindowWidth;
-      setTimeout(() => {
-        handleCloseChat();
-      }, 220);
-    } else {
-      isSwipingChat = false;
-      currentDragX = 0;
-      isScrollingChat = false;
-    }
-  }
-
-  function handleTouchCancel() {
-    isTouchTracking = false;
-    if (!isClosingBySwipe) {
-      isSwipingChat = false;
-      isScrollingChat = false;
-      currentDragX = 0;
-    }
-  }
-
-  let isMouseDragging = false;
-  let mouseStartX = 0;
-  let mouseStartY = 0;
-  let mouseDragEngaged = false;
-
-  function handleMouseDown(e) {
-    if (isClosingBySwipe || viewerOpen || settingsShown || dropoutActiveAt) return;
-    if (e.button !== 0) return;
-    if (e.target.closest("input, textarea, button, a, .icon-button, .scroll-down-container, .media-playback-header, .timeline-track-container, .speed-control-wrapper, .volume-control-wrapper")) return;
-
-    const isHeader = Boolean(e.target.closest("header"));
-    const isLeftEdge = e.clientX <= 60;
-    const isMessage = Boolean(e.target.closest(".message, .bubble"));
-
-    if (!isHeader && !isLeftEdge && isMessage) {
-      return;
-    }
-
-    mouseStartX = e.clientX;
-    mouseStartY = e.clientY;
-    isMouseDragging = true;
-    mouseDragEngaged = false;
-    chatWindowWidth = window.innerWidth;
-
-    const onMouseMove = (moveEv) => {
-      if (!isMouseDragging) return;
-      const diffX = moveEv.clientX - mouseStartX;
-      const diffY = moveEv.clientY - mouseStartY;
-
-      if (!mouseDragEngaged) {
-        if (diffX > 10 && diffX > Math.abs(diffY) * 1.1) {
-          mouseDragEngaged = true;
-          isSwipingChat = true;
-          document.body.style.userSelect = "none";
-          document.body.style.cursor = "grabbing";
-        } else if (Math.abs(diffY) > 10) {
-          isMouseDragging = false;
-          window.removeEventListener("mousemove", onMouseMove);
-          window.removeEventListener("mouseup", onMouseUp);
-          return;
-        }
-      }
-
-      if (mouseDragEngaged) {
-        currentDragX = Math.max(0, diffX);
-        moveEv.preventDefault();
-      }
-    };
-
-    const onMouseUp = () => {
-      window.removeEventListener("mousemove", onMouseMove);
-      window.removeEventListener("mouseup", onMouseUp);
-      document.body.style.userSelect = "";
-      document.body.style.cursor = "";
-
-      if (!isMouseDragging) return;
-      isMouseDragging = false;
-
-      if (!mouseDragEngaged) {
-        isSwipingChat = false;
-        currentDragX = 0;
-        return;
-      }
-
-      const threshold = chatWindowWidth * 0.3;
-      if (currentDragX >= threshold) {
-        isClosingBySwipe = true;
-        isSwipingChat = false;
-        currentDragX = chatWindowWidth;
-        setTimeout(() => {
-          handleCloseChat();
-        }, 220);
-      } else {
-        isSwipingChat = false;
-        currentDragX = 0;
-      }
-    };
-
-    window.addEventListener("mousemove", onMouseMove);
-    window.addEventListener("mouseup", onMouseUp);
-  }
-
-  $: swipeStyle = (() => {
-    if (currentDragX > 0) {
-      return `transform: translate3d(${currentDragX}px, 0, 0);`;
-    }
-    return "";
-  })();
+  $: swipeStyle = currentDragX > 0 ? `transform: translate3d(${currentDragX}px, 0, 0);` : "";
 
   onBack["chat"] = () => {
     handleCloseChat();
@@ -339,410 +145,39 @@
     if (onBack.dropout) delete onBack["dropout"];
     if (onBack.chatSettings) delete onBack["chatSettings"];
     scrollResizeObserver?.disconnect();
-    if (resizeObserver) resizeObserver.disconnect();
+    virtualScroll.destroy();
   });
 
-  const DEFAULT_HEIGHT = 120;
-  const OVERSCAN = 1500;
+  const virtualScroll = createVirtualScrollManager();
+  const { messageHeights, observeResize } = virtualScroll;
 
-  const messageHeights = writable({});
-  let cumulativeHeights = [];
   let innerList;
   let visibleMessages = {};
-  let scrollAnchor = { messageId: null, offset: 0 };
+  let currentScrollAnchor = null;
 
-  let pendingHeightUpdates = {};
-
-  let resizeObserver = null;
-  function setupResizeObserver() {
-    if (resizeObserver) return;
-    resizeObserver = new ResizeObserver((entries) => {
-      for (const entry of entries) {
-        const el = entry.target;
-        const wrapper = el.closest('.message-wrapper');
-        if (!wrapper) continue;
-        const id = wrapper.id?.replace('m-', '');
-        if (!id) continue;
-        const height = entry.contentRect.height;
-        if (height > 0) {
-          pendingHeightUpdates[id] = height;
-        }
-      }
-    });
+  function handleAnchorCapture() {
+    currentScrollAnchor = virtualScroll.captureScrollAnchor(scrollElement, visibleMessages);
   }
 
-  function observeResize(node, id) {
-    if (resizeObserver) resizeObserver.observe(node);
-    return {
-      destroy() {
-        if (resizeObserver) resizeObserver.unobserve(node);
-      }
-    };
-  }
-
-  function applyPendingHeights() {
-    const updates = pendingHeightUpdates;
-    pendingHeightUpdates = {};
-    const keys = Object.keys(updates);
-    if (keys.length === 0) return;
-    messageHeights.update(h => {
-      const newH = { ...h };
-      for (const id of keys) newH[id] = updates[id];
-      return newH;
-    });
-    computeCumulativeHeights();
-  }
-
-  function computeCumulativeHeights() {
-    const heights = [];
-    let sum = 0;
-    for (const msg of $messages) {
-      const h = $messageHeights[msg.id] || DEFAULT_HEIGHT;
-      sum += h;
-      heights.push(sum);
-    }
-    cumulativeHeights = heights;
-  }
-
-  function findIndexByOffset(target) {
-    let lo = 0, hi = cumulativeHeights.length;
-    while (lo < hi) {
-      const mid = Math.floor((lo + hi) / 2);
-      if (cumulativeHeights[mid] < target) lo = mid + 1;
-      else hi = mid;
-    }
-    return lo;
-  }
-
-  function captureScrollAnchor() {
-    if (!scrollElement) return;
-
-    const containerRect = scrollElement.getBoundingClientRect();
-
-    for (const id in visibleMessages) {
-      const el = visibleMessages[id];
-      if (!el) continue;
-
-      const rect = el.getBoundingClientRect();
-
-      if (rect.bottom > containerRect.top) {
-        scrollAnchor = {
-          id: el.id,
-          offset: rect.top - containerRect.top
-        };
-        return;
-      }
-    }
-  }
-
-  function restoreScrollAnchor() {
-    if (!scrollAnchor || !scrollElement) return;
-
-    const el = document.getElementById(scrollAnchor.id);
-    if (!el) return;
-
-    const containerRect = scrollElement.getBoundingClientRect();
-    const rect = el.getBoundingClientRect();
-
-    const delta = rect.top - containerRect.top - scrollAnchor.offset;
-
-    if (delta !== 0) {
-      scrollElement.scrollTop += delta;
-    }
-  }
-
-  async function updateVisibleMessages() {
-    if (!scrollElement) return;
-
-    applyPendingHeights();
-
-    const { scrollTop, clientHeight } = scrollElement;
-    const totalHeight = cumulativeHeights.length ? cumulativeHeights[cumulativeHeights.length - 1] : 0;
-    if (totalHeight === 0) {
-      visibleMessages = {};
-      return;
-    }
-
-    const isNearBottom = totalHeight - scrollTop - clientHeight < 50;
-    let startIdx, endIdx;
-
-    if (isNearBottom) {
-      const targetOffset = Math.max(0, totalHeight - clientHeight - OVERSCAN);
-      startIdx = findIndexByOffset(targetOffset);
-      endIdx = $messages.length - 1;
-    } else {
-      const viewTop = Math.max(0, scrollTop - OVERSCAN);
-      const viewBottom = scrollTop + clientHeight + OVERSCAN;
-      startIdx = findIndexByOffset(viewTop);
-      endIdx = findIndexByOffset(viewBottom);
-      endIdx = Math.min(endIdx, $messages.length - 1);
-      if (startIdx > endIdx) endIdx = startIdx;
-    }
-
-    const newVisible = {};
-    for (let i = startIdx; i <= endIdx && i < $messages.length; i++) {
-      const id = $messages[i].id;
-      if (!newVisible[id]) {
-        newVisible[id] = document.getElementById("m-" + id);
-      }
-    }
-    visibleMessages = newVisible;
-
-    if (userHasScrolled) {
-      await scheduleRead();
-    }
-  }
-
-  function measureAllHeights() {
-    if (!innerList) return;
-    const wrappers = innerList.querySelectorAll('.message-wrapper');
-    const updates = {};
-    for (const wrapper of wrappers) {
-      const id = wrapper.id?.replace('m-', '');
-      if (!id) continue;
-      const content =
-        wrapper.querySelector("#clickable-area") ||
-        wrapper.querySelector(".observer-area") ||
-        wrapper;
-      if (content) {
-        const height = content.getBoundingClientRect().height;
-        if (height > 0) updates[id] = height;
-      }
-    }
-    if (Object.keys(updates).length) {
-      messageHeights.update(h => ({ ...h, ...updates }));
-    }
+  function handleAnchorRestore() {
+    virtualScroll.restoreScrollAnchor(scrollElement, currentScrollAnchor);
   }
 
   const decodedMessages = writable({});
+  $: chatCache = getChat(chat?.id ?? chatId);
 
-  const decodeMessagesBatch = async (list) => {
-    if (!list || !list.length) return;
-    try {
-      const currentDecoded = get(decodedMessages);
-      const toDecode = list.filter(m => {
-        const idStr = String(m.id);
-        const existing = currentDecoded[idStr];
-        if (!existing) return true;
-        if (m.edited || m.status === "EDITED") return true;
-        return false;
-      });
-
-      if (!toDecode.length) return;
-
-      const account = await getCurrentAccount();
-      const password = $chatSettings?.password || null;
-      const currentChatId = chat?.id ?? chatId;
-      const updates = await batchDecrypt(
-        Number(account?.id || 0),
-        Number(currentChatId),
-        toDecode,
-        password
-      );
-
-      decodedMessages.update(old => ({
-        ...old,
-        ...updates
-      }));
-
-      const newReq = await checkForEncryptionRequest(chat, chatSettings, updates, toDecode);
-      if (newReq) {
-        gotSecretChatRequest = newReq;
-      }
-    } catch (e) {
-      console.error(e);
-    }
-  };
-
-  const mergeMessages = async (
-    incoming,
-    updateCache = false
-  ) => {
-    if (!incoming?.length) return;
-
-    const map = new Map(
-      get(messages).map(m => [String(m.id), m])
-    );
-
-    const changed = [];
-
-    for (const msg of incoming) {
-      const msgId = String(msg.id);
-      const old = map.get(msgId);
-
-      if (!old) {
-        const isEdited = msg.status === "EDITED" || !!msg.edited;
-        const entry = {
-          ...msg,
-          id: msgId,
-          ...(isEdited ? { edited: true } : {}),
-        };
-        map.set(msgId, entry);
-        changed.push(entry);
-        continue;
-      }
-
-      const isEditedStatus = msg.status === "EDITED" || old.status === "EDITED" || old.edited || msg.edited;
-      const isDeletedStatus = old.deleted || msg.deleted || msg.status === "REMOVED";
-
-      let newHistory = Array.isArray(old.history) ? [...old.history] : [];
-      if (Array.isArray(msg.history)) {
-        for (const h of msg.history) {
-          if (!newHistory.some(existing => existing.at === h.at)) {
-            newHistory.push(h);
-          }
-        }
-      }
-
-      const textChanged = old.text && msg.text && old.text !== msg.text;
-      if (textChanged && (!Array.isArray(msg.history) || !msg.history.length)) {
-        const textDiff = computeTextDiff(old.text, msg.text);
-        const at = msg.editTime || msg.edited_at || Date.now();
-        newHistory.push({ at, diff: textDiff });
-      }
-
-      const merged = {
-        ...old,
-        ...msg,
-        id: msgId,
-        ...(isDeletedStatus ? { deleted: true, deleted_at: old.deleted_at || msg.deleted_at || Date.now() } : {}),
-        ...(isEditedStatus ? { edited: true, edited_at: old.edited_at || msg.edited_at || msg.editTime || Date.now() } : {}),
-        ...(newHistory.length ? { history: newHistory } : {}),
-      };
-
-      if (JSON.stringify(old) !== JSON.stringify(merged)) {
-        map.set(msgId, merged);
-        changed.push(merged);
-      }
-    }
-
-    if (!changed.length) return;
-
-    messages.set(
-      [...map.values()].sort(
-        (a,b) => a.time - b.time
-      )
-    );
-
-    if (updateCache) {
-      chatCache.updateMessages(changed);
-    }
-
-    await decodeMessagesBatch(changed);
-  };
-
-  const loadHistory = async (
-    isInitial = false,
-    from = Date.now() + sessionGet("drift"),
-    backward = BATCH_SIZE,
-    forward = 0
-  ) => {
-    const currentChatId = chat?.id ?? chatId;
-    if (loading) return;
-    if (all_loaded && !isInitial) return;
-    if (currentChatId == null) return;
-
-    loading = true;
-
-    try {
-      const cached = await chatCache.loadMessages(
-        from,
-        backward
-      );
-
-      captureScrollAnchor();
-
-      await mergeMessages(cached, false);
-
-      restoreScrollAnchor();
-      captureScrollAnchor();
-
-      if (!initialized || isInitial) {
-        const {
-          error,
-          messages: serverMessages
-        } = await $API.getMessages(currentChatId, from, backward, forward);
-
-        if (error) throw new Error(error);
-
-        await mergeMessages(serverMessages, true);
-
-        if (serverMessages.length < backward + forward) {
-          if (forward === 0) {
-            all_loaded = true;
-          }
-        }
-
-        initialized = true;
-      } else {
-        const oldest = get(messages)[0];
-
-        const {
-          error,
-          messages: olderMessages
-        } = await $API.getMessages(
-          currentChatId,
-          oldest?.time ?? from,
-          backward,
-          forward
-        );
-
-        if (error) throw new Error(error);
-
-        if (olderMessages.length < backward) {
-          all_loaded = true;
-        }
-
-        await mergeMessages(
-          olderMessages,
-          true
-        );
-      }
-    } catch(e) {
-      console.error(e);
-    } finally {
-      restoreScrollAnchor();
-      loading = false;
-    }
-
-    restoreScrollAnchor();
-  };
-
-  const loadNewer = async () => {
-    const currentChatId = chat?.id ?? chatId;
-    if (loadingNewer || all_loaded_newer) return;
-    if (currentChatId == null) return;
-
-    loadingNewer = true;
-
-    try {
-      const msgs = get(messages);
-      const newest = msgs[msgs.length - 1];
-      const fromTime = newest?.time ?? (Date.now() + sessionGet("drift"));
-
-      const {
-        error,
-        messages: newerMessages
-      } = await $API.getNewerMessages(currentChatId, fromTime, BATCH_SIZE);
-
-      if (error) throw new Error(error);
-
-      if (!newerMessages || newerMessages.length < BATCH_SIZE) {
-        all_loaded_newer = true;
-      }
-
-      await mergeMessages(
-        newerMessages,
-        false
-      );
-    } catch (e) {
-      console.error(e);
-    } finally {
-      loadingNewer = false;
-    }
-
-    restoreScrollAnchor();
-  };
+  const loader = createMessagesLoader({
+    messages,
+    decodedMessages,
+    getChatObj: () => chat,
+    getChatId: () => chatId,
+    getChatSettings: () => chatSettings,
+    getChatCache: () => chatCache,
+    getApi: () => $API,
+    onAnchorCapture: handleAnchorCapture,
+    onAnchorRestore: handleAnchorRestore,
+    onSecretChatRequest: (req) => { gotSecretChatRequest = req; },
+  });
 
   let scrollTimeout = null;
   let updateScheduled = false;
@@ -750,62 +185,29 @@
   let savePositionTimeout = null;
   let isInitialMounting = true;
   let isProgrammaticScroll = false;
-
   let readTimer = null;
   let lastReadMessageId = null;
 
+  async function updateVisibleMessages() {
+    visibleMessages = virtualScroll.calculateVisibleMessages({
+      scrollElement,
+      messagesList: $messages,
+    });
+    if (userHasScrolled) {
+      await scheduleRead();
+    }
+  }
+
   function saveCurrentPosition() {
-    const targetChatId = chat?.id ?? chatId;
-    if (!scrollElement || targetChatId == null || isInitialMounting || isProgrammaticScroll) return;
-    if (scrollElement.clientHeight <= 0 || scrollElement.scrollHeight <= 0) return;
-    if (scrollElement.scrollHeight <= scrollElement.clientHeight + 20) return;
-    const distanceFromBottom =
-      scrollElement.scrollHeight - scrollElement.scrollTop - scrollElement.clientHeight;
-    const isAtBottom = all_loaded_newer && distanceFromBottom < 60;
-    if (isAtBottom) {
-      saveChatScroll(targetChatId, {
-        wasAtBottom: true,
-        lastSeenTime: Date.now(),
-      });
-      return;
-    }
-    const containerRect = scrollElement.getBoundingClientRect();
-    let bottomMsg = null;
-    let bottomOffset = 0;
-    let maxBottom = -Infinity;
-
-    for (const id in visibleMessages) {
-      const el = visibleMessages[id];
-      if (!el) continue;
-      const rect = el.getBoundingClientRect();
-      if (rect.top < containerRect.bottom && rect.bottom > maxBottom) {
-        maxBottom = rect.bottom;
-        const m = $messages.find((x) => String(x.id) === String(id));
-        if (m) {
-          bottomMsg = m;
-          bottomOffset = rect.top - containerRect.top;
-        }
-      }
-    }
-
-    if (!bottomMsg && $messages && $messages.length > 0) {
-      const currentScroll = scrollElement.scrollTop;
-      const idx = findIndexByOffset(currentScroll + scrollElement.clientHeight / 2);
-      if (idx >= 0 && idx < $messages.length) {
-        bottomMsg = $messages[idx];
-        bottomOffset = 40;
-      }
-    }
-
-    if (bottomMsg) {
-      saveChatScroll(targetChatId, {
-        wasAtBottom: false,
-        bottomMessageId: bottomMsg.id,
-        bottomMessageTime: bottomMsg.time,
-        offset: bottomOffset,
-        lastSeenTime: Date.now(),
-      });
-    }
+    virtualScroll.savePosition({
+      targetChatId: chat?.id ?? chatId,
+      scrollElement,
+      all_loaded_newer: loader.all_loaded_newer,
+      visibleMessages,
+      messagesList: $messages,
+      isInitialMounting,
+      isProgrammaticScroll,
+    });
   }
 
   function queueSavePosition() {
@@ -823,9 +225,8 @@
     userHasScrolled = true;
     queueSavePosition();
     const target = event.currentTarget;
-    const distanceFromBottom =
-      target.scrollHeight - target.scrollTop - target.clientHeight;
-    showScrollDown = !all_loaded_newer || distanceFromBottom > 50;
+    const distanceFromBottom = target.scrollHeight - target.scrollTop - target.clientHeight;
+    showScrollDown = !loader.all_loaded_newer || distanceFromBottom > 50;
 
     if (!updateScheduled) {
       updateScheduled = true;
@@ -835,40 +236,38 @@
       });
     }
 
-    if (target.scrollTop <= 50 && !loading && !all_loaded) {
+    if (target.scrollTop <= 50 && !loader.loading && !loader.all_loaded) {
       if (scrollLoaderTimeout) return;
       scrollLoaderTimeout = setTimeout(async () => {
-        await loadHistory();
+        await loader.loadHistory();
         await updateVisibleMessages();
-        setTimeout(() => scrollLoaderTimeout = null, 500);
+        setTimeout(() => (scrollLoaderTimeout = null), 500);
       }, 200);
     }
 
-    if (distanceFromBottom <= 100 && !loadingNewer && !all_loaded_newer) {
+    if (distanceFromBottom <= 100 && !loader.loadingNewer && !loader.all_loaded_newer) {
       if (scrollBottomLoaderTimeout) return;
       scrollBottomLoaderTimeout = setTimeout(async () => {
-        await loadNewer();
+        await loader.loadNewer();
         await updateVisibleMessages();
-        setTimeout(() => scrollBottomLoaderTimeout = null, 500);
+        setTimeout(() => (scrollBottomLoaderTimeout = null), 500);
       }, 200);
     }
   }
 
   function getLowestVisibleMessageId() {
     if (!scrollElement) return null;
-
     let lowest = null;
     let lowestTop = -Infinity;
 
     for (const key in visibleMessages) {
-      const entry = $messages.find(x => String(x.id) === String(key));
+      const entry = $messages.find((x) => String(x.id) === String(key));
       if (!entry || Number(entry.sender) === Number($currentUser)) continue;
 
       const el = visibleMessages[key];
       if (!el) continue;
 
       const rect = el.getBoundingClientRect();
-
       if (rect.bottom < 0 || rect.top > window.innerHeight) continue;
 
       if (rect.top > lowestTop) {
@@ -884,7 +283,7 @@
     if (readTimer) clearTimeout(readTimer);
 
     readTimer = setTimeout(async () => {
-      const readDisabled = !$chatSettings.reader;
+      const readDisabled = !$chatSettings?.reader;
       if (readDisabled) return;
 
       const msgId = getLowestVisibleMessageId();
@@ -892,21 +291,19 @@
 
       if (msgId === lastReadMessageId) return;
 
-      const index = $messages.length - $messages.findIndex(x => x.id === msgId)
-      if (index > chat.newMessages) return;
+      const index = $messages.length - $messages.findIndex((x) => x.id === msgId);
+      if (index > chat?.newMessages) return;
 
       lastReadMessageId = msgId;
 
       try {
-        chat.newMessages = index - 1;
+        if (chat) chat.newMessages = index - 1;
         await $API.readMessage(chat.id, msgId);
       } catch (e) {
         console.error("readMessage failed", e);
       }
     }, 500);
   }
-
-  $: chatCache = getChat(chat?.id ?? chatId);
 
   let unsubReceivedMessage = null;
   let currentSubscribedChatId = null;
@@ -924,7 +321,7 @@
       unsubReceivedMessage = currentChatCache.receivedMessage.subscribe(async (message) => {
         if (!message || String(message.chatId) !== String(targetChatId)) return;
 
-        const msgKey = `${message.id}_${message.time || message.created_at || ''}_${message.status || ''}`;
+        const msgKey = `${message.id}_${message.time || message.created_at || ""}_${message.status || ""}`;
         if (msgKey === lastProcessedMessageKey) return;
         lastProcessedMessageKey = msgKey;
 
@@ -942,7 +339,7 @@
               let newHistory = Array.isArray(old.history) ? [...old.history] : [];
               if (Array.isArray(message.history)) {
                 for (const h of message.history) {
-                  if (!newHistory.some(existing => existing.at === h.at)) newHistory.push(h);
+                  if (!newHistory.some((existing) => existing.at === h.at)) newHistory.push(h);
                 }
               }
               if (old.text && message.text && old.text !== message.text && (!Array.isArray(message.history) || !message.history.length)) {
@@ -961,19 +358,19 @@
             }
             return _messages;
           });
-          await decodeMessagesBatch([message]);
+          await loader.decodeMessagesBatch([message]);
           await tick();
-          applyPendingHeights();
-          computeCumulativeHeights();
-          await updateVisibleMessages(wasAtBottom);
+          virtualScroll.applyPendingHeights($messages);
+          virtualScroll.computeCumulativeHeights($messages);
+          await updateVisibleMessages();
           return;
         }
 
         if (message.sender === $currentUser) {
-          all_loaded_newer = true;
+          loader.all_loaded_newer = true;
         }
 
-        if (all_loaded_newer) {
+        if (loader.all_loaded_newer) {
           messages.update((_messages) => {
             const idx = _messages.findIndex((x) => String(x.id) === String(message.id));
             if (idx !== -1) {
@@ -990,18 +387,17 @@
             return _messages;
           });
 
-          await decodeMessagesBatch([message]);
-
+          await loader.decodeMessagesBatch([message]);
           await tick();
-          applyPendingHeights();
-          computeCumulativeHeights();
+          virtualScroll.applyPendingHeights($messages);
+          virtualScroll.computeCumulativeHeights($messages);
 
           const isRecentSelfMessage = message.sender === $currentUser && (Date.now() - (message.time || Date.now()) < 5000);
           if (isRecentSelfMessage || wasAtBottom) {
             scrollToBottom(scrollElement, true);
           }
 
-          await updateVisibleMessages(wasAtBottom);
+          await updateVisibleMessages();
         }
       });
     }
@@ -1032,22 +428,9 @@
     return result;
   })();
 
-  $: cachedContact = chat.type === "DIALOG" ? getContact(avatarUserId) : writable(undefined);
-  $: title = chat.id === 0 ? "Избранное" : (chat.title || $cachedContact?.names?.[0]?.name);
+  $: cachedContact = chat?.type === "DIALOG" ? getContact(avatarUserId) : writable(undefined);
+  $: title = chat?.id === 0 ? "Избранное" : (chat?.title || $cachedContact?.names?.[0]?.name);
   $: isBot = $cachedContact?.options?.includes("BOT") || chat?.options?.BOT === true || chat?.options?.IS_BOT === true;
-
-  $: otherReadTime = (() => {
-    let maxMark = chat?.otherReadTime || 0;
-    const myId = Number($currentUser);
-    if (chat?.participants) {
-      for (const [uid, mark] of Object.entries(chat.participants)) {
-        if (Number(uid) !== myId && Number(mark) > maxMark) {
-          maxMark = Number(mark);
-        }
-      }
-    }
-    return maxMark;
-  })();
 
   let botInfo = null;
   let botCommands = [];
@@ -1122,7 +505,7 @@
     const targetChatId = chat?.id ?? chatId;
     clearChatNotification(targetChatId);
 
-    setupResizeObserver();
+    virtualScroll.setupResizeObserver();
     startAutoScrollIfAtBottom();
 
     const unreadCount = Number(chat?.newMessages || 0);
@@ -1132,18 +515,18 @@
     let initialFrom = Date.now() + sessionGet("drift");
     if (hasSavedScroll) {
       initialFrom = Number(savedPos.bottomMessageTime) + 1;
-      all_loaded_newer = false;
+      loader.all_loaded_newer = false;
       showScrollDown = true;
-      await loadHistory(true, initialFrom, 35, 35);
+      await loader.loadHistory(true, initialFrom, 35, 35);
     } else {
-      all_loaded_newer = true;
-      await loadHistory(true, initialFrom, 40, 0);
+      loader.all_loaded_newer = true;
+      await loader.loadHistory(true, initialFrom, 40, 0);
     }
 
     await tick();
 
-    measureAllHeights();
-    computeCumulativeHeights();
+    virtualScroll.measureAllHeights(innerList);
+    virtualScroll.computeCumulativeHeights($messages);
 
     if (hasSavedScroll) {
       let targetId = savedPos.bottomMessageId;
@@ -1170,7 +553,7 @@
           offset: savedPos.offset || 40,
         });
       }
-      if (!restored && !all_loaded_newer) {
+      if (!restored && !loader.all_loaded_newer) {
         const msgs = $messages;
         if (msgs.length > 0) {
           const mid = msgs[Math.floor(msgs.length / 2)].id;
@@ -1211,9 +594,9 @@
   });
 
   async function jumpToBottom() {
-    if (!all_loaded_newer) {
-      all_loaded_newer = true;
-      await loadHistory(true, Date.now() + sessionGet("drift"), 40, 0);
+    if (!loader.all_loaded_newer) {
+      loader.all_loaded_newer = true;
+      await loader.loadHistory(true, Date.now() + sessionGet("drift"), 40, 0);
       await tick();
     }
     scrollToBottom(scrollElement, true);
@@ -1277,16 +660,17 @@
       const messageWrapper = e.target.closest(".message-wrapper");
       if (messageWrapper) {
         const id = messageWrapper.id?.replace("m-", "");
-        const msg = $messages.find(x => String(x.id) === String(id));
+        const msg = $messages.find((x) => String(x.id) === String(id));
 
         if (e.target.closest(".reaction")) {
           const reaction = e.target.childNodes[0]?.nodeValue?.trim();
           if (reaction && msg) {
             await handleReaction(chat, msg, reaction);
-            messages.update(x => x);
+            messages.update((x) => x);
           }
+        } else if (msg && !dropoutActiveAt) {
+          selectMessage(e, msg);
         }
-        else if (msg && !dropoutActiveAt) selectMessage(e, msg);
       }
     }
   }
@@ -1362,7 +746,6 @@
 
     justOpenedDropout = true;
     requestAnimationFrame(() => (justOpenedDropout = false));
-
     dropoutActiveAt = { e, msg };
   }
 
@@ -1371,10 +754,9 @@
     dropoutActiveAt = null;
 
     const action = e.detail?.action;
-
     if (action === "delete") {
-      messages.update(x => {
-        const idx = x.findIndex(m => String(m.id) === String(msgId));
+      messages.update((x) => {
+        const idx = x.findIndex((m) => String(m.id) === String(msgId));
         if (idx !== -1) {
           x[idx] = {
             ...x[idx],
@@ -1384,21 +766,19 @@
         }
         return [...x];
       });
-
       getChat(chat?.id || chatId).markMessageDeleted?.(msgId);
     } else if (action === "reaction") {
-      messages.update(x => x);
+      messages.update((x) => x);
     }
   }
 
-  const openSettings = () => {
+  function openSettings() {
     settingsShown = !settingsShown;
     if (settingsShown) onBack.chatSettings = () => (settingsShown = false);
     else delete onBack["chatSettings"];
-  };
+  }
 
   let dateSeparators = {};
-
   $: if ($messages.length) {
     const newSeparators = {};
     let lastDateStr = null;
@@ -1414,7 +794,6 @@
 
   let scrollResizeObserver;
   let lastClientHeight = 0;
-
   let prevActiveMediaBool = null;
   let scrollAnchorBeforeMediaChange = null;
 
@@ -1444,11 +823,10 @@
 
   function startAutoScrollIfAtBottom() {
     if (!scrollElement) return;
-
     lastClientHeight = scrollElement.clientHeight;
 
     scrollResizeObserver = new ResizeObserver(() => {
-      if (!scrollElement || isInitialMounting || isProgrammaticScroll || !all_loaded_newer) return;
+      if (!scrollElement || isInitialMounting || isProgrammaticScroll || !loader.all_loaded_newer) return;
       const { scrollTop, scrollHeight, clientHeight } = scrollElement;
       const heightDelta = clientHeight - lastClientHeight;
       lastClientHeight = clientHeight;
@@ -1530,6 +908,19 @@
     }
   }
 
+  $: otherReadTime = (() => {
+    let maxMark = chat?.otherReadTime || 0;
+    const myId = Number($currentUser);
+    if (chat?.participants) {
+      for (const [uid, mark] of Object.entries(chat.participants)) {
+        if (Number(uid) !== myId && Number(mark) > maxMark) {
+          maxMark = Number(mark);
+        }
+      }
+    }
+    return maxMark;
+  })();
+
   $: allMedia = $messages.flatMap((m) => {
     const decoded = $decodedMessages[String(m.id)];
     const media = decoded?.media;
@@ -1592,7 +983,6 @@
       viewerOpen = true;
     }
   }
-
 </script>
 
 <div
@@ -1600,12 +990,16 @@
   class:swiping={isSwipingChat}
   class:animating={!isSwipingChat && (currentDragX > 0 || isClosingBySwipe)}
   style={swipeStyle}
+  use:swipeToClose={{
+    canSwipe: () => !viewerOpen && !settingsShown && !dropoutActiveAt && !isClosingBySwipe,
+    onClose: handleCloseChat,
+    onStateChange: (state) => {
+      currentDragX = state.currentDragX;
+      isSwipingChat = state.isSwipingChat;
+      isClosingBySwipe = state.isClosingBySwipe;
+    },
+  }}
   on:click|capture={handleClick}
-  on:mousedown={handleMouseDown}
-  on:touchstart={handleTouchStart}
-  on:touchmove={handleTouchMove}
-  on:touchend={handleTouchEnd}
-  on:touchcancel={handleTouchCancel}
 >
   <Bubbles />
 
@@ -1618,41 +1012,13 @@
     />
   {/if}
 
-  <header>
-    <div class="align-left">
-      <button
-        class="icon-button"
-        on:click|stopPropagation={handleCloseChat}
-      >
-        <img src="icons/arrow.svg" style="transform: scale(-1.7)" />
-      </button>
-      <div
-        class="row"
-        on:click={() => {
-          if (chat.id === 0) {
-            $Session.profile = { userId: $currentUser };
-          } else if (chat.type === "DIALOG") {
-            $Session.profile = { userId: avatarUserId };
-          } else {
-            $Session.profile = { chatId: chat.id };
-          }
-        }}
-      >
-        <Avatar size={42} {chat} contactId={avatarUserId} style="margin-left: -8px; cursor: pointer;"/>
-        <div class="info">
-          <a class="title">{title}</a>
-          <a class="presence"><Signature {chat} contactId={avatarUserId} /></a>
-        </div>
-      </div>
-    </div>
-    <div class="align-right">
-      {#if chat.type !== "CHANNEL"}
-        <button class="icon-button" on:click|stopPropagation={openSettings}>
-          <img src="icons/params.svg" />
-        </button>
-      {/if}
-    </div>
-  </header>
+  <ChatHeader
+    {chat}
+    {avatarUserId}
+    {title}
+    on:close={handleCloseChat}
+    on:openSettings={openSettings}
+  />
 
   {#if $activeMedia}
     <MediaPlaybackHeader isChatHeader={true} />
@@ -1693,40 +1059,39 @@
       style={"opacity: " + (allRendered ? "1;" : "0;")}
       bind:this={innerList}
     >
+      <div style={"flex-shrink: 0; height: " + (chat.pinnedMessage ? "60px" : "10px")}></div>
 
-    <div style={"flex-shrink: 0; height: " + (chat.pinnedMessage ? "60px" : "10px")}></div>
+      {#each uniqueMessages as msg (msg.id)}
+        <div class="message-wrapper" id={"m-" + msg.id}>
+          {#if visibleMessages[msg.id] || !$messageHeights[msg.id]}
+            <div
+              class="observer-area"
+              use:observeResize={msg.id}
+            >
+              {#if dateSeparators[msg.id]}
+                <DateSeparator {msg} />
+              {/if}
+              <Message
+                {msg}
+                {chat}
+                {dropoutActiveAt}
+                {scrollElement}
+                {otherReadTime}
+                makeVisible={makeVisible}
+                decoded={$decodedMessages[msg.id]}
+                on:openMedia={(e) => openMedia(e.detail.attach)}
+                on:openChat={() => openChat(chat.id, msg.id)}
+                on:openStickerPack={(e) => handleOpenStickerPack(e.detail.sticker)}
+                on:openHistory={(e) => (historyModalMessage = e.detail.msg)}
+              />
+            </div>
+          {:else}
+            <div class="placeholder" style="width:100%; height:{($messageHeights[msg.id] || DEFAULT_HEIGHT)}px;"></div>
+          {/if}
+        </div>
+      {/each}
 
-    {#each uniqueMessages as msg (msg.id)}
-      <div class="message-wrapper" id={"m-" + msg.id}>
-        {#if visibleMessages[msg.id] || !$messageHeights[msg.id]}
-          <div
-            class="observer-area"
-            use:observeResize={msg.id}
-          >
-            {#if dateSeparators[msg.id]}
-              <DateSeparator {msg} />
-            {/if}
-            <Message
-              {msg}
-              {chat}
-              {dropoutActiveAt}
-              {scrollElement}
-              {otherReadTime}
-              makeVisible={makeVisible}
-              decoded={$decodedMessages[msg.id]}
-              on:openMedia={(e) => openMedia(e.detail.attach)}
-              on:openChat={() => openChat(chat.id, msg.id)}
-              on:openStickerPack={(e) => handleOpenStickerPack(e.detail.sticker)}
-              on:openHistory={(e) => (historyModalMessage = e.detail.msg)}
-            />
-          </div>
-        {:else}
-          <div class="placeholder" style="width:100%; height:{($messageHeights[msg.id] || DEFAULT_HEIGHT)}px;"></div>
-        {/if}
-      </div>
-    {/each}
-
-    <div style="height: 20px; flex-shrink: 0;"></div>
+      <div style="height: 20px; flex-shrink: 0;"></div>
     </div>
   </div>
 
@@ -1782,33 +1147,14 @@
     />
   {/if}
 
-  {#if showScrollDown}
-    <div
-      in:fade={{ duration: 100 }}
-      out:fade={{ duration: 100 }}
-      class="scroll-down-container"
-      class:nije={chat.type === "CHANNEL"}
-      class:vise={!!replyTo}
-      class:with-stickers={showStickerPanel}
-    >
-      <button
-        class="scroll-down-btn"
-        on:click={jumpToBottom}
-      >
-        <svg viewBox="0 0 640 640"
-          ><path
-            fill="#777"
-            d="M297.4 470.6C309.9 483.1 330.2 483.1 342.7 470.6L534.7 278.6C547.2 266.1 547.2 245.8 534.7 233.3C522.2 220.8 501.9 220.8 489.4 233.3L320 402.7L150.6 233.4C138.1 220.9 117.8 220.9 105.3 233.4C92.8 245.9 92.8 266.2 105.3 278.7L297.3 470.7z"
-          /></svg
-        >
-      </button>
-      {#if unreadBadgeCount > 0}
-        <div class="scroll-down-badge" on:click={jumpToBottom}>
-          {unreadBadgeCount > 99 ? "99+" : unreadBadgeCount}
-        </div>
-      {/if}
-    </div>
-  {/if}
+  <ScrollDownButton
+    {showScrollDown}
+    chatType={chat.type}
+    hasReply={!!replyTo}
+    {showStickerPanel}
+    {unreadBadgeCount}
+    on:click={jumpToBottom}
+  />
 </div>
 
 <style>
@@ -1840,158 +1186,6 @@
 
   .chat-window.swiping {
     transition: none;
-  }
-
-  header {
-    display: flex;
-    align-items: center;
-    padding: 8px 0;
-    cursor: grab;
-    flex-shrink: 0;
-    background-color: #1e2024;
-    z-index: 5;
-  }
-
-  .row {
-    display: flex;
-    gap: 12px;
-    cursor: pointer;
-    flex: 1;
-    min-width: 0;
-    width: 100vw;
-    padding-left: 15px;
-  }
-
-  header .info {
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-    min-width: 0;
-  }
-
-  header .info .presence {
-    font-size: 14px;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    display: block;
-    min-width: 0;
-  }
-
-  header .title {
-    color: white;
-    font-size: 18px;
-    flex: 1;
-    min-width: 0;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-
-  header .align-left {
-    display: flex;
-    flex-direction: row;
-    align-items: center;
-    min-width: 0;
-  }
-
-  header .align-right {
-    flex: 0 0 auto;
-    margin-left: auto;
-    margin-right: 0;
-    display: flex;
-    align-items: center;
-  }
-
-  .icon-button {
-    background: none;
-    border: none;
-    color: white;
-    cursor: pointer;
-    height: 40px;
-    width: 40px;
-    padding: 0;
-    border-radius: 50%;
-    flex-shrink: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: background-color 0.2s;
-  }
-
-  .icon-button img {
-    transform: scale(1.1) translateX(-5px);
-  }
-
-  .scroll-down-container {
-    position: fixed;
-    bottom: 80px;
-    right: 10px;
-    width: 55px;
-    height: 55px;
-    z-index: 100;
-    transition: bottom 0.2s ease;
-  }
-
-  .scroll-down-container.nije {
-    bottom: 20px;
-  }
-
-  .scroll-down-container.vise {
-    bottom: 140px;
-  }
-
-  .scroll-down-container.with-stickers {
-    bottom: 420px;
-  }
-
-  .scroll-down-container.with-stickers.vise {
-    bottom: 480px;
-  }
-
-  .scroll-down-btn {
-    width: 55px;
-    height: 55px;
-    background: #1e2024;
-    opacity: 0.9;
-    color: white;
-    border: none;
-    border-radius: 50%;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: opacity 0.1s;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
-  }
-
-  .scroll-down-btn:hover {
-    opacity: 1;
-  }
-
-  .scroll-down-btn svg {
-    width: 36px;
-  }
-
-  .scroll-down-badge {
-    position: absolute;
-    top: -5px;
-    left: -5px;
-    min-width: 22px;
-    height: 22px;
-    box-sizing: border-box;
-    padding: 0 5px;
-    background: #2b7fc3;
-    color: #ffffff;
-    font-size: 12px;
-    font-weight: 600;
-    line-height: 22px;
-    text-align: center;
-    border-radius: 11px;
-    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
-    pointer-events: auto;
-    cursor: pointer;
-    user-select: none;
   }
 
   .message-list-container {
