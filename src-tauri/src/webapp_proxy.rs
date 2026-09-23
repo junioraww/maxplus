@@ -184,9 +184,15 @@ const SHIM_SCRIPT: &str = concat!(
     r#"var t=resolveTarget(u);"#,
     r#"if(t){return 'http://127.0.0.1:11448/proxy?url='+encodeURIComponent(t);}"#,
     r#"return u;}"#,
-    r#"try{var lp=HTMLLinkElement.prototype;var ld=Object.getOwnPropertyDescriptor(lp,'href');if(ld&&ld.set){var olsh=ld.set;Object.defineProperty(lp,'href',{set:function(v){return olsh.call(this,wrapProxy(v));},get:ld.get,configurable:true,enumerable:true});}}catch(e){}"#,
-    r#"try{var sp=HTMLScriptElement.prototype;var sd=Object.getOwnPropertyDescriptor(sp,'src');if(sd&&sd.set){var osss=sd.set;Object.defineProperty(sp,'src',{set:function(v){return osss.call(this,wrapProxy(v));},get:sd.get,configurable:true,enumerable:true});}}catch(e){}"#,
-    r#"try{var osa=Element.prototype.setAttribute;Element.prototype.setAttribute=function(n,v){try{var k=String(n).toLowerCase();var tg=(this.tagName||'').toLowerCase();if((tg==='link'&&k==='href')||(tg==='script'&&k==='src')){v=wrapProxy(v);}}catch(x){}return osa.call(this,n,v);};}catch(e){}"#,
+    r#"function wrapProxyAsset(u){"#,
+    r#"if(!u||typeof u!=='string')return u;"#,
+    r#"if(u.indexOf('https://')===0||u.indexOf('http://')===0){"#,
+    r#"if(u.indexOf('http://127.0.0.1')===0||u.indexOf('http://localhost')===0)return u;"#,
+    r#"return wrapProxy(u);"#,
+    r#"}return u;}"#,
+    r#"try{var lp=HTMLLinkElement.prototype;var ld=Object.getOwnPropertyDescriptor(lp,'href');if(ld&&ld.set){var olsh=ld.set;Object.defineProperty(lp,'href',{set:function(v){return olsh.call(this,wrapProxyAsset(v));},get:ld.get,configurable:true,enumerable:true});}}catch(e){}"#,
+    r#"try{var sp=HTMLScriptElement.prototype;var sd=Object.getOwnPropertyDescriptor(sp,'src');if(sd&&sd.set){var osss=sd.set;Object.defineProperty(sp,'src',{set:function(v){return osss.call(this,wrapProxyAsset(v));},get:sd.get,configurable:true,enumerable:true});}}catch(e){}"#,
+    r#"try{var osa=Element.prototype.setAttribute;Element.prototype.setAttribute=function(n,v){try{var k=String(n).toLowerCase();var tg=(this.tagName||'').toLowerCase();if((tg==='link'&&k==='href')||(tg==='script'&&k==='src')){v=wrapProxyAsset(v);}}catch(x){}return osa.call(this,n,v);};}catch(e){}"#,
     r#"try{var ow=window.Worker;if(ow){window.Worker=function(u,o){return new ow(wrapProxy(u),o);};}}catch(e){}"#,
     r#"window.open=function(u){var t=resolveTarget(u)||u;if(t){toParent('web_app_open_link',{url:String(t)});}return null;};"#,
     r#"document.addEventListener('click',function(e){var a=e.target&&e.target.closest?e.target.closest('a'):null;if(!a)return;var h=a.getAttribute('href');if(!h||h.charAt(0)==='#'||h.indexOf('javascript:')===0)return;var tgt=a.getAttribute('target');var isMax=(h.indexOf('max.ru')!==-1||h.indexOf('max://')===0||(a.href&&a.href.indexOf('max.ru')!==-1)||(a.href&&a.href.indexOf('max://')===0));if(tgt==='_blank'||tgt==='_new'||isMax){var targetUrl=resolveTarget(h)||resolveTarget(a.href)||a.href;if(targetUrl){e.preventDefault();e.stopPropagation();toParent('web_app_open_link',{url:targetUrl});}}},true);"#,
@@ -279,6 +285,7 @@ fn handle_request(
 
     let mut caller_origin = String::new();
     let mut caller_base = String::new();
+    let mut referer_dir = String::new();
     for h in request.headers() {
         let name = h.field.as_str().as_str();
         if name.eq_ignore_ascii_case("Referer") {
@@ -303,6 +310,15 @@ fn handle_request(
                 caller_origin = get_origin_from_url(ref_val);
                 if caller_origin.contains("127.0.0.1") || caller_origin.contains("localhost") {
                     caller_origin.clear();
+                    if let Ok(parsed_ref) = url::Url::parse(ref_val) {
+                        let p = parsed_ref.path();
+                        if let Some(pos) = p.rfind('/') {
+                            let d = &p[..pos + 1];
+                            if d != "/" && !d.is_empty() {
+                                referer_dir = d.to_string();
+                            }
+                        }
+                    }
                 }
             }
         } else if name.eq_ignore_ascii_case("Cookie") {
@@ -325,7 +341,9 @@ fn handle_request(
         }
     }
 
-    if caller_base.is_empty() {
+    if !referer_dir.is_empty() && !caller_origin.is_empty() {
+        caller_base = format!("{}{}", caller_origin.trim_end_matches('/'), referer_dir);
+    } else if caller_base.is_empty() {
         if let Ok(lock) = state.last_base_url.lock() {
             caller_base = lock.clone();
         }
@@ -337,13 +355,21 @@ fn handle_request(
     let clean_req = req_url.split('?').next().unwrap_or(&req_url);
     let is_css_req = clean_req.ends_with(".css");
     let is_js_req = clean_req.ends_with(".js") || clean_req.ends_with(".mjs");
-    let is_asset_path = req_url.starts_with("/assets/") || req_url.starts_with("assets/");
 
     let mut target_url = if let Some(t) = direct_target.take() {
         t
-    } else if !base_url.is_empty() && is_asset_path && !base_url.ends_with("/assets/") {
-        let relative = req_url.trim_start_matches('/');
-        format!("{}{}", base_url, relative)
+    } else if !base_url.is_empty() {
+        let rel = req_url.trim_start_matches('/');
+        if base_url.ends_with("/assets/") && rel.starts_with("assets/") {
+            let inner = rel.trim_start_matches("assets/").trim_start_matches('/');
+            format!("{}{}", base_url, inner)
+        } else if rel.starts_with("assets/") {
+            format!("{}/{}", origin.trim_end_matches('/'), rel)
+        } else if base_url.ends_with("/assets/") {
+            format!("{}{}", base_url, rel)
+        } else {
+            format!("{}/{}", base_url.trim_end_matches('/'), rel)
+        }
     } else if !origin.is_empty() {
         format!("{}{}", origin.trim_end_matches('/'), req_url)
     } else {
@@ -576,16 +602,34 @@ fn handle_request(
         .unwrap_or("");
 
     if is_asset_request && (initial_status == 404 || (res.status().is_success() && initial_ct.contains("text/html"))) {
-        let alt_target = if !base_url.is_empty() && target_url.starts_with(&base_url) {
-            format!("{}{}", origin.trim_end_matches('/'), req_url)
-        } else if !base_url.is_empty() && target_url.starts_with(&origin) {
-            let relative = req_url.trim_start_matches('/');
-            format!("{}{}", base_url, relative)
-        } else {
-            String::new()
-        };
+        let clean_path = req_url.trim_start_matches('/');
+        let inner_path = clean_path.trim_start_matches("assets/").trim_start_matches('/');
+        let mut candidates = Vec::new();
 
-        if !alt_target.is_empty() && alt_target != target_url {
+        if !base_url.is_empty() {
+            let b = base_url.trim_end_matches('/');
+            let u1 = format!("{}/assets/{}", b, inner_path);
+            let u2 = format!("{}/{}", b, clean_path);
+            let u3 = format!("{}/{}", b, inner_path);
+            for u in [u1, u2, u3] {
+                if u != target_url && !candidates.contains(&u) {
+                    candidates.push(u);
+                }
+            }
+        }
+        if !origin.is_empty() {
+            let o = origin.trim_end_matches('/');
+            let u1 = format!("{}/assets/{}", o, inner_path);
+            let u2 = format!("{}/{}", o, clean_path);
+            let u3 = format!("{}/{}", o, inner_path);
+            for u in [u1, u2, u3] {
+                if u != target_url && !candidates.contains(&u) {
+                    candidates.push(u);
+                }
+            }
+        }
+
+        for alt_target in candidates {
             let mut alt_rb = match method_str.as_str() {
                 "HEAD" => client.head(&alt_target),
                 _ => client.get(&alt_target),
@@ -632,6 +676,7 @@ fn handle_request(
                 if alt_res.status().is_success() && !alt_ct.contains("text/html") {
                     res = alt_res;
                     target_url = alt_target;
+                    break;
                 }
             }
         }
@@ -923,27 +968,6 @@ fn handle_request(
             text.insert_str(pos, &full_shim);
         } else {
             text = format!("{}{}", full_shim, text);
-        }
-
-        if !page_origin.is_empty() {
-            let proxy_prefix = "http://127.0.0.1:11448/proxy?url=";
-            if let Ok(re_link) = Regex::new(r#"(<(?:link|script)\b[^>]*?\b(?:href|src)=["'])(/(?:assets/|[^"']+\.(?:css|js|mjs)))(["'])"#) {
-                let po = page_origin.clone();
-                text = re_link.replace_all(&text, |caps: &regex::Captures| {
-                    let full_url = format!("{}{}", po.trim_end_matches('/'), &caps[2]);
-                    format!("{}{}{}{}", &caps[1], proxy_prefix, urlencoding::encode(&full_url), &caps[3])
-                }).to_string();
-            }
-            if !base_path_str.is_empty() {
-                if let Ok(re_rel) = Regex::new(r#"(<(?:link|script)\b[^>]*?\b(?:href|src)=["'])(\.?/assets/[^"']+)(["'])"#) {
-                    let bp = base_path_str.clone();
-                    text = re_rel.replace_all(&text, |caps: &regex::Captures| {
-                        let path = caps[2].trim_start_matches('.').trim_start_matches('/');
-                        let full_url = format!("{}{}", bp, path);
-                        format!("{}{}{}{}", &caps[1], proxy_prefix, urlencoding::encode(&full_url), &caps[3])
-                    }).to_string();
-                }
-            }
         }
 
         text.into_bytes()

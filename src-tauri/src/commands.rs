@@ -251,4 +251,69 @@ pub async fn get_system_trace_info(app: AppHandle) -> Result<Value, String> {
     }))
 }
 
+#[derive(serde::Serialize, serde::Deserialize)]
+pub struct ExtApiResponse {
+    pub status: u16,
+    pub ok: bool,
+    pub data: Value,
+}
+
+#[tauri::command]
+pub async fn ext_api_request(
+    method: String,
+    path: String,
+    headers: Option<HashMap<String, String>>,
+    body: Option<Value>,
+) -> Result<ExtApiResponse, String> {
+    let base_url = "https://ext-api.max.ru";
+    let url = if path.starts_with("https://") || path.starts_with("http://") {
+        path
+    } else if path.starts_with('/') {
+        format!("{}{}", base_url, path)
+    } else {
+        format!("{}/{}", base_url, path)
+    };
+
+    let client = rumax::shared_http_client();
+    let req_method = match method.to_uppercase().as_str() {
+        "GET" => reqwest::Method::GET,
+        "POST" => reqwest::Method::POST,
+        "PUT" => reqwest::Method::PUT,
+        "DELETE" => reqwest::Method::DELETE,
+        "PATCH" => reqwest::Method::PATCH,
+        _ => return Err(format!("Unsupported method: {}", method)),
+    };
+
+    let mut req = client.request(req_method, &url);
+    if let Some(hdrs) = headers {
+        for (k, v) in hdrs {
+            let header_val = reqwest::header::HeaderValue::from_str(&v)
+                .or_else(|_| reqwest::header::HeaderValue::from_bytes(v.as_bytes()));
+            if let (Ok(name), Ok(val)) = (
+                reqwest::header::HeaderName::from_bytes(k.as_bytes()),
+                header_val,
+            ) {
+                req = req.header(name, val);
+            }
+        }
+    }
+
+    if let Some(b) = body {
+        req = req.json(&b);
+    }
+
+    let res = req.send().await.map_err(|e| e.to_string())?;
+    let status = res.status().as_u16();
+    let ok = res.status().is_success();
+    let text = res.text().await.map_err(|e| e.to_string())?;
+
+    let data = if text.trim().is_empty() {
+        Value::Null
+    } else {
+        serde_json::from_str(&text).unwrap_or_else(|_| Value::String(text))
+    };
+
+    Ok(ExtApiResponse { status, ok, data })
+}
+
 

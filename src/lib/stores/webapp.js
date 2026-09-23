@@ -11,6 +11,8 @@ export const visibleWebApps = derived(activeWebApps, ($apps) =>
   $apps.filter((a) => a.state !== "minimized")
 );
 
+export const lastClosedMiniApp = writable(null);
+
 let instanceCounter = 0;
 
 export async function openMiniApp({
@@ -170,6 +172,11 @@ export function restoreMiniApp(id) {
 }
 
 export function closeMiniApp(id) {
+  const current = get(activeWebApps);
+  const found = current.find((a) => a.id === id);
+  if (found) {
+    lastClosedMiniApp.set({ ...found, closedAt: Date.now() });
+  }
   activeWebApps.update((apps) => apps.filter((a) => a.id !== id));
 }
 
