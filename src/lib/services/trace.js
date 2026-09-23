@@ -2,7 +2,7 @@ import { writable, get } from "svelte/store";
 import { invoke } from "@tauri-apps/api/core";
 import { save } from "@tauri-apps/plugin-dialog";
 import { listen } from "@tauri-apps/api/event";
-import * as fflate from "fflate";
+import { zipSync, strToU8 } from "../utils/zip.js";
 import { showAlert } from "../utils/alert.js";
 
 export const isTracing = writable(false);
@@ -584,7 +584,7 @@ export async function stopTraceAndExport() {
   const readableTimeline = formatReadableTimeline(activeEvents, activeSystemInfo, startTimeEpoch, stopTimeEpoch);
 
   const zipFiles = {
-    "log.txt": fflate.strToU8(readableTimeline),
+    "log.txt": strToU8(readableTimeline),
   };
 
   for (const s of activeScreenshots) {
@@ -593,7 +593,7 @@ export async function stopTraceAndExport() {
 
   let zipBytes;
   try {
-    zipBytes = fflate.zipSync(zipFiles, { level: 6 });
+    zipBytes = zipSync(zipFiles);
   } catch (err) {
     showAlert("Ошибка создания архива", String(err));
     return;
