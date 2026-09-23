@@ -53,6 +53,9 @@ chrono = "0.4.45"
 chacha20poly1305 = "0.11.0"
 walkdir = "2.5.0"
 sha2 = "0.11.0"
+hex = "0.4.3"
+x25519-dalek = { version = "2.0", features = ["static_secrets"] }
+ed25519-dalek = { version = "2.1", features = ["rand_core"] }
 jni = "0.22.4"
 tauri-plugin-single-instance = { version = "2.4.5", features = ["deep-link"] }
 tauri-plugin-deep-link = "2.4.10"

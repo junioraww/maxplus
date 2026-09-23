@@ -31,10 +31,9 @@
     get as sessionGet,
   } from "$lib/stores/session";
   import { handleReaction } from "$components/ChatWindow/actions.js";
-  import {
-    checkForEncryptionRequest,
-    decode_msg,
-  } from "$components/ChatWindow/e2e.js";
+  import { checkForEncryptionRequest } from "$components/ChatWindow/e2e.js";
+  import { batchDecrypt } from "$lib/crypto/messages.js";
+  import { getCurrentAccount } from "$lib/stores/accounts.js";
   import { scrollToBottom } from "$lib/utils/scroll.js";
   import { getChatScroll, saveChatScroll } from "$lib/stores/chatScroll.js";
   import * as Caching from "$lib/utils/caching.js";
@@ -516,22 +515,30 @@
   const decodedMessages = writable({});
 
   const decodeMessagesBatch = async (list) => {
-    const updates = {};
-    const toRemove = [];
+    if (!list || !list.length) return;
+    try {
+      const account = await getCurrentAccount();
+      const password = $chatSettings?.password || null;
+      const currentChatId = chat?.id ?? chatId;
+      const updates = await batchDecrypt(
+        Number(account?.id || 0),
+        Number(currentChatId),
+        list,
+        password
+      );
 
-    await Promise.all(
-      list.map(async msg => {
-        const res = await decode_msg(msg);
-        if (res) updates[msg.id] = res;
-        else toRemove.push(msg.id);
-      })
-    );
+      decodedMessages.update(old => ({
+        ...old,
+        ...updates
+      }));
 
-    decodedMessages.update(old => {
-      const next = { ...old, ...updates };
-      for (const id of toRemove) delete next[id];
-      return next;
-    });
+      const newReq = await checkForEncryptionRequest(chat, chatSettings, updates, list);
+      if (newReq) {
+        gotSecretChatRequest = newReq;
+      }
+    } catch (e) {
+      console.error(e);
+    }
   };
 
   const mergeMessages = async (
@@ -941,13 +948,7 @@
             }
             return _messages;
           });
-          const decoded = await decode_msg(message);
-          decodedMessages.update(d => {
-            const next = { ...d };
-            if (decoded) next[message.id] = decoded;
-            else delete next[message.id];
-            return next;
-          });
+          await decodeMessagesBatch([message]);
           await tick();
           applyPendingHeights();
           computeCumulativeHeights();
@@ -976,8 +977,7 @@
             return _messages;
           });
 
-          const decoded = await decode_msg(message);
-          if (decoded) decodedMessages.update(d => ({ ...d, [message.id]: decoded }));
+          await decodeMessagesBatch([message]);
 
           await tick();
           applyPendingHeights();
@@ -990,8 +990,6 @@
 
           await updateVisibleMessages(wasAtBottom);
         }
-
-        checkForEncryptionRequest(chat, chatSettings, [message]);
       });
     }
   }
