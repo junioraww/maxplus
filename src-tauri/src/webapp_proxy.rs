@@ -152,61 +152,73 @@ fn resolve_location_url(base_url: &str, loc: &str) -> String {
     }
 }
 
-const SHIM_SCRIPT: &str = concat!(
-    r#"<meta name="referrer" content="unsafe-url">"#,
-    r#"<script>(function(){if(window.__mpwb)return;window.__mpwb=true;"#,
-    r#"var q=[];function flush(){for(var i=0;i<q.length;){var b=q[i][2]?window.PrivateWebApp:window.WebApp;"#,
-    r#"if(b&&typeof b.sendEvent==='function'){try{b.sendEvent(q[i][0],q[i][1]);}catch(e){}q.splice(i,1);}else{i++;}}}setInterval(flush,50);"#,
-    r#"function deliver(n,d,p){q.push([n,d,!!p]);flush();}window.__mpDeliver=deliver;"#,
-    r#"function toParent(n,d){if(window.parent===window)return;var o={};try{o=typeof d==='string'?JSON.parse(d):(d||{});}catch(e){}"#,
-    r#"var m=Object.assign({},o);m.type=n;try{window.parent.postMessage(JSON.stringify(m),'*');}catch(e){}}"#,
-    r#"window.WebViewHandler={postEvent:function(n,d){toParent(n,d);},resolveShare:function(){}};"#,
-    r#"window.PrivateWebViewHandler={postEvent:function(n,d){toParent(n,d);}};if(!window.AndroidPerf){window.AndroidPerf={trackFcp:function(){}};}"#,
-    r#"window.addEventListener('message',function(e){if(!e.data||e.source===window)return;var d;try{d=typeof e.data==='string'?JSON.parse(e.data):e.data;}catch(x){return;}"#,
-    r#"if(d&&d.__mpDeliver&&typeof d.name==='string'){deliver(d.name,d.data,!!d.priv);}});"#,
-    r#"function resolveTarget(u){"#,
-    r#"if(!u||typeof u!=='string')return '';"#,
-    r#"if(u.indexOf('data:')===0||u.indexOf('blob:')===0||u.indexOf('javascript:')===0)return '';"#,
-    r#"if(u.indexOf('http://127.0.0.1:11448/proxy')===0||u.indexOf('http://localhost:11448/proxy')===0)return '';"#,
-    r#"if(u.indexOf('https://')===0||u.indexOf('http://')===0){"#,
-    r#"if(u.indexOf('http://127.0.0.1:11448')===0||u.indexOf('http://localhost:11448')===0){"#,
-    r#"var path=u.replace(/^http:\/\/(127\.0\.0\.1|localhost):11448/,'');"#,
-    r#"return window.__mpOrigin?window.__mpOrigin+path:'';"#,
-    r#"}return u;}"#,
-    r#"if(u.charAt(0)==='/'){return window.__mpOrigin?window.__mpOrigin+u:'';}"#,
-    r#"if(window.__mpBase){return window.__mpBase+(window.__mpBase.charAt(window.__mpBase.length-1)==='/'?'':'/')+u;}"#,
-    r#"if(window.__mpOrigin){return window.__mpOrigin+'/'+u;}"#,
-    r#"return '';}"#,
-    r#"function wrapProxy(u){"#,
-    r#"if(!u||typeof u!=='string')return u;"#,
-    r#"if(u.indexOf('data:')===0||u.indexOf('blob:')===0||u.indexOf('javascript:')===0||u.charAt(0)==='#')return u;"#,
-    r#"if(u.indexOf('http://127.0.0.1:11448/proxy')===0||u.indexOf('http://localhost:11448/proxy')===0)return u;"#,
-    r#"var t=resolveTarget(u);"#,
-    r#"if(t){return 'http://127.0.0.1:11448/proxy?url='+encodeURIComponent(t);}"#,
-    r#"return u;}"#,
-    r#"function wrapProxyAsset(u){"#,
-    r#"if(!u||typeof u!=='string')return u;"#,
-    r#"if(u.indexOf('https://')===0||u.indexOf('http://')===0){"#,
-    r#"if(u.indexOf('http://127.0.0.1')===0||u.indexOf('http://localhost')===0)return u;"#,
-    r#"return wrapProxy(u);"#,
-    r#"}return u;}"#,
-    r#"try{var lp=HTMLLinkElement.prototype;var ld=Object.getOwnPropertyDescriptor(lp,'href');if(ld&&ld.set){var olsh=ld.set;Object.defineProperty(lp,'href',{set:function(v){return olsh.call(this,wrapProxyAsset(v));},get:ld.get,configurable:true,enumerable:true});}}catch(e){}"#,
-    r#"try{var sp=HTMLScriptElement.prototype;var sd=Object.getOwnPropertyDescriptor(sp,'src');if(sd&&sd.set){var osss=sd.set;Object.defineProperty(sp,'src',{set:function(v){return osss.call(this,wrapProxyAsset(v));},get:sd.get,configurable:true,enumerable:true});}}catch(e){}"#,
-    r#"try{var osa=Element.prototype.setAttribute;Element.prototype.setAttribute=function(n,v){try{var k=String(n).toLowerCase();var tg=(this.tagName||'').toLowerCase();if((tg==='link'&&k==='href')||(tg==='script'&&k==='src')){v=wrapProxyAsset(v);}}catch(x){}return osa.call(this,n,v);};}catch(e){}"#,
-    r#"try{var ow=window.Worker;if(ow){window.Worker=function(u,o){return new ow(wrapProxy(u),o);};}}catch(e){}"#,
-    r#"window.open=function(u){var t=resolveTarget(u)||u;if(t){toParent('web_app_open_link',{url:String(t)});}return null;};"#,
-    r#"document.addEventListener('click',function(e){var a=e.target&&e.target.closest?e.target.closest('a'):null;if(!a)return;var h=a.getAttribute('href');if(!h||h.charAt(0)==='#'||h.indexOf('javascript:')===0)return;var tgt=a.getAttribute('target');var isMax=(h.indexOf('max.ru')!==-1||h.indexOf('max://')===0||(a.href&&a.href.indexOf('max.ru')!==-1)||(a.href&&a.href.indexOf('max://')===0));if(tgt==='_blank'||tgt==='_new'||isMax){var targetUrl=resolveTarget(h)||resolveTarget(a.href)||a.href;if(targetUrl){e.preventDefault();e.stopPropagation();toParent('web_app_open_link',{url:targetUrl});}}},true);"#,
-    r#"if(window.__mpRealUrl){toParent('web_app_page_navigated',{url:window.__mpRealUrl});}"#,
-    r#"var of=window.fetch;if(of){window.fetch=function(u,i){try{"#,
-    r#"var s=typeof u==='string'?u:(u&&u.url?u.url:'');"#,
-    r#"var p=wrapProxy(s);"#,
-    r#"if(p!==s){if(typeof u==='string'){u=p;}else if(u&&typeof u==='object'){try{u=new Request(p,u);}catch(x){u=p;}}}"#,
-    r#"}catch(e){}return of.call(this,u,i);};try{window.fetch.toString=function(){return 'function fetch() { [native code] }';};}catch(e){}}"#,
-    r#"var ox=XMLHttpRequest.prototype.open;if(ox){XMLHttpRequest.prototype.open=function(m,u){try{"#,
-    r#"if(typeof u==='string'){u=wrapProxy(u);}"#,
-    r#"}catch(e){}var a=Array.prototype.slice.call(arguments);a[1]=u;return ox.apply(this,a);};try{ox.toString=function(){return 'function open() { [native code] }';};}catch(e){}}"#,
-    r#"}());</script>"#
-);
+fn build_shim_script(port: u16, token: &str) -> String {
+    let proxy_prefix = format!("http://127.0.0.1:{}/{}/proxy", port, token);
+    let proxy_origin = format!("http://127.0.0.1:{}", port);
+    format!(
+        concat!(
+            r#"<meta name="referrer" content="unsafe-url">"#,
+            r#"<script>(function(){{if(window.__mpwb)return;window.__mpwb=true;"#,
+            r#"var q=[];function flush(){{for(var i=0;i<q.length;){{var b=q[i][2]?window.PrivateWebApp:window.WebApp;"#,
+            r#"if(b&&typeof b.sendEvent==='function'){{try{{b.sendEvent(q[i][0],q[i][1]);}}catch(e){{}}q.splice(i,1);}}else{{i++;}}}}}}setInterval(flush,50);"#,
+            r#"function deliver(n,d,p){{q.push([n,d,!!p]);flush();}}window.__mpDeliver=deliver;"#,
+            r#"function toParent(n,d){{if(window.parent===window)return;var o={{}};try{{o=typeof d==='string'?JSON.parse(d):(d||{{}});}}catch(e){{}}"#,
+            r#"var m=Object.assign({{}},o);m.type=n;try{{window.parent.postMessage(JSON.stringify(m),'*');}}catch(e){{}}}}"#,
+            r#"window.WebViewHandler={{postEvent:function(n,d){{toParent(n,d);}},resolveShare:function(){{}}}};"#,
+            r#"window.PrivateWebViewHandler={{postEvent:function(n,d){{toParent(n,d);}}}};"#,
+            r#"if(!window.AndroidPerf){{window.AndroidPerf={{trackFcp:function(){{}}}};}}"#,
+            r#"window.addEventListener('message',function(e){{if(!e.data||e.source===window)return;var d;try{{d=typeof e.data==='string'?JSON.parse(e.data):e.data;}}catch(x){{return;}}"#,
+            r#"if(d&&d.__mpDeliver&&typeof d.name==='string'){{deliver(d.name,d.data,!!d.priv);}}}});"#,
+            r#"function resolveTarget(u){{"#,
+            r#"if(!u||typeof u!=='string')return '';"#,
+            r#"if(u.indexOf('data:')===0||u.indexOf('blob:')===0||u.indexOf('javascript:')===0)return '';"#,
+            r#"if(u.indexOf('{}')===0||u.indexOf('/proxy')!==-1)return '';"#,
+            r#"if(u.indexOf('https://')===0||u.indexOf('http://')===0){{"#,
+            r#"if(u.indexOf('{}')===0||u.indexOf('http://localhost:{}')===0){{"#,
+            r#"var path=u.replace(/^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?(\/[a-f0-9]{{64}})?/,'');"#,
+            r#"return window.__mpOrigin?window.__mpOrigin+path:'';"#,
+            r#"}}return u;}}"#,
+            r#"if(u.charAt(0)==='/'){{return window.__mpOrigin?window.__mpOrigin+u:'';}}"#,
+            r#"if(window.__mpBase){{return window.__mpBase+(window.__mpBase.charAt(window.__mpBase.length-1)==='/'?'':'/')+u;}}"#,
+            r#"if(window.__mpOrigin){{return window.__mpOrigin+'/'+u;}}"#,
+            r#"return '';}}"#,
+            r#"function wrapProxy(u){{"#,
+            r#"if(!u||typeof u!=='string')return u;"#,
+            r#"if(u.indexOf('data:')===0||u.indexOf('blob:')===0||u.indexOf('javascript:')===0||u.charAt(0)==='#')return u;"#,
+            r#"if(u.indexOf('{}')===0)return u;"#,
+            r#"var t=resolveTarget(u);"#,
+            r#"if(t){{return '{}?url='+encodeURIComponent(t);}}"#,
+            r#"return u;}}"#,
+            r#"function wrapProxyAsset(u){{"#,
+            r#"if(!u||typeof u!=='string')return u;"#,
+            r#"if(u.indexOf('https://')===0||u.indexOf('http://')===0){{"#,
+            r#"if(u.indexOf('http://127.0.0.1')===0||u.indexOf('http://localhost')===0)return u;"#,
+            r#"return wrapProxy(u);"#,
+            r#"}}return u;}}"#,
+            r#"try{{var lp=HTMLLinkElement.prototype;var ld=Object.getOwnPropertyDescriptor(lp,'href');if(ld&&ld.set){{var olsh=ld.set;Object.defineProperty(lp,'href',{{set:function(v){{return olsh.call(this,wrapProxyAsset(v));}},get:ld.get,configurable:true,enumerable:true}});}}}}catch(e){{}}"#,
+            r#"try{{var sp=HTMLScriptElement.prototype;var sd=Object.getOwnPropertyDescriptor(sp,'src');if(sd&&sd.set){{var osss=sd.set;Object.defineProperty(sp,'src',{{set:function(v){{return osss.call(this,wrapProxyAsset(v));}},get:sd.get,configurable:true,enumerable:true}});}}}}catch(e){{}}"#,
+            r#"try{{var osa=Element.prototype.setAttribute;Element.prototype.setAttribute=function(n,v){{try{{var k=String(n).toLowerCase();var tg=(this.tagName||'').toLowerCase();if((tg==='link'&&k==='href')||(tg==='script'&&k==='src')){{v=wrapProxyAsset(v);}}}}catch(x){{}}return osa.call(this,n,v);}};}}catch(e){{}}"#,
+            r#"try{{var ow=window.Worker;if(ow){{window.Worker=function(u,o){{return new ow(wrapProxy(u),o);}};}}}}catch(e){{}}"#,
+            r#"window.open=function(u){{var t=resolveTarget(u)||u;if(t){{toParent('web_app_open_link',{{url:String(t)}});}}return null;}};"#,
+            r#"document.addEventListener('click',function(e){{var a=e.target&&e.target.closest?e.target.closest('a'):null;if(!a)return;var h=a.getAttribute('href');if(!h||h.charAt(0)==='#'||h.indexOf('javascript:')===0)return;var tgt=a.getAttribute('target');var isMax=(h.indexOf('max.ru')!==-1||h.indexOf('max://')===0||(a.href&&a.href.indexOf('max.ru')!==-1)||(a.href&&a.href.indexOf('max://')===0));if(tgt==='_blank'||tgt==='_new'||isMax){{var targetUrl=resolveTarget(h)||resolveTarget(a.href)||a.href;if(targetUrl){{e.preventDefault();e.stopPropagation();toParent('web_app_open_link',{{url:targetUrl}});}}}}}},true);"#,
+            r#"if(window.__mpRealUrl){{toParent('web_app_page_navigated',{{url:window.__mpRealUrl}});}}"#,
+            r#"var of=window.fetch;if(of){{window.fetch=function(u,i){{try{{"#,
+            r#"var s=typeof u==='string'?u:(u&&u.url?u.url:'');"#,
+            r#"var p=wrapProxy(s);"#,
+            r#"if(p!==s){{if(typeof u==='string'){{u=p;}}else if(u&&typeof u==='object'){{try{{u=new Request(p,u);}}catch(x){{u=p;}}}}}}"#,
+            r#"}}catch(e){{}}return of.call(this,u,i);}};try{{window.fetch.toString=function(){{return 'function fetch() {{ [native code] }}';}};}}catch(e){{}}}}"#,
+            r#"var ox=XMLHttpRequest.prototype.open;if(ox){{XMLHttpRequest.prototype.open=function(m,u){{try{{"#,
+            r#"if(typeof u==='string'){{u=wrapProxy(u);}}"#,
+            r#"}}catch(e){{}}var a=Array.prototype.slice.call(arguments);a[1]=u;return ox.apply(this,a);}};try{{ox.toString=function(){{return 'function open() {{ [native code] }}';}};}}catch(e){{}}}}"#,
+            r#"}}());</script>"#
+        ),
+        proxy_prefix,
+        proxy_origin,
+        port,
+        proxy_prefix,
+        proxy_prefix
+    )
+}
 
 fn extract_query_param(query: &str, param: &str) -> Option<String> {
     for pair in query.split('&') {
@@ -239,7 +251,17 @@ fn handle_request(
     mut request: tiny_http::Request,
     client: &reqwest::blocking::Client,
     state: &ProxyState,
+    token: &str,
+    port: u16,
 ) {
+    let clean_path = match crate::proxy_auth::validate_and_strip_token(&request, token) {
+        Some(p) => p,
+        None => {
+            drop(request.into_writer());
+            return;
+        }
+    };
+
     if request.method() == &Method::Options {
         let headers = vec![
             Header::from_bytes(&b"Access-Control-Allow-Origin"[..], b"*").unwrap(),
@@ -257,7 +279,7 @@ fn handle_request(
         return;
     }
 
-    let req_url = request.url().to_string();
+    let req_url = clean_path;
     let query_str = req_url.split_once('?').map(|x| x.1).unwrap_or("");
 
     let mut direct_target = extract_query_param(query_str, "url")
@@ -814,7 +836,7 @@ fn handle_request(
                 return;
             }
             let proxy_loc = if resolved_loc.starts_with("http://") || resolved_loc.starts_with("https://") {
-                format!("http://127.0.0.1:11448/proxy?url={}", urlencoding::encode(&resolved_loc))
+                format!("http://127.0.0.1:{}/{}/proxy?url={}", port, token, urlencoding::encode(&resolved_loc))
             } else {
                 resolved_loc
             };
@@ -948,7 +970,7 @@ fn handle_request(
         } else {
             format!(r#"<script>window.__mpRealUrl="{}";</script>"#, final_url)
         };
-        let full_shim = format!("{}{}", origin_var, SHIM_SCRIPT);
+        let full_shim = format!("{}{}", origin_var, build_shim_script(port, token));
         let lower = text.to_ascii_lowercase();
         let inject_pos = lower
             .find("<head>")
@@ -1021,6 +1043,11 @@ fn handle_request(
     };
     emit_log(log_entry);
 
+    let cookie_header = format!("__mp_token={}; Path=/; SameSite=Lax; HttpOnly", token);
+    if let Ok(h) = Header::from_bytes(b"Set-Cookie", cookie_header.as_bytes()) {
+        headers.push(h);
+    }
+
     let response = Response::new(
         status.into(),
         headers,
@@ -1032,6 +1059,28 @@ fn handle_request(
 }
 
 pub fn start_webapp_proxy() {
+    let token = crate::proxy_auth::get_webapp_token();
+    let bind_addr = std::env::var("MAXPLUS_WEBAPP_PORT")
+        .ok()
+        .and_then(|p| p.parse::<u16>().ok())
+        .map(|p| format!("127.0.0.1:{}", p))
+        .unwrap_or_else(|| "127.0.0.1:0".to_string());
+
+    let server = match Server::http(&bind_addr) {
+        Ok(s) => {
+            if let Some(addr) = s.server_addr().to_ip() {
+                crate::proxy_auth::set_webapp_proxy_info(addr.port(), token.clone());
+            }
+            Arc::new(s)
+        }
+        Err(e) => {
+            eprintln!("Failed to bind webapp proxy: {}", e);
+            return;
+        }
+    };
+
+    let port = server.server_addr().to_ip().map(|a| a.port()).unwrap_or(0);
+
     thread::spawn(move || {
         let mut builder = reqwest::blocking::Client::builder()
             .connect_timeout(Duration::from_secs(15))
@@ -1045,19 +1094,12 @@ pub fn start_webapp_proxy() {
             last_base_url: Mutex::new(String::new()),
         });
 
-        let server = match Server::http("127.0.0.1:11448") {
-            Ok(s) => Arc::new(s),
-            Err(e) => {
-                eprintln!("Failed to bind webapp proxy: {}", e);
-                return;
-            }
-        };
-
         for request in server.incoming_requests() {
             let client = Arc::clone(&client);
             let state = Arc::clone(&state);
+            let token = token.clone();
             thread::spawn(move || {
-                handle_request(request, &client, &state);
+                handle_request(request, &client, &state, &token, port);
             });
         }
     });

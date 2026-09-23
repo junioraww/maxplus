@@ -1,3 +1,4 @@
+mod proxy_auth;
 mod commands;
 mod crypto;
 mod files;
@@ -79,12 +80,22 @@ pub fn run() {
                 }
             });
 
+            let p_cfg = proxy_auth::get_proxy_config();
+            if let Some(w) = app.get_webview_window("main") {
+                let script = format!(
+                    "window.__MAXPLUS_PROXY__ = {{ videoPort: {}, videoToken: '{}', webappPort: {}, webappToken: '{}' }};",
+                    p_cfg.video_port, p_cfg.video_token, p_cfg.webapp_port, p_cfg.webapp_token
+                );
+                let _ = w.eval(&script);
+            }
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             commands::ext_api_request,
             commands::get_system_trace_info,
             commands::get_video_secret,
+            commands::get_proxy_config,
             commands::init,
             commands::start_auth,
             commands::check_code,

@@ -190,10 +190,14 @@ pub async fn set_token(state: State<'_, AppState>, token: String) -> Result<Stri
     Ok("Set".into())
 }
 
-// TODO implement / remove
 #[tauri::command]
-pub async fn get_video_secret(secret: tauri::State<'_, String>) -> Result<String, String> {
-    Ok(secret.inner().clone())
+pub async fn get_video_secret() -> Result<String, String> {
+    Ok(crate::proxy_auth::get_video_token())
+}
+
+#[tauri::command]
+pub async fn get_proxy_config() -> Result<crate::proxy_auth::ProxyConfig, String> {
+    Ok(crate::proxy_auth::get_proxy_config())
 }
 
 #[tauri::command]

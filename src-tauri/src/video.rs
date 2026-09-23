@@ -165,14 +165,22 @@ fn handle_local_file(request: tiny_http::Request, mut path: &str) {
     let _ = request.respond(res);
 }
 
-fn handle_request(request: tiny_http::Request, client: &reqwest::blocking::Client) {
+fn handle_request(request: tiny_http::Request, client: &reqwest::blocking::Client, token: &str) {
+    let clean_path = match crate::proxy_auth::validate_and_strip_token(&request, token) {
+        Some(p) => p,
+        None => {
+            drop(request.into_writer());
+            return;
+        }
+    };
+
     if request.method() == &Method::Options {
         let headers = vec![
             Header::from_bytes(&b"Access-Control-Allow-Origin"[..], b"*").unwrap(),
             Header::from_bytes(&b"Access-Control-Allow-Methods"[..], b"GET, HEAD, OPTIONS").unwrap(),
             Header::from_bytes(
                 &b"Access-Control-Allow-Headers"[..],
-                b"Range, Origin, X-Requested-With, Content-Type, Accept",
+                b"Range, Origin, X-Requested-With, Content-Type, Accept, X-Proxy-Token, X-Maxplus-Token, Authorization",
             )
             .unwrap(),
             Header::from_bytes(&b"Access-Control-Max-Age"[..], b"86400").unwrap(),
@@ -182,7 +190,11 @@ fn handle_request(request: tiny_http::Request, client: &reqwest::blocking::Clien
         return;
     }
 
-    let raw_url = &request.url()[1..];
+    let raw_url = if clean_path.starts_with('/') {
+        &clean_path[1..]
+    } else {
+        &clean_path
+    };
     let url = match urlencoding::decode(raw_url) {
         Ok(u) => u.into_owned(),
         Err(_) => {
@@ -190,8 +202,6 @@ fn handle_request(request: tiny_http::Request, client: &reqwest::blocking::Clien
             return;
         }
     };
-
-    println!("[VideoProxy] Incoming request raw_url: {}, decoded: {}", raw_url, url);
 
     if url.starts_with('/') {
         handle_local_file(request, &url);
@@ -426,6 +436,26 @@ fn handle_request(request: tiny_http::Request, client: &reqwest::blocking::Clien
 }
 
 pub fn start_video_proxy() {
+    let token = crate::proxy_auth::get_video_token();
+    let bind_addr = std::env::var("MAXPLUS_VIDEO_PORT")
+        .ok()
+        .and_then(|p| p.parse::<u16>().ok())
+        .map(|p| format!("127.0.0.1:{}", p))
+        .unwrap_or_else(|| "127.0.0.1:0".to_string());
+
+    let server = match Server::http(&bind_addr) {
+        Ok(s) => {
+            if let Some(addr) = s.server_addr().to_ip() {
+                crate::proxy_auth::set_video_proxy_info(addr.port(), token.clone());
+            }
+            Arc::new(s)
+        }
+        Err(e) => {
+            eprintln!("Failed to bind video proxy: {}", e);
+            return;
+        }
+    };
+
     thread::spawn(move || {
         let mut builder = reqwest::blocking::Client::builder()
             .connect_timeout(Duration::from_secs(10));
@@ -434,18 +464,11 @@ pub fn start_video_proxy() {
         }
         let client = Arc::new(builder.build().unwrap_or_default());
 
-        let server = match Server::http("127.0.0.1:11447") {
-            Ok(s) => Arc::new(s),
-            Err(e) => {
-                eprintln!("Failed to bind video proxy: {}", e);
-                return;
-            }
-        };
-
         for request in server.incoming_requests() {
             let client = Arc::clone(&client);
+            let token = token.clone();
             thread::spawn(move || {
-                handle_request(request, &client);
+                handle_request(request, &client, &token);
             });
         }
     });

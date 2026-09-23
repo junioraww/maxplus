@@ -4,7 +4,7 @@
   import { save } from "@tauri-apps/plugin-dialog";
   import { createEventDispatcher } from "svelte";
 
-  import { getAssetUrl, getProxiedMediaUrl } from "$lib/utils/images";
+  import { getAssetUrl, getProxiedMediaUrl, isProxiedMediaUrl, unwrapProxiedMediaUrl } from "$lib/utils/images";
   import { getCurrentAccount } from "$lib/stores/accounts";
   import API from "$lib/stores/api";
 
@@ -52,7 +52,7 @@
 
   async function ensureEncryptedMediaUrl(media) {
     if (!media || !media.isEncryptedMedia) return media?.baseUrl || null;
-    if (media.baseUrl && (media._type === "PHOTO" || media.baseUrl.startsWith("http://127.0.0.1:11447/"))) {
+    if (media.baseUrl && (media._type === "PHOTO" || isProxiedMediaUrl(media.baseUrl))) {
       return media.baseUrl;
     }
     if (media.localPath) {
@@ -181,8 +181,7 @@
       if (!videoUrl && response.HLS) videoUrl = response.HLS;
 
       if (videoUrl) {
-        videoCache[videoId] =
-          `http://127.0.0.1:11447/${encodeURIComponent(videoUrl)}`;
+        videoCache[videoId] = getProxiedMediaUrl(videoUrl);
         videoCache = { ...videoCache };
       }
     } catch (error) {
@@ -480,8 +479,8 @@
             }
           }
           if (!videoUrl && response.HLS) videoUrl = response.HLS;
-        } else if (videoUrl && videoUrl.startsWith("http://127.0.0.1:11447/")) {
-          videoUrl = decodeURIComponent(videoUrl.replace("http://127.0.0.1:11447/", ""));
+        } else if (videoUrl && isProxiedMediaUrl(videoUrl)) {
+          videoUrl = unwrapProxiedMediaUrl(videoUrl);
         }
         if (!videoUrl) return;
         const defaultName = currentMedia.name || `video_${Date.now()}.mp4`;

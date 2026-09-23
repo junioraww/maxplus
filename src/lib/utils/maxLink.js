@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { getWebAppProxyBase } from "./proxyConfig.js";
 
 const RESERVED_SLUGS = new Set([
   "login",
@@ -235,5 +236,6 @@ export function resolveWebAppUrl(url) {
   const hashIndex = url.indexOf("#");
   const base = hashIndex >= 0 ? url.slice(0, hashIndex) : url;
   const hash = hashIndex >= 0 ? url.slice(hashIndex) : "";
-  return `http://127.0.0.1:11448/proxy?url=${encodeURIComponent(base)}${hash}`;
+  const proxyBase = getWebAppProxyBase();
+  return `${proxyBase}/proxy?url=${encodeURIComponent(base)}${hash}`;
 }

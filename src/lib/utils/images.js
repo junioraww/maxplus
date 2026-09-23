@@ -1,6 +1,7 @@
 import { invoke, convertFileSrc } from '@tauri-apps/api/core';
 import { getCachedFile, setCachedFile } from "$lib/stores/cache";
 import { getCurrentAccount } from "$lib/stores/accounts";
+import { getVideoProxyBase } from './proxyConfig.js';
 
 const MAX_CONCURRENT_DOWNLOADS = 6;
 let activeDownloads = 0;
@@ -74,15 +75,38 @@ export async function getAssetUrl(src) {
     return null;
 }
 
+export function isProxiedMediaUrl(src) {
+    if (!src || typeof src !== "string") return false;
+    return (
+        src.startsWith("http://127.0.0.1:") ||
+        src.startsWith("http://localhost:")
+    );
+}
+
+export function unwrapProxiedMediaUrl(src) {
+    if (!src || typeof src !== "string") return src;
+    if (!isProxiedMediaUrl(src)) return src;
+    try {
+        const u = new URL(src);
+        const parts = u.pathname.split("/").filter(Boolean);
+        if (parts.length > 0) {
+            const last = parts[parts.length - 1];
+            return decodeURIComponent(last);
+        }
+    } catch {}
+    return src;
+}
+
 export function getProxiedMediaUrl(src) {
     if (!src) return null;
     if (
         src.startsWith("data:") ||
         src.startsWith("blob:") ||
-        src.startsWith("http://127.0.0.1:11447/")
+        isProxiedMediaUrl(src)
     ) {
         return src;
     }
+    const base = getVideoProxyBase();
     if (src.startsWith("asset://")) {
         let rawPath = src.slice("asset://".length);
         if (rawPath.startsWith("localhost/")) {
@@ -92,7 +116,7 @@ export function getProxiedMediaUrl(src) {
         if (!decoded.startsWith("/") && !decoded.includes("://") && !/^[a-zA-Z]:/.test(decoded)) {
             decoded = "/" + decoded;
         }
-        return `http://127.0.0.1:11447/${encodeURIComponent(decoded)}`;
+        return `${base}/${encodeURIComponent(decoded)}`;
     }
     if (src.startsWith("http://asset.localhost/")) {
         const rawPath = src.slice("http://asset.localhost/".length);
@@ -100,14 +124,14 @@ export function getProxiedMediaUrl(src) {
         if (!decoded.startsWith("/") && !decoded.includes("://") && !/^[a-zA-Z]:/.test(decoded)) {
             decoded = "/" + decoded;
         }
-        return `http://127.0.0.1:11447/${encodeURIComponent(decoded)}`;
+        return `${base}/${encodeURIComponent(decoded)}`;
     }
     if (src.startsWith("http://") || src.startsWith("https://") || src.startsWith("/") || src.startsWith("file://")) {
         let clean = src;
         if (clean.startsWith("file://")) {
             clean = clean.slice("file://".length);
         }
-        return `http://127.0.0.1:11447/${encodeURIComponent(clean)}`;
+        return `${base}/${encodeURIComponent(clean)}`;
     }
     return src;
 }

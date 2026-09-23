@@ -25,6 +25,7 @@
 
   import Session from "$lib/stores/session";
   import { initDeepLink } from "$lib/utils/deepLink.js";
+  import { initProxyConfig } from "$lib/utils/proxyConfig.js";
 
   let settings;
   const onBack = {};
@@ -33,6 +34,7 @@
   setContext("onBack", onBack);
 
   onMount(async () => {
+    await initProxyConfig();
     cleanupDeepLink = await initDeepLink();
 
     listen("max", async (event) => {
