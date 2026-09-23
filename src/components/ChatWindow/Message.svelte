@@ -32,7 +32,38 @@
   $: isRead = !isSending && (msg.read === true || msg.status === 3 || msg.status === "read" || (otherReadTime > 0 && otherReadTime >= (msg.time || 0)));
   const isSystem = msg.attaches?.[0]?._type === "CONTROL";
 
-  $: lines = (decoded?.text || msg.text)?.split("\n");
+  $: rawText = decoded ? (decoded.text ?? "") : (msg.text || "");
+  $: lines = rawText ? rawText.split("\n") : [];
+  $: effectiveAttaches = (() => {
+    if (!msg.attaches || !msg.attaches.length) return [];
+    if (!decoded?.media) return msg.attaches;
+    const media = decoded.media;
+    const targetIdx = media.attach_index ?? 0;
+    return msg.attaches.map((att, idx) => {
+      if (idx === targetIdx) {
+        const resolvedType = media.media_type || att._type || "FILE";
+        return {
+          ...att,
+          _type: resolvedType,
+          type: resolvedType,
+          originalType: media.media_type,
+          name: media.name || att.name,
+          size: media.size || att.size,
+          mime: media.mime || att.mime,
+          width: media.width ?? att.width,
+          height: media.height ?? att.height,
+          duration: media.duration ?? att.duration,
+          wave: media.wave ?? att.wave,
+          videoType: media.video_type ?? att.videoType,
+          color: media.color || null,
+          isEncryptedMedia: true,
+          encryptedAttach: att,
+          localPath: att.localPath || (isMe ? att.path : null),
+        };
+      }
+      return att;
+    });
+  })();
   $: transcription = $transcriptions[String(msg?.id)];
 
   let innerWidth = 0;
@@ -86,8 +117,8 @@
   $: linkedMsgContact = cachedLinkedContact && $cachedLinkedContact;
 
   $: column =
-    msg.text?.length > 20 ||
-    msg.attaches?.length ||
+    rawText?.length > 20 ||
+    effectiveAttaches?.length ||
     msg.reactionInfo?.totalCount ||
     msg.link?.messageId;
 
@@ -96,10 +127,10 @@
     (!isMe || innerWidth > 960) &&
     !isSystem;
 
-  $: inlineKeyboardAttach = msg.attaches?.find(x => x._type === "INLINE_KEYBOARD");
-  $: stickerAttach = msg.attaches?.find(x => x._type === "STICKER");
-  $: isStickerOnly = stickerAttach && (!lines || lines.length === 0 || (lines.length === 1 && !lines[0]?.trim())) && (!msg.attaches || msg.attaches.length === 1) && !linkedMsg;
-  $: isVideoNoteOnly = msg.attaches?.some(x => x._type === "VIDEO" && x.videoType === 1) && (!lines || lines.length === 0 || (lines.length === 1 && !lines[0]?.trim())) && (!msg.attaches || msg.attaches.length === 1) && !linkedMsg;
+  $: inlineKeyboardAttach = effectiveAttaches?.find(x => x._type === "INLINE_KEYBOARD");
+  $: stickerAttach = effectiveAttaches?.find(x => x._type === "STICKER");
+  $: isStickerOnly = stickerAttach && (!lines || lines.length === 0 || (lines.length === 1 && !lines[0]?.trim())) && (!effectiveAttaches || effectiveAttaches.length === 1) && !linkedMsg;
+  $: isVideoNoteOnly = effectiveAttaches?.some(x => x._type === "VIDEO" && x.videoType === 1) && (!lines || lines.length === 0 || (lines.length === 1 && !lines[0]?.trim())) && (!effectiveAttaches || effectiveAttaches.length === 1) && !linkedMsg;
 </script>
 
 <svelte:window bind:innerWidth={innerWidth} />
@@ -266,10 +297,10 @@
             {/each}
           {/if}
 
-          {#if msg.attaches?.length}
+          {#if effectiveAttaches?.length}
             <Attachments
               {getFile}
-              attaches={msg.attaches}
+              attaches={effectiveAttaches}
               {handleMediaClick}
               chatId={msg?.chatId ?? chat?.id}
               messageId={msg?.id}

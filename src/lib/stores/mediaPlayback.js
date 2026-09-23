@@ -3,6 +3,7 @@ import { convertFileSrc, invoke } from '@tauri-apps/api/core';
 import { getAssetUrl, getProxiedMediaUrl } from '$lib/utils/images';
 import { getContactDirect } from '$lib/stores/contacts';
 import { currentUser } from '$lib/stores/api';
+import { getCurrentAccount } from '$lib/stores/accounts';
 
 async function getApiInstance() {
   try {
@@ -768,6 +769,51 @@ export async function resolvePlayableUrl(attach, chatId, messageId) {
   if (!attach) return null;
   if (attach.localPath) {
     return toPlayableUrl(attach.localPath);
+  }
+
+  if (attach.isEncryptedMedia) {
+    const fid = attach.fileId || attach.encryptedAttach?.fileId || attach.id;
+    if (fid) {
+      const key = `enc_media_${fid}`;
+      if (resolvedUrlCache.has(key)) {
+        return resolvedUrlCache.get(key);
+      }
+      try {
+        const account = await getCurrentAccount().catch(() => null);
+        const accountId = Number(account?.id || 0);
+        const cached = await invoke('get_cached_file', {
+          account: accountId,
+          src: key,
+        }).catch(() => null);
+        if (cached) {
+          attach.localPath = cached;
+          const playable = toPlayableUrl(cached);
+          resolvedUrlCache.set(key, playable);
+          return playable;
+        }
+
+        const api = await getApiInstance();
+        const fileRes = await api.getFileById(chatId, messageId, fid);
+        if (fileRes?.url) {
+          const cachedPath = await invoke('cache_encrypted_media', {
+            account: accountId,
+            chatId: Number(chatId || 0),
+            fileId: Number(fid),
+            src: fileRes.url,
+            password: null,
+          });
+          if (cachedPath) {
+            attach.localPath = cachedPath;
+            const playable = toPlayableUrl(cachedPath);
+            resolvedUrlCache.set(key, playable);
+            return playable;
+          }
+        }
+      } catch (e) {
+        console.error('Failed to resolve encrypted playable url:', e);
+      }
+    }
+    return null;
   }
 
   const isVideoNote = (attach.videoType === 1 || attach.isNote || attach._type === 'VIDEO' || attach.type === 'VIDEO');

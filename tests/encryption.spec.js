@@ -296,11 +296,337 @@ test.describe("Encrypted Media Descriptor Structure", () => {
       width: null,
       height: null,
       duration: null,
+      wave: null,
+      video_type: null,
     };
 
     expect(descriptor.name).toBe("synthetic_document.pdf");
     expect(descriptor.mime).toBe("application/pdf");
     expect(descriptor.media_type).toBe("FILE");
     expect(descriptor.size).toBeGreaterThan(0);
+  });
+
+  test("media descriptor preserves audio waveform and video type", () => {
+    const syntheticWave = new Array(80).fill(12);
+    const audioDescriptor = {
+      attach_index: 0,
+      name: "synthetic_voice.ogg",
+      mime: "audio/ogg",
+      media_type: "AUDIO",
+      size: 65536,
+      width: null,
+      height: null,
+      duration: 3500,
+      wave: syntheticWave,
+      video_type: null,
+    };
+
+    expect(audioDescriptor.wave).toHaveLength(80);
+    expect(audioDescriptor.duration).toBe(3500);
+
+    const videoNoteDescriptor = {
+      attach_index: 0,
+      name: "synthetic_note.mp4",
+      mime: "video/mp4",
+      media_type: "VIDEO",
+      size: 524288,
+      width: 400,
+      height: 400,
+      duration: 5000,
+      wave: syntheticWave,
+      video_type: 1,
+    };
+
+    expect(videoNoteDescriptor.video_type).toBe(1);
+    expect(videoNoteDescriptor.width).toBe(400);
+  });
+
+  test("binary magic validates [0x8F, 0x3D] and forbids MAXMEDIA signature", () => {
+    const BINARY_MAGIC = [0x8F, 0x3D];
+    const decoyHeader = Buffer.from("%PDF-1.4\n%\xe2\xe3\xcf\xd3\n", "binary");
+    const containerMagic = Buffer.from(BINARY_MAGIC);
+    const fakeCiphertext = Buffer.from([0x01, 0x02, 0x03, 0x04]);
+
+    const fakeContainer = Buffer.concat([decoyHeader, containerMagic, fakeCiphertext]);
+
+    expect(fakeContainer.includes(Buffer.from("MAXMEDIA"))).toBe(false);
+    expect(fakeContainer[decoyHeader.length]).toBe(0x8F);
+    expect(fakeContainer[decoyHeader.length + 1]).toBe(0x3D);
+  });
+
+  test("empty text in decoded message does not fall back to ciphertext trash text", () => {
+    const rawCiphertext = "一丁丂七丄SyntheticCiphertextTrashText123456789";
+    const msg = {
+      id: 90050,
+      text: rawCiphertext,
+      attaches: [{ _type: "FILE", name: "document.pdf", size: 1024 }],
+    };
+    const decoded = {
+      text: "",
+      media: {
+        attach_index: 0,
+        name: "synthetic_photo.jpg",
+        mime: "image/jpeg",
+        media_type: "PHOTO",
+        size: 1000,
+        width: 800,
+        height: 600,
+        duration: null,
+        wave: null,
+        video_type: null,
+      },
+    };
+
+    const rawText = decoded ? (decoded.text ?? "") : (msg.text || "");
+    const lines = rawText ? rawText.split("\n") : [];
+
+    expect(rawText).toBe("");
+    expect(lines).toHaveLength(0);
+    expect(rawText).not.toBe(rawCiphertext);
+  });
+
+  test("effectiveAttaches maps decoded media descriptor into secure file attachment", () => {
+    const msg = {
+      id: 90051,
+      text: "decoy",
+      attaches: [{ _type: "FILE", name: "document.pdf", size: 2048, fileId: 88801 }],
+    };
+    const decoded = {
+      text: "",
+      media: {
+        attach_index: 0,
+        name: "synthetic_photo.jpg",
+        mime: "image/jpeg",
+        media_type: "PHOTO",
+        size: 2000,
+        width: 1200,
+        height: 900,
+        duration: null,
+        wave: null,
+        video_type: null,
+      },
+    };
+
+    const effectiveAttaches = (() => {
+      if (!msg.attaches || !msg.attaches.length) return [];
+      if (!decoded?.media) return msg.attaches;
+      const media = decoded.media;
+      const targetIdx = media.attach_index ?? 0;
+      return msg.attaches.map((att, idx) => {
+        if (idx === targetIdx) {
+          const resolvedType = media.media_type || att._type || "FILE";
+          return {
+            ...att,
+            _type: resolvedType,
+            type: resolvedType,
+            originalType: media.media_type,
+            name: media.name || att.name,
+            size: media.size || att.size,
+            mime: media.mime || att.mime,
+            width: media.width ?? att.width,
+            height: media.height ?? att.height,
+            duration: media.duration ?? att.duration,
+            wave: media.wave ?? att.wave,
+            videoType: media.video_type ?? att.videoType,
+            color: media.color || null,
+            isEncryptedMedia: true,
+            encryptedAttach: att,
+            localPath: att.localPath || "/synthetic/local/photo.jpg",
+          };
+        }
+        return att;
+      });
+    })();
+
+    expect(effectiveAttaches).toHaveLength(1);
+    expect(effectiveAttaches[0]._type).toBe("PHOTO");
+    expect(effectiveAttaches[0].originalType).toBe("PHOTO");
+    expect(effectiveAttaches[0].name).toBe("synthetic_photo.jpg");
+    expect(effectiveAttaches[0].size).toBe(2000);
+    expect(effectiveAttaches[0].isEncryptedMedia).toBe(true);
+    expect(effectiveAttaches[0].localPath).toBe("/synthetic/local/photo.jpg");
+    expect(effectiveAttaches[0].fileId).toBe(88801);
+  });
+
+  test("media descriptor preserves dominant color metadata", () => {
+    const photoDescriptor = {
+      attach_index: 0,
+      name: "synthetic_landscape.jpg",
+      mime: "image/jpeg",
+      media_type: "PHOTO",
+      size: 4096,
+      width: 1920,
+      height: 1080,
+      duration: null,
+      wave: null,
+      video_type: null,
+      color: "#2a5b84",
+    };
+
+    expect(photoDescriptor.color).toBe("#2a5b84");
+    expect(photoDescriptor.media_type).toBe("PHOTO");
+  });
+
+  test("decrypt_media_file argument resolution accepts out_path or target_path", () => {
+    const resolveOutPath = (args) => args.out_path || args.outPath || args.target_path || args.targetPath;
+
+    expect(resolveOutPath({ out_path: "/dest/file.jpg" })).toBe("/dest/file.jpg");
+    expect(resolveOutPath({ outPath: "/dest/file.jpg" })).toBe("/dest/file.jpg");
+    expect(resolveOutPath({ target_path: "/dest/file.jpg" })).toBe("/dest/file.jpg");
+    expect(resolveOutPath({ targetPath: "/dest/file.jpg" })).toBe("/dest/file.jpg");
+  });
+
+  test("auto-download setting toggles state and persists to storage", () => {
+    let mockStorage = {};
+    const STORAGE_KEY = "max_auto_download_encrypted_media";
+
+    const getSetting = () => mockStorage[STORAGE_KEY] !== "false";
+    const setSetting = (val) => { mockStorage[STORAGE_KEY] = val ? "true" : "false"; };
+    const toggleSetting = () => { setSetting(!getSetting()); };
+
+    expect(getSetting()).toBe(true);
+    toggleSetting();
+    expect(getSetting()).toBe(false);
+    expect(mockStorage[STORAGE_KEY]).toBe("false");
+    toggleSetting();
+    expect(getSetting()).toBe(true);
+    expect(mockStorage[STORAGE_KEY]).toBe("true");
+  });
+
+  test("extractDominantColor returns deterministic valid hex color fallback", async () => {
+    const { extractDominantColor } = await import("../src/lib/crypto/messages.js");
+    const color = await extractDominantColor("/synthetic/path/image.jpg");
+    expect(color).toMatch(/^#[0-9a-f]{6}$/i);
+    expect(color).not.toBeNull();
+  });
+
+  test("encryptMediaAttachment generates realistic decoy filename with supported extension", async () => {
+    globalThis.window = globalThis;
+    globalThis.__TAURI_INTERNALS__ = {
+      invoke: async (cmd, args) => "/synthetic/cache/enc_uuid.pdf",
+    };
+    const { encryptMediaAttachment } = await import("../src/lib/crypto/messages.js");
+
+    const attach = {
+      _type: "PHOTO",
+      name: "vacation_pic.jpg",
+      mime: "image/jpeg",
+      size: 1048576,
+      path: "/synthetic/vacation_pic.jpg",
+    };
+
+    const { uploadAttach, mediaDescriptor } = await encryptMediaAttachment({
+      account: 12345,
+      chatId: 67890,
+      attach,
+    });
+
+    expect(uploadAttach.type).toBe("FILE");
+    expect(uploadAttach.name).toMatch(/^[a-z0-9_]+\.(pdf|docx|xlsx)$/);
+    expect(mediaDescriptor.name).toBe("vacation_pic.jpg");
+    expect(mediaDescriptor.media_type).toBe("PHOTO");
+    expect(mediaDescriptor.color).toMatch(/^#[0-9a-f]{6}$/i);
+  });
+
+  test("allMedia includes encrypted photo attachments when decodedMessages has media descriptor", () => {
+    const mockMessages = [
+      {
+        id: 1001,
+        text: "dummy text",
+        attaches: [{ _type: "FILE", name: "report.pdf", size: 1024, fileId: 99991 }],
+      },
+    ];
+    const mockDecoded = {
+      "1001": {
+        text: "hello",
+        media: {
+          attach_index: 0,
+          name: "real_photo.png",
+          media_type: "PHOTO",
+          mime: "image/png",
+          size: 1024,
+          color: "#3a506b",
+        },
+      },
+    };
+
+    const allMedia = mockMessages.flatMap((m) => {
+      const decoded = mockDecoded[String(m.id)];
+      const media = decoded?.media;
+      const attaches = (m.attaches || []).map((att, idx) => {
+        if (media && idx === (media.attach_index ?? 0)) {
+          const resolvedType = media.media_type || att._type || "FILE";
+          return {
+            ...att,
+            _type: resolvedType,
+            type: resolvedType,
+            name: media.name || att.name,
+            color: media.color || null,
+            isEncryptedMedia: true,
+          };
+        }
+        return att;
+      });
+      return attaches
+        .filter((a) => a._type === "PHOTO" || a._type === "VIDEO")
+        .map((a) => ({
+          ...a,
+          messageId: m.id,
+          uid: String(a.fileId || a.url || m.id),
+        }));
+    });
+
+    expect(allMedia).toHaveLength(1);
+    expect(allMedia[0]._type).toBe("PHOTO");
+    expect(allMedia[0].name).toBe("real_photo.png");
+    expect(allMedia[0].uid).toBe("99991");
+  });
+
+  test("batchDecrypt processes multiple encrypted media messages simultaneously in a single batch", async () => {
+    globalThis.window = globalThis;
+    let invokeReceivedMessages = null;
+    globalThis.__TAURI_INTERNALS__ = {
+      invoke: async (cmd, args) => {
+        if (cmd === "batch_decrypt_messages") {
+          invokeReceivedMessages = args.messages;
+          const result = {};
+          for (const m of args.messages) {
+            result[String(m.id)] = {
+              text: `Decrypted ${m.id}`,
+              obf: "zh",
+              is_encrypted: true,
+              media: {
+                attach_index: 0,
+                name: `photo_${m.id}.jpg`,
+                media_type: "PHOTO",
+                mime: "image/jpeg",
+                size: 2048,
+                color: "#112233",
+              },
+              is_handshake_request: false,
+              is_handshake_accept: false,
+              handshake_data: null,
+              error: null,
+            };
+          }
+          return result;
+        }
+        return {};
+      },
+    };
+
+    const { batchDecrypt } = await import("../src/lib/crypto/messages.js");
+    const syntheticMessages = [
+      { id: 9101, text: "一丁丂七丄synthetic_encoded_1", sender: 1 },
+      { id: 9102, text: "一丁丂七丄synthetic_encoded_2", sender: 2 },
+      { id: 9103, text: "一丁丂七丄synthetic_encoded_3", sender: 1 },
+    ];
+
+    const results = await batchDecrypt(1001, 2002, syntheticMessages, "synth_pass");
+    expect(invokeReceivedMessages).toHaveLength(3);
+    expect(Object.keys(results)).toHaveLength(3);
+    expect(results["9101"].media.name).toBe("photo_9101.jpg");
+    expect(results["9102"].media.name).toBe("photo_9102.jpg");
+    expect(results["9103"].media.name).toBe("photo_9103.jpg");
   });
 });

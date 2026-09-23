@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { invoke, convertFileSrc } from "@tauri-apps/api/core";
 import { CryptoPluginRegistry } from "./plugins.js";
 
 import { dict } from "./text-codec.js";
@@ -76,36 +76,67 @@ export async function batchDecrypt(account, chatId, messages, password = null) {
     password: password || null,
   });
 
+  for (const [id, dec] of Object.entries(rustDecrypted)) {
+    if (dec?.media) {
+      console.log("[E2E Decrypted Media]", {
+        messageId: id,
+        realFileName: dec.media.name,
+        size: dec.media.size,
+        mediaType: dec.media.media_type,
+        color: dec.media.color,
+        metaText: dec.text,
+      });
+    }
+  }
+
+  const pluginPromises = [];
   for (const msg of messages) {
     const msgId = String(msg.id);
     if (rustDecrypted[msgId]) continue;
 
     const pluginMatch = CryptoPluginRegistry.findObfuscator(msg.text);
     if (pluginMatch) {
-      try {
-        const text = await pluginMatch.handler.deobfuscate(msg.text);
-        rustDecrypted[msgId] = {
-          text,
-          obf: pluginMatch.name,
-          is_encrypted: true,
-          media: null,
-          is_handshake_request: false,
-          is_handshake_accept: false,
-          handshake_data: null,
-          error: null,
-        };
-      } catch (e) {
-        rustDecrypted[msgId] = {
-          text: String(msg.text),
-          obf: pluginMatch.name,
-          is_encrypted: true,
-          media: null,
-          is_handshake_request: false,
-          is_handshake_accept: false,
-          handshake_data: null,
-          error: String(e),
-        };
-      }
+      pluginPromises.push(
+        (async () => {
+          try {
+            const text = await pluginMatch.handler.deobfuscate(msg.text);
+            return [
+              msgId,
+              {
+                text,
+                obf: pluginMatch.name,
+                is_encrypted: true,
+                media: null,
+                is_handshake_request: false,
+                is_handshake_accept: false,
+                handshake_data: null,
+                error: null,
+              },
+            ];
+          } catch (e) {
+            return [
+              msgId,
+              {
+                text: String(msg.text),
+                obf: pluginMatch.name,
+                is_encrypted: true,
+                media: null,
+                is_handshake_request: false,
+                is_handshake_accept: false,
+                handshake_data: null,
+                error: String(e),
+              },
+            ];
+          }
+        })()
+      );
+    }
+  }
+
+  if (pluginPromises.length > 0) {
+    const pluginResults = await Promise.all(pluginPromises);
+    for (const [id, dto] of pluginResults) {
+      rustDecrypted[id] = dto;
     }
   }
 
@@ -130,4 +161,158 @@ export async function encryptMessage({
     useSession: Boolean(useSession),
     obf: obf || null,
   });
+}
+
+const DECOY_BASENAMES = [
+  "document_scan",
+  "report_draft",
+  "financial_statement",
+  "project_overview",
+  "presentation_summary",
+  "meeting_notes",
+  "invoice_archive",
+  "specs_v2",
+  "contract_agreement",
+  "lecture_summary",
+  "research_data",
+  "quarterly_review",
+  "system_log",
+  "backup_archive",
+  "budget_overview"
+];
+
+const DECOY_FORMATS = {
+  pdf: { ext: "pdf", mime: "application/pdf" },
+  docx: { ext: "docx", mime: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" },
+  xlsx: { ext: "xlsx", mime: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" },
+  mp3: { ext: "mp3", mime: "audio/mpeg" },
+  ogg: { ext: "ogg", mime: "audio/ogg" }
+};
+
+export async function extractDominantColor(filePath) {
+  if (!filePath) return "#3a506b";
+  const cleanPath = String(filePath).replace(/^file:\/\//, "");
+
+  if (typeof document !== "undefined") {
+    try {
+      const hex = await new Promise((resolve) => {
+        const timer = setTimeout(() => resolve(null), 1200);
+        const img = new Image();
+        img.crossOrigin = "anonymous";
+        img.onload = () => {
+          clearTimeout(timer);
+          try {
+            const canvas = document.createElement("canvas");
+            canvas.width = 1;
+            canvas.height = 1;
+            const ctx = canvas.getContext("2d", { willReadFrequently: true });
+            if (!ctx) { resolve(null); return; }
+            ctx.drawImage(img, 0, 0, 1, 1);
+            const [r, g, b] = ctx.getImageData(0, 0, 1, 1).data;
+            const res = "#" + [r, g, b].map(x => x.toString(16).padStart(2, "0")).join("");
+            resolve(res);
+          } catch {
+            resolve(null);
+          }
+        };
+        img.onerror = () => {
+          clearTimeout(timer);
+          resolve(null);
+        };
+        img.src = typeof convertFileSrc === "function" ? convertFileSrc(cleanPath) : cleanPath;
+      });
+      if (hex) return hex;
+    } catch (_) {}
+  }
+
+  let hash = 0;
+  for (let i = 0; i < cleanPath.length; i++) {
+    hash = ((hash << 5) - hash) + cleanPath.charCodeAt(i);
+    hash |= 0;
+  }
+  const fallbackColors = [
+    "#3a506b", "#5bc0be", "#1c2541", "#4a4e69",
+    "#2b2d42", "#8d99ae", "#386641", "#6a4c93",
+    "#197278", "#c44900", "#5c4d7d", "#283618"
+  ];
+  return fallbackColors[Math.abs(hash) % fallbackColors.length];
+}
+
+export async function encryptMediaAttachment({
+  account,
+  chatId,
+  attach,
+  password = null,
+}) {
+  const origType = attach._type || attach.type || "FILE";
+  const origName = attach.name || (
+    origType === "PHOTO" ? "photo.jpg" :
+    origType === "AUDIO" ? "audio.ogg" :
+    origType === "VIDEO" ? "video.mp4" : "file"
+  );
+  const origMime = attach.mime || (
+    origType === "PHOTO" ? "image/jpeg" :
+    origType === "AUDIO" ? "audio/ogg" :
+    origType === "VIDEO" ? "video/mp4" : "application/octet-stream"
+  );
+
+  let possibleTypes = ["pdf", "docx", "xlsx"];
+  if (origType === "AUDIO") {
+    possibleTypes = ["mp3", "ogg"];
+  } else if (origType === "VIDEO") {
+    possibleTypes = ["docx", "pdf", "xlsx"];
+  }
+  const dummyType = possibleTypes[Math.floor(Math.random() * possibleTypes.length)];
+  const formatInfo = DECOY_FORMATS[dummyType] || DECOY_FORMATS.pdf;
+  const baseName = DECOY_BASENAMES[Math.floor(Math.random() * DECOY_BASENAMES.length)];
+  const decoyName = `${baseName}.${formatInfo.ext}`;
+  const decoyMime = formatInfo.mime;
+
+  const targetPath = attach.path || attach.localPath;
+
+  let color = null;
+  if (origType === "PHOTO") {
+    color = await extractDominantColor(targetPath);
+  }
+
+  const encPath = await invoke("encrypt_media_file", {
+    account: Number(account),
+    chatId: Number(chatId),
+    filePath: targetPath,
+    dummyType,
+    password: password || null,
+  });
+
+  const mediaDescriptor = {
+    attach_index: 0,
+    name: origName,
+    mime: origMime,
+    media_type: origType,
+    size: Number(attach.size || 0),
+    width: attach.width ? Number(attach.width) : null,
+    height: attach.height ? Number(attach.height) : null,
+    duration: attach.duration ? Number(attach.duration) : null,
+    wave: Array.isArray(attach.wave) ? attach.wave : null,
+    video_type: attach.videoType != null ? Number(attach.videoType) : (attach.video_type != null ? Number(attach.video_type) : null),
+    color: color || null,
+  };
+
+  console.log("[E2E Encrypted Media]", {
+    realFileName: origName,
+    size: mediaDescriptor.size,
+    mediaType: origType,
+    color,
+    targetPath,
+    decoyName,
+    dummyType,
+  });
+
+  const uploadAttach = {
+    type: "FILE",
+    path: encPath,
+    name: decoyName,
+    mime: decoyMime,
+  };
+
+  return { uploadAttach, mediaDescriptor };
 }

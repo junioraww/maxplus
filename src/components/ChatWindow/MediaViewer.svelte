@@ -37,9 +37,95 @@
 
   const MIN_SCALE = 1;
   const MAX_SCALE = 4;
-  const SAFE_MIN_SCALE = 1;
-
+  let encryptedVideoSrc = null;
   $: currentMedia = allMedia[index];
+  $: effectiveVideoSrc = (currentMedia?.videoId ? videoCache[currentMedia.videoId] : null) || (currentMedia?._type === "VIDEO" ? (getProxiedMediaUrl(currentMedia.localPath || currentMedia.baseUrl) || encryptedVideoSrc) : null);
+
+  $: console.log("[MediaViewer] currentMedia:", {
+    idx: index,
+    type: currentMedia?._type,
+    isEncrypted: currentMedia?.isEncryptedMedia,
+    localPath: currentMedia?.localPath,
+    baseUrl: currentMedia?.baseUrl,
+    effectiveVideoSrc,
+  });
+
+  async function ensureEncryptedMediaUrl(media) {
+    if (!media || !media.isEncryptedMedia) return media?.baseUrl || null;
+    if (media.baseUrl && (media._type === "PHOTO" || media.baseUrl.startsWith("http://127.0.0.1:11447/"))) {
+      return media.baseUrl;
+    }
+    if (media.localPath) {
+      const url = media._type === "VIDEO" ? getProxiedMediaUrl(media.localPath) : convertFileSrc(media.localPath);
+      media.baseUrl = url;
+      return url;
+    }
+    const fid = media.fileId || media.encryptedAttach?.fileId;
+    if (!fid) return null;
+
+    try {
+      const account = await getCurrentAccount().catch(() => null);
+      const accountId = Number(account?.id || 0);
+      const cached = await tauriInvoke("get_cached_file", {
+        account: accountId,
+        src: `enc_media_${fid}`
+      }).catch(() => null);
+
+      if (cached) {
+        media.localPath = cached;
+        const url = media._type === "VIDEO" ? getProxiedMediaUrl(cached) : convertFileSrc(cached);
+        media.baseUrl = url;
+        console.log("[MediaViewer] Found encrypted media in cache:", fid, "path:", cached, "url:", url);
+        return url;
+      }
+
+      console.log("[MediaViewer] Downloading encrypted media:", fid);
+      const fileRes = await $API.getFileById(chatId, media.messageId, fid);
+      if (fileRes?.url) {
+        const cachedPath = await tauriInvoke("cache_encrypted_media", {
+          account: accountId,
+          chatId: Number(chatId || 0),
+          fileId: Number(fid),
+          src: fileRes.url,
+          password: null,
+        });
+        if (cachedPath) {
+          media.localPath = cachedPath;
+          const url = media._type === "VIDEO" ? getProxiedMediaUrl(cachedPath) : convertFileSrc(cachedPath);
+          media.baseUrl = url;
+          console.log("[MediaViewer] Decrypted and cached media:", fid, "url:", url);
+          return url;
+        }
+      }
+    } catch (e) {
+      console.error("[MediaViewer] Failed to ensureEncryptedMediaUrl:", e);
+    }
+    return null;
+  }
+
+  let resolvingVideo = false;
+  function resolveEncryptedVideo(media) {
+    if (media?._type === "VIDEO" && media?.isEncryptedMedia && !effectiveVideoSrc && !resolvingVideo) {
+      resolvingVideo = true;
+      ensureEncryptedMediaUrl(media).then((url) => {
+        resolvingVideo = false;
+        if (url) {
+          media.baseUrl = url;
+          if (currentMedia === media) {
+            encryptedVideoSrc = getProxiedMediaUrl(url);
+          }
+        }
+      }).catch((e) => {
+        console.error("[MediaViewer] resolveEncryptedVideo error:", e);
+        resolvingVideo = false;
+      });
+    }
+  }
+
+  $: {
+    encryptedVideoSrc = null;
+    resolveEncryptedVideo(currentMedia);
+  }
 
   let resolvedPoster = null;
   $: {
@@ -75,6 +161,7 @@
   }
 
   async function loadVideo(videoId) {
+    if (!videoId) return;
     if (videoCache[videoId] || isLoading) return;
     isLoading = true;
     try {
@@ -108,13 +195,14 @@
   async function togglePlay() {
     if (!videoElement) return;
     try {
+      console.log("[MediaViewer] togglePlay:", { paused: videoElement.paused, readyState: videoElement.readyState, src: videoElement.src });
       if (videoElement.paused) {
         await videoElement.play();
       } else {
         videoElement.pause();
       }
     } catch (e) {
-      console.warn("Play interrupted:", e);
+      console.warn("[MediaViewer] Play interrupted:", e, "src:", videoElement?.src, "readyState:", videoElement?.readyState);
     }
   }
 
@@ -126,13 +214,15 @@
       duration = currentMedia.duration > 1000 ? currentMedia.duration / 1000 : currentMedia.duration;
     }
     isMetadataLoaded = duration > 0 && !isNaN(duration);
+    console.log("[MediaViewer] handleSync:", { duration, isMetadataLoaded, src: el?.src });
   }
 
-  function handleCanPlay() {
+  function handleCanPlay(e) {
     isVideoReady = true;
     if (videoElement && (!duration || isNaN(duration))) {
       duration = videoElement.duration;
     }
+    console.log("[MediaViewer] handleCanPlay:", { duration, isVideoReady, src: e.target?.src });
   }
 
   function formatTime(seconds) {
@@ -330,7 +420,12 @@
   }
 
   async function load(url) {
-    return await getAssetUrl(url);
+    let effective = url;
+    if (!effective && currentMedia?.isEncryptedMedia) {
+      effective = await ensureEncryptedMediaUrl(currentMedia);
+    }
+    if (!effective) return null;
+    return await getAssetUrl(effective);
   }
 
   let isDownloadingMedia = false;
@@ -339,10 +434,29 @@
     if (isDownloadingMedia || !currentMedia) return;
     isDownloadingMedia = true;
     try {
+      if (currentMedia.isEncryptedMedia || (currentMedia._type === "PHOTO" && currentMedia.baseUrl) || (currentMedia._type === "VIDEO" && !currentMedia.videoId && currentMedia.baseUrl)) {
+        if (!currentMedia.baseUrl && !currentMedia.localPath) {
+          await ensureEncryptedMediaUrl(currentMedia);
+        }
+        const defaultName = currentMedia.name || (currentMedia._type === "PHOTO" ? `photo_${Date.now()}.jpg` : `video_${Date.now()}.mp4`);
+        const filePath = await save({
+          defaultPath: defaultName,
+          filters: currentMedia._type === "PHOTO"
+            ? [{ name: "Images", extensions: ["jpg", "jpeg", "png", "webp"] }]
+            : [{ name: "Videos", extensions: ["mp4", "webm", "mov"] }],
+        });
+        if (filePath) {
+          const target = currentMedia.localPath || currentMedia.baseUrl;
+          if (target) {
+            await tauriInvoke("download_to_path", { url: target, path: filePath });
+          }
+        }
+        return;
+      }
       if (currentMedia._type === "PHOTO") {
         const url = currentMedia.baseUrl;
         if (!url) return;
-        const defaultName = `photo_${Date.now()}.jpg`;
+        const defaultName = currentMedia.name || `photo_${Date.now()}.jpg`;
         const filePath = await save({
           defaultPath: defaultName,
           filters: [{ name: "Images", extensions: ["jpg", "jpeg", "png", "webp"] }],
@@ -351,8 +465,8 @@
           await tauriInvoke("download_to_path", { url, path: filePath });
         }
       } else if (currentMedia._type === "VIDEO") {
-        let videoUrl = videoCache[currentMedia.videoId];
-        if (!videoUrl) {
+        let videoUrl = videoCache[currentMedia.videoId] || currentMedia.baseUrl;
+        if (!videoUrl && currentMedia.videoId) {
           const response = await $API.getVideoById(
             chatId,
             currentMedia.messageId,
@@ -366,11 +480,11 @@
             }
           }
           if (!videoUrl && response.HLS) videoUrl = response.HLS;
-        } else if (videoUrl.startsWith("http://127.0.0.1:11447/")) {
+        } else if (videoUrl && videoUrl.startsWith("http://127.0.0.1:11447/")) {
           videoUrl = decodeURIComponent(videoUrl.replace("http://127.0.0.1:11447/", ""));
         }
         if (!videoUrl) return;
-        const defaultName = `video_${Date.now()}.mp4`;
+        const defaultName = currentMedia.name || `video_${Date.now()}.mp4`;
         const filePath = await save({
           defaultPath: defaultName,
           filters: [{ name: "Videos", extensions: ["mp4", "webm", "mov"] }],
@@ -442,15 +556,19 @@
           {#await load(currentMedia.baseUrl)}
             <div class="media-shimmer" style="width: min(80vw, 600px); height: min(70vh, 500px); border-radius: 12px;"></div>
           {:then url}
-            <img
-              style="transform: {transformStyle}"
-              src={url}
-              alt="view"
-              in:fly={{ y: 20, duration: 200 }}
-            />
+            {#if url}
+              <img
+                style="transform: {transformStyle}"
+                src={url}
+                alt=""
+                in:fly={{ y: 20, duration: 200 }}
+              />
+            {:else}
+              <div class="media-shimmer" style="width: min(80vw, 600px); height: min(70vh, 500px); border-radius: 12px;"></div>
+            {/if}
           {/await}
         {:else if currentMedia._type === "VIDEO"}
-          {#if videoCache[currentMedia.videoId]}
+          {#if effectiveVideoSrc}
             <div
               class="tg-video-wrapper"
               on:mousedown={handlePressStart}
@@ -460,7 +578,7 @@
             >
               <video
                 bind:this={videoElement}
-                src={videoCache[currentMedia.videoId]}
+                src={effectiveVideoSrc}
                 poster={resolvedPoster}
                 class="video-player"
                 class:ready={isVideoReady}
@@ -474,6 +592,7 @@
                 on:loadedmetadata={handleSync}
                 on:durationchange={handleSync}
                 on:canplay={handleCanPlay}
+                on:error={(e) => console.error("[MediaViewer] Video element error:", e.target?.error, "src:", effectiveVideoSrc)}
                 playsinline
                 style="transform: {transformStyle}"
               ></video>
@@ -600,14 +719,14 @@
                 </div>
               </div>
             </div>
-          {:else}
+          {:else if currentMedia.videoId}
             <div
               class="preview-wrapper"
               on:click={() => loadVideo(currentMedia.videoId)}
             >
               <img
                 src={currentMedia.thumbnail}
-                alt="preview"
+                alt=""
                 class="video-preview"
               />
               <div class="play-overlay">
@@ -619,6 +738,10 @@
                   </div>
                 {/if}
               </div>
+            </div>
+          {:else if currentMedia.isEncryptedMedia}
+            <div class="preview-wrapper">
+              <div class="loader"></div>
             </div>
           {/if}
         {/if}

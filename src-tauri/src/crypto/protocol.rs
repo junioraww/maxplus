@@ -297,6 +297,9 @@ mod tests {
             width: Some(1920),
             height: Some(1080),
             duration: None,
+            wave: None,
+            video_type: None,
+            color: None,
         };
 
         let caption = "Photo caption".to_string();

@@ -33,6 +33,8 @@
   import { handleReaction } from "$components/ChatWindow/actions.js";
   import { checkForEncryptionRequest } from "$components/ChatWindow/e2e.js";
   import { batchDecrypt } from "$lib/crypto/messages.js";
+  import { convertFileSrc } from "@tauri-apps/api/core";
+  import { getProxiedMediaUrl } from "$lib/utils/images.js";
   import { getCurrentAccount } from "$lib/stores/accounts.js";
   import { scrollToBottom } from "$lib/utils/scroll.js";
   import { getChatScroll, saveChatScroll } from "$lib/stores/chatScroll.js";
@@ -517,13 +519,24 @@
   const decodeMessagesBatch = async (list) => {
     if (!list || !list.length) return;
     try {
+      const currentDecoded = get(decodedMessages);
+      const toDecode = list.filter(m => {
+        const idStr = String(m.id);
+        const existing = currentDecoded[idStr];
+        if (!existing) return true;
+        if (m.edited || m.status === "EDITED") return true;
+        return false;
+      });
+
+      if (!toDecode.length) return;
+
       const account = await getCurrentAccount();
       const password = $chatSettings?.password || null;
       const currentChatId = chat?.id ?? chatId;
       const updates = await batchDecrypt(
         Number(account?.id || 0),
         Number(currentChatId),
-        list,
+        toDecode,
         password
       );
 
@@ -532,7 +545,7 @@
         ...updates
       }));
 
-      const newReq = await checkForEncryptionRequest(chat, chatSettings, updates, list);
+      const newReq = await checkForEncryptionRequest(chat, chatSettings, updates, toDecode);
       if (newReq) {
         gotSecretChatRequest = newReq;
       }
@@ -605,8 +618,6 @@
 
     if (!changed.length) return;
 
-    await decodeMessagesBatch(changed);
-
     messages.set(
       [...map.values()].sort(
         (a,b) => a.time - b.time
@@ -616,6 +627,8 @@
     if (updateCache) {
       chatCache.updateMessages(changed);
     }
+
+    await decodeMessagesBatch(changed);
   };
 
   const loadHistory = async (
@@ -1249,7 +1262,15 @@
       e.target.closest(".voice-message-bubble") ||
       e.target.closest(".video-note-bubble") ||
       e.target.closest(".transcription-card") ||
-      e.target.closest(".transcription-close-btn")
+      e.target.closest(".transcription-close-btn") ||
+      e.target.closest(".media-grid") ||
+      e.target.closest(".grid-item") ||
+      e.target.closest(".attaches") ||
+      e.target.closest(".media-download-badge") ||
+      e.target.closest(".file-attachment") ||
+      e.target.closest(".file-attach") ||
+      e.target.closest(".attach") ||
+      e.target.closest(".encrypted-media-placeholder")
     ) return;
 
     if (clicked) {
@@ -1322,7 +1343,15 @@
       e.target.closest(".inline-keyboard") ||
       e.target.closest(".inline-btn") ||
       e.target.closest(".avatar-msg-btn") ||
-      e.target.closest(".avatar-wrapper")
+      e.target.closest(".avatar-wrapper") ||
+      e.target.closest(".media-grid") ||
+      e.target.closest(".grid-item") ||
+      e.target.closest(".attaches") ||
+      e.target.closest(".media-download-badge") ||
+      e.target.closest(".file-attachment") ||
+      e.target.closest(".file-attach") ||
+      e.target.closest(".attach") ||
+      e.target.closest(".encrypted-media-placeholder")
     ) return;
 
     const dx = Math.abs(e.clientX - clickStartPos.x);
@@ -1501,23 +1530,64 @@
     }
   }
 
-  /* media stuff */
-  $: allMedia = $messages.flatMap((m) =>
-    (m.attaches || [])
+  $: allMedia = $messages.flatMap((m) => {
+    const decoded = $decodedMessages[String(m.id)];
+    const media = decoded?.media;
+    const isMe = Number(m.sender) === Number($currentUser);
+    const attaches = (m.attaches || []).map((att, idx) => {
+      if (media && idx === (media.attach_index ?? 0)) {
+        const resolvedType = media.media_type || att._type || "FILE";
+        const localPath = att.localPath || (isMe ? att.path : null);
+        return {
+          ...att,
+          _type: resolvedType,
+          type: resolvedType,
+          originalType: media.media_type,
+          name: media.name || att.name,
+          size: media.size || att.size,
+          mime: media.mime || att.mime,
+          width: media.width ?? att.width,
+          height: media.height ?? att.height,
+          duration: media.duration ?? att.duration,
+          wave: media.wave ?? att.wave,
+          videoType: media.video_type ?? att.videoType,
+          color: media.color || null,
+          isEncryptedMedia: true,
+          encryptedAttach: att,
+          localPath,
+          baseUrl: att.baseUrl || (localPath ? (resolvedType === "VIDEO" ? getProxiedMediaUrl(localPath) : convertFileSrc(localPath)) : null),
+        };
+      }
+      return att;
+    });
+
+    return attaches
       .filter((a) => a._type === "PHOTO" || a._type === "VIDEO")
-      .map((a) => ({
-        ...a,
-        messageId: m.id,
-        uid: a.videoId || a.photoId || a.url || a.baseUrl,
-      })),
-  );
+      .map((a) => {
+        const fid = a.fileId || a.encryptedAttach?.fileId;
+        const uid = a.videoId || a.photoId || fid || a.url || a.baseUrl || a.localPath || `${m.id}_${a.name || 'media'}`;
+        return {
+          ...a,
+          messageId: m.id,
+          uid: String(uid),
+        };
+      });
+  });
 
   function openMedia(attach) {
-    const targetUid =
-      attach.videoId || attach.photoId || attach.url || attach.baseUrl;
-    const index = allMedia.findIndex((m) => m.uid === targetUid);
+    const fid = attach.fileId || attach.encryptedAttach?.fileId;
+    const targetUid = String(attach.videoId || attach.photoId || fid || attach.url || attach.baseUrl || attach.localPath || "");
+    const index = allMedia.findIndex((m) =>
+      (targetUid && m.uid === targetUid) ||
+      (attach.baseUrl && m.baseUrl === attach.baseUrl) ||
+      (attach.localPath && m.localPath === attach.localPath) ||
+      (fid && (m.fileId === fid || m.encryptedAttach?.fileId === fid))
+    );
 
     if (index !== -1) {
+      if (attach.baseUrl) allMedia[index].baseUrl = attach.baseUrl;
+      if (attach.localPath) allMedia[index].localPath = attach.localPath;
+      allMedia = [...allMedia];
       viewerIndex = index;
       viewerOpen = true;
     }
@@ -1708,6 +1778,7 @@
       {messages}
       {chatSettings}
       {botCommands}
+      {decodedMessages}
     />
   {/if}
 

@@ -11,9 +11,12 @@ use base64::{engine::general_purpose::STANDARD, Engine as _};
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+use sha2::{Digest, Sha256};
+use futures_util::future::join_all;
 use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
+use std::sync::Arc;
 use tauri::{AppHandle, Manager};
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -94,6 +97,127 @@ fn load_dictionary_data(app: &AppHandle) -> Option<DictionaryData> {
 }
 
 #[tauri::command]
+fn decrypt_single_message_dto(
+    msg: IncomingMessageDto,
+    session_key: Option<&[u8; 32]>,
+    effective_password: Option<&str>,
+    dict_opt: Option<&DictionaryData>,
+) -> Option<(String, DecryptedMessageDto)> {
+    let msg_id_str = match &msg.id {
+        Value::Number(n) => n.to_string(),
+        Value::String(s) => s.clone(),
+        _ => return None,
+    };
+
+    let raw_text = match msg.text.as_deref() {
+        Some(t) if !t.trim().is_empty() => t.trim(),
+        _ => return None,
+    };
+
+    let mut obf_name: Option<String> = None;
+    let mut raw_bytes: Option<Vec<u8>> = None;
+
+    if ChineseObfuscator::detect(raw_text) {
+        if let Ok(b) = ChineseObfuscator::deobfuscate(raw_text) {
+            obf_name = Some("zh".into());
+            raw_bytes = Some(b);
+        }
+    }
+
+    if raw_bytes.is_none() {
+        if let Some(dict) = dict_opt {
+            if WordsObfuscator::detect(raw_text, dict) {
+                if let Ok(b) = WordsObfuscator::deobfuscate(raw_text, dict) {
+                    obf_name = Some("words".into());
+                    raw_bytes = Some(b);
+                }
+            }
+        }
+    }
+
+    if raw_bytes.is_none() {
+        if let Ok(b) = STANDARD.decode(raw_text) {
+            if !b.is_empty() && (b[0] >> 6) == 0 {
+                raw_bytes = Some(b);
+            }
+        }
+    }
+
+    let bytes = match raw_bytes {
+        Some(b) => b,
+        None => return None,
+    };
+
+    let dto = match unpack_message(&bytes, session_key, effective_password) {
+        Ok(PayloadData::Text(t)) => DecryptedMessageDto {
+            text: t,
+            obf: obf_name,
+            is_encrypted: true,
+            media: None,
+            is_handshake_request: false,
+            is_handshake_accept: false,
+            handshake_data: None,
+            error: None,
+        },
+        Ok(PayloadData::Media { text, media }) => DecryptedMessageDto {
+            text,
+            obf: obf_name,
+            is_encrypted: true,
+            media: Some(media),
+            is_handshake_request: false,
+            is_handshake_accept: false,
+            handshake_data: None,
+            error: None,
+        },
+        Ok(PayloadData::Handshake(hs_bytes)) => {
+            let parsed = parse_and_verify_handshake(&hs_bytes);
+            match parsed {
+                Ok(p) => {
+                    let is_init = p.subtype == 0x01;
+                    let notice_text = if is_init {
+                        "<b>Запрос на секретный чат</b>".to_string()
+                    } else {
+                        "<b>Секретный чат установлен</b>".to_string()
+                    };
+                    DecryptedMessageDto {
+                        text: notice_text,
+                        obf: obf_name,
+                        is_encrypted: true,
+                        media: None,
+                        is_handshake_request: is_init,
+                        is_handshake_accept: !is_init,
+                        handshake_data: Some(hex::encode(&hs_bytes)),
+                        error: None,
+                    }
+                }
+                Err(e) => DecryptedMessageDto {
+                    text: "<b style=\"color:#f66\">Ошибка проверки рукопожатия</b>".into(),
+                    obf: obf_name,
+                    is_encrypted: true,
+                    media: None,
+                    is_handshake_request: false,
+                    is_handshake_accept: false,
+                    handshake_data: None,
+                    error: Some(e),
+                },
+            }
+        }
+        Err(e) => DecryptedMessageDto {
+            text: format!("<b style=\"color:#f66\">Ошибка!</b> {e}"),
+            obf: obf_name,
+            is_encrypted: true,
+            media: None,
+            is_handshake_request: false,
+            is_handshake_accept: false,
+            handshake_data: None,
+            error: Some(e),
+        },
+    };
+
+    Some((msg_id_str, dto))
+}
+
+#[tauri::command]
 pub async fn batch_decrypt_messages(
     app: AppHandle,
     account: u64,
@@ -110,143 +234,33 @@ pub async fn batch_decrypt_messages(
             .map(|s| s.to_string())
     });
 
-    let dict_opt = load_dictionary_data(&app);
-    let mut results = HashMap::new();
+    let dict_opt = Arc::new(load_dictionary_data(&app));
+    let session_key = Arc::new(session_key);
+    let effective_password = Arc::new(effective_password);
 
-    for msg in messages {
-        let msg_id_str = match &msg.id {
-            Value::Number(n) => n.to_string(),
-            Value::String(s) => s.clone(),
-            _ => continue,
-        };
+    let tasks: Vec<_> = messages
+        .into_iter()
+        .map(|msg| {
+            let session_key = session_key.clone();
+            let effective_password = effective_password.clone();
+            let dict_opt = dict_opt.clone();
+            tokio::task::spawn_blocking(move || {
+                decrypt_single_message_dto(
+                    msg,
+                    session_key.as_ref().as_ref(),
+                    effective_password.as_deref(),
+                    dict_opt.as_ref().as_ref(),
+                )
+            })
+        })
+        .collect();
 
-        let raw_text = match msg.text.as_deref() {
-            Some(t) if !t.trim().is_empty() => t.trim(),
-            _ => continue,
-        };
+    let results_vec = join_all(tasks).await;
 
-        let mut obf_name: Option<String> = None;
-        let mut raw_bytes: Option<Vec<u8>> = None;
-
-        if ChineseObfuscator::detect(raw_text) {
-            if let Ok(b) = ChineseObfuscator::deobfuscate(raw_text) {
-                obf_name = Some("zh".into());
-                raw_bytes = Some(b);
-            }
-        }
-
-        if raw_bytes.is_none() {
-            if let Some(ref dict) = dict_opt {
-                if WordsObfuscator::detect(raw_text, dict) {
-                    if let Ok(b) = WordsObfuscator::deobfuscate(raw_text, dict) {
-                        obf_name = Some("words".into());
-                        raw_bytes = Some(b);
-                    }
-                }
-            }
-        }
-
-        if raw_bytes.is_none() {
-            if let Ok(b) = STANDARD.decode(raw_text) {
-                if !b.is_empty() && (b[0] >> 6) == 0 {
-                    raw_bytes = Some(b);
-                }
-            }
-        }
-
-        let bytes = match raw_bytes {
-            Some(b) => b,
-            None => continue,
-        };
-
-        match unpack_message(&bytes, session_key.as_ref(), effective_password.as_deref()) {
-            Ok(PayloadData::Text(t)) => {
-                results.insert(
-                    msg_id_str,
-                    DecryptedMessageDto {
-                        text: t,
-                        obf: obf_name,
-                        is_encrypted: true,
-                        media: None,
-                        is_handshake_request: false,
-                        is_handshake_accept: false,
-                        handshake_data: None,
-                        error: None,
-                    },
-                );
-            }
-            Ok(PayloadData::Media { text, media }) => {
-                results.insert(
-                    msg_id_str,
-                    DecryptedMessageDto {
-                        text,
-                        obf: obf_name,
-                        is_encrypted: true,
-                        media: Some(media),
-                        is_handshake_request: false,
-                        is_handshake_accept: false,
-                        handshake_data: None,
-                        error: None,
-                    },
-                );
-            }
-            Ok(PayloadData::Handshake(hs_bytes)) => {
-                let parsed = parse_and_verify_handshake(&hs_bytes);
-                match parsed {
-                    Ok(p) => {
-                        let is_init = p.subtype == 0x01;
-                        let notice_text = if is_init {
-                            "<b>Запрос на секретный чат</b>".to_string()
-                        } else {
-                            "<b>Секретный чат установлен</b>".to_string()
-                        };
-                        results.insert(
-                            msg_id_str,
-                            DecryptedMessageDto {
-                                text: notice_text,
-                                obf: obf_name,
-                                is_encrypted: true,
-                                media: None,
-                                is_handshake_request: is_init,
-                                is_handshake_accept: !is_init,
-                                handshake_data: Some(hex::encode(&hs_bytes)),
-                                error: None,
-                            },
-                        );
-                    }
-                    Err(e) => {
-                        results.insert(
-                            msg_id_str,
-                            DecryptedMessageDto {
-                                text: "<b style=\"color:#f66\">Ошибка проверки рукопожатия</b>"
-                                    .into(),
-                                obf: obf_name,
-                                is_encrypted: true,
-                                media: None,
-                                is_handshake_request: false,
-                                is_handshake_accept: false,
-                                handshake_data: None,
-                                error: Some(e),
-                            },
-                        );
-                    }
-                }
-            }
-            Err(e) => {
-                results.insert(
-                    msg_id_str,
-                    DecryptedMessageDto {
-                        text: format!("<b style=\"color:#f66\">Ошибка!</b> {e}"),
-                        obf: obf_name,
-                        is_encrypted: true,
-                        media: None,
-                        is_handshake_request: false,
-                        is_handshake_accept: false,
-                        handshake_data: None,
-                        error: Some(e),
-                    },
-                );
-            }
+    let mut results = HashMap::with_capacity(results_vec.len());
+    for res in results_vec {
+        if let Ok(Some((msg_id_str, dto))) = res {
+            results.insert(msg_id_str, dto);
         }
     }
 
@@ -499,25 +513,66 @@ pub async fn make_dictionary(app: AppHandle, text: Value) -> Result<Value, Strin
     Ok(val)
 }
 
+fn get_media_crypto_key(settings: &Value, password_arg: Option<&str>) -> Option<[u8; 32]> {
+    if let Some(sk) = get_active_session_key(settings) {
+        return Some(sk);
+    }
+
+    let effective_password = password_arg.or_else(|| {
+        settings
+            .get("password")
+            .and_then(|p| p.as_str())
+    });
+
+    if let Some(pwd) = effective_password {
+        let salt = b"maxplus_media_salt_bytes";
+        if let Ok(derived) = crate::crypto::symmetric::derive_key(pwd, salt) {
+            return Some(derived);
+        }
+    }
+
+    let mut hasher = Sha256::new();
+    hasher.update(b"maxplus_media_obfuscation_fixed_key_v1");
+    let res: [u8; 32] = hasher.finalize().into();
+    Some(res)
+}
+
 #[tauri::command]
 pub async fn encrypt_media_file(
     app: AppHandle,
     account: u64,
     chat_id: i64,
     file_path: String,
-    dummy_type: String,
+    dummy_type: Option<String>,
+    password: Option<String>,
 ) -> Result<String, String> {
     let settings = load_chat_settings_json(&app, account, chat_id);
-    let session_key = get_active_session_key(&settings)
-        .ok_or_else(|| "Session key required to encrypt media".to_string())?;
+    let key = get_media_crypto_key(&settings, password.as_deref())
+        .ok_or_else(|| "Failed to derive encryption key for media".to_string())?;
 
     let raw_bytes = fs::read(&file_path).map_err(|e| e.to_string())?;
-    let encrypted = encrypt_media_bytes(&raw_bytes, &session_key, &dummy_type)?;
+    let dummy = dummy_type.as_deref().unwrap_or("pdf");
+    let encrypted = encrypt_media_bytes(&raw_bytes, &key, dummy)?;
 
-    let out_path = format!("{}.enc", file_path);
+    let ext = match dummy {
+        "docx" => "docx",
+        "xlsx" => "xlsx",
+        "mp3" => "mp3",
+        "ogg" => "ogg",
+        _ => "pdf",
+    };
+
+    let cache_dir = app
+        .path()
+        .app_cache_dir()
+        .map_err(|e| e.to_string())?
+        .join("encrypted_outgoing");
+    let _ = fs::create_dir_all(&cache_dir);
+    let rand_id = uuid::Uuid::new_v4().to_string();
+    let out_path = cache_dir.join(format!("{}.{}", rand_id, ext));
     fs::write(&out_path, encrypted).map_err(|e| e.to_string())?;
 
-    Ok(out_path)
+    Ok(out_path.to_string_lossy().to_string())
 }
 
 #[tauri::command]
@@ -526,19 +581,98 @@ pub async fn decrypt_media_file(
     account: u64,
     chat_id: i64,
     file_path: String,
-    out_path: String,
+    out_path: Option<String>,
+    target_path: Option<String>,
+    password: Option<String>,
 ) -> Result<String, String> {
+    let effective_out = out_path
+        .or(target_path)
+        .ok_or_else(|| "Missing out_path or target_path".to_string())?;
+
     let settings = load_chat_settings_json(&app, account, chat_id);
-    let session_key = get_active_session_key(&settings)
-        .ok_or_else(|| "Session key required to decrypt media".to_string())?;
+    let key = get_media_crypto_key(&settings, password.as_deref())
+        .ok_or_else(|| "Failed to derive decryption key for media".to_string())?;
 
     let encrypted_bytes = fs::read(&file_path).map_err(|e| e.to_string())?;
-    let decrypted = decrypt_media_bytes(&encrypted_bytes, &session_key)?;
+    let decrypted = decrypt_media_bytes(&encrypted_bytes, &key)?;
 
-    if let Some(parent) = Path::new(&out_path).parent() {
+    if let Some(parent) = Path::new(&effective_out).parent() {
         fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
-    fs::write(&out_path, decrypted).map_err(|e| e.to_string())?;
+    fs::write(&effective_out, decrypted).map_err(|e| e.to_string())?;
 
-    Ok(out_path)
+    if file_path.ends_with(".enc") {
+        let _ = fs::remove_file(&file_path);
+    }
+
+    Ok(effective_out)
+}
+
+#[tauri::command]
+pub async fn cache_encrypted_media(
+    app: AppHandle,
+    account: u64,
+    chat_id: i64,
+    file_id: u64,
+    src: String,
+    password: Option<String>,
+) -> Result<String, String> {
+    let cache_key = format!("enc_media_{}", file_id);
+
+    if let Ok(Some(existing)) = crate::stores::get_cached_file(app.clone(), account, cache_key.clone()) {
+        if Path::new(&existing).exists() {
+            return Ok(existing);
+        }
+    }
+
+    let encrypted_bytes = if src.starts_with("http://") || src.starts_with("https://") {
+        let client = rumax::shared_http_client();
+        let resp = client.get(&src)
+            .send()
+            .await
+            .map_err(|e| e.to_string())?;
+        if !resp.status().is_success() {
+            return Err(format!("HTTP {}", resp.status()));
+        }
+        resp.bytes().await.map_err(|e| e.to_string())?.to_vec()
+    } else {
+        fs::read(&src).map_err(|e| e.to_string())?
+    };
+
+    let settings = load_chat_settings_json(&app, account, chat_id);
+    let key = get_media_crypto_key(&settings, password.as_deref())
+        .ok_or_else(|| "Failed to derive decryption key for media".to_string())?;
+
+    let decrypted = decrypt_media_bytes(&encrypted_bytes, &key)?;
+
+    let path = crate::stores::set_cached_file_with_meta(
+        app,
+        account,
+        cache_key,
+        decrypted,
+        Some(chat_id),
+        None,
+    )?;
+
+    Ok(path)
+}
+
+#[tauri::command]
+pub async fn register_media_cache(
+    app: AppHandle,
+    account: u64,
+    chat_id: i64,
+    file_id: u64,
+    local_path: String,
+) -> Result<String, String> {
+    let cache_key = format!("enc_media_{}", file_id);
+    let bytes = fs::read(&local_path).map_err(|e| e.to_string())?;
+    crate::stores::set_cached_file_with_meta(
+        app,
+        account,
+        cache_key,
+        bytes,
+        Some(chat_id),
+        None,
+    )
 }

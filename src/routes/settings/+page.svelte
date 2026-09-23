@@ -32,6 +32,7 @@ import { goto } from "$app/navigation";
   import API, { currentUser } from "$lib/stores/api";
   import { clientNotificationsEnabled, toggleClientNotifications } from "$lib/utils/notifications";
   import { openDigitalIdApp, openSferumApp } from "$lib/stores/webapp.js";
+  import { autoDownloadEncryptedMedia } from "$lib/stores/e2eSettings.js";
 
   let platform;
 
@@ -69,7 +70,7 @@ import { goto } from "$app/navigation";
     contact = user;
   }
 
-  const buttons = [
+  $: buttons = [
     [
       {
         icon: "profile.svg",
@@ -90,6 +91,13 @@ import { goto } from "$app/navigation";
         icon: "book.svg",
         text: "Словарь шифрования",
         action: () => goto("/settings/e2e/dictionary?from=/?card=settings"),
+      },
+      {
+        icon: "crypto.svg",
+        text: "Автозагрузка зашифрованных медиа",
+        action: () => autoDownloadEncryptedMedia.toggle(),
+        isToggle: true,
+        toggleValue: $autoDownloadEncryptedMedia,
       },
     ],
     [
@@ -245,8 +253,8 @@ import { goto } from "$app/navigation";
             <img src={"icons/" + btn.icon} class="icon" />
             <a>{btn.text}</a>
             {#if btn.isToggle}
-              <div class="toggle-track" class:active={$clientNotificationsEnabled}>
-                <div class="toggle-thumb" class:active={$clientNotificationsEnabled}></div>
+              <div class="toggle-track" class:active={btn.toggleValue !== undefined ? btn.toggleValue : $clientNotificationsEnabled}>
+                <div class="toggle-thumb" class:active={btn.toggleValue !== undefined ? btn.toggleValue : $clientNotificationsEnabled}></div>
               </div>
             {:else}
               <svg

@@ -19,20 +19,23 @@ export async function sendMessage(
   replyTo,
   attaches,
   elements,
-  forceObfuscation = false
+  forceObfuscation = false,
+  mediaDescriptor = null,
+  decodedMessagesStore = null
 ) {
   if (!newMessage?.trim() && (!attaches || !attaches.length)) return;
-  let text = newMessage ? newMessage.trim() : "";
+  const originalPlaintext = newMessage ? newMessage.trim() : "";
+  let text = originalPlaintext;
 
   const settings = get(chatSettings) || {};
   const hasSession = Boolean(settings?.keys?.current || settings?.session);
   const password = settings?.password;
   const obf = settings?.obfs || (hasSession || password ? "zh" : null);
 
-  let mediaDescriptor = null;
-  if (attaches?.length && (hasSession || password)) {
+  let effectiveMedia = mediaDescriptor;
+  if (!effectiveMedia && attaches?.length && (hasSession || password || obf)) {
     const firstAttach = attaches[0];
-    mediaDescriptor = {
+    effectiveMedia = {
       attach_index: 0,
       name: firstAttach.name || "attachment",
       mime: firstAttach.mime || "application/octet-stream",
@@ -41,6 +44,8 @@ export async function sendMessage(
       width: firstAttach.width ? Number(firstAttach.width) : null,
       height: firstAttach.height ? Number(firstAttach.height) : null,
       duration: firstAttach.duration ? Number(firstAttach.duration) : null,
+      wave: Array.isArray(firstAttach.wave) ? firstAttach.wave : null,
+      video_type: firstAttach.videoType != null ? Number(firstAttach.videoType) : null,
     };
   }
 
@@ -50,7 +55,7 @@ export async function sendMessage(
       account: Number(account?.id || 0),
       chatId: Number(chat.id),
       text,
-      media: mediaDescriptor,
+      media: effectiveMedia,
       password,
       useSession: hasSession,
       obf,
@@ -58,8 +63,23 @@ export async function sendMessage(
   }
   const chatId = chat.id;
   const id = Date.now();
-
   const cid = -id;
+
+  const plainEntry = (hasSession || password || obf) ? {
+    text: originalPlaintext,
+    media: effectiveMedia,
+    is_encrypted: true,
+    obf,
+    error: null,
+  } : null;
+
+  if (decodedMessagesStore && plainEntry) {
+    decodedMessagesStore.update((curr) => ({
+      ...curr,
+      [String(id)]: plainEntry,
+      [String(cid)]: plainEntry,
+    }));
+  }
 
   const displayMessageEarlyEntry = {
     id,
@@ -67,7 +87,15 @@ export async function sendMessage(
     text,
     sender: get(currentUser),
     reactionInfo: {},
-    attaches,
+    attaches: (attaches || []).map((a, idx) => {
+      if (effectiveMedia && idx === (effectiveMedia.attach_index ?? 0)) {
+        return {
+          ...a,
+          localPath: a.path || a.localPath,
+        };
+      }
+      return a;
+    }),
     elements,
     type: "USER",
     time: Date.now(),
@@ -119,6 +147,13 @@ export async function sendMessage(
     });
   }
   else {
+    if (decodedMessagesStore && plainEntry && message.id) {
+      decodedMessagesStore.update((curr) => ({
+        ...curr,
+        [String(message.id)]: plainEntry,
+      }));
+    }
+
     const fullMsg = {
       ...displayMessageEarlyEntry,
       ...message,

@@ -1082,6 +1082,7 @@ export default class MobileApi extends BaseAPI {
       attachType: type,
       mime,
       videoType: attach.videoType,
+      fileName: attach.name || undefined,
     };
 
     if (type === "PHOTO") {
