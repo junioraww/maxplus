@@ -1,233 +1,133 @@
-import * as fflate from "fflate";
-import { dict, decode, encode } from "$lib/crypto/text-codec";
+import { invoke } from "@tauri-apps/api/core";
+import { CryptoPluginRegistry } from "./plugins.js";
 
-/* не используется */
-class Obfuscator {
-  constructor(name) {
-    this.name = name;
+import { dict } from "./text-codec.js";
+
+const ZH_BASE = 0x4E00;
+const ZH_COUNT = 2048;
+
+function isChineseMarker(text) {
+  if (!text || typeof text !== "string" || text.length < 5) return false;
+  for (let i = 0; i < 5; i++) {
+    const cp = text.charCodeAt(i);
+    if (cp < ZH_BASE || cp >= ZH_BASE + ZH_COUNT) return false;
+    if (((cp - ZH_BASE) & 1) !== 0) return false;
   }
-
-  detect(marker) {
-    for (const ch of marker) {
-      if (ch.charCodeAt(0) % 2 !== 0) return false; // индекс нечётный -> не наш признак
-    }
-
-    return true;
-  }
-
-  obfuscate(text) {
-    const marker = makeMarker(en, 5);
-    return marker + text;
-  }
-
-  deobfuscate(text) {
-    return text.slice(5);
-  }
-}
-
-const en = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789+/';
-
-const zh = Array.from({ length: 2048 }, (_, i) => String.fromCharCode(0x4E00 + i));
-const zhArray = Array.from(zh);
-const zhMap = new Map(zhArray.map((c, i) => [c, i]));
-
-class Chinese extends Obfuscator {
-  constructor() {
-    super("Zh");
-  }
-
-  detect(text) {
-    if (!text || typeof text !== "string" || text.length < 5) return false;
-
-    for (const ch of text.slice(0, 5)) {
-      const idx = zhMap.get(ch);
-      if (idx === undefined) return false;
-      if ((idx & 1) !== 0) return false;
-    }
-
-    return true;
-  }
-
-  obfuscate(bytes) {
-    const payload = encodeBitPacked(bytes, zh);
-    return makeMarker(zh, 5) + payload;
-  }
-
-  deobfuscate(text) {
-    const payloadString = Array.from(text).slice(5).join("");
-    return decodeBitPacked(payloadString, zh);
-  }
-}
-
-class Words extends Obfuscator {
-  constructor() {
-    super("Tol");
-  }
-
-  async getDictionary() {
-    if (this.lock) await this.lock;
-    if (this.cache !== undefined) return this.cache;
-    this.lock = new Promise(r => this.unlock = r);
-
-    const cache = await dict.getDictionary();
-    if (cache?.dict16) {
-      this.cache = cache;
-      this.dict16Map = new Map(cache.dict16.map((w, i) => [w, i]));
-      this.dict8Map = new Map(cache.dict8.map((w, i) => [w, i]));// it's so fucking awful
-      this.miniHash = parseInt(cache.dict_sha256.slice(0, 1), 16) & 0xF;
-    } else {
-      this.cache = null;
-    }
-
-    this.unlock();
-    this.lock = null;
-    return cache;
-  }
-
-  async updateDictionary() {
-    const cache = await dict.getDictionary();
-    if (cache) {
-      this.cache = cache;
-      this.dict16Map = new Map(cache.dict16.map((w, i) => [w, i]));
-      this.dict8Map = new Map(cache.dict8.map((w, i) => [w, i]));
-      this.miniHash = parseInt(cache.dict_sha256.slice(0, 1), 16) & 0xF;
-    }
-  }
-
-  async detect(text) {
-    if (!text || typeof text !== "string") return false;
-    if (text.indexOf('\n') !== -1) return false;
-    if (text.indexOf(' ') === -1) return false;
-
-    const DICT = await this.getDictionary();
-    if (!DICT || !this.dict8Map) return false;
-
-    const idx = text.indexOf(' ');
-    const word = clean(text.slice(0, idx)).toLowerCase();
-
-    const prefixIdx = this.dict8Map.get(word);
-    if (prefixIdx === undefined) return false;
-
-    const hash = prefixIdx & 0xF;
-    return hash === this.miniHash;
-  }
-
-  async obfuscate(bytes) {
-    const DICT = await this.getDictionary();
-    if (!DICT) {
-      alert("Словарь не загружен!\nПожалуйста, загрузите в настройках.");
-      return null;
-    }
-    return await encode(bytes, DICT, true);
-  }
-
-  async deobfuscate(text) {
-    const DICT = await this.getDictionary();
-    if (!DICT) return;
-    return await decode(text, DICT, this.dict8Map, this.dict16Map);
-  }
-}
-
-const clean = (s) => s?.replace(/[.,!?:-]/g, "")?.trim();
-
-const obfuscators = {
-  //basic: new Obfuscator(), // just adds marker
-  zh: new Chinese(),         // maps to chinese letters
-  words: new Words(),        // maps to book words
+  return true;
 }
 
 export async function detectObfuscation(text) {
   if (!text || typeof text !== "string") return null;
-  for (const name in obfuscators) {
-    const obfuscator = obfuscators[name];
-    if (!obfuscator) continue;
-    if (await obfuscator.detect(text)) return obfuscator;
+
+  const pluginMatch = CryptoPluginRegistry.findObfuscator(text);
+  if (pluginMatch) {
+    return { name: pluginMatch.name, plugin: true };
+  }
+
+  if (isChineseMarker(text)) {
+    return { name: "zh", plugin: false };
+  }
+
+  const dictionary = await dict.getDictionary().catch(() => null);
+  if (dictionary?.dict8 && text.includes(" ") && !text.includes("\n")) {
+    const words = text.trim().split(/\s+/);
+    if (words.length >= 2) {
+      const clean = (s) => s.replace(/[.,!?:—\-]/g, "").toLowerCase();
+      const w0 = clean(words[0]);
+      const w1 = clean(words[1]);
+      const idx0 = dictionary.dict8.indexOf(w0);
+      const idx1 = dictionary.dict8.indexOf(w1);
+      if (idx0 !== -1 && idx1 !== -1 && dictionary.dict_sha256) {
+        const miniHash = parseInt(dictionary.dict_sha256.slice(0, 1), 16) & 0x0F;
+        const expected = (miniHash << 4) | (miniHash ^ 0x0A);
+        const actual = ((idx0 & 0x0F) << 4) | (idx1 & 0x0F);
+        if (actual === expected) {
+          return { name: "words", plugin: false };
+        }
+      }
+    }
   }
 
   return null;
 }
 
-export async function obfuscate(text, obfuscatorName) {
-  return await obfuscators[obfuscatorName].obfuscate(text);
+export async function obfuscate(bytesOrText, obfuscatorName) {
+  if (CryptoPluginRegistry.hasObfuscator(obfuscatorName)) {
+    const handler = CryptoPluginRegistry.getObfuscator(obfuscatorName);
+    return handler.obfuscate(bytesOrText);
+  }
+  return bytesOrText;
 }
 
-// Bit-packed encoder (uses floor(log2(base)) bits per symbol). Uses BigInt for safety.
-function encodeBitPacked(bytes) {
-  const base = zhArray.length;
-  const bitsPer = Math.floor(Math.log2(base));
-  if (bitsPer <= 0) throw new Error("Alphabet too small");
+export async function batchDecrypt(account, chatId, messages, password = null) {
+  if (!messages || !messages.length) return {};
 
-  let bitBuffer = 0n;
-  let bitCount = 0;
-  let out = "";
+  const payloadMessages = messages.map((m) => ({
+    id: m.id,
+    text: m.text,
+    sender: m.sender,
+    time: m.time || m.created_at || null,
+  }));
 
-  for (const b of bytes) {
-    bitBuffer = (bitBuffer << 8n) | BigInt(b);
-    bitCount += 8;
-    while (bitCount >= bitsPer) {
-      bitCount -= bitsPer;
-      const idx = Number(
-        (bitBuffer >> BigInt(bitCount)) & ((1n << BigInt(bitsPer)) - 1n),
-      );
-      out += zhArray[idx];
-      // keep remainder in buffer:
-      bitBuffer &= (1n << BigInt(bitCount)) - 1n;
+  const rustDecrypted = await invoke("batch_decrypt_messages", {
+    account: Number(account),
+    chatId: Number(chatId),
+    messages: payloadMessages,
+    password: password || null,
+  });
+
+  for (const msg of messages) {
+    const msgId = String(msg.id);
+    if (rustDecrypted[msgId]) continue;
+
+    const pluginMatch = CryptoPluginRegistry.findObfuscator(msg.text);
+    if (pluginMatch) {
+      try {
+        const text = await pluginMatch.handler.deobfuscate(msg.text);
+        rustDecrypted[msgId] = {
+          text,
+          obf: pluginMatch.name,
+          is_encrypted: true,
+          media: null,
+          is_handshake_request: false,
+          is_handshake_accept: false,
+          handshake_data: null,
+          error: null,
+        };
+      } catch (e) {
+        rustDecrypted[msgId] = {
+          text: String(msg.text),
+          obf: pluginMatch.name,
+          is_encrypted: true,
+          media: null,
+          is_handshake_request: false,
+          is_handshake_accept: false,
+          handshake_data: null,
+          error: String(e),
+        };
+      }
     }
   }
 
-  if (bitCount > 0) {
-    const idx = Number(
-      (bitBuffer << BigInt(bitsPer - bitCount)) &
-        ((1n << BigInt(bitsPer)) - 1n),
-    );
-    out += zhArray[idx];
-  }
-
-  return out;
+  return rustDecrypted;
 }
 
-function decodeBitPacked(str, alphabet) {
-  const base = zhArray.length;
-  const bitsPer = Math.floor(Math.log2(base));
-  if (bitsPer <= 0) throw new Error("Alphabet too small");
-
-  let bitBuffer = 0n;
-  let bitCount = 0;
-  const out = [];
-
-  for (const ch of Array.from(str)) {
-    if (!zhMap.has(ch)) continue; // игнор неизвестных символов
-    bitBuffer = (bitBuffer << BigInt(bitsPer)) | BigInt(zhMap.get(ch));
-    bitCount += bitsPer;
-    while (bitCount >= 8) {
-      bitCount -= 8;
-      const byte = Number((bitBuffer >> BigInt(bitCount)) & 0xffn);
-      out.push(byte);
-    }
-    bitBuffer &= (1n << BigInt(bitCount)) - 1n;
-  }
-
-  return new Uint8Array(out);
-}
-
-function makeMarker(alphabet) {
-  const maxEven = Math.floor((zhArray.length - 1) / 2);
-  if (maxEven < 0) throw new Error("Alphabet too small for marker");
-  let marker = "";
-  for (let i = 0; i < 5; i++) {
-    const r = Math.floor(Math.random() * (maxEven + 1)); // 0..maxEven
-    const idx = r * 2; // чётный индекс
-    marker += zhArray[idx];
-  }
-  return marker;
-}
-
-export function deflate(text) {
-  const bytes = fflate.strToU8(text);
-  return fflate.deflateSync(bytes, { level: 9 });
-}
-
-export function inflate(bytes) {
-  const decompressed = fflate.inflateSync(bytes);
-  return fflate.strFromU8(decompressed);
+export async function encryptMessage({
+  account,
+  chatId,
+  text = "",
+  media = null,
+  password = null,
+  useSession = false,
+  obf = null,
+}) {
+  return invoke("encrypt_message", {
+    account: Number(account),
+    chatId: Number(chatId),
+    text,
+    media: media || null,
+    password: password || null,
+    useSession: Boolean(useSession),
+    obf: obf || null,
+  });
 }

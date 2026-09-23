@@ -124,7 +124,7 @@ impl Storage {
     }
 }
 
-fn crypto_key(
+pub(crate) fn crypto_key(
     app: &AppHandle,
     account: u64
 ) -> Option<[u8;32]> {
@@ -137,13 +137,13 @@ fn crypto_key(
         .map(|x| x.key)
 }
 
-struct Paths {
-    root: PathBuf,
-    cache: PathBuf,
+pub(crate) struct Paths {
+    pub(crate) root: PathBuf,
+    pub(crate) cache: PathBuf,
 }
 
 impl Paths {
-    fn new(
+    pub(crate) fn new(
         app: &AppHandle,
         account: u64,
     ) -> Self {
@@ -176,7 +176,7 @@ impl Paths {
         self.chat(chat).join("info")
     }
 
-    fn settings(&self, chat: i64) -> PathBuf {
+    pub(crate) fn settings(&self, chat: i64) -> PathBuf {
         self.chat(chat).join("settings")
     }
 

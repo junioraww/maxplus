@@ -83,7 +83,7 @@
         class="row-action"
         on:click={() => switchEnc(chat, chatSettings, messages)}
       >
-        { !$chatSettings.keys.current ? "Новая сессия" : "Отключить" }
+        { !($chatSettings.keys?.current || $chatSettings.session) ? "Новая сессия" : "Отключить" }
       </button>
     </div>
     <div class="group">
@@ -92,15 +92,29 @@
           Статус
         </div>
         <div class="row-value">
-          { $chatSettings.keys.current ? "Активно"
-          : $chatSettings.keys.keys?.some(x => x.edp === null) ? "Предложение отправлено"
+          { ($chatSettings.keys?.current || $chatSettings.session) ? "Активно"
+          : $chatSettings.pending ? "Предложение отправлено"
           : "Отключено" }
         </div>
       </div>
+      {#if $chatSettings.session?.fingerprint}
+        <div class="row">
+          <div class="row-title">
+            Ключ сессии
+          </div>
+          <div class="row-value" style="font-size: 20px; letter-spacing: 2px;">
+            {$chatSettings.session.fingerprint}
+          </div>
+        </div>
+      {/if}
     </div>
 
     <div class="footer">
-      Когда включено, только вы и собеседник сможете читать сообщения.
+      {#if $chatSettings.session?.fingerprint}
+        Сравните эти 4 эмодзи с собеседником для проверки подлинности.
+      {:else}
+        Когда включено, только вы и собеседник сможете читать сообщения.
+      {/if}
 
       <span class="warning">
         Работает между пользователями Max+

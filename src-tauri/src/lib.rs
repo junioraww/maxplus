@@ -1,4 +1,5 @@
 mod commands;
+mod crypto;
 mod files;
 mod notifications;
 mod ssl;
@@ -208,6 +209,15 @@ pub fn run() {
             webapp_proxy::get_webapp_filter_rules,
             webapp_proxy::get_webapp_ram_logs,
             webapp_proxy::clear_webapp_ram_logs,
+            crypto::commands::batch_decrypt_messages,
+            crypto::commands::encrypt_message,
+            crypto::commands::init_e2e_handshake,
+            crypto::commands::accept_e2e_handshake,
+            crypto::commands::process_e2e_accept,
+            crypto::commands::get_chat_encryption_info,
+            crypto::commands::make_dictionary,
+            crypto::commands::encrypt_media_file,
+            crypto::commands::decrypt_media_file,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

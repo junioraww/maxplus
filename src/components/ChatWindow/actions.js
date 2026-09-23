@@ -7,9 +7,8 @@ import {
   getChat,
   saveChats,
 } from "$lib/stores/messages";
-import { xorEncrypt } from "$lib/crypto/symmetric";
-import { deflate, obfuscate, detectObfuscation } from "$lib/crypto/messages";
-import { buildHeader, parseHeader } from "$components/ChatWindow/e2e";
+import { getCurrentAccount } from "$lib/stores/accounts";
+import { encryptMessage } from "$lib/crypto/messages";
 import { get } from "svelte/store";
 
 export async function sendMessage(
@@ -25,31 +24,37 @@ export async function sendMessage(
   if (!newMessage?.trim() && (!attaches || !attaches.length)) return;
   let text = newMessage ? newMessage.trim() : "";
 
-  const keys = get(chatSettings).keys;
+  const settings = get(chatSettings) || {};
+  const hasSession = Boolean(settings?.keys?.current || settings?.session);
+  const password = settings?.password;
+  const obf = settings?.obfs || (hasSession || password ? "zh" : null);
 
-  const ass = !!keys?.current;
-  const sym = get(chatSettings).password;
-  const obf = get(chatSettings).obfs;
-
-  if (text && (forceObfuscation || sym || ass)) {
-    let bytes = new TextEncoder().encode(text);
-
-    if (ass) bytes = await encryptAss(chat, chatSettings, bytes);
-
-    if (sym) bytes = await xorEncrypt(bytes, sym);
-
-    const out = new Uint8Array(1 + bytes.length);
-    out[0] = buildHeader(0, !!sym, !!ass, 0);
-    out.set(bytes, 1);
-
-    text = await obfuscate(out, obf || "zh");
+  let mediaDescriptor = null;
+  if (attaches?.length && (hasSession || password)) {
+    const firstAttach = attaches[0];
+    mediaDescriptor = {
+      attach_index: 0,
+      name: firstAttach.name || "attachment",
+      mime: firstAttach.mime || "application/octet-stream",
+      media_type: firstAttach._type || firstAttach.type || "FILE",
+      size: Number(firstAttach.size || 0),
+      width: firstAttach.width ? Number(firstAttach.width) : null,
+      height: firstAttach.height ? Number(firstAttach.height) : null,
+      duration: firstAttach.duration ? Number(firstAttach.duration) : null,
+    };
   }
-  else if (text && obf) {
-    const bytes = new TextEncoder().encode(text);
 
-    text = await obfuscate(
-      Uint8Array.of(buildHeader(0, 0, 0, 0), ...bytes), obf
-    );
+  if (!forceObfuscation && (hasSession || password || obf)) {
+    const account = await getCurrentAccount();
+    text = await encryptMessage({
+      account: Number(account?.id || 0),
+      chatId: Number(chat.id),
+      text,
+      media: mediaDescriptor,
+      password,
+      useSession: hasSession,
+      obf,
+    });
   }
   const chatId = chat.id;
   const id = Date.now();
@@ -175,21 +180,6 @@ export async function sendMessage(
         lastEventTime: fullMsg.time || Date.now(),
       }
     ]).catch(() => {});
-
-    if (ass) {
-      const entry = keys.messages.find(
-        (entry) => entry.key === keys.current,
-      );
-      if (!entry)
-        keys.messages.push({
-          from: msgId,
-          to: msgId,
-          key: keys.current,
-        });
-      else {
-        entry.to = msgId;
-      }
-    }
   }
 }
 
