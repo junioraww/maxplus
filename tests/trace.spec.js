@@ -1,5 +1,4 @@
 import { test, expect } from '@playwright/test';
-import { zipSync, unzipSync, strToU8, strFromU8 } from '../src/lib/utils/zip.js';
 import { sanitizeData } from '../src/lib/services/trace.js';
 
 test.describe('Trace system sensitive data sanitization', () => {
@@ -98,50 +97,6 @@ test.describe('Trace system sensitive data sanitization', () => {
 });
 
 test.describe('Trace archive packaging and structure', () => {
-  test('creates valid zip containing only log.txt and screenshots without trace.json', () => {
-    const syntheticLogText = [
-      '================================================================================',
-      'Max+ Client Trace Log',
-      'Start time:  2026-09-21T10:00:00.000Z',
-      'App version: 0.1.3',
-      'OS:          linux (x86_64)',
-      '================================================================================',
-      '',
-      '[+00:00.100] [Click] (50, 100) <button.close> "Close"',
-      '[+00:01.200] [Api_Request] invoke: get_chats args: {"chat_ids":[1001]}',
-      '[+00:01.350] [Api_Response] invoke: get_chats (150ms) status: Ok',
-      '[+00:05.000] [Screenshot] screen_001.jpg (128x64)',
-      '[+00:06.000] [Error] Error: connection failed',
-      '[+00:07.000] [Stop] {"durationMs":7000,"totalEvents":5}',
-    ].join('\n');
-
-    const syntheticScreenshot = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10]);
-
-    const zipFiles = {
-      'log.txt': strToU8(syntheticLogText),
-      'screenshots/screen_001.jpg': syntheticScreenshot,
-    };
-
-    const zipBytes = zipSync(zipFiles);
-    expect(zipBytes).toBeInstanceOf(Uint8Array);
-    expect(zipBytes.length).toBeGreaterThan(0);
-
-    const unzipped = unzipSync(zipBytes);
-    expect(unzipped['log.txt']).toBeDefined();
-    expect(unzipped['screenshots/screen_001.jpg']).toBeDefined();
-    expect(unzipped['trace.json']).toBeUndefined();
-
-    const readText = strFromU8(unzipped['log.txt']);
-    expect(readText).toContain('[Click]');
-    expect(readText).toContain('[Api_Request]');
-    expect(readText).toContain('[Api_Response]');
-    expect(readText).toContain('[Screenshot]');
-    expect(readText).toContain('[Error]');
-    expect(readText).toContain('status: Ok');
-    expect(readText).not.toContain('[CLICK]');
-    expect(readText).not.toContain('[API_REQ]');
-  });
-
   test('formats version with v prefix in zip filename', () => {
     const appVersion = '0.1.3';
     const vVersion = appVersion.startsWith('v') ? appVersion : `v${appVersion}`;

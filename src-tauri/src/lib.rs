@@ -1,6 +1,7 @@
 mod commands;
 mod crypto;
 mod files;
+mod media_validator;
 mod notifications;
 mod ssl;
 mod state;
@@ -31,8 +32,6 @@ pub fn run() {
 
     let builder = builder
         .plugin(tauri_plugin_deep_link::init())
-        .plugin(tauri_plugin_upload::init())
-        .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_os::init())
         .plugin(tauri_plugin_notifications::init())
@@ -40,7 +39,6 @@ pub fn run() {
 
     #[cfg(any(target_os = "android", target_os = "ios"))]
     let builder = builder
-        .plugin(tauri_plugin_biometric::init())
         .plugin(tauri_plugin_barcode_scanner::init());
 
     #[cfg(target_os = "ios")]
@@ -163,6 +161,7 @@ pub fn run() {
             files::write_file_string,
             files::write_file_bytes,
             files::save_trace_zip,
+            files::save_trace_archive,
             files::save_temp_media,
             files::prepare_video_for_preview,
             files::crop_video_note,
@@ -170,6 +169,9 @@ pub fn run() {
             files::fetch_url_text,
             files::fetch_url_bytes,
             files::download_to_path,
+            media_validator::validate_media_batch,
+            media_validator::sanitize_mp4_edit_list,
+            media_validator::calculate_ogg_crc,
             stores::accounts_get,
             stores::accounts_add,
             stores::account_get,

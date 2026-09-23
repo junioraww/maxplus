@@ -7,13 +7,7 @@
     "core:default",
     "opener:default",
     "dialog:default",
-    "upload:default",
-    "upload:allow-download",
     "notifications:default",
-    {
-      "identifier": "http:default",
-      "allow": [{ "url": "https://**" }]
-    },
     "deep-link:default"
   ]
 }

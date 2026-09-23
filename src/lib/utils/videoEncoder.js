@@ -1,5 +1,16 @@
 import { Muxer, ArrayBufferTarget } from 'mp4-muxer';
-import { sanitizeMp4EditList } from './mediaValidator.js';
+
+function sanitizeMp4EditList(input) {
+  const bytes = input instanceof Uint8Array ? input : new Uint8Array(input);
+  for (let i = 0; i <= bytes.length - 4; i++) {
+    if (bytes[i] === 0x65 && bytes[i + 1] === 0x64 && bytes[i + 2] === 0x74 && bytes[i + 3] === 0x73) {
+      bytes[i] = 0x66;
+      bytes[i + 1] = 0x72;
+      bytes[i + 2] = 0x65;
+      bytes[i + 3] = 0x65;
+    }
+  }
+}
 
 export async function cropVideoToMp4(videoEl, options = {}) {
   const {

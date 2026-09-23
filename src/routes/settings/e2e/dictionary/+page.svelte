@@ -1,7 +1,6 @@
 <script>
-  import { download as getFile } from '@tauri-apps/plugin-upload';
   import { appCacheDir, join } from '@tauri-apps/api/path';
-  import { invoke } from "@tauri-apps/api/core";
+  import { invoke, Channel } from "@tauri-apps/api/core";
   import { fade, fly, slide } from "svelte/transition";
   import { goto } from "$app/navigation";
   import { page } from "$app/stores";
@@ -34,14 +33,17 @@
     const filePath = await join(cacheDir, 'raw.txt');
 
     try {
-      const result = await getFile(
-        entry,
-        filePath,
-        ({ progress, total }) => {
-          status.total += progress;
-          status.perc = Math.round(status.total / total * 100);
-        }, { 'Content-Type': 'text/plain' }
-      );
+      const onProgress = new Channel();
+      onProgress.onmessage = ({ progress, total }) => {
+        status.total = progress;
+        status.perc = total > 0 ? Math.round(progress / total * 100) : 0;
+      };
+
+      await invoke("download_to_path", {
+        url: entry,
+        path: filePath,
+        onProgress,
+      });
 
       const text = await invoke("read_file", { path: filePath });
 

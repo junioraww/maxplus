@@ -1,4 +1,19 @@
-import { calculateOggCrc } from './mediaValidator.js';
+const OGG_CRC_TABLE = new Uint32Array(256);
+for (let i = 0; i < 256; i++) {
+  let r = i << 24;
+  for (let j = 0; j < 8; j++) {
+    r = (r & 0x80000000) ? ((r << 1) ^ 0x04c11db7) : (r << 1);
+  }
+  OGG_CRC_TABLE[i] = r >>> 0;
+}
+
+export function calculateOggCrc(data, offset = 0, length = data.length) {
+  let crc = 0;
+  for (let i = offset; i < offset + length; i++) {
+    crc = ((crc << 8) ^ OGG_CRC_TABLE[((crc >>> 24) ^ data[i]) & 0xff]) >>> 0;
+  }
+  return crc;
+}
 
 export function createOggPage(headerType, granulePos, serial, sequence, packets) {
   let totalSegments = 0;
