@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import * as fflate from 'fflate';
+import { zipSync, unzipSync, strToU8, strFromU8 } from '../src/lib/utils/zip.js';
 import { sanitizeData } from '../src/lib/services/trace.js';
 
 test.describe('Trace system sensitive data sanitization', () => {
@@ -118,20 +118,20 @@ test.describe('Trace archive packaging and structure', () => {
     const syntheticScreenshot = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10]);
 
     const zipFiles = {
-      'log.txt': fflate.strToU8(syntheticLogText),
+      'log.txt': strToU8(syntheticLogText),
       'screenshots/screen_001.jpg': syntheticScreenshot,
     };
 
-    const zipBytes = fflate.zipSync(zipFiles, { level: 6 });
+    const zipBytes = zipSync(zipFiles);
     expect(zipBytes).toBeInstanceOf(Uint8Array);
     expect(zipBytes.length).toBeGreaterThan(0);
 
-    const unzipped = fflate.unzipSync(zipBytes);
+    const unzipped = unzipSync(zipBytes);
     expect(unzipped['log.txt']).toBeDefined();
     expect(unzipped['screenshots/screen_001.jpg']).toBeDefined();
     expect(unzipped['trace.json']).toBeUndefined();
 
-    const readText = fflate.strFromU8(unzipped['log.txt']);
+    const readText = strFromU8(unzipped['log.txt']);
     expect(readText).toContain('[Click]');
     expect(readText).toContain('[Api_Request]');
     expect(readText).toContain('[Api_Response]');
