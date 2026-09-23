@@ -22,6 +22,22 @@ fn unwrap_media_source(raw: &str) -> (Option<String>, Option<String>) {
     if s.starts_with("http://asset.localhost/") {
         let path = s.trim_start_matches("http://asset.localhost/");
         let path = urlencoding::decode(path).map(|c| c.into_owned()).unwrap_or_else(|_| path.to_string());
+        #[cfg(not(target_os = "windows"))]
+        let path = if path.starts_with('/') { path } else { format!("/{}", path) };
+        return (Some(path), None);
+    }
+    if s.starts_with("asset://localhost/") {
+        let path = s.trim_start_matches("asset://localhost/");
+        let path = urlencoding::decode(path).map(|c| c.into_owned()).unwrap_or_else(|_| path.to_string());
+        #[cfg(not(target_os = "windows"))]
+        let path = if path.starts_with('/') { path } else { format!("/{}", path) };
+        return (Some(path), None);
+    }
+    if s.starts_with("asset://") {
+        let path = s.trim_start_matches("asset://");
+        let path = urlencoding::decode(path).map(|c| c.into_owned()).unwrap_or_else(|_| path.to_string());
+        #[cfg(not(target_os = "windows"))]
+        let path = if path.starts_with('/') { path } else { format!("/{}", path) };
         return (Some(path), None);
     }
     if s.starts_with('/') {
@@ -244,6 +260,7 @@ pub async fn upload(
     token: Option<String>,
     mime: Option<String>,
     video_type: Option<i64>,
+    file_name: Option<String>,
 ) -> Result<serde_json::Value, String> {
     use tokio::fs::File;
 
@@ -277,16 +294,24 @@ pub async fn upload(
         tokio::fs::File::from_std(std_file)
     };
 
+    let upload_name = file_name.unwrap_or_else(|| {
+        std::path::Path::new(&effective_path)
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("file")
+            .to_string()
+    });
+
     match attach_type.as_str() {
-        "PHOTO" => Ok(state.client.upload_photo(upload_url, file, effective_path, mime).await),
+        "PHOTO" => Ok(state.client.upload_photo(upload_url, file, upload_name, mime).await),
         "VIDEO" | "AUDIO" => {
             let video_id = video_id.ok_or("No video_id")?;
             let token = token.ok_or("No token")?;
-            Ok(state.client.upload_video(upload_url, video_id, token, file, effective_path).await)
+            Ok(state.client.upload_video(upload_url, video_id, token, file, upload_name).await)
         }
         "FILE" => {
             let file_id = file_id.ok_or("No file_id")?;
-            Ok(state.client.upload_file(upload_url, file_id, file, effective_path).await)
+            Ok(state.client.upload_file(upload_url, file_id, file, upload_name).await)
         }
         _ => Err("Wrong type".into()),
     }

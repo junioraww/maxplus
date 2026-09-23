@@ -16,12 +16,25 @@ fn handle_local_file(request: tiny_http::Request, mut path: &str) {
     if let Some(stripped) = path.strip_prefix("file://") {
         path = stripped;
     }
+    let fixed_path;
+    let path = if !path.starts_with('/') && !path.contains("://") && !path.starts_with('\\') {
+        let candidate = format!("/{}", path);
+        if std::path::Path::new(&candidate).exists() {
+            fixed_path = candidate;
+            &fixed_path
+        } else {
+            path
+        }
+    } else {
+        path
+    };
     use std::fs::File;
     use std::io::{Seek, SeekFrom};
 
     let mut file = match File::open(path) {
         Ok(f) => f,
-        Err(_) => {
+        Err(e) => {
+            eprintln!("[VideoProxy] File Not Found: {} (error: {})", path, e);
             let _ = request.respond(Response::from_string("File Not Found").with_status_code(404));
             return;
         }
@@ -60,6 +73,8 @@ fn handle_local_file(request: tiny_http::Request, mut path: &str) {
             let _ = file.seek(SeekFrom::Start(0));
         }
     }
+
+    println!("[VideoProxy] Serving local file: {}, mime: {}, size: {}", path, mime, file_len);
 
     let mut range_header = None;
     for h in request.headers() {
@@ -176,6 +191,8 @@ fn handle_request(request: tiny_http::Request, client: &reqwest::blocking::Clien
         }
     };
 
+    println!("[VideoProxy] Incoming request raw_url: {}, decoded: {}", raw_url, url);
+
     if url.starts_with('/') {
         handle_local_file(request, &url);
         return;
@@ -184,15 +201,33 @@ fn handle_request(request: tiny_http::Request, client: &reqwest::blocking::Clien
         handle_local_file(request, local_path);
         return;
     }
-    if let Some(asset_path) = url.strip_prefix("asset://localhost/") {
-        let decoded = urlencoding::decode(asset_path).unwrap_or(std::borrow::Cow::Borrowed(asset_path));
-        handle_local_file(request, &decoded);
+    if let Some(asset_path) = url.strip_prefix("asset://") {
+        let trimmed = asset_path.strip_prefix("localhost/").unwrap_or(asset_path);
+        let decoded = urlencoding::decode(trimmed).unwrap_or(std::borrow::Cow::Borrowed(trimmed));
+        let path = if !decoded.starts_with('/') && !decoded.contains("://") {
+            format!("/{}", decoded)
+        } else {
+            decoded.into_owned()
+        };
+        handle_local_file(request, &path);
         return;
     }
     if let Some(asset_path) = url.strip_prefix("http://asset.localhost/") {
         let decoded = urlencoding::decode(asset_path).unwrap_or(std::borrow::Cow::Borrowed(asset_path));
-        handle_local_file(request, &decoded);
+        let path = if !decoded.starts_with('/') && !decoded.contains("://") {
+            format!("/{}", decoded)
+        } else {
+            decoded.into_owned()
+        };
+        handle_local_file(request, &path);
         return;
+    }
+    if !url.starts_with("http://") && !url.starts_with("https://") {
+        let candidate = format!("/{}", url.trim_start_matches('/'));
+        if std::path::Path::new(&candidate).exists() {
+            handle_local_file(request, &candidate);
+            return;
+        }
     }
 
     if url.starts_with("http://") || url.starts_with("https://") {

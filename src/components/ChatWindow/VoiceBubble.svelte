@@ -44,7 +44,7 @@
   $: transcription = $transcriptions[mId];
 
   let fetchedUrl = null;
-  $: rawUrl = fetchedUrl || attach.localPath || attach.fileUrl || attach.url || attach.baseUrl || null;
+  $: rawUrl = fetchedUrl || attach.localPath || (!attach.isEncryptedMedia ? (attach.fileUrl || attach.url || attach.baseUrl) : null) || null;
 
   let mediaUrl = null;
   $: mediaUrl = rawUrl ? getProxiedMediaUrl(rawUrl) : null;
@@ -59,6 +59,7 @@
       mediaUrl = resolved;
       return resolved;
     }
+    if (attach.isEncryptedMedia) return null;
     const rawFallback = attach.fileUrl || attach.url || attach.baseUrl;
     if (rawFallback) {
       if (rawFallback.startsWith('http://') || rawFallback.startsWith('https://')) {

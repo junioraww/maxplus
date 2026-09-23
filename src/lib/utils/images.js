@@ -83,18 +83,31 @@ export function getProxiedMediaUrl(src) {
     ) {
         return src;
     }
-    if (src.startsWith("asset://localhost/")) {
-        const rawPath = src.slice("asset://localhost/".length);
-        const decoded = decodeURIComponent(rawPath);
+    if (src.startsWith("asset://")) {
+        let rawPath = src.slice("asset://".length);
+        if (rawPath.startsWith("localhost/")) {
+            rawPath = rawPath.slice("localhost/".length);
+        }
+        let decoded = decodeURIComponent(rawPath);
+        if (!decoded.startsWith("/") && !decoded.includes("://") && !/^[a-zA-Z]:/.test(decoded)) {
+            decoded = "/" + decoded;
+        }
         return `http://127.0.0.1:11447/${encodeURIComponent(decoded)}`;
     }
     if (src.startsWith("http://asset.localhost/")) {
         const rawPath = src.slice("http://asset.localhost/".length);
-        const decoded = decodeURIComponent(rawPath);
+        let decoded = decodeURIComponent(rawPath);
+        if (!decoded.startsWith("/") && !decoded.includes("://") && !/^[a-zA-Z]:/.test(decoded)) {
+            decoded = "/" + decoded;
+        }
         return `http://127.0.0.1:11447/${encodeURIComponent(decoded)}`;
     }
     if (src.startsWith("http://") || src.startsWith("https://") || src.startsWith("/") || src.startsWith("file://")) {
-        return `http://127.0.0.1:11447/${encodeURIComponent(src)}`;
+        let clean = src;
+        if (clean.startsWith("file://")) {
+            clean = clean.slice("file://".length);
+        }
+        return `http://127.0.0.1:11447/${encodeURIComponent(clean)}`;
     }
     return src;
 }

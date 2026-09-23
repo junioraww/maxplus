@@ -5,6 +5,7 @@
   import { showAlert } from '$lib/utils/alert';
   import { getProxiedMediaUrl } from '$lib/utils/images';
   import API from '$lib/stores/api';
+  import { getCurrentAccount } from '$lib/stores/accounts';
   import {
     activeMedia,
     trackSettings,
@@ -125,6 +126,42 @@
       return toPlayableUrl(fetchedUrl);
     }
     if (attach.localPath) return toPlayableUrl(attach.localPath);
+    if (attach.isEncryptedMedia) {
+      const fid = attach.fileId || attach.encryptedAttach?.fileId || attach.id;
+      if (fid) {
+        try {
+          const account = await getCurrentAccount().catch(() => null);
+          const accountId = Number(account?.id || 0);
+          const cached = await invoke("get_cached_file", {
+            account: accountId,
+            src: `enc_media_${fid}`
+          }).catch(() => null);
+          if (cached) {
+            fetchedUrl = cached;
+            attach.localPath = cached;
+            return toPlayableUrl(cached);
+          }
+          const fileRes = await $API.getFileById(chatId, messageId, fid);
+          if (fileRes?.url) {
+            const cachedPath = await invoke("cache_encrypted_media", {
+              account: accountId,
+              chatId: Number(chatId || 0),
+              fileId: Number(fid),
+              src: fileRes.url,
+              password: null,
+            });
+            if (cachedPath) {
+              fetchedUrl = cachedPath;
+              attach.localPath = cachedPath;
+              return toPlayableUrl(cachedPath);
+            }
+          }
+        } catch (e) {
+          console.error(e);
+        }
+      }
+      return null;
+    }
     const vId = attach.videoId ?? attach.id ?? attach.video_id ?? 0;
     const token = attach.videoToken ?? attach.token ?? null;
     const cacheKey = `video_note_${chatId ?? 0}_${messageId ?? 0}_${vId || '0'}`;

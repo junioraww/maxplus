@@ -23,6 +23,8 @@
   import { openVideoCropModal, closeVideoCropModal } from "$lib/stores/videoCrop.js";
   import { encodeAudioBufferToOggOpus, convertAudioBlobToOggOpus } from "$lib/utils/audioEncoder.js";
   import { Mp4Encoder, isWebCodecsMp4Available } from "$lib/utils/mp4Encoder.js";
+  import { encryptMediaAttachment } from "$lib/crypto/messages.js";
+  import { getCurrentAccount } from "$lib/stores/accounts.js";
 
   export let replyTo;
   export let scrollElement;
@@ -32,6 +34,7 @@
   export let chatSettings;
   export let botCommands = [];
   export let editingMessage = null;
+  export let decodedMessages = null;
 
   let prevEditingId = null;
   $: if (editingMessage && editingMessage.id !== prevEditingId) {
@@ -192,6 +195,39 @@
     }
   }
 
+  async function prepareAndUploadAttach(attach) {
+    const settings = get(chatSettings) || {};
+    const hasSession = Boolean(settings?.keys?.current || settings?.session);
+    const password = settings?.password;
+    const obf = settings?.obfs || (hasSession || password ? "zh" : null);
+
+    if (hasSession || password || obf) {
+      const account = await getCurrentAccount();
+      const { uploadAttach, mediaDescriptor } = await encryptMediaAttachment({
+        account: Number(account?.id || 0),
+        chatId: Number(chat.id),
+        attach,
+        password,
+      });
+      const result = await $API.uploadAttachment(uploadAttach);
+      if (result) {
+        result.localPath = attach.path || attach.localPath;
+        if (result.fileId) {
+          invoke("register_media_cache", {
+            account: Number(account?.id || 0),
+            chatId: Number(chat.id),
+            fileId: Number(result.fileId),
+            localPath: result.localPath,
+          }).catch(() => {});
+        }
+      }
+      return { uploaded: result, mediaDescriptor };
+    } else {
+      const result = await $API.uploadAttachment(attach);
+      return { uploaded: result, mediaDescriptor: null };
+    }
+  }
+
   async function onSend(event) {
     if (!newMessage.trim() && !attaches.length) return;
     const textToSend = newMessage;
@@ -267,10 +303,14 @@
     const _replyTo = replyTo;
     replyTo = null;
 
+    let mediaDescriptor = null;
     for (const attach of attaches) {
-      const result = await $API.uploadAttachment(attach);
-      if (result) {
-        _attaches.push(result);
+      const { uploaded, mediaDescriptor: desc } = await prepareAndUploadAttach(attach);
+      if (uploaded) {
+        _attaches.push(uploaded);
+        if (desc && !mediaDescriptor) {
+          mediaDescriptor = desc;
+        }
         attaches.splice(attaches.indexOf(attach), 1);
       } else alert("Не удалось загрузить!\n" + JSON.stringify(attach));
     }
@@ -289,6 +329,9 @@
         _replyTo,
         _attaches,
         _elements,
+        false,
+        mediaDescriptor,
+        decodedMessages
       );
     } catch (e) {
       console.error(e);
@@ -524,7 +567,7 @@
     scrollToBottom(scrollElement, false);
 
     try {
-      const uploaded = await $API.uploadAttachment(attachItem);
+      const { uploaded, mediaDescriptor } = await prepareAndUploadAttach(attachItem);
       if (uploaded) {
         messages.update(msgs => msgs.filter(m => m.id !== tempId));
         await sendMessage(
@@ -535,6 +578,8 @@
           replyTo,
           [uploaded],
           [],
+          false,
+          mediaDescriptor
         );
         replyTo = null;
         await tick();
@@ -1121,10 +1166,10 @@
     scrollToBottom(scrollElement, false);
 
     try {
-      const uploaded = await $API.uploadAttachment(attachItem);
+      const { uploaded, mediaDescriptor } = await prepareAndUploadAttach(attachItem);
       if (uploaded) {
         messages.update(msgs => msgs.filter(m => m.id !== tempId));
-        await sendMessage(chat, chatSettings, messages, '', replyTo, [uploaded], []);
+        await sendMessage(chat, chatSettings, messages, '', replyTo, [uploaded], [], false, mediaDescriptor);
         replyTo = null;
         await tick();
         scrollToBottom(scrollElement, false);
@@ -1320,7 +1365,7 @@
     scrollToBottom(scrollElement, false);
 
     try {
-      const uploaded = await $API.uploadAttachment(attachItem);
+      const { uploaded, mediaDescriptor } = await prepareAndUploadAttach(attachItem);
       if (uploaded) {
         messages.update(msgs => msgs.filter(m => m.id !== tempId2));
         await sendMessage(
@@ -1331,6 +1376,8 @@
           replyTo,
           [uploaded],
           [],
+          false,
+          mediaDescriptor
         );
         replyTo = null;
         await tick();
@@ -1461,10 +1508,10 @@
     }]);
     scrollToBottom(scrollElement, false);
     try {
-      const uploaded = await $API.uploadAttachment(attachItem);
+      const { uploaded, mediaDescriptor } = await prepareAndUploadAttach(attachItem);
       if (uploaded) {
         messages.update(msgs => msgs.filter(m => m.id !== tempId));
-        await sendMessage(chat, chatSettings, messages, '', replyTo, [uploaded], []);
+        await sendMessage(chat, chatSettings, messages, '', replyTo, [uploaded], [], false, mediaDescriptor);
         replyTo = null;
         await tick();
         scrollToBottom(scrollElement, false);

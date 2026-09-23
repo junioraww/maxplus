@@ -4,7 +4,20 @@ use chacha20poly1305::{
     ChaCha20Poly1305, Key, Nonce,
 };
 
+use std::collections::HashMap;
+use std::sync::{LazyLock, RwLock};
+
+static KEY_CACHE: LazyLock<RwLock<HashMap<(String, Vec<u8>), [u8; 32]>>> =
+    LazyLock::new(|| RwLock::new(HashMap::new()));
+
 pub fn derive_key(password: &str, salt: &[u8]) -> Result<[u8; 32], String> {
+    let cache_key = (password.to_string(), salt.to_vec());
+    if let Ok(guard) = KEY_CACHE.read() {
+        if let Some(cached_key) = guard.get(&cache_key) {
+            return Ok(*cached_key);
+        }
+    }
+
     let params = Params::new(19456, 2, 1, Some(32)).map_err(|e| e.to_string())?;
     let argon2 = Argon2::new(Algorithm::Argon2id, Version::V0x13, params);
 
@@ -12,6 +25,10 @@ pub fn derive_key(password: &str, salt: &[u8]) -> Result<[u8; 32], String> {
     argon2
         .hash_password_into(password.as_bytes(), salt, &mut key)
         .map_err(|e| e.to_string())?;
+
+    if let Ok(mut guard) = KEY_CACHE.write() {
+        guard.insert(cache_key, key);
+    }
 
     Ok(key)
 }

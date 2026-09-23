@@ -4,6 +4,7 @@
   import { dict } from '$lib/crypto/text-codec';
   import API from "$lib/stores/api";
   import { isChatMuted } from "$lib/utils/notifications";
+  import { autoDownloadEncryptedMedia } from "$lib/stores/e2eSettings.js";
 
   export let chat;
   export let messages;
@@ -202,6 +203,16 @@
           >
             { $chatSettings.reader ? "Включить" : "Отключить" }
           </button>
+      </div>
+      <div class="row">
+        <div class="row-title">Автозагрузка зашифрованных медиа</div>
+        <button
+          class="row-action"
+          class:active={$autoDownloadEncryptedMedia}
+          on:click={() => autoDownloadEncryptedMedia.toggle()}
+        >
+          { $autoDownloadEncryptedMedia ? "Включено" : "Отключено" }
+        </button>
       </div>
       <div class="row">
         <div class="row-title">Уведомления</div>
