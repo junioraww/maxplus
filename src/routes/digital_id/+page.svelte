@@ -1,13 +1,86 @@
 <script>
-  import { currentUser, currentUserDetails } from "$lib/stores/api.js";
-  import { openDigitalIdApp, openSferumApp } from "$lib/stores/webapp.js";
+  import { onMount, onDestroy } from "svelte";
+  import API, { currentUser, currentUserDetails } from "$lib/stores/api.js";
+  import { openDigitalIdApp, openSferumApp, lastClosedMiniApp } from "$lib/stores/webapp.js";
+  import { fetchDigitalIdProfile, deleteDigitalIdProfile, DOCUMENT_TITLES, resetDigitalIdAuth } from "$lib/services/digitalId.js";
   import Avatar from "$components/main/Avatar.svelte";
   import ConfirmModal from "$components/main/ConfirmModal.svelte";
 
   let loading = false;
+  let initialLoading = true;
   let error = null;
   let showUnbindConfirm = false;
   let isLinked = false;
+  let digitalProfile = null;
+  let documents = [];
+  let cards = [];
+  let toastMessage = "";
+  let toastTimer = null;
+  let unsubscribeClosed = null;
+
+  function showToast(msg) {
+    if (toastTimer) clearTimeout(toastTimer);
+    toastMessage = msg;
+    toastTimer = setTimeout(() => {
+      toastMessage = "";
+    }, 2500);
+  }
+
+  function getDigitalIdBotId() {
+    try {
+      const stored = localStorage.getItem("max_app_digital_id");
+      return stored ? Number(stored) : 8250447;
+    } catch {
+      return 8250447;
+    }
+  }
+
+  async function loadData(showSpinner = false) {
+    if (showSpinner) {
+      loading = true;
+      resetDigitalIdAuth();
+    }
+    error = null;
+    const botId = getDigitalIdBotId();
+    try {
+      const result = await fetchDigitalIdProfile($API, $currentUser, botId);
+      isLinked = !!result.isLinked;
+      digitalProfile = result.profile;
+      documents = result.documents || [];
+      cards = result.cards || [];
+      if (result.error && !isLinked) {
+        error = result.error;
+      }
+    } catch (e) {
+      if (!isLinked) {
+        error = e?.message || "Ошибка загрузки Цифрового ID";
+      }
+    } finally {
+      loading = false;
+      initialLoading = false;
+    }
+  }
+
+  onMount(() => {
+    loadData(true);
+    unsubscribeClosed = lastClosedMiniApp.subscribe((closed) => {
+      if (!closed) return;
+      const botId = getDigitalIdBotId();
+      if (
+        closed.botId === botId ||
+        closed.title === "Цифровой ID" ||
+        (typeof closed.url === "string" && closed.url.includes("digital-id"))
+      ) {
+        resetDigitalIdAuth();
+        loadData(false);
+      }
+    });
+  });
+
+  onDestroy(() => {
+    if (unsubscribeClosed) unsubscribeClosed();
+    if (toastTimer) clearTimeout(toastTimer);
+  });
 
   async function handleOpenDigitalId() {
     loading = true;
@@ -37,31 +110,71 @@
     showUnbindConfirm = true;
   }
 
-  function confirmUnbind() {
+  async function confirmUnbind() {
     showUnbindConfirm = false;
+    loading = true;
+    const botId = getDigitalIdBotId();
     try {
-      localStorage.removeItem("max_app_digital_id");
-      localStorage.removeItem("digital_id_biometry_token");
+      await deleteDigitalIdProfile($API, $currentUser, botId);
       isLinked = false;
-      alert("Цифровой ID отвязан");
+      digitalProfile = null;
+      documents = [];
+      cards = [];
+      showToast("Цифровой ID отвязан");
     } catch {
-      alert("Ошибка при отвязке");
+      showToast("Ошибка при отвязке");
+    } finally {
+      loading = false;
     }
   }
 
-  $: userName =
+  $: verifiedName = digitalProfile
+    ? `${digitalProfile.lastName || ""} ${digitalProfile.firstName || ""} ${digitalProfile.middleName || ""}`.trim()
+    : "";
+
+  $: userName = verifiedName || (
     $currentUserDetails?.names?.[0]
       ? `${$currentUserDetails.names[0].firstName || ""} ${$currentUserDetails.names[0].lastName || ""}`.trim()
-      : "Пользователь";
+      : "Пользователь"
+  );
 
   $: userPhone = $currentUserDetails?.phone
     ? `+${$currentUserDetails.phone}`
     : "";
+
+  function getDocDescription(doc) {
+    if (!doc || !doc.fields) return isLinked ? "Подтвержден" : "Требуется привязка ЕСИА";
+    const parts = [];
+    if (doc.fields.series) parts.push(`Серия ${doc.fields.series}`);
+    if (doc.fields.number) parts.push(`№ ${doc.fields.number}`);
+    return parts.length ? parts.join(" ") : "Подтвержден";
+  }
 </script>
 
 <div class="digital-id-page">
   <header class="header">
+    <div class="header-placeholder"></div>
     <h3>Цифровой ID</h3>
+    <button
+      class="icon-btn refresh-btn"
+      on:click={() => loadData(true)}
+      disabled={loading}
+      title="Обновить"
+    >
+      <svg
+        class:spin={loading}
+        width="18"
+        height="18"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      >
+        <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/>
+      </svg>
+    </button>
   </header>
 
   <div class="content-scroll">
@@ -114,12 +227,48 @@
         </button>
 
         {#if isLinked}
-          <button class="secondary-btn danger-btn" on:click={handleUnbindDigitalId}>
+          <button class="secondary-btn danger-btn" on:click={handleUnbindDigitalId} disabled={loading}>
             Отвязать Цифровой ID
           </button>
         {/if}
       </div>
     </div>
+
+    {#if isLinked && digitalProfile && (digitalProfile.snils || digitalProfile.inn || digitalProfile.birthDate || digitalProfile.address)}
+      <div class="section-title">Личные данные</div>
+      <div class="card profile-info-card">
+        {#if digitalProfile.snils}
+          <div class="info-row">
+            <span class="info-label">СНИЛС</span>
+            <span class="info-value">{digitalProfile.snils}</span>
+          </div>
+        {/if}
+        {#if digitalProfile.inn}
+          <div class="info-row">
+            <span class="info-label">ИНН</span>
+            <span class="info-value">{digitalProfile.inn}</span>
+          </div>
+        {/if}
+        {#if digitalProfile.birthDate}
+          <div class="info-row">
+            <span class="info-label">Дата рождения</span>
+            <span class="info-value">{digitalProfile.birthDate}</span>
+          </div>
+        {/if}
+        {#if digitalProfile.birthPlace}
+          <div class="info-row">
+            <span class="info-label">Место рождения</span>
+            <span class="info-value">{digitalProfile.birthPlace}</span>
+          </div>
+        {/if}
+        {#if digitalProfile.address}
+          <div class="info-row">
+            <span class="info-label">Регистрация</span>
+            <span class="info-value">{digitalProfile.address}</span>
+          </div>
+        {/if}
+      </div>
+    {/if}
 
     <div class="section-title">Сервисы</div>
     <div class="card service-card" on:click={handleOpenSferum}>
@@ -142,51 +291,93 @@
 
     <div class="section-title">Электронные документы</div>
     <div class="card docs-list">
-      <div class="doc-item">
-        <div class="doc-icon">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <rect x="3" y="4" width="18" height="16" rx="2"></rect>
-            <line x1="7" y1="8" x2="17" y2="8"></line>
-            <line x1="7" y1="12" x2="17" y2="12"></line>
-            <line x1="7" y1="16" x2="13" y2="16"></line>
-          </svg>
+      {#if isLinked && documents.length > 0}
+        {#each documents as doc, idx}
+          {#if idx > 0}
+            <div class="doc-divider"></div>
+          {/if}
+          <div class="doc-item">
+            <div class="doc-icon">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="3" y="4" width="18" height="16" rx="2"></rect>
+                <line x1="7" y1="8" x2="17" y2="8"></line>
+                <line x1="7" y1="12" x2="17" y2="12"></line>
+                <line x1="7" y1="16" x2="13" y2="16"></line>
+              </svg>
+            </div>
+            <div class="doc-details">
+              <div class="doc-name">{DOCUMENT_TITLES[doc.type] || doc.type}</div>
+              <div class="doc-status">{getDocDescription(doc)}</div>
+            </div>
+          </div>
+        {/each}
+      {:else}
+        <div class="doc-item">
+          <div class="doc-icon">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3" y="4" width="18" height="16" rx="2"></rect>
+              <line x1="7" y1="8" x2="17" y2="8"></line>
+              <line x1="7" y1="12" x2="17" y2="12"></line>
+              <line x1="7" y1="16" x2="13" y2="16"></line>
+            </svg>
+          </div>
+          <div class="doc-details">
+            <div class="doc-name">Паспорт гражданина РФ</div>
+            <div class="doc-status">{isLinked ? "Подтвержден" : "Требуется привязка ЕСИА"}</div>
+          </div>
         </div>
-        <div class="doc-details">
-          <div class="doc-name">Паспорт гражданина РФ</div>
-          <div class="doc-status">{isLinked ? "Подтвержден" : "Требуется привязка ЕСИА"}</div>
-        </div>
-      </div>
 
-      <div class="doc-divider"></div>
+        <div class="doc-divider"></div>
 
-      <div class="doc-item">
-        <div class="doc-icon">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <rect x="2" y="5" width="20" height="14" rx="2"></rect>
-            <line x1="2" y1="10" x2="22" y2="10"></line>
-          </svg>
+        <div class="doc-item">
+          <div class="doc-icon">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="2" y="5" width="20" height="14" rx="2"></rect>
+              <line x1="2" y1="10" x2="22" y2="10"></line>
+            </svg>
+          </div>
+          <div class="doc-details">
+            <div class="doc-name">СНИЛС и ИНН</div>
+            <div class="doc-status">{isLinked ? "Синхронизировано" : "Требуется привязка ЕСИА"}</div>
+          </div>
         </div>
-        <div class="doc-details">
-          <div class="doc-name">СНИЛС и ИНН</div>
-          <div class="doc-status">{isLinked ? "Синхронизировано" : "Требуется привязка ЕСИА"}</div>
-        </div>
-      </div>
 
-      <div class="doc-divider"></div>
+        <div class="doc-divider"></div>
 
-      <div class="doc-item">
-        <div class="doc-icon">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <circle cx="12" cy="12" r="10"></circle>
-            <circle cx="12" cy="12" r="3"></circle>
-          </svg>
+        <div class="doc-item">
+          <div class="doc-icon">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="10"></circle>
+              <circle cx="12" cy="12" r="3"></circle>
+            </svg>
+          </div>
+          <div class="doc-details">
+            <div class="doc-name">Водительское удостоверение</div>
+            <div class="doc-status">{isLinked ? "Электронный документ" : "Требуется привязка ЕСИА"}</div>
+          </div>
         </div>
-        <div class="doc-details">
-          <div class="doc-name">Водительское удостоверение</div>
-          <div class="doc-status">{isLinked ? "Электронный документ" : "Требуется привязка ЕСИА"}</div>
-        </div>
-      </div>
+      {/if}
     </div>
+
+    {#if isLinked && cards.length > 0}
+      <div class="section-title">Пропуска</div>
+      <div class="card passes-card">
+        {#each cards as card, idx}
+          {#if idx > 0}
+            <div class="doc-divider"></div>
+          {/if}
+          <div class="pass-item">
+            <div class="pass-info">
+              <div class="pass-title">{card.company_name || card.companyName || "Пропуск"}</div>
+              {#if card.inn}
+                <div class="pass-subtitle">ИНН {card.inn}</div>
+              {/if}
+            </div>
+            <span class="pass-status-pill">Активен</span>
+          </div>
+        {/each}
+      </div>
+    {/if}
   </div>
 </div>
 
@@ -200,6 +391,12 @@
     on:confirm={confirmUnbind}
     on:cancel={() => (showUnbindConfirm = false)}
   />
+{/if}
+
+{#if toastMessage}
+  <div class="toast-popup">
+    {toastMessage}
+  </div>
 {/if}
 
 <style>
@@ -217,9 +414,14 @@
     height: 52px;
     display: flex;
     align-items: center;
-    justify-content: center;
+    justify-content: space-between;
+    padding: 0 16px;
     border-bottom: 1px solid rgba(255, 255, 255, 0.07);
     flex-shrink: 0;
+  }
+
+  .header-placeholder {
+    width: 32px;
   }
 
   .header h3 {
@@ -227,6 +429,43 @@
     font-size: 17px;
     font-weight: 600;
     color: #f3f4f6;
+  }
+
+  .icon-btn {
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    border: none;
+    background: transparent;
+    color: #9ca3af;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+
+  .icon-btn:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.08);
+    color: #f3f4f6;
+  }
+
+  .icon-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .spin {
+    animation: rotate 1s linear infinite;
+  }
+
+  @keyframes rotate {
+    from {
+      transform: rotate(0deg);
+    }
+    to {
+      transform: rotate(360deg);
+    }
   }
 
   .content-scroll {
@@ -358,7 +597,7 @@
     color: #f87171;
   }
 
-  .secondary-btn.danger-btn:hover {
+  .secondary-btn.danger-btn:hover:not(:disabled) {
     background: rgba(239, 68, 68, 0.1);
   }
 
@@ -370,6 +609,31 @@
     color: #6b7280;
     margin-top: 6px;
     margin-left: 4px;
+  }
+
+  .profile-info-card {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .info-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 12px;
+    font-size: 13px;
+  }
+
+  .info-label {
+    color: #9ca3af;
+    min-width: 110px;
+  }
+
+  .info-value {
+    color: #e5e7eb;
+    text-align: right;
+    word-break: break-word;
   }
 
   .service-card {
@@ -464,5 +728,59 @@
   .doc-divider {
     height: 1px;
     background: rgba(255, 255, 255, 0.06);
+  }
+
+  .passes-card {
+    padding: 8px 16px;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .pass-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 0;
+  }
+
+  .pass-info {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .pass-title {
+    font-size: 13px;
+    font-weight: 500;
+    color: #e5e7eb;
+  }
+
+  .pass-subtitle {
+    font-size: 11px;
+    color: #9ca3af;
+  }
+
+  .pass-status-pill {
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 12px;
+    background: rgba(34, 197, 94, 0.15);
+    color: #4ade80;
+  }
+
+  .toast-popup {
+    position: fixed;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(24, 24, 27, 0.95);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    color: #f3f4f6;
+    padding: 8px 16px;
+    border-radius: 8px;
+    font-size: 13px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+    z-index: 1000;
+    pointer-events: none;
   }
 </style>

@@ -153,6 +153,9 @@ export function updateBiometryTokenValue(userId, botId, token) {
   if (!token) {
     delete data.token;
     writeBiometryData(userId, botId, data);
+    try {
+      localStorage.removeItem("digital_id_biometry_token");
+    } catch {}
     return { status: "removed" };
   }
   if (token.length > 1024) {
@@ -160,5 +163,8 @@ export function updateBiometryTokenValue(userId, botId, token) {
   }
   data.token = String(token);
   writeBiometryData(userId, botId, data);
+  try {
+    localStorage.setItem("digital_id_biometry_token", String(token));
+  } catch {}
   return { status: "updated" };
 }

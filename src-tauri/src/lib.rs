@@ -84,6 +84,7 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            commands::ext_api_request,
             commands::get_system_trace_info,
             commands::get_video_secret,
             commands::init,
