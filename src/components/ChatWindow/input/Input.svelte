@@ -57,6 +57,7 @@
   let newMessage = "";
   let attaches = [];
   let elements = [];
+  let isSending = false;
   let showCommandsMenu = false;
   export let showStickerPanel = false;
   let stickerSuggestions = [];
@@ -229,7 +230,9 @@
   }
 
   async function onSend(event) {
+    if (isSending) return;
     if (!newMessage.trim() && !attaches.length) return;
+    isSending = true;
     const textToSend = newMessage;
 
     if (editingMessage) {
@@ -242,8 +245,41 @@
         if (attach._type) {
           _attaches.push(attach);
         } else {
-          const result = await $API.uploadAttachment(attach);
-          if (result) _attaches.push(result);
+          attach.uploading = true;
+          attach.progress = 5;
+          attaches = attaches;
+
+          let currentProgress = 5;
+          const progressTimer = setInterval(() => {
+            if (currentProgress < 90) {
+              currentProgress += Math.max(1, (90 - currentProgress) * 0.08);
+              attach.progress = Math.round(currentProgress);
+              attaches = attaches;
+            }
+          }, 80);
+
+          try {
+            const result = await $API.uploadAttachment(attach);
+            clearInterval(progressTimer);
+            if (result) {
+              attach.progress = 100;
+              attach.uploading = false;
+              attach.uploaded = true;
+              attaches = attaches;
+              _attaches.push(result);
+            } else {
+              attach.uploading = false;
+              attach.uploaded = false;
+              attaches = attaches;
+            }
+          } catch (e) {
+            clearInterval(progressTimer);
+            attach.uploading = false;
+            attach.uploaded = false;
+            attaches = attaches;
+            isSending = false;
+            throw e;
+          }
         }
       }
 
@@ -282,12 +318,11 @@
         console.error(e);
         showAlert(e?.message || "Не удалось отредактировать сообщение");
       } finally {
+        isSending = false;
         cancelEdit();
       }
       return;
     }
-
-    const tempId = Date.now().toString();
 
     newMessage = "";
     stickerSuggestions = [];
@@ -305,20 +340,53 @@
 
     let mediaDescriptor = null;
     for (const attach of attaches) {
-      const { uploaded, mediaDescriptor: desc } = await prepareAndUploadAttach(attach);
-      if (uploaded) {
-        _attaches.push(uploaded);
-        if (desc && !mediaDescriptor) {
-          mediaDescriptor = desc;
+      attach.uploading = true;
+      attach.progress = 5;
+      attaches = attaches;
+
+      let currentProgress = 5;
+      const progressTimer = setInterval(() => {
+        if (currentProgress < 90) {
+          currentProgress += Math.max(1, (90 - currentProgress) * 0.08);
+          attach.progress = Math.round(currentProgress);
+          attaches = attaches;
         }
-        attaches.splice(attaches.indexOf(attach), 1);
-      } else alert("Не удалось загрузить!\n" + JSON.stringify(attach));
+      }, 80);
+
+      try {
+        const { uploaded, mediaDescriptor: desc } = await prepareAndUploadAttach(attach);
+        clearInterval(progressTimer);
+
+        if (uploaded) {
+          attach.progress = 100;
+          attach.uploading = false;
+          attach.uploaded = true;
+          attaches = attaches;
+
+          _attaches.push(uploaded);
+          if (desc && !mediaDescriptor) {
+            mediaDescriptor = desc;
+          }
+        } else {
+          attach.uploading = false;
+          attach.uploaded = false;
+          attaches = attaches;
+          alert("Не удалось загрузить!\n" + JSON.stringify(attach));
+        }
+      } catch (err) {
+        clearInterval(progressTimer);
+        attach.uploading = false;
+        attach.uploaded = false;
+        attaches = attaches;
+        isSending = false;
+        throw err;
+      }
     }
 
-    if (!textToSend && !_attaches.length) return;
-
-    attaches.length = 0;
-    elements.length = 0;
+    if (!textToSend && !_attaches.length) {
+      isSending = false;
+      return;
+    }
 
     try {
       await sendMessage(
@@ -333,9 +401,12 @@
         mediaDescriptor,
         decodedMessages
       );
+      attaches = [];
+      elements.length = 0;
     } catch (e) {
       console.error(e);
     } finally {
+      isSending = false;
       await tick();
       scrollToBottom(scrollElement, false);
     }
@@ -636,6 +707,7 @@
   }
 
   function removeAttach(index) {
+    if (attaches[index]?.uploading || attaches[index]?.uploaded) return;
     attaches.splice(index, 1);
     attaches = attaches;
   }
@@ -1631,7 +1703,12 @@
     {#each attaches as attach, i}
       {@const attachType = attach.type || attach._type}
       <div class="attach-card">
-        <button class="remove" on:click={() => removeAttach(i)}>✕</button>
+        <button
+          class="remove"
+          class:hidden={attach.uploading || attach.uploaded}
+          on:click={() => removeAttach(i)}
+          aria-label="Remove attachment"
+        >✕</button>
 
         {#if attachType === "PHOTO"}
           <img src={attach.path ? convertFileSrc(attach.path) : (attach.url || attach.baseUrl)} alt="preview" />
@@ -1649,6 +1726,16 @@
             <div class="file-name">
               {attach.name || (attach.path ? attach.path.split("/").pop() : "Файл")}
             </div>
+          </div>
+        {/if}
+
+        {#if attach.uploading || attach.uploaded}
+          <div
+            class="upload-overlay"
+            style="height: {Math.max(0, Math.min(100, attach.progress ?? 0))}%;"
+          ></div>
+          <div class="upload-loader-wrap">
+            <div class="upload-loader"></div>
           </div>
         {/if}
       </div>
@@ -2400,7 +2487,52 @@
     justify-content: center;
     font-size: 11px;
     cursor: pointer;
+    z-index: 4;
+    opacity: 1;
+    transform: scale(1);
+    transition: opacity 0.2s ease, transform 0.2s ease;
+  }
+
+  .attach-card .remove.hidden {
+    opacity: 0;
+    pointer-events: none;
+    transform: scale(0.7);
+  }
+
+  .upload-overlay {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.55);
+    pointer-events: none;
+    transition: height 0.12s ease-out;
     z-index: 2;
+  }
+
+  .upload-loader-wrap {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+    z-index: 3;
+  }
+
+  .upload-loader {
+    width: 24px;
+    height: 24px;
+    border: 2.5px solid rgba(255, 255, 255, 0.25);
+    border-top-color: #fff;
+    border-radius: 50%;
+    animation: upload-spin 0.8s linear infinite;
+  }
+
+  @keyframes upload-spin {
+    to {
+      transform: rotate(360deg);
+    }
   }
 
   .file-preview {
