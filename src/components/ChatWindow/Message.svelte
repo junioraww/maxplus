@@ -66,8 +66,6 @@
   })();
   $: transcription = $transcriptions[String(msg?.id)];
 
-  let innerWidth = 0;
-
   function handleMediaClick(attach) {
     dispatch("openMedia", { attach });
   }
@@ -122,9 +120,11 @@
     msg.reactionInfo?.totalCount ||
     msg.link?.messageId;
 
+  let innerWidth = typeof window !== "undefined" ? window.innerWidth : 0;
+
   $: showAvatar =
     chat.type !== "CHANNEL" &&
-    (!isMe || innerWidth > 960) &&
+    (!isMe || innerWidth > 500) &&
     !isSystem;
 
   $: inlineKeyboardAttach = effectiveAttaches?.find(x => x._type === "INLINE_KEYBOARD");
@@ -142,6 +142,7 @@
   class:is-deleted={msg.deleted}
   class:is-sticker={isStickerOnly}
   class:is-video-note={isVideoNoteOnly}
+  class:is-channel={chat.type === "CHANNEL"}
   class:inactive={/* todo optimize */
   dropoutActiveAt && dropoutActiveAt?.msg?.id !== msg.id}
 >
@@ -428,6 +429,10 @@
     margin: 0 12px 0 9px;
   }
 
+  .indent:empty {
+    display: none;
+  }
+
   .message-bubble-container {
     display: flex;
     flex-direction: column;
@@ -537,7 +542,7 @@
     display: none;
   }
 
-  @media screen and (min-width: 961px) {
+  @media screen and (min-width: 501px) {
     .message-row.is-me:not(.is-system) {
       justify-content: flex-start;
       flex-direction: row;
@@ -560,6 +565,29 @@
     .message-row.is-me:not(.is-system) .indent {
       display: block;
     }
+  }
+
+  .message-row.is-channel:not(.is-system) {
+    justify-content: flex-start;
+  }
+
+  .message-row.is-channel:not(.is-system) .indent {
+    display: none;
+  }
+
+  .message-row.is-channel:not(.is-system) .message-bubble-container {
+    align-items: flex-start;
+    margin-left: 14px;
+  }
+
+  .message-row.is-channel:not(.is-system) .message-bubble {
+    border-radius: 16px 16px 16px 0;
+  }
+
+  .message-row.is-channel:not(.is-system) .message-bubble::before {
+    left: -10px;
+    right: inherit;
+    clip-path: path("M10 0 Q5 10 0 10 Q0 10 10 10 Z");
   }
 
   .message-row:not(.is-me, .is-system) .message-bubble {
