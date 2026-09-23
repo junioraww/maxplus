@@ -2,7 +2,6 @@ import { writable, get } from "svelte/store";
 import { invoke } from "@tauri-apps/api/core";
 import { save } from "@tauri-apps/plugin-dialog";
 import { listen } from "@tauri-apps/api/event";
-import { zipSync, strToU8 } from "../utils/zip.js";
 import { showAlert } from "../utils/alert.js";
 
 export const isTracing = writable(false);
@@ -583,70 +582,27 @@ export async function stopTraceAndExport() {
 
   const readableTimeline = formatReadableTimeline(activeEvents, activeSystemInfo, startTimeEpoch, stopTimeEpoch);
 
+  const encoder = new TextEncoder();
   const zipFiles = {
-    "log.txt": strToU8(readableTimeline),
+    "log.txt": Array.from(encoder.encode(readableTimeline)),
   };
 
   for (const s of activeScreenshots) {
-    zipFiles[`screenshots/${s.filename}`] = s.bytes;
+    zipFiles[`screenshots/${s.filename}`] = Array.from(s.bytes);
   }
 
-  let zipBytes;
+  let savedLocation = null;
   try {
-    zipBytes = zipSync(zipFiles);
+    savedLocation = await invoke("save_trace_archive", {
+      name: zipFileName,
+      files: zipFiles,
+    });
   } catch (err) {
     showAlert("Ошибка создания архива", String(err));
     return;
   }
 
-  let savedLocation = null;
-
-  try {
-    const selectedPath = await save({
-      defaultPath: zipFileName,
-      filters: [
-        {
-          name: "Trace Archive (*.zip)",
-          extensions: ["zip"],
-        },
-      ],
-    });
-
-    if (selectedPath) {
-      await invoke("write_file_bytes", {
-        path: selectedPath,
-        content: Array.from(zipBytes),
-      });
-      savedLocation = selectedPath;
-    }
-  } catch {}
-
-  if (!savedLocation) {
-    try {
-      savedLocation = await invoke("save_trace_zip", {
-        name: zipFileName,
-        bytes: Array.from(zipBytes),
-      });
-    } catch {}
+  if (savedLocation) {
+    showAlert("Трейс успешно сохранен!", savedLocation);
   }
-
-  if (!savedLocation) {
-    try {
-      const blob = new Blob([zipBytes], { type: "application/zip" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = zipFileName;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-      savedLocation = zipFileName;
-    } catch (err) {
-      showAlert("Не удалось сохранить файл", String(err));
-      return;
-    }
-  }
-
-  showAlert("Трейс успешно сохранен!", savedLocation);
 }

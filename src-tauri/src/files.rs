@@ -495,6 +495,32 @@ pub async fn save_trace_zip(
     }
 }
 
+#[tauri::command]
+pub async fn save_trace_archive(
+    app: tauri::AppHandle,
+    name: String,
+    files: HashMap<String, Vec<u8>>,
+) -> Result<String, String> {
+    let zip_bytes = tokio::task::spawn_blocking(move || -> Result<Vec<u8>, String> {
+        use std::io::{Cursor, Write};
+        let mut buffer = Cursor::new(Vec::new());
+        {
+            let mut writer = zip::ZipWriter::new(&mut buffer);
+            let options = zip::write::SimpleFileOptions::default()
+                .compression_method(zip::CompressionMethod::Deflated);
+            for (filename, content) in files {
+                writer.start_file(filename, options).map_err(|e| e.to_string())?;
+                writer.write_all(&content).map_err(|e| e.to_string())?;
+            }
+            writer.finish().map_err(|e| e.to_string())?;
+        }
+        Ok(buffer.into_inner())
+    })
+    .await
+    .map_err(|e| e.to_string())??;
+
+    save_trace_zip(app, name, zip_bytes).await
+}
 
 #[tauri::command]
 pub async fn save_temp_media(
@@ -680,13 +706,27 @@ pub async fn fetch_url_bytes(url: String) -> Result<Vec<u8>, String> {
     Ok(bytes.to_vec())
 }
 
+#[derive(Clone, serde::Serialize)]
+pub struct DownloadProgress {
+    pub progress: usize,
+    pub total: usize,
+}
+
 #[tauri::command]
-pub async fn download_to_path(url: String, path: String) -> Result<(), String> {
+pub async fn download_to_path(
+    app: tauri::AppHandle,
+    url: String,
+    path: String,
+    on_progress: tauri::ipc::Channel<DownloadProgress>,
+) -> Result<(), String> {
+    let _ = &app;
     let (local_src, remote_url) = unwrap_media_source(&url);
     if let Some(src) = local_src {
         tokio::fs::copy(&src, &path)
             .await
             .map_err(|e| e.to_string())?;
+        let len = tokio::fs::metadata(&path).await.map(|m| m.len() as usize).unwrap_or(0);
+        let _ = on_progress.send(DownloadProgress { progress: len, total: len });
         return Ok(());
     }
 
@@ -701,10 +741,37 @@ pub async fn download_to_path(url: String, path: String) -> Result<(), String> {
         return Err(format!("HTTP {}", resp.status()));
     }
 
-    let bytes = resp.bytes().await.map_err(|e| e.to_string())?;
-    tokio::fs::write(path, bytes)
-        .await
-        .map_err(|e| e.to_string())?;
+    let total = resp.content_length().unwrap_or(0) as usize;
+    let mut downloaded = 0usize;
 
+    #[cfg(target_os = "android")]
+    if path.starts_with("content://") {
+        use tauri_plugin_android_fs::AndroidFsExt;
+        let api = app.android_fs_async();
+        let uri = tauri_plugin_android_fs::FsUri::from_uri(&path);
+        let mut file = api.open_file_writable(&uri).await.map_err(|e| e.to_string())?;
+        use futures_util::StreamExt;
+        use std::io::Write;
+        let mut stream = resp.bytes_stream();
+        while let Some(chunk_res) = stream.next().await {
+            let chunk = chunk_res.map_err(|e| e.to_string())?;
+            file.write_all(&chunk).map_err(|e| e.to_string())?;
+            downloaded += chunk.len();
+            let _ = on_progress.send(DownloadProgress { progress: downloaded, total });
+        }
+        return Ok(());
+    }
+
+    use futures_util::StreamExt;
+    use tokio::io::AsyncWriteExt;
+    let mut file = tokio::fs::File::create(&path).await.map_err(|e| e.to_string())?;
+    let mut stream = resp.bytes_stream();
+    while let Some(chunk_res) = stream.next().await {
+        let chunk = chunk_res.map_err(|e| e.to_string())?;
+        file.write_all(&chunk).await.map_err(|e| e.to_string())?;
+        downloaded += chunk.len();
+        let _ = on_progress.send(DownloadProgress { progress: downloaded, total });
+    }
+    file.flush().await.map_err(|e| e.to_string())?;
     Ok(())
 }

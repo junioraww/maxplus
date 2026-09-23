@@ -9,22 +9,19 @@ import { goto } from "$app/navigation";
   import {
     platform as getPlatform
   } from "@tauri-apps/plugin-os";
-  /*import {
-    readFile
-  } from "@tauri-apps/plugin-fs";*/
-  import { invoke } from "@tauri-apps/api/core";
+  import { convertFileSrc, invoke } from "@tauri-apps/api/core";
   import {
     open
   } from "@tauri-apps/plugin-dialog";
-  import jsQR from "jsqr";
   import {
     scan,
-    Format,
     cancel,
+    Format,
     checkPermissions,
     requestPermissions,
     openAppSettings,
   } from "@tauri-apps/plugin-barcode-scanner";
+  import jsQR from "jsqr";
 
   import { set as sessionSet } from "$lib/stores/session";
   import { currentUserDetails } from "$lib/stores/api";
@@ -147,6 +144,56 @@ import { goto } from "$app/navigation";
     clearKeys();
   }
 
+  async function readQRCode(filePath) {
+    let url = "";
+    try {
+      const cleanPath = filePath.replace(/^file:\/\//, "");
+      try {
+        url = convertFileSrc(cleanPath);
+      } catch {
+        const bytes = await invoke("read_file", { path: cleanPath });
+        const blob = new Blob([new Uint8Array(bytes)]);
+        url = URL.createObjectURL(blob);
+      }
+
+      const img = new Image();
+      img.crossOrigin = "anonymous";
+      img.src = url;
+
+      await new Promise((resolve, reject) => {
+        img.onload = resolve;
+        img.onerror = reject;
+      });
+
+      const canvas = document.createElement("canvas");
+      canvas.width = img.naturalWidth || img.width;
+      canvas.height = img.naturalHeight || img.height;
+      const ctx = canvas.getContext("2d", { willReadFrequently: true });
+      if (!ctx) return null;
+      ctx.drawImage(img, 0, 0);
+
+      if (typeof window !== "undefined" && "BarcodeDetector" in window) {
+        try {
+          const detector = new window.BarcodeDetector({ formats: ["qr_code"] });
+          const barcodes = await detector.detect(canvas);
+          if (barcodes?.length > 0 && barcodes[0].rawValue) {
+            return barcodes[0].rawValue;
+          }
+        } catch {}
+      }
+
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const code = jsQR(imageData.data, imageData.width, imageData.height, {
+        inversionAttempts: "attemptBoth",
+      });
+      return code?.data || null;
+    } finally {
+      if (url.startsWith("blob:")) {
+        URL.revokeObjectURL(url);
+      }
+    }
+  }
+
   async function scanner() {
     let content = "";
 
@@ -164,19 +211,16 @@ import { goto } from "$app/navigation";
 
       if ((await checkPermissions()) !== "granted") return;
 
-      closeScanner = cancel();
-      const scanned = await scan({
-        formats: [Format.QRCode]
-      });
-
+      closeScanner = () => cancel();
+      let scanned;
       try {
-        if (!scanned.content) return;
-        content = scanned.content;
-      } catch (e) {
-        console.error(e);
+        scanned = await scan({ formats: [Format.QRCode] });
+      } finally {
+        closeScanner = null;
       }
+      if (!scanned?.content) return;
+      content = scanned.content;
     } else {
-      // TODO для мобильных: возможность выбрать фото
       const image = await open({
         multiple: false,
         directory: false,
@@ -198,37 +242,11 @@ import { goto } from "$app/navigation";
     }
 
     if (content.includes(":auth")) {
-      $API.call(1, { interactive: true }); // ping
-      $API.call(96, {}); // get smth
+      $API.call(1, { interactive: true });
+      $API.call(96, {});
       const response = await $API.call(290, { qrLink: content });
       if (response.error) alert(response.title);
     } else alert(content);
-  }
-
-  async function readQRCode(filePath) {
-    console.log(filePath);
-    const data = await invoke("read_file", { path: filePath });
-    console.log(data);
-    const blob = new Blob([new Uint8Array(data)], { type: "image/png" });
-    const url = URL.createObjectURL(blob);
-
-    const img = new Image();
-    img.src = url;
-
-    await new Promise((resolve, reject) => {
-      img.onload = resolve;
-      img.onerror = reject;
-    });
-
-    const canvas = document.createElement("canvas");
-    canvas.width = img.width;
-    canvas.height = img.height;
-    const ctx = canvas.getContext("2d");
-    ctx.drawImage(img, 0, 0);
-
-    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    const code = jsQR(imageData.data, imageData.width, imageData.height);
-    return code?.data || null;
   }
 
   onMount(async () => {

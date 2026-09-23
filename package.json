@@ -18,18 +18,12 @@
     "@choochmeque/tauri-plugin-notifications-api": "^0.5.0-rc.13",
     "@tauri-apps/api": "^2.11.1",
     "@tauri-apps/plugin-barcode-scanner": "^2.4.6",
-    "@tauri-apps/plugin-biometric": "^2.3.3",
     "@tauri-apps/plugin-dialog": "^2.7.3",
-    "@tauri-apps/plugin-http": "^2.6.0",
-    "@tauri-apps/plugin-notification": "^2.4.0",
     "@tauri-apps/plugin-opener": "^2.5.5",
     "@tauri-apps/plugin-os": "^2.3.2",
-    "@tauri-apps/plugin-stronghold": "^2.3.2",
-    "@tauri-apps/plugin-upload": "^2.4.1",
     "jsqr": "^1.4.0",
     "lottie-web": "^5.13.0",
-    "mp4-muxer": "^5.2.2",
-    "opus-recorder": "^8.0.5"
+    "mp4-muxer": "^5.2.2"
   },
   "devDependencies": {
     "@playwright/test": "^1.63.0",
