@@ -8,10 +8,27 @@ static IN_FLIGHT_CACHE: LazyLock<Mutex<HashMap<String, Arc<tokio::sync::Notify>>
 
 fn unwrap_media_source(raw: &str) -> (Option<String>, Option<String>) {
     let mut s = raw.to_string();
-    if let Some(idx) = s.find("127.0.0.1:11447/") {
-        let after = &s[idx + 16..];
-        if let Ok(dec) = urlencoding::decode(after) {
-            s = dec.into_owned();
+    if let Some(idx) = s.find("127.0.0.1:") {
+        if let Some(slash_idx) = s[idx..].find("/proxy?url=") {
+            let after = &s[idx + slash_idx + 11..];
+            if let Ok(dec) = urlencoding::decode(after) {
+                s = dec.into_owned();
+            }
+        } else if let Some(slash_idx) = s[idx..].find('/') {
+            let rest = &s[idx + slash_idx + 1..];
+            let after = if let Some(next_slash) = rest.find('/') {
+                let segment = &rest[..next_slash];
+                if segment.len() == 64 && segment.chars().all(|c| c.is_ascii_hexdigit()) {
+                    &rest[next_slash + 1..]
+                } else {
+                    rest
+                }
+            } else {
+                rest
+            };
+            if let Ok(dec) = urlencoding::decode(after) {
+                s = dec.into_owned();
+            }
         }
     } else if let Some(idx) = s.find("proxy?url=") {
         let after = &s[idx + 10..];

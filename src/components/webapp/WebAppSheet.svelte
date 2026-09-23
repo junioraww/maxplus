@@ -131,7 +131,7 @@
   function normalizeExternalUrl(raw) {
     if (!raw || typeof raw !== "string") return "";
     let clean = raw.trim();
-    if (clean.includes("127.0.0.1:11448/proxy") || clean.includes("localhost:11448/proxy")) {
+    if (clean.includes("/proxy") || clean.includes("127.0.0.1") || clean.includes("localhost")) {
       try {
         const u = new URL(clean);
         const extracted = u.searchParams.get("url") || u.searchParams.get("target");
