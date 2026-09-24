@@ -24,18 +24,46 @@ export async function openMiniApp({
   entryPoint = "web_app",
   termsUrl = null,
 }) {
+  let launchUrl = url || null;
+  let effectiveStartParam = startParam;
+  let effectiveChatId = chatId;
+
+  if (launchUrl && !launchUrl.includes("WebAppData=") && !launchUrl.includes("tgWebAppData=")) {
+    try {
+      const raw = launchUrl.startsWith("max://")
+        ? launchUrl.replace(/^max:\/\//, "https://max.ru/")
+        : launchUrl;
+      const parsed = new URL(raw);
+      effectiveStartParam =
+        effectiveStartParam ||
+        parsed.searchParams.get("startapp") ||
+        parsed.searchParams.get("startApp") ||
+        parsed.searchParams.get("WebAppStartParam") ||
+        parsed.searchParams.get("start_param");
+      const cid = parsed.searchParams.get("chat_id");
+      if (cid && effectiveChatId == null) {
+        const parsedCid = Number(cid);
+        if (!Number.isNaN(parsedCid)) {
+          effectiveChatId = parsedCid;
+        }
+      }
+    } catch {}
+    launchUrl = null;
+  }
+
   const currentApps = get(activeWebApps);
   const existing = currentApps.find((a) => Number(a.botId) === Number(botId));
 
   if (existing) {
-    if (url && existing.url !== url) {
+    if (launchUrl && existing.url !== launchUrl) {
       activeWebApps.update((apps) =>
         apps.map((a) =>
           a.id === existing.id
             ? {
                 ...a,
-                url,
-                startParam: startParam ?? a.startParam,
+                url: launchUrl,
+                startParam: effectiveStartParam ?? a.startParam,
+                chatId: effectiveChatId ?? a.chatId,
                 state: "sheet",
                 dragOffsetY: 0,
                 reloadKey: a.reloadKey + 1,
@@ -48,7 +76,14 @@ export async function openMiniApp({
       return existing.id;
     }
 
-    if (startParam && startParam !== existing.startParam) {
+    const needsLaunch =
+      !launchUrl &&
+      (!existing.url ||
+        existing.error ||
+        (effectiveStartParam && effectiveStartParam !== existing.startParam) ||
+        (effectiveChatId && effectiveChatId !== existing.chatId));
+
+    if (needsLaunch) {
       activeWebApps.update((apps) =>
         apps.map((a) =>
           a.id === existing.id
@@ -58,7 +93,10 @@ export async function openMiniApp({
       );
       try {
         const apiInstance = get(API);
-        const launch = await apiInstance.launchWebApp(botId, { startParam, chatId });
+        const launch = await apiInstance.launchWebApp(botId, {
+          startParam: effectiveStartParam,
+          chatId: effectiveChatId,
+        });
         activeWebApps.update((apps) =>
           apps.map((a) =>
             a.id === existing.id
@@ -66,7 +104,8 @@ export async function openMiniApp({
                   ...a,
                   url: launch.url,
                   queryId: launch.queryId,
-                  startParam,
+                  startParam: effectiveStartParam,
+                  chatId: effectiveChatId,
                   state: "sheet",
                   dragOffsetY: 0,
                   reloadKey: a.reloadKey + 1,
@@ -105,27 +144,30 @@ export async function openMiniApp({
     id: appId,
     botId: Number(botId),
     title,
-    url: url || null,
+    url: launchUrl || null,
     queryId: null,
-    startParam,
-    chatId,
+    startParam: effectiveStartParam,
+    chatId: effectiveChatId,
     entryPoint,
     termsUrl,
     state: "sheet",
     dragOffsetY: 0,
     customBackButton: false,
     needConfirmation: false,
-    loading: !url,
+    loading: !launchUrl,
     error: null,
     reloadKey: 0,
   };
 
   activeWebApps.update((apps) => [...apps, newApp]);
 
-  if (!url) {
+  if (!launchUrl) {
     try {
       const apiInstance = get(API);
-      const launch = await apiInstance.launchWebApp(botId, { startParam, chatId });
+      const launch = await apiInstance.launchWebApp(botId, {
+        startParam: effectiveStartParam,
+        chatId: effectiveChatId,
+      });
       activeWebApps.update((apps) =>
         apps.map((a) =>
           a.id === appId
@@ -181,6 +223,48 @@ export function closeMiniApp(id) {
 }
 
 export function reloadMiniApp(id) {
+  const current = get(activeWebApps);
+  const found = current.find((a) => a.id === id);
+  if (!found) return;
+
+  if (!found.url || found.error) {
+    activeWebApps.update((apps) =>
+      apps.map((a) => (a.id === id ? { ...a, loading: true, error: null } : a))
+    );
+    const apiInstance = get(API);
+    apiInstance
+      .launchWebApp(found.botId, {
+        startParam: found.startParam,
+        chatId: found.chatId,
+      })
+      .then((launch) => {
+        activeWebApps.update((apps) =>
+          apps.map((a) =>
+            a.id === id
+              ? {
+                  ...a,
+                  url: launch.url,
+                  queryId: launch.queryId,
+                  reloadKey: a.reloadKey + 1,
+                  loading: false,
+                  error: null,
+                }
+              : a
+          )
+        );
+      })
+      .catch((err) => {
+        activeWebApps.update((apps) =>
+          apps.map((a) =>
+            a.id === id
+              ? { ...a, loading: false, error: err?.message || "Ошибка загрузки" }
+              : a
+          )
+        );
+      });
+    return;
+  }
+
   activeWebApps.update((apps) =>
     apps.map((a) =>
       a.id === id ? { ...a, reloadKey: a.reloadKey + 1, error: null } : a

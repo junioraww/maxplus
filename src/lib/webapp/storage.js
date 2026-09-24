@@ -1,4 +1,34 @@
 const MAX_STORAGE_KEYS = 500;
+const memoryStore = new Map();
+
+function storageGet(key) {
+  try {
+    if (typeof localStorage !== "undefined") {
+      return localStorage.getItem(key);
+    }
+  } catch {}
+  return memoryStore.get(key) || null;
+}
+
+function storageSet(key, value) {
+  try {
+    if (typeof localStorage !== "undefined") {
+      localStorage.setItem(key, String(value));
+      return;
+    }
+  } catch {}
+  memoryStore.set(key, String(value));
+}
+
+function storageRemove(key) {
+  try {
+    if (typeof localStorage !== "undefined") {
+      localStorage.removeItem(key);
+      return;
+    }
+  } catch {}
+  memoryStore.delete(key);
+}
 
 function buildStorageKey(userId, botId, isSecure, key) {
   const scope = isSecure ? "sec" : "dev";
@@ -12,7 +42,7 @@ function buildIndexKey(userId, botId, isSecure) {
 
 function getStoredKeys(userId, botId, isSecure) {
   try {
-    const raw = localStorage.getItem(buildIndexKey(userId, botId, isSecure));
+    const raw = storageGet(buildIndexKey(userId, botId, isSecure));
     return raw ? JSON.parse(raw) : [];
   } catch {
     return [];
@@ -21,7 +51,7 @@ function getStoredKeys(userId, botId, isSecure) {
 
 function setStoredKeys(userId, botId, isSecure, keys) {
   try {
-    localStorage.setItem(
+    storageSet(
       buildIndexKey(userId, botId, isSecure),
       JSON.stringify(keys)
     );
@@ -34,7 +64,7 @@ export function saveStorageKey(userId, botId, isSecure, key, value) {
 
   if (value === null || value === undefined) {
     try {
-      localStorage.removeItem(storageKey);
+      storageRemove(storageKey);
       const keys = getStoredKeys(userId, botId, isSecure).filter((k) => k !== key);
       setStoredKeys(userId, botId, isSecure, keys);
       return true;
@@ -51,7 +81,7 @@ export function saveStorageKey(userId, botId, isSecure, key, value) {
   }
 
   try {
-    localStorage.setItem(storageKey, String(value));
+    storageSet(storageKey, String(value));
     return true;
   } catch {
     return false;
@@ -61,7 +91,7 @@ export function saveStorageKey(userId, botId, isSecure, key, value) {
 export function getStorageKey(userId, botId, isSecure, key) {
   if (!key) return null;
   try {
-    return localStorage.getItem(buildStorageKey(userId, botId, isSecure, key));
+    return storageGet(buildStorageKey(userId, botId, isSecure, key));
   } catch {
     return null;
   }
@@ -71,7 +101,7 @@ export function clearStorageKeys(userId, botId, isSecure) {
   const keys = getStoredKeys(userId, botId, isSecure);
   try {
     for (const k of keys) {
-      localStorage.removeItem(buildStorageKey(userId, botId, isSecure, k));
+      storageRemove(buildStorageKey(userId, botId, isSecure, k));
     }
     setStoredKeys(userId, botId, isSecure, []);
     return true;
@@ -86,7 +116,7 @@ function buildBiometryKey(userId, botId) {
 
 function readBiometryData(userId, botId) {
   try {
-    const raw = localStorage.getItem(buildBiometryKey(userId, botId));
+    const raw = storageGet(buildBiometryKey(userId, botId));
     return raw ? JSON.parse(raw) : {};
   } catch {
     return {};
@@ -95,7 +125,7 @@ function readBiometryData(userId, botId) {
 
 function writeBiometryData(userId, botId, data) {
   try {
-    localStorage.setItem(buildBiometryKey(userId, botId), JSON.stringify(data));
+    storageSet(buildBiometryKey(userId, botId), JSON.stringify(data));
   } catch {}
 }
 
@@ -107,10 +137,10 @@ export function fetchBiometryStatus(userId, botId, deviceId) {
   let devId = deviceId || "";
   if (!devId) {
     try {
-      devId = localStorage.getItem("max_device_id") || "";
+      devId = storageGet("max_device_id") || "";
       if (!devId) {
         devId = crypto.randomUUID().replace(/-/g, "");
-        localStorage.setItem("max_device_id", devId);
+        storageSet("max_device_id", devId);
       }
     } catch {}
   }
@@ -154,7 +184,7 @@ export function updateBiometryTokenValue(userId, botId, token) {
     delete data.token;
     writeBiometryData(userId, botId, data);
     try {
-      localStorage.removeItem("digital_id_biometry_token");
+      storageRemove("digital_id_biometry_token");
     } catch {}
     return { status: "removed" };
   }
@@ -162,9 +192,11 @@ export function updateBiometryTokenValue(userId, botId, token) {
     return { error: "too_large" };
   }
   data.token = String(token);
+  data.requested = true;
+  data.granted = true;
   writeBiometryData(userId, botId, data);
   try {
-    localStorage.setItem("digital_id_biometry_token", String(token));
+    storageSet("digital_id_biometry_token", String(token));
   } catch {}
   return { status: "updated" };
 }

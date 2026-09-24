@@ -109,12 +109,58 @@ fn check_blocked(url: &str) -> Option<String> {
 struct ProxyState {
     last_origin: Mutex<String>,
     last_base_url: Mutex<String>,
+    last_full_url: Mutex<String>,
 }
 
 static RE_DOMAIN: OnceLock<Regex> = OnceLock::new();
 static RE_SECURE: OnceLock<Regex> = OnceLock::new();
 static RE_PATH: OnceLock<Regex> = OnceLock::new();
 static RE_SAMESITE: OnceLock<Regex> = OnceLock::new();
+fn is_js_ident_char(b: u8) -> bool {
+    b.is_ascii_alphanumeric() || b == b'_' || b == b'$'
+}
+
+fn rewrite_js_locations(text: &str) -> String {
+    let bytes = text.as_bytes();
+    let n = bytes.len();
+    let mut out = String::with_capacity(n + 64);
+    let mut i = 0;
+
+    const PATTERNS: [(&str, &str); 6] = [
+        ("window.location.hostname", "(window.__mpHostname||window.location.hostname)"),
+        ("location.hostname", "(window.__mpHostname||location.hostname)"),
+        ("window.location.origin", "(window.__mpOrigin||window.location.origin)"),
+        ("location.origin", "(window.__mpOrigin||location.origin)"),
+        ("window.location.host", "(window.__mpHost||window.location.host)"),
+        ("location.host", "(window.__mpHost||location.host)"),
+    ];
+
+    while i < n {
+        let mut matched = false;
+        for (pat, repl) in PATTERNS.iter() {
+            let pat_bytes = pat.as_bytes();
+            let pat_len = pat_bytes.len();
+            if i + pat_len <= n && &bytes[i..i + pat_len] == pat_bytes {
+                let prev_ok = i == 0 || (!is_js_ident_char(bytes[i - 1]) && bytes[i - 1] != b'.');
+                let next_pos = i + pat_len;
+                let next_ok = next_pos == n || !is_js_ident_char(bytes[next_pos]);
+                if prev_ok && next_ok {
+                    out.push_str(repl);
+                    i = next_pos;
+                    matched = true;
+                    break;
+                }
+            }
+        }
+        if !matched {
+            let ch = text[i..].chars().next().unwrap_or(' ');
+            out.push(ch);
+            i += ch.len_utf8();
+        }
+    }
+
+    out
+}
 
 fn clean_set_cookie_header(raw: &str) -> String {
     let re_dom = RE_DOMAIN.get_or_init(|| Regex::new(r"(?i)\bDomain=[^;]+;?\s*").unwrap());
@@ -159,9 +205,7 @@ fn build_shim_script(port: u16, token: &str) -> String {
         concat!(
             r#"<meta name="referrer" content="unsafe-url">"#,
             r#"<script>(function(){{if(window.__mpwb)return;window.__mpwb=true;"#,
-            r#"var q=[];function flush(){{for(var i=0;i<q.length;){{var b=q[i][2]?window.PrivateWebApp:window.WebApp;"#,
-            r#"if(b&&typeof b.sendEvent==='function'){{try{{b.sendEvent(q[i][0],q[i][1]);}}catch(e){{}}q.splice(i,1);}}else{{i++;}}}}}}setInterval(flush,50);"#,
-            r#"function deliver(n,d,p){{q.push([n,d,!!p]);flush();}}window.__mpDeliver=deliver;"#,
+            r#"function deliver(n,d,p){{try{{var raw=typeof d==='string'?JSON.parse(d):(d||{{}});var obj=Object.assign({{}},raw);obj.type=n;var evt=new MessageEvent('message',{{data:JSON.stringify(obj),origin:'https://web.max.ru'}});window.dispatchEvent(evt);if(window.self===window.top&&window.WebApp&&typeof window.WebApp.sendEvent==='function'){{try{{window.WebApp.sendEvent(n,typeof d==='string'?d:JSON.stringify(d));}}catch(e){{}}}}if(window.Telegram&&window.Telegram.WebView&&typeof window.Telegram.WebView.receiveEvent==='function'){{try{{window.Telegram.WebView.receiveEvent(n,raw);}}catch(e){{}}}}}}catch(x){{}}}}window.__mpDeliver=deliver;"#,
             r#"function toParent(n,d){{if(window.parent===window)return;var o={{}};try{{o=typeof d==='string'?JSON.parse(d):(d||{{}});}}catch(e){{}}"#,
             r#"var m=Object.assign({{}},o);m.type=n;try{{window.parent.postMessage(JSON.stringify(m),'*');}}catch(e){{}}}}"#,
             r#"window.WebViewHandler={{postEvent:function(n,d){{toParent(n,d);}},resolveShare:function(){{}}}};"#,
@@ -189,27 +233,19 @@ fn build_shim_script(port: u16, token: &str) -> String {
             r#"var t=resolveTarget(u);"#,
             r#"if(t){{return '{}?url='+encodeURIComponent(t);}}"#,
             r#"return u;}}"#,
-            r#"function wrapProxyAsset(u){{"#,
-            r#"if(!u||typeof u!=='string')return u;"#,
-            r#"if(u.indexOf('https://')===0||u.indexOf('http://')===0){{"#,
-            r#"if(u.indexOf('http://127.0.0.1')===0||u.indexOf('http://localhost')===0)return u;"#,
-            r#"return wrapProxy(u);"#,
-            r#"}}return u;}}"#,
-            r#"try{{var lp=HTMLLinkElement.prototype;var ld=Object.getOwnPropertyDescriptor(lp,'href');if(ld&&ld.set){{var olsh=ld.set;Object.defineProperty(lp,'href',{{set:function(v){{return olsh.call(this,wrapProxyAsset(v));}},get:ld.get,configurable:true,enumerable:true}});}}}}catch(e){{}}"#,
-            r#"try{{var sp=HTMLScriptElement.prototype;var sd=Object.getOwnPropertyDescriptor(sp,'src');if(sd&&sd.set){{var osss=sd.set;Object.defineProperty(sp,'src',{{set:function(v){{return osss.call(this,wrapProxyAsset(v));}},get:sd.get,configurable:true,enumerable:true}});}}}}catch(e){{}}"#,
-            r#"try{{var osa=Element.prototype.setAttribute;Element.prototype.setAttribute=function(n,v){{try{{var k=String(n).toLowerCase();var tg=(this.tagName||'').toLowerCase();if((tg==='link'&&k==='href')||(tg==='script'&&k==='src')){{v=wrapProxyAsset(v);}}}}catch(x){{}}return osa.call(this,n,v);}};}}catch(e){{}}"#,
-            r#"try{{var ow=window.Worker;if(ow){{window.Worker=function(u,o){{return new ow(wrapProxy(u),o);}};}}}}catch(e){{}}"#,
-            r#"window.open=function(u){{var t=resolveTarget(u)||u;if(t){{toParent('web_app_open_link',{{url:String(t)}});}}return null;}};"#,
-            r#"document.addEventListener('click',function(e){{var a=e.target&&e.target.closest?e.target.closest('a'):null;if(!a)return;var h=a.getAttribute('href');if(!h||h.charAt(0)==='#'||h.indexOf('javascript:')===0)return;var tgt=a.getAttribute('target');var isMax=(h.indexOf('max.ru')!==-1||h.indexOf('max://')===0||(a.href&&a.href.indexOf('max.ru')!==-1)||(a.href&&a.href.indexOf('max://')===0));if(tgt==='_blank'||tgt==='_new'||isMax){{var targetUrl=resolveTarget(h)||resolveTarget(a.href)||a.href;if(targetUrl){{e.preventDefault();e.stopPropagation();toParent('web_app_open_link',{{url:targetUrl}});}}}}}},true);"#,
             r#"if(window.__mpRealUrl){{toParent('web_app_page_navigated',{{url:window.__mpRealUrl}});}}"#,
             r#"var of=window.fetch;if(of){{window.fetch=function(u,i){{try{{"#,
             r#"var s=typeof u==='string'?u:(u&&u.url?u.url:'');"#,
             r#"var p=wrapProxy(s);"#,
-            r#"if(p!==s){{if(typeof u==='string'){{u=p;}}else if(u&&typeof u==='object'){{try{{u=new Request(p,u);}}catch(x){{u=p;}}}}}}"#,
+            r#"if(p!==s){{"#,
+            r#"if(typeof u==='string'){{return of.call(this,p,i);}}"#,
+            r#"if(u&&typeof u==='object'){{var self=this;var opts={{method:u.method,headers:u.headers,mode:u.mode,credentials:u.credentials,cache:u.cache,redirect:u.redirect,referrer:u.referrer}};if(u.method!=='GET'&&u.method!=='HEAD'){{return Promise.resolve().then(function(){{return u.clone().arrayBuffer();}}).then(function(buf){{opts.body=buf;return of.call(self,p,Object.assign(opts,i||{{}}));}}).catch(function(){{return of.call(self,p,i);}});}}else{{return of.call(self,p,Object.assign(opts,i||{{}}));}}}}"#,
+            r#"}}"#,
             r#"}}catch(e){{}}return of.call(this,u,i);}};try{{window.fetch.toString=function(){{return 'function fetch() {{ [native code] }}';}};}}catch(e){{}}}}"#,
             r#"var ox=XMLHttpRequest.prototype.open;if(ox){{XMLHttpRequest.prototype.open=function(m,u){{try{{"#,
             r#"if(typeof u==='string'){{u=wrapProxy(u);}}"#,
             r#"}}catch(e){{}}var a=Array.prototype.slice.call(arguments);a[1]=u;return ox.apply(this,a);}};try{{ox.toString=function(){{return 'function open() {{ [native code] }}';}};}}catch(e){{}}}}"#,
+            r#"document.addEventListener('click',function(e){{var a=e.target&&e.target.closest?e.target.closest('a'):null;if(!a)return;var h=a.getAttribute('href');if(!h||h.charAt(0)==='#'||h.indexOf('javascript:')===0)return;var tgt=a.getAttribute('target');var isMax=(h.indexOf('max.ru')!==-1||h.indexOf('max://')===0||(a.href&&a.href.indexOf('max.ru')!==-1)||(a.href&&a.href.indexOf('max://')===0));if(tgt==='_blank'||tgt==='_new'||isMax){{var targetUrl=resolveTarget(h)||resolveTarget(a.href)||a.href;if(targetUrl){{e.preventDefault();e.stopPropagation();toParent('web_app_open_link',{{url:targetUrl}});}}}}}},true);"#,
             r#"}}());</script>"#
         ),
         proxy_prefix,
@@ -235,9 +271,20 @@ fn extract_query_param(query: &str, param: &str) -> Option<String> {
 }
 
 fn get_origin_from_url(u: &str) -> String {
+    let parsed_opt = if u.starts_with("//") {
+        url::Url::parse(&format!("https:{}", u)).ok()
+    } else {
+        url::Url::parse(u).ok()
+    };
+    if let Some(parsed) = parsed_opt {
+        let origin = parsed.origin().ascii_serialization();
+        if origin != "null" && !origin.is_empty() {
+            return origin;
+        }
+    }
     if let Some(pos) = u.find("://") {
         let rest = &u[pos + 3..];
-        let host = match rest.find('/') {
+        let host = match rest.find(|c| c == '/' || c == '?' || c == '#') {
             Some(p) => &rest[..p],
             None => rest,
         };
@@ -247,6 +294,63 @@ fn get_origin_from_url(u: &str) -> String {
     }
 }
 
+fn is_js_path(path: &str) -> bool {
+    let lower = path.to_ascii_lowercase();
+    let clean = lower.split('?').next().unwrap_or(&lower);
+    let clean = clean.split('#').next().unwrap_or(clean).trim_end_matches('/');
+    clean.ends_with(".js")
+        || clean.ends_with(".mjs")
+        || clean.ends_with(".cjs")
+        || clean.ends_with(".ts")
+        || clean.ends_with(".tsx")
+        || clean.ends_with(".jsx")
+        || lower.contains(".js?")
+        || lower.contains(".mjs?")
+        || lower.contains(".cjs?")
+        || lower.contains(".js#")
+        || lower.contains("/js/")
+        || lower.contains("/javascript/")
+}
+
+fn is_css_path(path: &str) -> bool {
+    let lower = path.to_ascii_lowercase();
+    let clean = lower.split('?').next().unwrap_or(&lower);
+    let clean = clean.split('#').next().unwrap_or(clean).trim_end_matches('/');
+    clean.ends_with(".css") || lower.contains(".css?") || lower.contains(".css#")
+}
+
+fn decompress_body_if_needed(bytes: Vec<u8>) -> Vec<u8> {
+    if bytes.len() >= 2 && bytes[0] == 0x1f && bytes[1] == 0x8b {
+        let mut decoder = flate2::read::GzDecoder::new(&bytes[..]);
+        let mut decompressed = Vec::new();
+        if decoder.read_to_end(&mut decompressed).is_ok() {
+            return decompressed;
+        }
+    } else if bytes.len() >= 2
+        && bytes[0] == 0x78
+        && (bytes[1] == 0x9c || bytes[1] == 0x01 || bytes[1] == 0xda)
+    {
+        let mut decoder = flate2::read::ZlibDecoder::new(&bytes[..]);
+        let mut decompressed = Vec::new();
+        if decoder.read_to_end(&mut decompressed).is_ok() {
+            return decompressed;
+        }
+    }
+    bytes
+}
+
+fn is_html_bytes(bytes: &[u8]) -> bool {
+    let trimmed = match bytes.iter().position(|&b| !b.is_ascii_whitespace()) {
+        Some(pos) => &bytes[pos..],
+        None => bytes,
+    };
+    trimmed.starts_with(b"<!DOCTYPE")
+        || trimmed.starts_with(b"<!doctype")
+        || trimmed.starts_with(b"<html")
+        || trimmed.starts_with(b"<HTML")
+        || trimmed.starts_with(b"<?xml")
+}
+
 fn handle_request(
     mut request: tiny_http::Request,
     client: &reqwest::blocking::Client,
@@ -254,10 +358,21 @@ fn handle_request(
     token: &str,
     port: u16,
 ) {
-    let clean_path = match crate::proxy_auth::validate_and_strip_token(&request, token) {
+    let clean_path = match crate::proxy_auth::validate_and_strip_token_with_port(&request, token, port) {
         Some(p) => p,
         None => {
-            drop(request.into_writer());
+            let headers = vec![
+                Header::from_bytes(&b"Content-Type"[..], b"text/plain; charset=utf-8").unwrap(),
+                Header::from_bytes(&b"Access-Control-Allow-Origin"[..], b"*").unwrap(),
+            ];
+            let res = Response::new(
+                403.into(),
+                headers,
+                Cursor::new(b"Forbidden: invalid proxy token".to_vec()),
+                Some(30),
+                None,
+            );
+            let _ = request.respond(res);
             return;
         }
     };
@@ -267,7 +382,7 @@ fn handle_request(
             Header::from_bytes(&b"Access-Control-Allow-Origin"[..], b"*").unwrap(),
             Header::from_bytes(
                 &b"Access-Control-Allow-Methods"[..],
-                b"GET, POST, PUT, DELETE, OPTIONS, HEAD",
+                b"GET, POST, PUT, DELETE, OPTIONS, HEAD, PATCH",
             )
             .unwrap(),
             Header::from_bytes(&b"Access-Control-Allow-Headers"[..], b"*").unwrap(),
@@ -281,41 +396,60 @@ fn handle_request(
 
     let req_url = clean_path;
     let query_str = req_url.split_once('?').map(|x| x.1).unwrap_or("");
+    let req_path_only = req_url.split('?').next().unwrap_or(&req_url);
+    let is_proxy_endpoint = req_path_only == "/proxy" || req_path_only == "proxy";
 
-    let mut direct_target = extract_query_param(query_str, "url")
-        .or_else(|| extract_query_param(query_str, "target"));
+    let mut direct_target = if is_proxy_endpoint {
+        extract_query_param(query_str, "url").or_else(|| extract_query_param(query_str, "target"))
+    } else {
+        None
+    };
 
-    if let Some(ref target) = direct_target {
-        let o = get_origin_from_url(target);
-        if !o.is_empty() {
-            if let Ok(mut lock) = state.last_origin.lock() {
-                *lock = o.clone();
-            }
-            if let Ok(parsed) = url::Url::parse(target) {
-                let mut p = parsed.path().to_string();
-                if let Some(pos) = p.rfind('/') {
-                    p.truncate(pos + 1);
-                } else {
-                    p = "/".to_string();
-                }
-                if let Ok(mut lock) = state.last_base_url.lock() {
-                    *lock = format!("{}{}", o.trim_end_matches('/'), p);
-                }
-            }
-        }
-    }
+    let req_dest_is_script = request.headers().iter().any(|h| {
+        h.field.as_str().as_str().eq_ignore_ascii_case("sec-fetch-dest")
+            && matches!(
+                h.value.as_str().trim(),
+                "script" | "worker" | "sharedworker" | "serviceworker"
+            )
+    });
+    let req_dest_is_style = request.headers().iter().any(|h| {
+        h.field.as_str().as_str().eq_ignore_ascii_case("sec-fetch-dest")
+            && h.value.as_str().trim().eq_ignore_ascii_case("style")
+    });
+    let req_accepts_js = request.headers().iter().any(|h| {
+        h.field.as_str().as_str().eq_ignore_ascii_case("accept")
+            && (h.value.as_str().contains("javascript") || h.value.as_str().contains("ecmascript"))
+    });
+    let req_accepts_css = request.headers().iter().any(|h| {
+        h.field.as_str().as_str().eq_ignore_ascii_case("accept")
+            && h.value.as_str().contains("text/css")
+    });
+
+    let req_is_js = req_dest_is_script || req_accepts_js || is_js_path(&req_url);
+    let req_is_css = req_dest_is_style || req_accepts_css || is_css_path(&req_url);
 
     let mut caller_origin = String::new();
     let mut caller_base = String::new();
     let mut referer_dir = String::new();
+    let mut upstream_referer = String::new();
+    let mut client_ua = None;
+    let mut browser_has_origin = false;
+    let mut req_headers_map = serde_json::Map::new();
+    let mut passthrough_headers: Vec<(String, String)> = Vec::new();
+
     for h in request.headers() {
-        let name = h.field.as_str().as_str();
-        if name.eq_ignore_ascii_case("Referer") {
-            let ref_val = h.value.as_str();
-            if let Some((_, ref_q)) = ref_val.split_once('?') {
-                if let Some(u) = extract_query_param(ref_q, "url")
-                    .or_else(|| extract_query_param(ref_q, "target"))
-                {
+        let name = h.field.as_str().to_string();
+        let val = h.value.as_str().to_string();
+        req_headers_map.insert(name.clone(), serde_json::Value::String(val.clone()));
+
+        if name.eq_ignore_ascii_case("origin") {
+            browser_has_origin = true;
+        } else if name.eq_ignore_ascii_case("user-agent") {
+            client_ua = Some(val.clone());
+        } else if name.eq_ignore_ascii_case("referer") {
+            if let Some((_, ref_q)) = val.split_once('?') {
+                if let Some(u) = extract_query_param(ref_q, "url").or_else(|| extract_query_param(ref_q, "target")) {
+                    upstream_referer = u.clone();
                     caller_origin = get_origin_from_url(&u);
                     if let Ok(parsed) = url::Url::parse(&u) {
                         let mut p = parsed.path().to_string();
@@ -329,22 +463,26 @@ fn handle_request(
                 }
             }
             if caller_origin.is_empty() {
-                caller_origin = get_origin_from_url(ref_val);
+                caller_origin = get_origin_from_url(&val);
                 if caller_origin.contains("127.0.0.1") || caller_origin.contains("localhost") {
                     caller_origin.clear();
-                    if let Ok(parsed_ref) = url::Url::parse(ref_val) {
-                        let p = parsed_ref.path();
+                    if let Ok(parsed_ref) = url::Url::parse(&val) {
+                        let mut p = parsed_ref.path().to_string();
+                        let token_prefix = format!("/{}", token);
+                        if let Some(rest) = p.strip_prefix(&token_prefix) {
+                            p = rest.to_string();
+                        }
                         if let Some(pos) = p.rfind('/') {
                             let d = &p[..pos + 1];
-                            if d != "/" && !d.is_empty() {
+                            if d != "/" && !d.is_empty() && d != "/proxy" && d != "/proxy/" {
                                 referer_dir = d.to_string();
                             }
                         }
                     }
                 }
             }
-        } else if name.eq_ignore_ascii_case("Cookie") {
-            for c in h.value.as_str().split(';') {
+        } else if name.eq_ignore_ascii_case("cookie") {
+            for c in val.split(';') {
                 let mut cp = c.trim().splitn(2, '=');
                 if let (Some(k), Some(v)) = (cp.next(), cp.next()) {
                     if k == "webapp_target" && caller_origin.is_empty() {
@@ -354,6 +492,25 @@ fn handle_request(
                     }
                 }
             }
+            let filtered: Vec<&str> = val
+                .split(';')
+                .map(|c| c.trim())
+                .filter(|c| !c.starts_with("webapp_target=") && !c.starts_with("webapp_base=") && !c.starts_with("__mp_token="))
+                .collect();
+            if !filtered.is_empty() {
+                passthrough_headers.push(("Cookie".to_string(), filtered.join("; ")));
+            }
+            continue;
+        }
+
+        if !name.eq_ignore_ascii_case("host")
+            && !name.eq_ignore_ascii_case("content-length")
+            && !name.eq_ignore_ascii_case("origin")
+            && !name.eq_ignore_ascii_case("referer")
+            && !name.eq_ignore_ascii_case("user-agent")
+            && !name.eq_ignore_ascii_case("accept-encoding")
+        {
+            passthrough_headers.push((name, val));
         }
     }
 
@@ -374,52 +531,94 @@ fn handle_request(
     let origin = caller_origin.clone();
     let base_url = caller_base.clone();
 
-    let clean_req = req_url.split('?').next().unwrap_or(&req_url);
-    let is_css_req = clean_req.ends_with(".css");
-    let is_js_req = clean_req.ends_with(".js") || clean_req.ends_with(".mjs");
-
-    let mut target_url = if let Some(t) = direct_target.take() {
-        t
-    } else if !base_url.is_empty() {
-        let rel = req_url.trim_start_matches('/');
-        if base_url.ends_with("/assets/") && rel.starts_with("assets/") {
-            let inner = rel.trim_start_matches("assets/").trim_start_matches('/');
-            format!("{}{}", base_url, inner)
-        } else if rel.starts_with("assets/") {
-            format!("{}/{}", origin.trim_end_matches('/'), rel)
-        } else if base_url.ends_with("/assets/") {
-            format!("{}{}", base_url, rel)
-        } else {
-            format!("{}/{}", base_url.trim_end_matches('/'), rel)
-        }
-    } else if !origin.is_empty() {
-        format!("{}{}", origin.trim_end_matches('/'), req_url)
+    let candidates: Vec<String> = if let Some(t) = direct_target.take() {
+        vec![t]
     } else {
-        if is_css_req {
-            let headers = vec![
-                Header::from_bytes(&b"Content-Type"[..], b"text/css; charset=utf-8").unwrap(),
-                Header::from_bytes(&b"Access-Control-Allow-Origin"[..], b"*").unwrap(),
-            ];
-            let res = Response::new(200.into(), headers, Cursor::new(Vec::new()), Some(0), None);
-            let _ = request.respond(res);
-            return;
-        } else if is_js_req {
-            let headers = vec![
-                Header::from_bytes(&b"Content-Type"[..], b"application/javascript; charset=utf-8").unwrap(),
-                Header::from_bytes(&b"Access-Control-Allow-Origin"[..], b"*").unwrap(),
-            ];
-            let res = Response::new(200.into(), headers, Cursor::new(Vec::new()), Some(0), None);
-            let _ = request.respond(res);
-            return;
+        let mut list = Vec::new();
+        let rel = req_url.trim_start_matches('/');
+
+        let c_base = if !base_url.is_empty() {
+            let base_clean = base_url.trim_end_matches('/');
+            if base_clean.ends_with("/assets") && rel.starts_with("assets/") {
+                Some(format!("{}/{}", &base_clean[..base_clean.len() - 7], rel))
+            } else {
+                Some(format!("{}/{}", base_clean, rel))
+            }
+        } else {
+            None
+        };
+
+        let c_origin = if !origin.is_empty() {
+            Some(format!("{}/{}", origin.trim_end_matches('/'), rel))
+        } else {
+            None
+        };
+
+        let c_origin_assets = if !origin.is_empty() && (req_is_js || req_is_css) && !rel.starts_with("assets/") {
+            Some(format!("{}/assets/{}", origin.trim_end_matches('/'), rel))
+        } else {
+            None
+        };
+
+        let c_base_assets = if !base_url.is_empty() && (req_is_js || req_is_css) && !rel.starts_with("assets/") {
+            let base_clean = base_url.trim_end_matches('/');
+            if !base_clean.ends_with("/assets") {
+                Some(format!("{}/assets/{}", base_clean, rel))
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        let to_add = if req_is_js || req_is_css || !req_url.starts_with('/') {
+            vec![c_base, c_base_assets, c_origin, c_origin_assets]
+        } else {
+            vec![c_origin, c_base]
+        };
+
+        for cand_opt in to_add {
+            if let Some(u) = cand_opt {
+                if !list.contains(&u) {
+                    list.push(u);
+                }
+            }
         }
-        let _ = request.respond(Response::from_string("Missing target URL").with_status_code(400));
-        return;
+
+        if list.is_empty() {
+            if let Ok(lock) = state.last_base_url.lock() {
+                if !lock.is_empty() {
+                    let fallback = format!("{}/{}", lock.trim_end_matches('/'), rel);
+                    if !list.contains(&fallback) {
+                        list.push(fallback);
+                    }
+                }
+            }
+        }
+
+        list
     };
 
-    if target_url.contains("externalCallback=1") {
+    if candidates.is_empty() {
+        let headers = vec![
+            Header::from_bytes(&b"Content-Type"[..], b"text/plain; charset=utf-8").unwrap(),
+            Header::from_bytes(&b"Access-Control-Allow-Origin"[..], b"*").unwrap(),
+        ];
+        let res = Response::new(
+            400.into(),
+            headers,
+            Cursor::new(b"Missing target origin".to_vec()),
+            Some(21),
+            None,
+        );
+        let _ = request.respond(res);
+        return;
+    }
+
+    if let Some(callback_url) = candidates.iter().find(|c| c.contains("externalCallback=1")) {
         let callback_html = format!(
             r#"<!DOCTYPE html><html><head><meta charset="utf-8"><script>try{{window.parent.postMessage(JSON.stringify({{type:"web_app_external_callback",url:"{}"}}),"*");}}catch(e){{}}</script></head><body></body></html>"#,
-            target_url.replace('"', "%22")
+            callback_url.replace('"', "%22")
         );
         let bytes = callback_html.into_bytes();
         let len = bytes.len();
@@ -440,108 +639,12 @@ fn handle_request(
         .unwrap_or_default()
         .as_millis() as u64;
 
-    let mut req_headers_map = serde_json::Map::new();
-    for h in request.headers() {
-        req_headers_map.insert(
-            h.field.as_str().to_string(),
-            serde_json::Value::String(h.value.as_str().to_string()),
-        );
-    }
     let req_headers_val = serde_json::Value::Object(req_headers_map);
-
     let method_str = request.method().as_str().to_string();
-
-    if let Some(reason) = check_blocked(&target_url) {
-        let entry = WebAppLogEntry {
-            id: LOG_ID_COUNTER.fetch_add(1, Ordering::SeqCst),
-            timestamp,
-            time_epoch,
-            method: method_str,
-            url: target_url,
-            origin,
-            status: 0,
-            status_text: "DROPPED".to_string(),
-            duration_ms: start_instant.elapsed().as_millis() as u64,
-            request_headers: req_headers_val,
-            request_body: None,
-            response_headers: serde_json::json!({}),
-            response_body: None,
-            content_type: String::new(),
-            content_length: 0,
-            blocked: true,
-            block_reason: Some(reason),
-            host_ip: None,
-        };
-        emit_log(entry);
-        drop(request);
-        return;
-    }
-
-    let mut rb = match method_str.as_str() {
-        "POST" => client.post(&target_url),
-        "PUT" => client.put(&target_url),
-        "DELETE" => client.delete(&target_url),
-        "HEAD" => client.head(&target_url),
-        _ => client.get(&target_url),
-    };
-
-    let origin_header = if !caller_origin.is_empty() {
-        caller_origin.clone()
-    } else if !origin.is_empty() {
-        origin.clone()
-    } else {
-        get_origin_from_url(&target_url)
-    };
-
-    rb = rb.header(
-        "User-Agent",
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-    );
-
-    if !origin_header.is_empty() {
-        rb = rb.header("Referer", format!("{}/", origin_header));
-        let browser_has_origin = request
-            .headers()
-            .iter()
-            .any(|h| h.field.as_str().as_str().eq_ignore_ascii_case("Origin"));
-        if browser_has_origin || (method_str != "GET" && method_str != "HEAD") {
-            rb = rb.header("Origin", origin_header.as_str());
-        }
-    }
-
-    for h in request.headers() {
-        let name = h.field.as_str().as_str();
-        if name.eq_ignore_ascii_case("Host")
-            || name.eq_ignore_ascii_case("Content-Length")
-            || name.eq_ignore_ascii_case("Origin")
-            || name.eq_ignore_ascii_case("Referer")
-            || name.eq_ignore_ascii_case("User-Agent")
-            || name.eq_ignore_ascii_case("Accept-Encoding")
-        {
-            continue;
-        }
-        if name.eq_ignore_ascii_case("Cookie") {
-            let filtered: Vec<&str> = h
-                .value
-                .as_str()
-                .split(';')
-                .map(|c| c.trim())
-                .filter(|c| !c.starts_with("webapp_target=") && !c.starts_with("webapp_base="))
-                .collect();
-            if !filtered.is_empty() {
-                rb = rb.header("Cookie", filtered.join("; "));
-            }
-            continue;
-        }
-        rb = rb.header(name, h.value.as_str());
-    }
 
     let mut req_body = Vec::new();
     if method_str == "POST" || method_str == "PUT" || method_str == "PATCH" {
         let _ = request.as_reader().read_to_end(&mut req_body);
-        if !req_body.is_empty() {
-            rb = rb.body(req_body.clone());
-        }
     }
     let req_body_str = if !req_body.is_empty() {
         if let Ok(s) = std::str::from_utf8(&req_body) {
@@ -557,15 +660,142 @@ fn handle_request(
         None
     };
 
-    let mut res = match rb.send() {
-        Ok(r) => r,
-        Err(err) => {
+    let origin_header = if !caller_origin.is_empty() {
+        caller_origin.clone()
+    } else if !origin.is_empty() {
+        origin.clone()
+    } else {
+        get_origin_from_url(&candidates[0])
+    };
+
+    if upstream_referer.is_empty() {
+        if let Ok(lock) = state.last_full_url.lock() {
+            if !lock.is_empty() {
+                upstream_referer = lock.clone();
+            }
+        }
+    }
+
+    if upstream_referer.is_empty() {
+        if !origin_header.is_empty() {
+            upstream_referer = format!("{}/", origin_header.trim_end_matches('/'));
+        } else {
+            upstream_referer = "https://max.ru/".to_string();
+        }
+    }
+
+    let upstream_ua = client_ua.as_deref().unwrap_or(
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    );
+
+    let upstream_origin = if !origin_header.is_empty() {
+        origin_header.clone()
+    } else {
+        get_origin_from_url(&candidates[0])
+    };
+
+    let build_request = |url: &str| -> reqwest::blocking::RequestBuilder {
+        let mut rb = match method_str.as_str() {
+            "POST" => client.post(url),
+            "PUT" => client.put(url),
+            "DELETE" => client.delete(url),
+            "HEAD" => client.head(url),
+            "PATCH" => client.patch(url),
+            _ => client.get(url),
+        };
+        rb = rb.header("User-Agent", upstream_ua);
+        rb = rb.header("Referer", &upstream_referer);
+        if browser_has_origin || (method_str != "GET" && method_str != "HEAD") {
+            if !upstream_origin.is_empty() {
+                rb = rb.header("Origin", &upstream_origin);
+            }
+        }
+        for (name, val) in &passthrough_headers {
+            rb = rb.header(name.as_str(), val.as_str());
+        }
+        if !req_body.is_empty() {
+            rb = rb.body(req_body.clone());
+        }
+        rb
+    };
+
+    let mut chosen_target = candidates[0].clone();
+    let mut chosen_res = None;
+    let mut chosen_bytes = Vec::new();
+    let mut last_err = None;
+
+    for (idx, cand) in candidates.iter().enumerate() {
+        chosen_target = cand.clone();
+        if let Some(reason) = check_blocked(&chosen_target) {
+            let entry = WebAppLogEntry {
+                id: LOG_ID_COUNTER.fetch_add(1, Ordering::SeqCst),
+                timestamp: timestamp.clone(),
+                time_epoch,
+                method: method_str.clone(),
+                url: chosen_target.clone(),
+                origin: origin.clone(),
+                status: 0,
+                status_text: "DROPPED".to_string(),
+                duration_ms: start_instant.elapsed().as_millis() as u64,
+                request_headers: req_headers_val.clone(),
+                request_body: req_body_str.clone(),
+                response_headers: serde_json::json!({}),
+                response_body: None,
+                content_type: String::new(),
+                content_length: 0,
+                blocked: true,
+                block_reason: Some(reason),
+                host_ip: None,
+            };
+            emit_log(entry);
+            drop(request.into_writer());
+            return;
+        }
+
+        let rb = build_request(&chosen_target);
+        match rb.send() {
+            Ok(mut r) => {
+                let status = r.status().as_u16();
+                let mut b = Vec::new();
+                let _ = r.copy_to(&mut b);
+                let decomp = decompress_body_if_needed(b);
+                let html_body = is_html_bytes(&decomp);
+
+                let is_js = req_is_js || is_js_path(&chosen_target);
+                let is_css = req_is_css || is_css_path(&chosen_target);
+                let is_redirect = status >= 300 && status < 400;
+
+                let is_failure = (status >= 400) || (!is_redirect && (is_js || is_css) && html_body);
+                let has_more = idx + 1 < candidates.len();
+
+                if is_failure && has_more && (method_str == "GET" || method_str == "HEAD") {
+                    continue;
+                }
+
+                chosen_res = Some(r);
+                chosen_bytes = decomp;
+                break;
+            }
+            Err(e) => {
+                last_err = Some(e);
+                if idx + 1 < candidates.len() && (method_str == "GET" || method_str == "HEAD") {
+                    continue;
+                }
+                break;
+            }
+        }
+    }
+
+    let res = match chosen_res {
+        Some(r) => r,
+        None => {
+            let err_msg = last_err.map(|e| e.to_string()).unwrap_or_else(|| "Bad Gateway".to_string());
             let entry = WebAppLogEntry {
                 id: LOG_ID_COUNTER.fetch_add(1, Ordering::SeqCst),
                 timestamp,
                 time_epoch,
                 method: method_str,
-                url: target_url.clone(),
+                url: chosen_target.clone(),
                 origin,
                 status: 502,
                 status_text: "Bad Gateway".to_string(),
@@ -573,7 +803,7 @@ fn handle_request(
                 request_headers: req_headers_val,
                 request_body: req_body_str,
                 response_headers: serde_json::json!({}),
-                response_body: Some(err.to_string()),
+                response_body: Some(err_msg.clone()),
                 content_type: "text/plain".to_string(),
                 content_length: 0,
                 blocked: false,
@@ -582,138 +812,27 @@ fn handle_request(
             };
             emit_log(entry);
 
-            if is_css_req || target_url.split('?').next().unwrap_or(&target_url).ends_with(".css") {
-                let headers = vec![
-                    Header::from_bytes(&b"Content-Type"[..], b"text/css; charset=utf-8").unwrap(),
-                    Header::from_bytes(&b"Access-Control-Allow-Origin"[..], b"*").unwrap(),
-                ];
-                let res = Response::new(200.into(), headers, Cursor::new(Vec::new()), Some(0), None);
-                let _ = request.respond(res);
-                return;
-            } else if is_js_req || target_url.split('?').next().unwrap_or(&target_url).ends_with(".js") {
-                let headers = vec![
-                    Header::from_bytes(&b"Content-Type"[..], b"application/javascript; charset=utf-8").unwrap(),
-                    Header::from_bytes(&b"Access-Control-Allow-Origin"[..], b"*").unwrap(),
-                ];
-                let res = Response::new(200.into(), headers, Cursor::new(Vec::new()), Some(0), None);
-                let _ = request.respond(res);
-                return;
-            }
-
-            let _ = request.respond(Response::from_string("Bad Gateway").with_status_code(502));
+            let err_body = err_msg.into_bytes();
+            let err_len = err_body.len();
+            let headers = vec![
+                Header::from_bytes(&b"Content-Type"[..], b"text/plain; charset=utf-8").unwrap(),
+                Header::from_bytes(&b"Access-Control-Allow-Origin"[..], b"*").unwrap(),
+                Header::from_bytes(&b"Content-Length"[..], err_len.to_string().as_bytes()).unwrap(),
+            ];
+            let res = Response::new(502.into(), headers, Cursor::new(err_body), Some(err_len), None);
+            let _ = request.respond(res);
             return;
         }
     };
 
-    let clean_target = target_url.split('?').next().unwrap_or(&target_url);
-    let is_asset_request = clean_target.ends_with(".css")
-        || clean_target.ends_with(".js")
-        || clean_target.ends_with(".mjs")
-        || clean_target.ends_with(".svg")
-        || clean_target.ends_with(".png")
-        || clean_target.ends_with(".woff2")
-        || clean_target.ends_with(".woff")
-        || is_css_req
-        || is_js_req;
-
-    let initial_status = res.status().as_u16();
-    let initial_ct = res
-        .headers()
-        .get(CONTENT_TYPE)
-        .and_then(|v| v.to_str().ok())
-        .unwrap_or("");
-
-    if is_asset_request && (initial_status == 404 || (res.status().is_success() && initial_ct.contains("text/html"))) {
-        let clean_path = req_url.trim_start_matches('/');
-        let inner_path = clean_path.trim_start_matches("assets/").trim_start_matches('/');
-        let mut candidates = Vec::new();
-
-        if !base_url.is_empty() {
-            let b = base_url.trim_end_matches('/');
-            let u1 = format!("{}/assets/{}", b, inner_path);
-            let u2 = format!("{}/{}", b, clean_path);
-            let u3 = format!("{}/{}", b, inner_path);
-            for u in [u1, u2, u3] {
-                if u != target_url && !candidates.contains(&u) {
-                    candidates.push(u);
-                }
-            }
-        }
-        if !origin.is_empty() {
-            let o = origin.trim_end_matches('/');
-            let u1 = format!("{}/assets/{}", o, inner_path);
-            let u2 = format!("{}/{}", o, clean_path);
-            let u3 = format!("{}/{}", o, inner_path);
-            for u in [u1, u2, u3] {
-                if u != target_url && !candidates.contains(&u) {
-                    candidates.push(u);
-                }
-            }
-        }
-
-        for alt_target in candidates {
-            let mut alt_rb = match method_str.as_str() {
-                "HEAD" => client.head(&alt_target),
-                _ => client.get(&alt_target),
-            };
-            alt_rb = alt_rb.header(
-                "User-Agent",
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-            );
-            if !origin_header.is_empty() {
-                alt_rb = alt_rb.header("Referer", format!("{}/", origin_header));
-            }
-            for h in request.headers() {
-                let name = h.field.as_str().as_str();
-                if name.eq_ignore_ascii_case("Host")
-                    || name.eq_ignore_ascii_case("Content-Length")
-                    || name.eq_ignore_ascii_case("Origin")
-                    || name.eq_ignore_ascii_case("Referer")
-                    || name.eq_ignore_ascii_case("User-Agent")
-                    || name.eq_ignore_ascii_case("Accept-Encoding")
-                {
-                    continue;
-                }
-                if name.eq_ignore_ascii_case("Cookie") {
-                    let filtered: Vec<&str> = h
-                        .value
-                        .as_str()
-                        .split(';')
-                        .map(|c| c.trim())
-                        .filter(|c| !c.starts_with("webapp_target=") && !c.starts_with("webapp_base="))
-                        .collect();
-                    if !filtered.is_empty() {
-                        alt_rb = alt_rb.header("Cookie", filtered.join("; "));
-                    }
-                    continue;
-                }
-                alt_rb = alt_rb.header(name, h.value.as_str());
-            }
-            if let Ok(alt_res) = alt_rb.send() {
-                let alt_ct = alt_res
-                    .headers()
-                    .get(CONTENT_TYPE)
-                    .and_then(|v| v.to_str().ok())
-                    .unwrap_or("");
-                if alt_res.status().is_success() && !alt_ct.contains("text/html") {
-                    res = alt_res;
-                    target_url = alt_target;
-                    break;
-                }
-            }
-        }
-    }
-
-    let clean_final = target_url.split('?').next().unwrap_or(&target_url);
-    let final_is_css = is_css_req || clean_final.ends_with(".css") || clean_req.ends_with(".css");
-    let final_is_js = is_js_req
-        || clean_final.ends_with(".js")
-        || clean_req.ends_with(".js")
-        || clean_final.ends_with(".mjs")
-        || clean_req.ends_with(".mjs");
-
     let mut status = res.status().as_u16();
     let status_text = res.status().canonical_reason().unwrap_or("").to_string();
+    let effective_target = res.url().as_str().to_string();
+    let final_url = effective_target.replace('"', "%22");
+
+    let is_js = req_is_js || is_js_path(&chosen_target) || is_js_path(&effective_target);
+    let is_css = req_is_css || is_css_path(&chosen_target) || is_css_path(&effective_target);
+    let is_redirect = status >= 300 && status < 400;
 
     let mut resp_headers_map = serde_json::Map::new();
     for (k, v) in res.headers() {
@@ -733,21 +852,19 @@ fn handle_request(
         .unwrap_or("")
         .to_string();
 
-    if final_is_css {
-        content_type = "text/css; charset=utf-8".to_string();
-    } else if final_is_js {
-        content_type = "application/javascript; charset=utf-8".to_string();
-    } else if clean_final.ends_with(".svg") || clean_req.ends_with(".svg") {
-        content_type = "image/svg+xml".to_string();
-    } else if clean_final.ends_with(".woff2") || clean_req.ends_with(".woff2") {
-        content_type = "font/woff2".to_string();
-    } else if clean_final.ends_with(".woff") || clean_req.ends_with(".woff") {
-        content_type = "font/woff".to_string();
-    } else if clean_final.ends_with(".png") || clean_req.ends_with(".png") {
-        content_type = "image/png".to_string();
-    }
+    let is_js = is_js || content_type.contains("javascript");
+    let is_css = is_css || content_type.contains("text/css");
+    let html_body = is_html_bytes(&chosen_bytes);
 
-    let final_url = res.url().as_str().replace('"', "%22");
+    if is_js {
+        content_type = "application/javascript; charset=utf-8".to_string();
+    } else if is_css {
+        content_type = "text/css; charset=utf-8".to_string();
+    } else if content_type.is_empty() {
+        if let Some(mime) = mime_guess::from_path(&chosen_target).first().or_else(|| mime_guess::from_path(&req_url).first()) {
+            content_type = mime.to_string();
+        }
+    }
 
     let mut headers = vec![
         Header::from_bytes(&b"Access-Control-Allow-Origin"[..], b"*").unwrap(),
@@ -760,12 +877,6 @@ fn handle_request(
         Header::from_bytes(&b"Access-Control-Allow-Credentials"[..], b"true").unwrap(),
     ];
 
-    if !content_type.is_empty() {
-        if let Ok(h) = Header::from_bytes(&b"Content-Type"[..], content_type.as_bytes()) {
-            headers.push(h);
-        }
-    }
-
     for (k, v) in res.headers() {
         let name = k.as_str();
         if name.eq_ignore_ascii_case("content-security-policy")
@@ -776,6 +887,7 @@ fn handle_request(
             || name.eq_ignore_ascii_case("content-encoding")
             || name.eq_ignore_ascii_case("access-control-allow-origin")
             || name.eq_ignore_ascii_case("transfer-encoding")
+            || name.eq_ignore_ascii_case("connection")
         {
             continue;
         }
@@ -789,7 +901,7 @@ fn handle_request(
         }
         if name.eq_ignore_ascii_case("location") {
             let loc_val = v.to_str().unwrap_or("");
-            let resolved_loc = resolve_location_url(&target_url, loc_val);
+            let resolved_loc = resolve_location_url(&chosen_target, loc_val);
             let o = get_origin_from_url(&resolved_loc);
             if !o.is_empty() {
                 if let Ok(mut lock) = state.last_origin.lock() {
@@ -850,122 +962,69 @@ fn handle_request(
         }
     }
 
-    let mut bytes = match res.bytes() {
-        Ok(b) => b.to_vec(),
-        Err(_) => {
-            if final_is_css {
-                let headers = vec![
-                    Header::from_bytes(&b"Content-Type"[..], b"text/css; charset=utf-8").unwrap(),
-                    Header::from_bytes(&b"Access-Control-Allow-Origin"[..], b"*").unwrap(),
-                ];
-                let res = Response::new(200.into(), headers, Cursor::new(Vec::new()), Some(0), None);
-                let _ = request.respond(res);
-                return;
-            } else if final_is_js {
-                let headers = vec![
-                    Header::from_bytes(&b"Content-Type"[..], b"application/javascript; charset=utf-8").unwrap(),
-                    Header::from_bytes(&b"Access-Control-Allow-Origin"[..], b"*").unwrap(),
-                ];
-                let res = Response::new(200.into(), headers, Cursor::new(Vec::new()), Some(0), None);
-                let _ = request.respond(res);
-                return;
-            }
-            let _ = request.respond(
-                Response::from_string("Upstream Read Error").with_status_code(502),
-            );
-            return;
+    let is_html = content_type.contains("text/html") && !is_js && !is_css;
+    let page_origin = {
+        let o = get_origin_from_url(&effective_target);
+        if o.is_empty() {
+            get_origin_from_url(&chosen_target)
+        } else {
+            o
         }
     };
 
-    if bytes.len() >= 2 && bytes[0] == 0x1f && bytes[1] == 0x8b {
-        let mut decoder = flate2::read::GzDecoder::new(&bytes[..]);
-        let mut decompressed = Vec::new();
-        if decoder.read_to_end(&mut decompressed).is_ok() {
-            bytes = decompressed;
+    let base_path_str = if let Ok(parsed) = url::Url::parse(&effective_target) {
+        let mut p = parsed.path().to_string();
+        if let Some(pos) = p.rfind('/') {
+            p.truncate(pos + 1);
+        } else {
+            p = "/".to_string();
         }
-    } else if bytes.len() >= 2
-        && bytes[0] == 0x78
-        && (bytes[1] == 0x9c || bytes[1] == 0x01 || bytes[1] == 0xda)
-    {
-        let mut decoder = flate2::read::ZlibDecoder::new(&bytes[..]);
-        let mut decompressed = Vec::new();
-        if decoder.read_to_end(&mut decompressed).is_ok() {
-            bytes = decompressed;
-        }
-    }
+        format!("{}{}", page_origin.trim_end_matches('/'), p)
+    } else {
+        String::new()
+    };
 
-    if final_is_css && (status >= 400 || bytes.starts_with(b"<!DOCTYPE") || bytes.starts_with(b"<!doctype") || bytes.starts_with(b"<html")) {
-        status = 200;
-        bytes = Vec::new();
-    }
-
-    let is_js = final_is_js
-        || content_type.contains("javascript")
-        || target_url.contains("bridge.js")
-        || target_url.ends_with(".js")
-        || target_url.contains(".js?");
-    let is_html = content_type.contains("text/html");
-
-    let page_origin = get_origin_from_url(&target_url);
     if is_html && !page_origin.is_empty() {
         if let Ok(mut lock) = state.last_origin.lock() {
             *lock = page_origin.clone();
         }
-        let mut base_path_val = String::new();
-        if let Ok(parsed) = url::Url::parse(&target_url) {
-            let mut p = parsed.path().to_string();
-            if let Some(pos) = p.rfind('/') {
-                p.truncate(pos + 1);
-            } else {
-                p = "/".to_string();
-            }
-            base_path_val = format!("{}{}", page_origin.trim_end_matches('/'), p);
+        if let Ok(mut lock) = state.last_full_url.lock() {
+            *lock = effective_target.clone();
         }
-        if !base_path_val.is_empty() {
+        if !base_path_str.is_empty() {
             if let Ok(mut lock) = state.last_base_url.lock() {
-                *lock = base_path_val.clone();
+                *lock = base_path_str.clone();
             }
         }
         let cookie_val = format!("webapp_target={}; Path=/; SameSite=Lax", page_origin);
         if let Ok(h) = Header::from_bytes(&b"Set-Cookie"[..], cookie_val.as_bytes()) {
             headers.push(h);
         }
-        if !base_path_val.is_empty() {
-            let cookie_base = format!("webapp_base={}; Path=/; SameSite=Lax", base_path_val);
+        if !base_path_str.is_empty() {
+            let cookie_base = format!("webapp_base={}; Path=/; SameSite=Lax", base_path_str);
             if let Ok(h) = Header::from_bytes(&b"Set-Cookie"[..], cookie_base.as_bytes()) {
                 headers.push(h);
             }
         }
     }
 
-    let final_bytes = if is_js {
-        let mut text = String::from_utf8_lossy(&bytes).to_string();
+    let final_bytes = if is_html && (status >= 200 && status < 300) {
+        let mut text = String::from_utf8_lossy(&chosen_bytes).to_string();
+        text = rewrite_js_locations(&text);
+        let host_val = url::Url::parse(&effective_target)
+            .ok()
+            .and_then(|u| u.host_str().map(|s| s.to_string()))
+            .unwrap_or_default();
+        let port_suffix = url::Url::parse(&effective_target)
+            .ok()
+            .and_then(|u| u.port().map(|p| format!(":{}", p)))
+            .unwrap_or_default();
+        let full_host = format!("{}{}", host_val, port_suffix);
 
-        if let Ok(re) = Regex::new(r"![a-zA-Z_$][a-zA-Z0-9_$]*\.test\([a-zA-Z_$][a-zA-Z0-9_$]*\.origin\)") {
-            text = re.replace_all(&text, "false").to_string();
-        }
-        if let Ok(re) = Regex::new(r"[a-zA-Z_$][a-zA-Z0-9_$]*\.test\([a-zA-Z_$][a-zA-Z0-9_$]*\.origin\)") {
-            text = re.replace_all(&text, "true").to_string();
-        }
-
-        text.into_bytes()
-    } else if is_html {
-        let mut text = String::from_utf8_lossy(&bytes).to_string();
-        let base_path_str = if let Ok(parsed) = url::Url::parse(&target_url) {
-            let mut p = parsed.path().to_string();
-            if let Some(pos) = p.rfind('/') {
-                p.truncate(pos + 1);
-            } else {
-                p = "/".to_string();
-            }
-            format!("{}{}", page_origin.trim_end_matches('/'), p)
-        } else {
-            String::new()
-        };
         let origin_var = if !page_origin.is_empty() {
             format!(
-                r#"<script>window.__mpOrigin="{}";window.__mpBase="{}";window.__mpRealUrl="{}";</script>"#,
-                page_origin, base_path_str, final_url
+                r#"<script>window.__mpOrigin="{}";window.__mpBase="{}";window.__mpRealUrl="{}";window.__mpHostname="{}";window.__mpHost="{}";</script>"#,
+                page_origin, base_path_str, final_url, host_val, full_host
             )
         } else {
             format!(r#"<script>window.__mpRealUrl="{}";</script>"#, final_url)
@@ -993,9 +1052,26 @@ fn handle_request(
         }
 
         text.into_bytes()
+    } else if is_js && !is_redirect && (status >= 400 || html_body) {
+        status = 200;
+        content_type = "application/javascript; charset=utf-8".to_string();
+        b"/* not found */".to_vec()
+    } else if is_css && !is_redirect && (status >= 400 || html_body) {
+        status = 200;
+        content_type = "text/css; charset=utf-8".to_string();
+        Vec::new()
+    } else if is_js && (status >= 200 && status < 300) {
+        let text = String::from_utf8_lossy(&chosen_bytes).to_string();
+        rewrite_js_locations(&text).into_bytes()
     } else {
-        bytes
+        chosen_bytes
     };
+
+    if !content_type.is_empty() {
+        if let Ok(h) = Header::from_bytes(&b"Content-Type"[..], content_type.as_bytes()) {
+            headers.push(h);
+        }
+    }
 
     let len = final_bytes.len();
     if let Ok(h) = Header::from_bytes(&b"Content-Length"[..], len.to_string().as_bytes()) {
@@ -1003,7 +1079,13 @@ fn handle_request(
     }
 
     let resp_body_preview = if len > 0 {
-        if is_js || is_html || content_type.contains("json") || content_type.contains("text") || content_type.contains("xml") {
+        if is_html
+            || content_type.contains("javascript")
+            || content_type.contains("json")
+            || content_type.contains("text")
+            || content_type.contains("xml")
+            || content_type.contains("css")
+        {
             let slice_len = final_bytes.len().min(32768);
             if let Ok(s) = std::str::from_utf8(&final_bytes[..slice_len]) {
                 if final_bytes.len() > 32768 {
@@ -1026,7 +1108,7 @@ fn handle_request(
         timestamp,
         time_epoch,
         method: method_str,
-        url: target_url,
+        url: chosen_target,
         origin,
         status,
         status_text,
@@ -1043,7 +1125,7 @@ fn handle_request(
     };
     emit_log(log_entry);
 
-    let cookie_header = format!("__mp_token={}; Path=/; SameSite=Lax; HttpOnly", token);
+    let cookie_header = format!("__mp_token={}; Path=/; SameSite=Lax", token);
     if let Ok(h) = Header::from_bytes(b"Set-Cookie", cookie_header.as_bytes()) {
         headers.push(h);
     }
@@ -1081,10 +1163,23 @@ pub fn start_webapp_proxy() {
 
     let port = server.server_addr().to_ip().map(|a| a.port()).unwrap_or(0);
 
+    let redirect_policy = reqwest::redirect::Policy::custom(|attempt| {
+        if attempt.url().as_str().contains("externalCallback=1") {
+            attempt.stop()
+        } else if attempt.previous().len() >= 10 {
+            attempt.stop()
+        } else {
+            attempt.follow()
+        }
+    });
+
     thread::spawn(move || {
         let mut builder = reqwest::blocking::Client::builder()
-            .connect_timeout(Duration::from_secs(15))
-            .redirect(reqwest::redirect::Policy::none());
+            .connect_timeout(Duration::from_secs(10))
+            .timeout(Duration::from_secs(30))
+            .pool_max_idle_per_host(50)
+            .pool_idle_timeout(Duration::from_secs(90))
+            .redirect(redirect_policy);
         if let Ok(cert) = reqwest::Certificate::from_pem(rumax::MINTSIFRY_ROOT_CA) {
             builder = builder.add_root_certificate(cert);
         }
@@ -1092,6 +1187,7 @@ pub fn start_webapp_proxy() {
         let state = Arc::new(ProxyState {
             last_origin: Mutex::new(String::new()),
             last_base_url: Mutex::new(String::new()),
+            last_full_url: Mutex::new(String::new()),
         });
 
         for request in server.incoming_requests() {

@@ -61,6 +61,14 @@
       if (iframeElement && iframeElement.contentWindow) {
         iframeElement.contentWindow.postMessage(message, "*");
       }
+      if (typeof document !== "undefined") {
+        const innerFrames = document.querySelectorAll(".inner-app-frame");
+        for (const frame of innerFrames) {
+          if (frame && frame.contentWindow) {
+            frame.contentWindow.postMessage(message, "*");
+          }
+        }
+      }
     } catch {}
   }
 
@@ -173,8 +181,12 @@
       currentUserId: $currentUser,
       api: $API,
       onOpenChat: async (chatId) => {
-        await openChat(chatId);
-        minimizeMiniApp(app.id);
+        try {
+          await openChat(chatId);
+          minimizeMiniApp(app.id);
+        } catch (err) {
+          console.error(err);
+        }
       },
       onLaunchApp: async ({ botId, startParam, title }) => {
         await openMiniApp({ botId, startParam, title, entryPoint: "link" });
