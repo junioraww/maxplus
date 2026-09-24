@@ -1,5 +1,3 @@
-import { Muxer, ArrayBufferTarget } from 'mp4-muxer';
-
 export function isWebCodecsMp4Available() {
   try {
     return typeof VideoEncoder === 'function'
@@ -47,6 +45,7 @@ export class Mp4Encoder {
     const audioTracks = mediaStream.getAudioTracks();
     if (videoTracks.length === 0) throw new Error('No video track');
 
+    const { Muxer, ArrayBufferTarget } = await import('mp4-muxer');
     this.#target = new ArrayBufferTarget();
 
     this.#videoEl = document.createElement('video');

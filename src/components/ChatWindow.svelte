@@ -423,8 +423,9 @@
         if (seen.has(key)) continue;
         seen.add(key);
       }
-      result.unshift(m);
+      result.push(m);
     }
+    result.reverse();
     return result;
   })();
 
@@ -921,51 +922,63 @@
     return maxMark;
   })();
 
-  $: allMedia = $messages.flatMap((m) => {
-    const decoded = $decodedMessages[String(m.id)];
-    const media = decoded?.media;
-    const isMe = Number(m.sender) === Number($currentUser);
-    const attaches = (m.attaches || []).map((att, idx) => {
-      if (media && idx === (media.attach_index ?? 0)) {
-        const resolvedType = media.media_type || att._type || "FILE";
-        const localPath = att.localPath || (isMe ? att.path : null);
-        return {
-          ...att,
-          _type: resolvedType,
-          type: resolvedType,
-          originalType: media.media_type,
-          name: media.name || att.name,
-          size: media.size || att.size,
-          mime: media.mime || att.mime,
-          width: media.width ?? att.width,
-          height: media.height ?? att.height,
-          duration: media.duration ?? att.duration,
-          wave: media.wave ?? att.wave,
-          videoType: media.video_type ?? att.videoType,
-          color: media.color || null,
-          isEncryptedMedia: true,
-          encryptedAttach: att,
-          localPath,
-          baseUrl: att.baseUrl || (localPath ? (resolvedType === "VIDEO" ? getProxiedMediaUrl(localPath) : convertFileSrc(localPath)) : null),
-        };
-      }
-      return att;
-    });
+  let allMedia = [];
 
-    return attaches
-      .filter((a) => a._type === "PHOTO" || a._type === "VIDEO")
-      .map((a) => {
-        const fid = a.fileId || a.encryptedAttach?.fileId;
-        const uid = a.videoId || a.photoId || fid || a.url || a.baseUrl || a.localPath || `${m.id}_${a.name || 'media'}`;
-        return {
-          ...a,
-          messageId: m.id,
-          uid: String(uid),
-        };
+  function computeAllMedia() {
+    const list = $messages || [];
+    const decodedMap = $decodedMessages || {};
+    const myId = Number($currentUser);
+    return list.flatMap((m) => {
+      const decoded = decodedMap[String(m.id)];
+      const media = decoded?.media;
+      const isMe = Number(m.sender) === myId;
+      const attaches = (m.attaches || []).map((att, idx) => {
+        if (media && idx === (media.attach_index ?? 0)) {
+          const resolvedType = media.media_type || att._type || "FILE";
+          const localPath = att.localPath || (isMe ? att.path : null);
+          return {
+            ...att,
+            _type: resolvedType,
+            type: resolvedType,
+            originalType: media.media_type,
+            name: media.name || att.name,
+            size: media.size || att.size,
+            mime: media.mime || att.mime,
+            width: media.width ?? att.width,
+            height: media.height ?? att.height,
+            duration: media.duration ?? att.duration,
+            wave: media.wave ?? att.wave,
+            videoType: media.video_type ?? att.videoType,
+            color: media.color || null,
+            isEncryptedMedia: true,
+            encryptedAttach: att,
+            localPath,
+            baseUrl: att.baseUrl || (localPath ? (resolvedType === "VIDEO" ? getProxiedMediaUrl(localPath) : convertFileSrc(localPath)) : null),
+          };
+        }
+        return att;
       });
-  });
+
+      return attaches
+        .filter((a) => a._type === "PHOTO" || a._type === "VIDEO")
+        .map((a) => {
+          const fid = a.fileId || a.encryptedAttach?.fileId;
+          const uid = a.videoId || a.photoId || fid || a.url || a.baseUrl || a.localPath || `${m.id}_${a.name || 'media'}`;
+          return {
+            ...a,
+            messageId: m.id,
+            uid: String(uid),
+          };
+        });
+    });
+  }
+
+  $: if (viewerOpen) {
+    allMedia = computeAllMedia();
+  }
 
   function openMedia(attach) {
+    allMedia = computeAllMedia();
     const fid = attach.fileId || attach.encryptedAttach?.fileId;
     const targetUid = String(attach.videoId || attach.photoId || fid || attach.url || attach.baseUrl || attach.localPath || "");
     const index = allMedia.findIndex((m) =>
@@ -978,7 +991,6 @@
     if (index !== -1) {
       if (attach.baseUrl) allMedia[index].baseUrl = attach.baseUrl;
       if (attach.localPath) allMedia[index].localPath = attach.localPath;
-      allMedia = [...allMedia];
       viewerIndex = index;
       viewerOpen = true;
     }

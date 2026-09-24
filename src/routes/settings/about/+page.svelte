@@ -32,7 +32,7 @@
       if (!data.tag_name) alert("Не удалось соединиться с GitHub!");
       else {
         if (data.tag_name !== version) openUrl(data.html_url);
-        else alert("Установлена последняя версия!");
+        else alert("Обновлений нет!");
       }
     } catch (e) {
       console.error(e);
@@ -51,7 +51,7 @@
   }
 
   onMount(async () => {
-    version = await app.getVersion();
+    version = "v" + await app.getVersion();
     const _platform = await platform();
     environment =
       _platform[0].toUpperCase() +

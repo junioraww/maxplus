@@ -120,11 +120,8 @@
     msg.reactionInfo?.totalCount ||
     msg.link?.messageId;
 
-  let innerWidth = typeof window !== "undefined" ? window.innerWidth : 0;
-
   $: showAvatar =
     chat.type !== "CHANNEL" &&
-    (!isMe || innerWidth > 500) &&
     !isSystem;
 
   $: inlineKeyboardAttach = effectiveAttaches?.find(x => x._type === "INLINE_KEYBOARD");
@@ -132,8 +129,6 @@
   $: isStickerOnly = stickerAttach && (!lines || lines.length === 0 || (lines.length === 1 && !lines[0]?.trim())) && (!effectiveAttaches || effectiveAttaches.length === 1) && !linkedMsg;
   $: isVideoNoteOnly = effectiveAttaches?.some(x => x._type === "VIDEO" && x.videoType === 1) && (!lines || lines.length === 0 || (lines.length === 1 && !lines[0]?.trim())) && (!effectiveAttaches || effectiveAttaches.length === 1) && !linkedMsg;
 </script>
-
-<svelte:window bind:innerWidth={innerWidth} />
 
 <div
   class="message-row"
@@ -427,6 +422,12 @@
 
   .indent {
     margin: 0 12px 0 9px;
+  }
+
+  @media screen and (max-width: 500px) {
+    .message-row.is-me .indent {
+      display: none;
+    }
   }
 
   .indent:empty {

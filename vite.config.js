@@ -10,19 +10,6 @@ export default defineConfig(async () => ({
   resolve: {
     alias: {
       $components: path.resolve("./src/components"),
-      "libsodium-wrappers-sumo": path.resolve(
-        __dirname,
-        "node_modules/libsodium-wrappers-sumo/dist/modules-sumo/libsodium-wrappers.js",
-      ),
-      "libsodium-sumo": path.resolve(
-        __dirname,
-        "node_modules/libsodium-sumo/dist/modules-sumo/libsodium-sumo.js",
-      ),
-
-      "./libsodium-sumo.mjs": path.resolve(
-        __dirname,
-        "node_modules/libsodium-sumo/dist/modules-sumo/libsodium-sumo.js",
-      ),
     },
   },
 
@@ -38,15 +25,11 @@ export default defineConfig(async () => ({
     rollupOptions: {
       output: {
         manualChunks: (id) => {
-          if (id.includes("node_modules")) {
-            return "vendor";
+          if (id.includes("lottie-web")) {
+            return "lottie";
           }
         },
       },
-    },
-
-    commonjsOptions: {
-      include: [/libsodium-sumo/, /libsodium-wrappers-sumo/, /node_modules/],
     },
 
     modulePreload: { polyfill: false },
