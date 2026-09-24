@@ -20,6 +20,9 @@ function readWindowProxy() {
 }
 
 readWindowProxy();
+if (typeof window !== "undefined") {
+  initProxyConfig();
+}
 
 export async function initProxyConfig() {
   readWindowProxy();

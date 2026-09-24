@@ -2,6 +2,7 @@
   import { openUrl } from "@tauri-apps/plugin-opener";
   import API from "$lib/stores/api";
   import { openMiniApp } from "$lib/stores/webapp.js";
+  import { processMaxLink } from "$lib/utils/maxLink.js";
 
   let { chat, msg, attach } = $props();
 
@@ -52,23 +53,62 @@
     }
 
     if (bType === "OPEN_APP") {
-      const botId = button.contactId || button.botId || (chat ? chat.id : null);
-      const url = button.webApp || button.url;
-      const startParam = button.payload || null;
+      const botId =
+        button.contactId ||
+        button.botId ||
+        (chat?.type === "DIALOG" || chat?.type === "private" ? chat.id : null);
+      const rawUrl = button.webApp || button.url;
+      let startParam = button.payload || null;
+      let targetChatId = chat?.id ?? msg?.chatId ?? null;
+
+      if (rawUrl) {
+        try {
+          const parsed = new URL(
+            rawUrl.startsWith("max://")
+              ? rawUrl.replace(/^max:\/\//, "https://max.ru/")
+              : rawUrl
+          );
+          startParam =
+            startParam ||
+            parsed.searchParams.get("startapp") ||
+            parsed.searchParams.get("startApp") ||
+            parsed.searchParams.get("WebAppStartParam") ||
+            parsed.searchParams.get("start_param");
+          const cid = parsed.searchParams.get("chat_id");
+          if (cid) {
+            const parsedCid = Number(cid);
+            if (!Number.isNaN(parsedCid)) {
+              targetChatId = parsedCid;
+            }
+          }
+        } catch {}
+      }
+
       if (botId) {
         openMiniApp({
           botId,
           title: button.text || "Мини-приложение",
-          url: url && (url.startsWith("http://") || url.startsWith("https://")) ? url : null,
           startParam,
-          chatId: chat?.id,
+          chatId: targetChatId,
           entryPoint: "inline_button",
         });
-      } else if (url && (url.startsWith("http://") || url.startsWith("https://"))) {
+        return;
+      }
+
+      if (rawUrl) {
+        const handled = await processMaxLink(rawUrl, {
+          currentUserId: null,
+          api: $API,
+          onLaunchApp: (appData) => openMiniApp(appData),
+        });
+        if (handled) return;
+      }
+
+      if (rawUrl && (rawUrl.startsWith("http://") || rawUrl.startsWith("https://"))) {
         try {
-          await openUrl(url);
+          await openUrl(rawUrl);
         } catch {
-          window.open(url, "_blank");
+          window.open(rawUrl, "_blank");
         }
       }
       return;

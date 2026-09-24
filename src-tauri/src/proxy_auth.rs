@@ -70,6 +70,14 @@ pub fn get_webapp_token() -> String {
 }
 
 pub fn validate_and_strip_token(request: &Request, expected_token: &str) -> Option<String> {
+    validate_and_strip_token_with_port(request, expected_token, 0)
+}
+
+pub fn validate_and_strip_token_with_port(
+    request: &Request,
+    expected_token: &str,
+    port: u16,
+) -> Option<String> {
     if expected_token.is_empty() {
         return Some(request.url().to_string());
     }
@@ -115,6 +123,27 @@ pub fn validate_and_strip_token(request: &Request, expected_token: &str) -> Opti
                         return Some(url.to_string());
                     }
                 }
+            }
+        }
+
+        if name.eq_ignore_ascii_case("referer") {
+            if value.contains(&format!("/{}", expected_token)) || value.contains(expected_token) {
+                return Some(url.to_string());
+            }
+            if port > 0 {
+                let local_127 = format!("127.0.0.1:{}", port);
+                let local_host = format!("localhost:{}", port);
+                if value.contains(&local_127) || value.contains(&local_host) {
+                    return Some(url.to_string());
+                }
+            }
+        }
+
+        if port > 0 && name.eq_ignore_ascii_case("origin") {
+            let local_127 = format!("127.0.0.1:{}", port);
+            let local_host = format!("localhost:{}", port);
+            if value.contains(&local_127) || value.contains(&local_host) {
+                return Some(url.to_string());
             }
         }
     }

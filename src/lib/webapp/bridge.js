@@ -42,6 +42,8 @@ const METHOD_SLUGS = {
   WebAppNfcEmulateNfcTag: "nfc_emulate_nfc_tag",
   WebAppNfcOpenSystemSettings: "nfc_open_system_settings",
   WebAppVerifyMobileId: "verify_mobile_id",
+  WebAppOrientationLock: "orientation_lock",
+  WebAppOrientationUnlock: "orientation_unlock",
 };
 
 const METHOD_REVERSE = {
@@ -71,6 +73,10 @@ const METHOD_REVERSE = {
   setup_swipes_behavior: "WebAppSetupSwipesBehavior",
   setup_swipe_behavior: "WebAppSetupSwipesBehavior",
   setup_screen_capture_behavior: "WebAppSetupScreenCaptureBehavior",
+  web_app_orientation_lock: "WebAppOrientationLock",
+  web_app_orientation_unlock: "WebAppOrientationUnlock",
+  orientation_lock: "WebAppOrientationLock",
+  orientation_unlock: "WebAppOrientationUnlock",
 };
 
 for (const [pascal, slug] of Object.entries(METHOD_SLUGS)) {
@@ -104,6 +110,7 @@ export function createBridgeClient({
   onClosingBehaviorChange = () => {},
   onPhoneRequested = async () => null,
   onOpenLink = async () => {},
+  onDownloadFile = null,
   postToFrame = () => {},
 }) {
   let customBackButton = false;
@@ -382,20 +389,20 @@ export function createBridgeClient({
       case "WebAppSecureStorageGetKey": {
         const isSec = method.startsWith("WebAppSecure");
         const key = payload.key;
-        const value = getStorageKey(userId, botId, isSec, key);
-        if (value !== null && value !== undefined) {
-          emitToWebApp(
-            method,
-            {
-              ...(requestId !== null ? { requestId } : {}),
-              key,
-              value,
-            },
-            isPrivate
-          );
-        } else {
-          sendError(method, requestId, "not_found", isPrivate);
+        if (!key) {
+          sendError(method, requestId, "invalid_request", isPrivate);
+          break;
         }
+        const value = getStorageKey(userId, botId, isSec, key);
+        emitToWebApp(
+          method,
+          {
+            ...(requestId !== null ? { requestId } : {}),
+            key,
+            value: value !== undefined && value !== null ? value : null,
+          },
+          isPrivate
+        );
         break;
       }
 
@@ -420,7 +427,25 @@ export function createBridgeClient({
         break;
       }
 
-      case "WebAppBiometryRequestAccess":
+      case "WebAppBiometryRequestAccess": {
+        const info = fetchBiometryStatus(userId, botId, deviceId);
+        info.accessRequested = true;
+        info.accessGranted = true;
+        info.access_requested = true;
+        info.access_granted = true;
+        const auth = requestBiometryAuth(userId, botId);
+        emitToWebApp(
+          method,
+          {
+            ...(requestId !== null ? { requestId } : {}),
+            ...info,
+            ...auth,
+          },
+          isPrivate
+        );
+        break;
+      }
+
       case "WebAppBiometryRequestAuth": {
         const auth = requestBiometryAuth(userId, botId);
         emitToWebApp(
@@ -513,7 +538,40 @@ export function createBridgeClient({
         break;
       }
 
-      case "WebAppDownloadFile":
+      case "WebAppOrientationLock":
+      case "WebAppOrientationUnlock":
+        sendOk(method, requestId, "ok", isPrivate);
+        break;
+
+      case "WebAppDownloadFile": {
+        const fileUrl = payload.url;
+        if (fileUrl) {
+          try {
+            if (typeof onDownloadFile === "function") {
+              await onDownloadFile(fileUrl, payload.fileName || payload.file_name);
+              sendOk(method, requestId, "downloading", isPrivate);
+            } else {
+              try {
+                await openUrl(fileUrl);
+                sendOk(method, requestId, "downloading", isPrivate);
+              } catch {
+                if (typeof window !== "undefined" && typeof window.open === "function") {
+                  window.open(fileUrl, "_blank");
+                  sendOk(method, requestId, "downloading", isPrivate);
+                } else {
+                  sendError(method, requestId, "failed", isPrivate);
+                }
+              }
+            }
+          } catch {
+            sendError(method, requestId, "failed", isPrivate);
+          }
+        } else {
+          sendError(method, requestId, "invalid_request", isPrivate);
+        }
+        break;
+      }
+
       case "WebAppOpenCodeReader":
       case "WebAppChangeScreenBrightness":
       case "WebAppNfcEmulateNfcTag":

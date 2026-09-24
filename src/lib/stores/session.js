@@ -29,34 +29,34 @@ export const now = readable(Date.now(), (set) => {
   return () => clearInterval(interval);
 });
 
-export async function openChat(chatId/*,  messageId */) { // TODO
-  const { openedChats, profile } = getStoreValue(data);
+export async function openChat(chatId) {
+  const currentData = getStoreValue(data) || {};
+  const openedChats = Array.isArray(currentData.openedChats) ? currentData.openedChats : [];
+  const profile = currentData.profile;
 
   if (openedChats.findIndex(id => String(id) === String(chatId)) === -1) {
-    let chat = getStoreValue(currentSessionChats).find(x => String(x.id) === String(chatId));
+    const rawChats = getStoreValue(currentSessionChats);
+    let chat = Array.isArray(rawChats) ? rawChats.find(x => String(x.id) === String(chatId)) : null;
 
     if (!chat) {
-      console.log("Chat not cached, requesting:", chatId);
-
       const response = await getStoreValue(API).getChat(chatId);
 
-      if (!response.chats.length) {
+      if (!response || !response.chats || !response.chats.length) {
         return alert("Не удалось получить информацию о чате.\nВозможно, чат закрыт.");
       }
 
       const info = response.chats[0];
 
-       // TODO Optimize
       currentSessionChats.update(chats => {
-        const idx = chats.findIndex(x => x.id === info.id);
-        if (idx !== -1) chats.splice(idx, 1);
-        chats.push(info);
+        const list = Array.isArray(chats) ? [...chats] : [];
+        const idx = list.findIndex(x => x.id === info.id);
+        if (idx !== -1) list.splice(idx, 1);
+        list.push(info);
+        return list;
       });
 
       await saveChats([ info ]);
     }
-
-    console.log('Opening chat', chatId);
 
     data.update(s => ({
       ...s,

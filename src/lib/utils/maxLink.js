@@ -61,6 +61,8 @@ export function extractMaxUrlInfo(rawInput) {
   const startAppParam =
     parsed.searchParams.get("startapp") ||
     parsed.searchParams.get("startApp") ||
+    parsed.searchParams.get("WebAppStartParam") ||
+    parsed.searchParams.get("start_param") ||
     null;
 
   if (segments.length === 0) {
