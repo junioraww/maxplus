@@ -21,7 +21,6 @@ import { goto } from "$app/navigation";
     requestPermissions,
     openAppSettings,
   } from "@tauri-apps/plugin-barcode-scanner";
-  import jsQR from "jsqr";
 
   import { set as sessionSet } from "$lib/stores/session";
   import { currentUserDetails } from "$lib/stores/api";
@@ -183,6 +182,7 @@ import { goto } from "$app/navigation";
       }
 
       const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const { default: jsQR } = await import("jsqr");
       const code = jsQR(imageData.data, imageData.width, imageData.height, {
         inversionAttempts: "attemptBoth",
       });

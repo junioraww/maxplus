@@ -1,5 +1,3 @@
-import { Muxer, ArrayBufferTarget } from 'mp4-muxer';
-
 function sanitizeMp4EditList(input) {
   const bytes = input instanceof Uint8Array ? input : new Uint8Array(input);
   for (let i = 0; i <= bytes.length - 4; i++) {
@@ -25,6 +23,7 @@ export async function cropVideoToMp4(videoEl, options = {}) {
   const width = 480;
   const height = 480;
   const duration = Math.max(0.1, endSec - startSec);
+  const { Muxer, ArrayBufferTarget } = await import('mp4-muxer');
   const target = new ArrayBufferTarget();
   const targetSampleRate = 48000;
 
@@ -70,7 +69,7 @@ export async function cropVideoToMp4(videoEl, options = {}) {
 
   const canvas = typeof document !== 'undefined' ? document.createElement('canvas') : null;
   if (!canvas) {
-    return createMinimalMp4(width, height, Math.round(duration * 1000));
+    return await createMinimalMp4(width, height, Math.round(duration * 1000));
   }
   canvas.width = width;
   canvas.height = height;
@@ -221,7 +220,8 @@ export async function cropVideoToMp4(videoEl, options = {}) {
   return outBytes;
 }
 
-export function createMinimalMp4(width = 480, height = 480, durationMs = 1000) {
+export async function createMinimalMp4(width = 480, height = 480, durationMs = 1000) {
+  const { Muxer, ArrayBufferTarget } = await import('mp4-muxer');
   const target = new ArrayBufferTarget();
   const muxer = new Muxer({
     target,
@@ -276,7 +276,7 @@ export function createMinimalMp4(width = 480, height = 480, durationMs = 1000) {
 
 export async function convertVideoBlobToMp4(blob, options = {}) {
   if (typeof document === 'undefined') {
-    return createMinimalMp4(480, 480, 1000);
+    return await createMinimalMp4(480, 480, 1000);
   }
   const url = URL.createObjectURL(blob);
   const videoEl = document.createElement('video');

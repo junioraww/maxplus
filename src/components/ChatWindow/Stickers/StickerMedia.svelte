@@ -70,7 +70,7 @@
 
 <script>
   import { onMount, onDestroy, tick } from "svelte";
-  import lottie from "lottie-web";
+  import lottie from "lottie-web/build/player/lottie_light.js";
   import { getAssetUrl } from "$lib/utils/images";
 
   export let url = "";
@@ -142,10 +142,14 @@
 
       anim = lottie.loadAnimation({
         container: containerEl,
-        renderer: "svg",
+        renderer: "canvas",
         loop,
         autoplay: autoplay && isVisible,
         animationData,
+        rendererSettings: {
+          preserveAspectRatio: "xMidYMid meet",
+          clearCanvas: true,
+        },
       });
 
       anim.addEventListener("DOMLoaded", () => {

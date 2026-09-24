@@ -30,6 +30,18 @@ function enqueueDownload(task) {
     });
 }
 
+const resolvedAssetCache = new Map();
+const MAX_RESOLVED_CACHE = 1000;
+
+function setCachedAsset(src, url) {
+    if (!src || !url) return;
+    if (resolvedAssetCache.size >= MAX_RESOLVED_CACHE) {
+        const first = resolvedAssetCache.keys().next().value;
+        resolvedAssetCache.delete(first);
+    }
+    resolvedAssetCache.set(src, url);
+}
+
 export async function getLocalFilePath(src) {
     if (!src) return null;
     if (src.startsWith("data:") || src.startsWith("blob:") || src.startsWith("asset:") || src.startsWith("http://asset.localhost/")) {
@@ -62,15 +74,22 @@ export async function getLocalFilePath(src) {
 
 export async function getAssetUrl(src) {
     if (!src) return null;
+    if (resolvedAssetCache.has(src)) {
+        return resolvedAssetCache.get(src);
+    }
     if (src.startsWith("data:") || src.startsWith("blob:") || src.startsWith("asset:") || src.startsWith("http://asset.localhost/")) {
         return src;
     }
     if (!src.startsWith("http://") && !src.startsWith("https://")) {
-        return convertFileSrc(src);
+        const res = convertFileSrc(src);
+        setCachedAsset(src, res);
+        return res;
     }
     const path = await getLocalFilePath(src);
     if (path) {
-        return convertFileSrc(path);
+        const res = convertFileSrc(path);
+        setCachedAsset(src, res);
+        return res;
     }
     return null;
 }
