@@ -556,7 +556,13 @@ pub fn load_messages_sync(
         return Ok(vec![]);
     }
 
-    let target_day = chrono::DateTime::from_timestamp(time / 1000, 0)
+    let target_time = if time <= 0 {
+        chrono::Utc::now().timestamp_millis() + 86400000
+    } else {
+        time
+    };
+
+    let target_day = chrono::DateTime::from_timestamp(target_time / 1000, 0)
         .map(|dt| dt.format("%Y-%m-%d").to_string())
         .unwrap_or_default();
 
@@ -601,7 +607,7 @@ pub fn load_messages_sync(
             let mid = (left + right) / 2;
             let msg_time = data[mid].get("time").and_then(|x| x.as_i64()).unwrap_or(0);
 
-            if msg_time <= time {
+            if msg_time <= target_time {
                 left = mid + 1;
             } else {
                 right = mid;
@@ -1064,6 +1070,20 @@ pub async fn mark_message_deleted(
     .await
     .map_err(|e| e.to_string())?
 }
+
+#[tauri::command]
+pub fn clear_local_messages(
+    app: AppHandle,
+    account: u64,
+    chat_id: i64,
+) -> Result<(), String> {
+    let dir = Paths::new(&app, account).messages(chat_id);
+    if dir.exists() {
+        let _ = fs::remove_dir_all(&dir);
+    }
+    Ok(())
+}
+
 
 fn accounts_path(app: &AppHandle) -> PathBuf {
     app.path().app_data_dir().unwrap().join("accounts")

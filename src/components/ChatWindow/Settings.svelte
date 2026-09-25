@@ -114,67 +114,69 @@
     </div>
 
     <div class="tg-body">
-      <div class="tg-section-header">Шифрование и безопасность</div>
-      <div class="tg-card">
-        <div class="tg-row">
-          <div class="tg-row-icon tg-icon-shield">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
-            </svg>
-          </div>
-          <div class="tg-row-main">
-            <div class="tg-row-title">Сквозное шифрование</div>
-            <div class="tg-row-subtitle">
-              {#if $chatSettings.keys?.current || $chatSettings.session}
-                <span class="tg-badge tg-badge-success">Активно</span>
-              {:else if $chatSettings.pending}
-                <span class="tg-badge tg-badge-warning">Запрос отправлен</span>
-              {:else}
-                <span class="tg-badge tg-badge-muted">Отключено</span>
-              {/if}
-            </div>
-          </div>
-          <button
-            class="tg-btn-action"
-            class:danger={$chatSettings.keys?.current || $chatSettings.session}
-            on:click={() => switchEnc(chat, chatSettings, messages)}
-          >
-            { !($chatSettings.keys?.current || $chatSettings.session) ? "Новая сессия" : "Отключить" }
-          </button>
-        </div>
-
-        {#if $chatSettings.session?.fingerprint}
-          <div class="tg-row tg-fingerprint-row" on:click={copyFingerprint}>
-            <div class="tg-row-icon tg-icon-key">
+      {#if chat?.type !== "CHAT"}
+        <div class="tg-section-header">Сквозное шифрование (асимметричное)</div>
+        <div class="tg-card">
+          <div class="tg-row">
+            <div class="tg-row-icon tg-icon-shield">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <circle cx="7.5" cy="15.5" r="4.5"/>
-                <path d="M21 2l-9.6 9.6M15.5 7.5l3 3M18.5 4.5l3 3"/>
+                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
               </svg>
             </div>
             <div class="tg-row-main">
-              <div class="tg-row-title">Ключ сессии</div>
-              <div class="tg-fingerprint-emojis">
-                {$chatSettings.session.fingerprint}
+              <div class="tg-row-title">Сквозное шифрование</div>
+              <div class="tg-row-subtitle">
+                {#if $chatSettings.keys?.current || $chatSettings.session}
+                  <span class="tg-badge tg-badge-success">Активно</span>
+                {:else if $chatSettings.pending}
+                  <span class="tg-badge tg-badge-warning">Запрос отправлен</span>
+                {:else}
+                  <span class="tg-badge tg-badge-muted">Отключено</span>
+                {/if}
               </div>
             </div>
-            <button class="tg-copy-btn" title="Скопировать ключ">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
-                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
-              </svg>
+            <button
+              class="tg-btn-action"
+              class:danger={$chatSettings.keys?.current || $chatSettings.session}
+              on:click={() => switchEnc(chat, chatSettings, messages)}
+            >
+              { !($chatSettings.keys?.current || $chatSettings.session) ? "Новая сессия" : "Отключить" }
             </button>
           </div>
-        {/if}
-      </div>
 
-      <div class="tg-caption">
-        {#if $chatSettings.session?.fingerprint}
-          Сравните эти 4 эмодзи с собеседником для проверки безопасности соединения.
-        {:else}
-          При включении переписка шифруется на устройстве, прочитать её можете только вы и собеседник.
-        {/if}
-        <div class="tg-caption-tag">Шифрование доступно между пользователями Max+</div>
-      </div>
+          {#if $chatSettings.session?.fingerprint}
+            <div class="tg-row tg-fingerprint-row" on:click={copyFingerprint}>
+              <div class="tg-row-icon tg-icon-key">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="7.5" cy="15.5" r="4.5"/>
+                  <path d="M21 2l-9.6 9.6M15.5 7.5l3 3M18.5 4.5l3 3"/>
+                </svg>
+              </div>
+              <div class="tg-row-main">
+                <div class="tg-row-title">Ключ сессии</div>
+                <div class="tg-fingerprint-emojis">
+                  {$chatSettings.session.fingerprint}
+                </div>
+              </div>
+              <button class="tg-copy-btn" title="Скопировать ключ">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                  <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                </svg>
+              </button>
+            </div>
+          {/if}
+        </div>
+
+        <div class="tg-caption">
+          {#if $chatSettings.session?.fingerprint}
+            Сравните эти 4 эмодзи с собеседником для проверки безопасности соединения.
+          {:else}
+            При включении переписка шифруется на устройстве, прочитать её можете только вы и собеседник.
+          {/if}
+          <div class="tg-caption-tag">Шифрование доступно между пользователями Max+</div>
+        </div>
+      {/if}
 
       <div class="tg-section-header">Симметричный ключ (XOR)</div>
       <div class="tg-card">

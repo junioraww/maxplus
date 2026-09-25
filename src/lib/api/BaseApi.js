@@ -35,8 +35,19 @@ export default class API {
     leaveChannel() { throw "leaveChannel: Unimplemented" }
     leaveChat() { throw "leaveChat: Unimplemented" }
     joinChannel() { throw "joinChannel: Unimplemented" }
-    deleteChatForAll() { throw "deleteChatForAll: Unimplemented" }
     updateChatProfile() { throw "updateChatProfile: Unimplemented" }
+    fetchGroupMembers() { throw "fetchGroupMembers: Unimplemented" }
+    searchGroupMembers() { throw "searchGroupMembers: Unimplemented" }
+    addGroupMembers() { throw "addGroupMembers: Unimplemented" }
+    kickGroupMember() { throw "kickGroupMember: Unimplemented" }
+    grantGroupAdmin() { throw "grantGroupAdmin: Unimplemented" }
+    revokeGroupAdmin() { throw "revokeGroupAdmin: Unimplemented" }
+    setGroupOptions() { throw "setGroupOptions: Unimplemented" }
+    fetchJoinRequests() { throw "fetchJoinRequests: Unimplemented" }
+    confirmJoinRequests() { throw "confirmJoinRequests: Unimplemented" }
+    declineJoinRequests() { throw "declineJoinRequests: Unimplemented" }
+    purgeChatHistory() { throw "purgeChatHistory: Unimplemented" }
+    fetchChatMedia() { throw "fetchChatMedia: Unimplemented" }
 
     sendButtonCallback() { throw "sendButtonCallback: Unimplemented" }
     sendBotStart() { throw "sendBotStart: Unimplemented" }

@@ -30,7 +30,7 @@
   $: isMe = Number(msg.sender) === Number($currentUser);
   $: isSending = msg.status === "sending" || msg.status === "pending" || msg.status === 0 || msg.sending === true;
   $: isRead = !isSending && (msg.read === true || msg.status === 3 || msg.status === "read" || (otherReadTime > 0 && otherReadTime >= (msg.time || 0)));
-  const isSystem = msg.attaches?.[0]?._type === "CONTROL";
+  $: isSystem = Boolean(msg.attaches?.some((x) => x._type === "CONTROL"));
 
   $: rawText = decoded ? (decoded.text ?? "") : (msg.text || "");
   $: lines = rawText ? rawText.split("\n") : [];
@@ -103,7 +103,7 @@
   $: linkedMsg = (() => {
     if (msg.link) return msg.link.message;
     if (isSystem) {
-      return msg.attaches[0].pinnedMessage;
+      return msg.attaches?.find((x) => x._type === "CONTROL")?.pinnedMessage;
     }
     return undefined;
   })();
@@ -265,9 +265,12 @@
         {/if}
 
         {#if isSystem}
-          {#each getSystemText(msg).split("\n") as line}
-            <p class="line system">{@html line}</p>
-          {/each}
+          {@const sysText = getSystemText(msg) || ""}
+          {#if sysText}
+            {#each sysText.split("\n") as line}
+              <p class="line system">{@html line}</p>
+            {/each}
+          {/if}
         {:else}
           {#if msg.deleted}
             <div class="deleted-notice">

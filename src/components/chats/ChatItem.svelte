@@ -143,9 +143,9 @@
         return;
       }
       if (chat.id === 0) {
-        $Session.profile = { userId: $currentUser };
+        $Session.profile = { userId: $currentUser, chatId: 0 };
       } else if (chat.type === "DIALOG") {
-        $Session.profile = { userId: peerId };
+        $Session.profile = { userId: peerId, chatId: chat.id };
       } else {
         $Session.profile = { chatId: chat.id };
       }
@@ -194,7 +194,7 @@
         {#if replace}
           {@html replace.text}
         {:else}
-          {shownMessage?.text || getSystemText(shownMessage)}
+          {(shownMessage?.text || getSystemText(shownMessage, false) || "").replace(/<[^>]*>/g, "")}
         {/if}
       </p>
       {#if unread > 0}

@@ -1463,5 +1463,275 @@ export default class MobileApi extends BaseAPI {
       startParam,
     };
   }
+
+  async fetchGroupMembers(chatId, markerOrCount = null, countOrMarker = 50) {
+    await this.waitSync();
+    let count = 50;
+    let marker = null;
+    if (typeof markerOrCount === "number" && markerOrCount <= 100 && markerOrCount > 0) {
+      count = markerOrCount;
+      marker = countOrMarker != null ? Number(countOrMarker) : null;
+    } else {
+      marker = markerOrCount != null ? Number(markerOrCount) : null;
+      if (typeof countOrMarker === "number" && countOrMarker <= 100 && countOrMarker > 0) {
+        count = countOrMarker;
+      }
+    }
+    const res = await invoke("fetch_group_members", {
+      chatId: Number(chatId),
+      count: Math.min(Math.max(Number(count) || 50, 1), 50),
+      marker: marker != null ? Number(marker) : null
+    });
+    const members = res?.members || [];
+    const nextMarker = res?.marker ?? null;
+    const presenceUpdates = {};
+    for (const m of members) {
+      if (m.contact) {
+        updateContact(m.contact);
+      }
+      if (m.presence && m.contact?.id) {
+        presenceUpdates[m.contact.id] = {
+          status: m.presence.status ?? 0,
+          seen: m.presence.seen ?? 0
+        };
+      }
+    }
+    if (Object.keys(presenceUpdates).length > 0) {
+      currentPresence.update(prev => ({ ...prev, ...presenceUpdates }));
+    }
+    return { members, marker: nextMarker };
+  }
+
+  async searchGroupMembers(chatId, query) {
+    await this.waitSync();
+    const res = await invoke("search_group_members", {
+      chatId: Number(chatId),
+      query: String(query || "")
+    });
+    const members = res?.members || [];
+    const presenceUpdates = {};
+    for (const m of members) {
+      if (m.contact) {
+        updateContact(m.contact);
+      }
+      if (m.presence && m.contact?.id) {
+        presenceUpdates[m.contact.id] = {
+          status: m.presence.status ?? 0,
+          seen: m.presence.seen ?? 0
+        };
+      }
+    }
+    if (Object.keys(presenceUpdates).length > 0) {
+      currentPresence.update(prev => ({ ...prev, ...presenceUpdates }));
+    }
+    return members;
+  }
+
+  async addGroupMembers(chatId, userIds, showHistory = true) {
+    await this.waitSync();
+    const ids = (userIds || []).map(Number);
+    const res = await invoke("add_group_members", {
+      chatId: Number(chatId),
+      userIds: ids,
+      showHistory: Boolean(showHistory)
+    });
+    if (res?.chat) {
+      currentSessionChats.update(chats => {
+        const idx = chats.findIndex(x => x.id === Number(chatId));
+        if (idx !== -1) {
+          chats[idx] = { ...chats[idx], ...res.chat };
+        }
+        return chats;
+      });
+    }
+    return res;
+  }
+
+  async kickGroupMember(chatId, userIds, cleanPeriod = 0) {
+    await this.waitSync();
+    const ids = (Array.isArray(userIds) ? userIds : [userIds]).map(Number);
+    const res = await invoke("kick_group_member", {
+      chatId: Number(chatId),
+      userIds: ids,
+      cleanMsgPeriod: Number(cleanPeriod)
+    });
+    if (res?.chat) {
+      currentSessionChats.update(chats => {
+        const idx = chats.findIndex(x => x.id === Number(chatId));
+        if (idx !== -1) {
+          chats[idx] = { ...chats[idx], ...res.chat };
+        }
+        return chats;
+      });
+    }
+    return res;
+  }
+
+  async grantGroupAdmin(chatId, userId, permissions = [], alias = null) {
+    await this.waitSync();
+    const res = await invoke("grant_group_admin", {
+      chatId: Number(chatId),
+      userId: Number(userId),
+      permissions: permissions || [],
+      alias: alias ? String(alias) : null
+    });
+    if (res?.chat) {
+      currentSessionChats.update(chats => {
+        const idx = chats.findIndex(x => x.id === Number(chatId));
+        if (idx !== -1) {
+          chats[idx] = { ...chats[idx], ...res.chat };
+        }
+        return chats;
+      });
+    }
+    return res;
+  }
+
+  async revokeGroupAdmin(chatId, userId) {
+    await this.waitSync();
+    const res = await invoke("revoke_group_admin", {
+      chatId: Number(chatId),
+      userId: Number(userId)
+    });
+    if (res?.chat) {
+      currentSessionChats.update(chats => {
+        const idx = chats.findIndex(x => x.id === Number(chatId));
+        if (idx !== -1) {
+          chats[idx] = { ...chats[idx], ...res.chat };
+        }
+        return chats;
+      });
+    }
+    return res;
+  }
+
+  async setGroupOptions(chatId, options = {}) {
+    await this.waitSync();
+    const allCanPin = options.allCanPinMessage ?? options.ALL_CAN_PIN_MESSAGE ?? null;
+    const onlyOwnerIcon = options.onlyOwnerCanChangeIconTitle ?? options.ONLY_OWNER_CAN_CHANGE_ICON_TITLE ?? null;
+    const onlyAdminAdd = options.onlyAdminCanAddMember ?? options.ONLY_ADMIN_CAN_ADD_MEMBER ?? null;
+    const onlyAdminCall = options.onlyAdminCanCall ?? options.ONLY_ADMIN_CAN_CALL ?? null;
+    const membersLink = options.membersCanSeePrivateLink ?? options.MEMBERS_CAN_SEE_PRIVATE_LINK ?? null;
+
+    const res = await invoke("set_group_options", {
+      chatId: Number(chatId),
+      allCanPinMessage: allCanPin,
+      onlyOwnerCanChangeIconTitle: onlyOwnerIcon,
+      onlyAdminCanAddMember: onlyAdminAdd,
+      onlyAdminCanCall: onlyAdminCall,
+      membersCanSeePrivateLink: membersLink
+    });
+
+    let targetChat = null;
+    currentSessionChats.update(chats => {
+      if (!chats) return chats;
+      const idx = chats.findIndex(x => x.id === Number(chatId));
+      if (idx !== -1) {
+        const existing = chats[idx];
+        const nextOpts = { ...(existing.options || {}), ...(res?.chat?.options || {}) };
+        if (allCanPin !== null) {
+          nextOpts.ALL_CAN_PIN_MESSAGE = allCanPin;
+          nextOpts.allCanPinMessage = allCanPin;
+        }
+        if (onlyOwnerIcon !== null) {
+          nextOpts.ONLY_OWNER_CAN_CHANGE_ICON_TITLE = onlyOwnerIcon;
+          nextOpts.onlyOwnerCanChangeIconTitle = onlyOwnerIcon;
+        }
+        if (onlyAdminAdd !== null) {
+          nextOpts.ONLY_ADMIN_CAN_ADD_MEMBER = onlyAdminAdd;
+          nextOpts.onlyAdminCanAddMember = onlyAdminAdd;
+        }
+        if (onlyAdminCall !== null) {
+          nextOpts.ONLY_ADMIN_CAN_CALL = onlyAdminCall;
+          nextOpts.onlyAdminCanCall = onlyAdminCall;
+        }
+        if (membersLink !== null) {
+          nextOpts.MEMBERS_CAN_SEE_PRIVATE_LINK = membersLink;
+          nextOpts.membersCanSeePrivateLink = membersLink;
+        }
+        const updated = {
+          ...existing,
+          ...(res?.chat || {}),
+          options: nextOpts,
+        };
+        chats[idx] = updated;
+        targetChat = updated;
+      }
+      return [...chats];
+    });
+
+    if (targetChat) {
+      await saveChats([targetChat]).catch(() => {});
+    }
+
+    return res;
+  }
+
+  async fetchJoinRequests(chatId) {
+    await this.waitSync();
+    const res = await invoke("fetch_join_requests", { chatId: Number(chatId) });
+    return res?.members || res?.joinRequests || res || [];
+  }
+
+  async confirmJoinRequests(chatId, userIds, showHistory = true) {
+    await this.waitSync();
+    const ids = (Array.isArray(userIds) ? userIds : [userIds]).map(Number);
+    return await invoke("confirm_join_requests", {
+      chatId: Number(chatId),
+      userIds: ids,
+      showHistory: Boolean(showHistory)
+    });
+  }
+
+  async declineJoinRequests(chatId, userIds) {
+    await this.waitSync();
+    const ids = (Array.isArray(userIds) ? userIds : [userIds]).map(Number);
+    return await invoke("decline_join_requests", {
+      chatId: Number(chatId),
+      userIds: ids
+    });
+  }
+
+  async purgeChatHistory(chatId, forAll = false) {
+    await this.waitSync();
+    const res = await invoke("purge_chat_history", {
+      chatId: Number(chatId),
+      lastEventTime: Date.now(),
+      forAll: Boolean(forAll)
+    });
+    const c = getChat(chatId);
+    if (c) {
+      if (c.clearLocalMessages) {
+        await c.clearLocalMessages().catch(() => {});
+      }
+      c.receivedMessage?.set({ chatId: Number(chatId), type: "CLEAR_HISTORY" });
+    }
+    currentSessionChats.update((chats) => {
+      if (!chats) return chats;
+      const idx = chats.findIndex((ch) => String(ch.id) === String(chatId));
+      if (idx !== -1) {
+        chats[idx] = {
+          ...chats[idx],
+          lastMessage: null,
+          newMessages: 0,
+        };
+        return [...chats];
+      }
+      return chats;
+    });
+    return res;
+  }
+
+  async fetchChatMedia(chatId, messageId = null, attachTypes = ["PHOTO", "VIDEO"], forward = 0, backward = 50) {
+    await this.waitSync();
+    const res = await invoke("get_chat_media", {
+      chatId: Number(chatId),
+      messageId: messageId ? String(messageId) : null,
+      attachTypes,
+      forward: Number(forward),
+      backward: Number(backward)
+    });
+    return res;
+  }
 }
 
