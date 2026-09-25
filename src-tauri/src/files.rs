@@ -639,12 +639,12 @@ pub async fn cache_url(
     };
     let cache_key = key.unwrap_or_else(|| src.clone());
 
-    if let Ok(Some(existing_path)) = crate::stores::get_cached_file(app.clone(), acc, cache_key.clone()) {
+    if let Ok(Some(existing_path)) = crate::stores::get_cached_file_sync(&app, acc, &cache_key) {
         if std::path::Path::new(&existing_path).exists() {
             return Ok(existing_path);
         }
     }
-    if let Ok(Some(existing_path)) = crate::stores::get_cached_file(app.clone(), acc, src.clone()) {
+    if let Ok(Some(existing_path)) = crate::stores::get_cached_file_sync(&app, acc, &src) {
         if std::path::Path::new(&existing_path).exists() {
             return Ok(existing_path);
         }
@@ -663,12 +663,12 @@ pub async fn cache_url(
 
     if let Some(n) = notify {
         n.notified().await;
-        if let Ok(Some(existing_path)) = crate::stores::get_cached_file(app.clone(), acc, cache_key.clone()) {
+        if let Ok(Some(existing_path)) = crate::stores::get_cached_file_sync(&app, acc, &cache_key) {
             if std::path::Path::new(&existing_path).exists() {
                 return Ok(existing_path);
             }
         }
-        if let Ok(Some(existing_path)) = crate::stores::get_cached_file(app.clone(), acc, src.clone()) {
+        if let Ok(Some(existing_path)) = crate::stores::get_cached_file_sync(&app, acc, &src) {
             if std::path::Path::new(&existing_path).exists() {
                 return Ok(existing_path);
             }

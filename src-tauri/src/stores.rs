@@ -7,13 +7,14 @@ use base64::{engine::general_purpose::STANDARD, Engine as _};
 use sha2::{Digest, Sha256};
 use rand::{Rng, RngCore};
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     fs,
     path::{Path, PathBuf},
     sync::{
         atomic::{AtomicUsize, Ordering},
-        Arc, LazyLock, RwLock,
+        Arc, LazyLock, Mutex, RwLock,
     },
+    time::Duration,
 };
 use chacha20poly1305::{
     aead::{Aead, KeyInit},
@@ -33,6 +34,60 @@ static CHAT_SETTINGS_CACHE: LazyLock<RwLock<HashMap<(u64, i64), Value>>> =
 
 static DERIVE_KEY_CACHE: LazyLock<RwLock<HashMap<(String, String), [u8; 32]>>> =
     LazyLock::new(|| RwLock::new(HashMap::new()));
+
+static PENDING_WRITES: LazyLock<Mutex<HashMap<PathBuf, (Value, Option<[u8; 32]>)>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+
+static SCHEDULED_PATHS: LazyLock<Mutex<HashSet<PathBuf>>> =
+    LazyLock::new(|| Mutex::new(HashSet::new()));
+
+pub fn save_coalesced(path: PathBuf, value: Value, key: Option<[u8; 32]>, delay: Duration) {
+    {
+        let mut pending = PENDING_WRITES.lock().unwrap();
+        pending.insert(path.clone(), (value, key));
+    }
+
+    let should_spawn = {
+        let mut scheduled = SCHEDULED_PATHS.lock().unwrap();
+        scheduled.insert(path.clone())
+    };
+
+    if should_spawn {
+        tauri::async_runtime::spawn(async move {
+            loop {
+                tokio::time::sleep(delay).await;
+
+                let item = {
+                    let mut pending = PENDING_WRITES.lock().unwrap();
+                    pending.remove(&path)
+                };
+
+                if let Some((val, k)) = item {
+                    let path_clone = path.clone();
+                    let _ = tokio::task::spawn_blocking(move || {
+                        Storage::new(k).save_direct(&path_clone, &val)
+                    })
+                    .await;
+                }
+
+                let done = {
+                    let pending = PENDING_WRITES.lock().unwrap();
+                    if pending.contains_key(&path) {
+                        false
+                    } else {
+                        let mut scheduled = SCHEDULED_PATHS.lock().unwrap();
+                        scheduled.remove(&path);
+                        true
+                    }
+                };
+
+                if done {
+                    break;
+                }
+            }
+        });
+    }
+}
 
 pub(crate) struct Storage {
     key: Option<[u8;32]>
@@ -93,7 +148,14 @@ impl Storage {
     }
 
     pub(crate) fn load(&self, path: impl AsRef<Path>) -> Option<Value> {
-        let bytes = fs::read(path).ok()?;
+        let path_ref = path.as_ref();
+        if let Ok(guard) = PENDING_WRITES.lock() {
+            if let Some((val, _)) = guard.get(path_ref) {
+                return Some(val.clone());
+            }
+        }
+
+        let bytes = fs::read(path_ref).ok()?;
 
         let bytes = if bytes.starts_with(b"ENC") {
             let key = self.key?;
@@ -105,30 +167,54 @@ impl Storage {
         rmp_serde::from_slice(&bytes).ok()
     }
 
-    pub(crate) fn save(
+    pub(crate) fn save_direct(
         &self,
         path: impl AsRef<Path>,
-        value:&Value,
-    )->Result<(),String>{
+        value: &Value,
+    ) -> Result<(), String> {
         let path = path.as_ref();
+        if let Ok(mut guard) = PENDING_WRITES.lock() {
+            guard.remove(path);
+        }
 
-        if let Some(parent)=path.parent(){
+        if let Some(parent) = path.parent() {
             fs::create_dir_all(parent)
-                .map_err(|e|e.to_string())?;
+                .map_err(|e| e.to_string())?;
         }
 
         let mut bytes = rmp_serde::to_vec(value)
-            .map_err(|e|e.to_string())?;
+            .map_err(|e| e.to_string())?;
 
-        if let Some(key)=&self.key {
+        if let Some(key) = &self.key {
             bytes = Self::encrypt(
                 &bytes,
-                key
+                key,
             )?;
         }
 
         fs::write(path, bytes)
-            .map_err(|e|e.to_string())
+            .map_err(|e| e.to_string())
+    }
+
+    pub(crate) fn save(
+        &self,
+        path: impl AsRef<Path>,
+        value: &Value,
+    ) -> Result<(), String> {
+        self.save_direct(path, value)
+    }
+
+    pub(crate) fn save_coalesced(
+        &self,
+        path: impl AsRef<Path>,
+        value: &Value,
+    ) {
+        save_coalesced(
+            path.as_ref().to_path_buf(),
+            value.clone(),
+            self.key,
+            Duration::from_millis(150),
+        );
     }
 
     fn list(
@@ -244,50 +330,49 @@ impl Paths {
 }
 
 #[tauri::command]
-pub fn get_contact(
+pub async fn get_contact(
     app: AppHandle,
     account: u64,
     contact_id: u64,
-) -> Result<Option<Value>, String>{
-    let key = crypto_key(&app, account);
-
-    Ok(Storage::new(key)
-      .load(
-         Paths::new(&app,account)
-         .contact(contact_id)
-    ))
+) -> Result<Option<Value>, String> {
+    tokio::task::spawn_blocking(move || {
+        let key = crypto_key(&app, account);
+        Ok(Storage::new(key).load(Paths::new(&app, account).contact(contact_id)))
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
-pub fn set_contact(
+pub async fn set_contact(
     app: AppHandle,
     account: u64,
     contact_id: u64,
     data: Value,
-) -> Result<(), String>{
-    let key = crypto_key(&app,account);
-
-    Storage::new(key).save(
-        Paths::new(&app,account)
-        .contact(contact_id),
-          &data
-    )
+) -> Result<(), String> {
+    tokio::task::spawn_blocking(move || {
+        let key = crypto_key(&app, account);
+        Storage::new(key).save(Paths::new(&app, account).contact(contact_id), &data)
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
-pub fn get_contacts(
+pub async fn get_contacts(
     app: AppHandle,
     account: u64,
 ) -> Result<Vec<Value>, String> {
-    let key = crypto_key(&app, account);
-    let storage = Storage::new(key);
-
-    Ok(Storage::list(
-        Paths::new(&app, account).contacts()
-    )
-    .into_iter()
-    .filter_map(|x| storage.load(x))
-    .collect())
+    tokio::task::spawn_blocking(move || {
+        let key = crypto_key(&app, account);
+        let storage = Storage::new(key);
+        Ok(Storage::list(Paths::new(&app, account).contacts())
+            .into_iter()
+            .filter_map(|x| storage.load(x))
+            .collect())
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
@@ -365,9 +450,8 @@ pub async fn load_chats(
     .map_err(|e| e.to_string())?
 }
 
-#[tauri::command]
-pub fn get_chat_settings(
-    app: AppHandle,
+pub fn get_chat_settings_sync(
+    app: &AppHandle,
     account: u64,
     chat_id: i64,
 ) -> Result<Value, String> {
@@ -378,9 +462,9 @@ pub fn get_chat_settings(
         }
     }
 
-    let key = crypto_key(&app, account);
+    let key = crypto_key(app, account);
     let val = Storage::new(key)
-        .load(Paths::new(&app, account).settings(chat_id))
+        .load(Paths::new(app, account).settings(chat_id))
         .unwrap_or_else(|| {
             json!({
                 "version": 1,
@@ -403,15 +487,27 @@ pub fn get_chat_settings(
 }
 
 #[tauri::command]
-pub fn set_chat_settings(
+pub async fn get_chat_settings(
     app: AppHandle,
+    account: u64,
+    chat_id: i64,
+) -> Result<Value, String> {
+    tokio::task::spawn_blocking(move || {
+        get_chat_settings_sync(&app, account, chat_id)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+pub fn set_chat_settings_sync(
+    app: &AppHandle,
     account: u64,
     chat_id: i64,
     data: Value,
 ) -> Result<(), String> {
-    let key = crypto_key(&app, account);
+    let key = crypto_key(app, account);
     let storage = Storage::new(key);
-    storage.save(Paths::new(&app, account).settings(chat_id), &data)?;
+    storage.save_coalesced(Paths::new(app, account).settings(chat_id), &data);
 
     if let Ok(mut guard) = CHAT_SETTINGS_CACHE.write() {
         guard.insert((account, chat_id), data);
@@ -421,87 +517,99 @@ pub fn set_chat_settings(
 }
 
 #[tauri::command]
-pub fn load_messages(
+pub async fn set_chat_settings(
     app: AppHandle,
+    account: u64,
+    chat_id: i64,
+    data: Value,
+) -> Result<(), String> {
+    tokio::task::spawn_blocking(move || {
+        set_chat_settings_sync(&app, account, chat_id, data)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+const MAX_CHUNK_MESSAGES: usize = 100;
+
+pub fn load_messages_sync(
+    app: &AppHandle,
     account: u64,
     chat_id: i64,
     time: i64,
     amount: usize,
 ) -> Result<Vec<Value>, String> {
-    let key = crypto_key(&app, account);
+    let key = crypto_key(app, account);
     let storage = Storage::new(key);
-    let dir = Paths::new(&app, account).messages(chat_id);
+    let dir = Paths::new(app, account).messages(chat_id);
 
     let mut files = Storage::list(dir);
 
     files.retain(|x| {
         x.file_name()
-        .and_then(|x| x.to_str())
-        .map(|x| x.starts_with("1_"))
-        .unwrap_or(false)
+            .and_then(|x| x.to_str())
+            .map(|x| x.starts_with("1_"))
+            .unwrap_or(false)
     });
 
     if files.is_empty() {
         return Ok(vec![]);
     }
 
-    let target = format!(
-        "1_{}",
-        chrono::DateTime::from_timestamp(time / 1000, 0)
-        .unwrap()
-        .format("%Y-%m-%d")
-    );
+    let target_day = chrono::DateTime::from_timestamp(time / 1000, 0)
+        .map(|dt| dt.format("%Y-%m-%d").to_string())
+        .unwrap_or_default();
 
-    let mut index = files.iter().position(|x| {
-        x.file_name().unwrap().to_string_lossy().as_ref() >= target.as_str()
-    })
-    .unwrap_or(files.len());
+    let mut result: Vec<Value> = Vec::new();
 
-    if index >= files.len() {
-        index = files.len() - 1;
-    }
-    else if files[index].file_name().unwrap().to_string_lossy() != target {
-            if index > 0 {
-                index -= 1;
+    for file in files.into_iter().rev() {
+        let file_name = match file.file_name().and_then(|x| x.to_str()) {
+            Some(n) => n,
+            None => continue,
+        };
+
+        let file_day = if file_name.len() >= 12 && file_name.starts_with("1_") {
+            &file_name[2..12.min(file_name.len())]
+        } else {
+            ""
+        };
+
+        if !target_day.is_empty() && !file_day.is_empty() && file_day > target_day.as_str() {
+            continue;
+        }
+
+        let mut data: Vec<Value> = storage
+            .load(&file)
+            .and_then(|x| x.as_array().cloned())
+            .unwrap_or_default();
+
+        let orig_len = data.len();
+        data.retain(|x| {
+            let is_sending = x.get("sending").and_then(|s| s.as_bool()).unwrap_or(false)
+                || x.get("status").and_then(|s| s.as_i64()) == Some(0)
+                || x.get("status").and_then(|s| s.as_str()) == Some("sending");
+            !is_sending
+        });
+        if data.len() != orig_len {
+            storage.save_coalesced(file.clone(), &Value::Array(data.clone()));
+        }
+
+        let mut left = 0;
+        let mut right = data.len();
+
+        while left < right {
+            let mid = (left + right) / 2;
+            let msg_time = data[mid].get("time").and_then(|x| x.as_i64()).unwrap_or(0);
+
+            if msg_time <= time {
+                left = mid + 1;
+            } else {
+                right = mid;
             }
         }
 
-        let mut result: Vec<Value> = Vec::new();
-
-        for file in files[..=index].iter().rev() {
-            let mut data: Vec<Value> = storage.load(file)
-                .and_then(|x| x.as_array().cloned())
-                .unwrap_or_default();
-
-            let orig_len = data.len();
-            data.retain(|x| {
-                let is_sending = x.get("sending").and_then(|s| s.as_bool()).unwrap_or(false)
-                    || x.get("status").and_then(|s| s.as_i64()) == Some(0)
-                    || x.get("status").and_then(|s| s.as_str()) == Some("sending");
-                !is_sending
-            });
-            if data.len() != orig_len {
-                let _ = storage.save(file.clone(), &Value::Array(data.clone()));
-            }
-
-            let mut left = 0;
-            let mut right = data.len();
-
-            while left < right {
-                let mid = (left + right) / 2;
-                let msg_time = data[mid].get("time").and_then(|x| x.as_i64()).unwrap_or(0);
-
-                if msg_time <= time {
-                    left = mid + 1;
-                }
-                else {
-                    right = mid;
-                }
-            }
-
-            result.splice(
-                0..0, data[..left].iter().cloned()
-            );
+        if left > 0 {
+            result.splice(0..0, data[..left].iter().cloned());
 
             if result.len() > amount {
                 let remove = result.len() - amount;
@@ -512,8 +620,24 @@ pub fn load_messages(
                 break;
             }
         }
+    }
 
-        Ok(result)
+    Ok(result)
+}
+
+#[tauri::command]
+pub async fn load_messages(
+    app: AppHandle,
+    account: u64,
+    chat_id: i64,
+    time: i64,
+    amount: usize,
+) -> Result<Vec<Value>, String> {
+    tokio::task::spawn_blocking(move || {
+        load_messages_sync(&app, account, chat_id, time, amount)
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 fn compute_tokens_diff(old_text: &str, new_text: &str) -> Vec<Value> {
@@ -602,200 +726,305 @@ fn compute_attaches_diff(old_attaches: &[Value], new_attaches: &[Value]) -> Valu
     })
 }
 
-#[tauri::command]
-pub fn update_messages(
-    app: AppHandle,
-    account: u64,
-    chat_id: i64,
-    messages: Vec<Value>,
-) -> Result<(), String> {
-    let key = crypto_key(&app, account);
-    let storage = Storage::new(key);
-    let dir = Paths::new(&app, account).messages(chat_id);
+fn clean_sending_and_cids(saved: &mut Vec<Value>, incoming: &[Value]) {
+    let incoming_cids: Vec<i64> = incoming.iter()
+        .filter_map(|m| m.get("cid").and_then(|x| x.as_i64()))
+        .collect();
 
-    let mut bulks: std::collections::HashMap<String, Vec<Value>> = std::collections::HashMap::new();
+    saved.retain(|m| {
+        let is_sending = m.get("sending").and_then(|x| x.as_bool()).unwrap_or(false)
+            || m.get("status").and_then(|x| x.as_i64()) == Some(0)
+            || m.get("status").and_then(|x| x.as_str()) == Some("sending");
 
-    for message in messages {
-        let time = message.get("time").and_then(|x| x.as_i64()).unwrap_or(0);
-        let day = chrono::DateTime::from_timestamp(time / 1000, 0).unwrap().format("%Y-%m-%d").to_string();
-        bulks.entry(day).or_default().push(message);
-    }
+        if is_sending {
+            return false;
+        }
 
-    for (day, incoming) in bulks {
-        let file = dir.join(format!("1_{}", day));
-        let mut saved: Vec<Value> = storage.load(&file)
-            .and_then(|x| x.as_array().cloned())
-            .unwrap_or_default();
-
-        let incoming_cids: Vec<i64> = incoming.iter()
-            .filter_map(|m| m.get("cid").and_then(|x| x.as_i64()))
-            .collect();
-
-        saved.retain(|m| {
-            let is_sending = m.get("sending").and_then(|x| x.as_bool()).unwrap_or(false)
-                || m.get("status").and_then(|x| x.as_i64()) == Some(0)
-                || m.get("status").and_then(|x| x.as_str()) == Some("sending");
-
-            if is_sending {
-                return false;
-            }
-
-            if let Some(m_cid) = m.get("cid").and_then(|x| x.as_i64()) {
-                if incoming_cids.contains(&m_cid) {
-                    let matching_incoming_id = incoming.iter()
-                        .find(|inc| inc.get("cid").and_then(|x| x.as_i64()) == Some(m_cid))
-                        .and_then(|inc| inc.get("id"));
-                    if matching_incoming_id.is_some() && m.get("id") != matching_incoming_id {
-                        return false;
-                    }
-                }
-            }
-
-            true
-        });
-
-        for message in incoming {
-            let is_sending = message.get("sending").and_then(|x| x.as_bool()).unwrap_or(false)
-                || message.get("status").and_then(|x| x.as_i64()) == Some(0)
-                || message.get("status").and_then(|x| x.as_str()) == Some("sending");
-
-            if is_sending {
-                continue;
-            }
-
-            let id = message.get("id").cloned();
-
-            if let Some(id) = id {
-                if let Some(old) = saved.iter_mut().find(|x| x.get("id") == Some(&id)) {
-                    let old_text = old.get("text").and_then(|x| x.as_str()).unwrap_or("").to_string();
-                    let new_text = message.get("text").and_then(|x| x.as_str()).unwrap_or("").to_string();
-                    let empty_vec = vec![];
-                    let old_atts = old.get("attaches").and_then(|x| x.as_array()).unwrap_or(&empty_vec).clone();
-                    let new_atts = message.get("attaches").and_then(|x| x.as_array()).unwrap_or(&empty_vec).clone();
-
-                    let text_changed = old_text != new_text && !new_text.is_empty() && !old_text.is_empty();
-                    let atts_changed = old_atts != new_atts && message.get("attaches").is_some();
-                    let is_edited_status = message.get("status").and_then(|x| x.as_str()) == Some("EDITED")
-                        || message.get("edited").and_then(|x| x.as_bool()).unwrap_or(false);
-                    let is_deleted_status = message.get("deleted").and_then(|x| x.as_bool()).unwrap_or(false)
-                        || message.get("status").and_then(|x| x.as_str()) == Some("REMOVED");
-
-                    let was_deleted = old.get("deleted").and_then(|x| x.as_bool()).unwrap_or(false);
-                    let old_deleted_at = old.get("deleted_at").cloned();
-                    let was_edited = old.get("edited").and_then(|x| x.as_bool()).unwrap_or(false);
-                    let old_edited_at = old.get("edited_at").cloned();
-
-                    let incoming_has_history = message.get("history")
-                        .and_then(|x| x.as_array())
-                        .map(|a| !a.is_empty())
-                        .unwrap_or(false);
-
-                    if (text_changed || atts_changed) && !incoming_has_history {
-                        let at = chrono::Utc::now().timestamp_millis();
-                        let text_diff = if text_changed {
-                            compute_tokens_diff(&old_text, &new_text)
-                        } else {
-                            vec![]
-                        };
-                        let atts_diff = if atts_changed {
-                            Some(compute_attaches_diff(&old_atts, &new_atts))
-                        } else {
-                            None
-                        };
-
-                        if let Some(obj) = old.as_object_mut() {
-                            let history = obj.entry("history").or_insert_with(|| Value::Array(vec![]));
-                            if let Value::Array(arr) = history {
-                                let mut entry = serde_json::Map::new();
-                                entry.insert("at".to_string(), json!(at));
-                                if !text_diff.is_empty() {
-                                    entry.insert("diff".to_string(), json!(text_diff));
-                                }
-                                if let Some(ad) = atts_diff {
-                                    entry.insert("attaches_diff".to_string(), ad);
-                                }
-                                arr.push(Value::Object(entry));
-                            }
-                            obj.insert("edited".to_string(), json!(true));
-                            obj.insert("edited_at".to_string(), json!(at));
-                        }
-                    }
-
-                    if let Some(incoming_history) = message.get("history").and_then(|x| x.as_array()) {
-                        if let Some(obj) = old.as_object_mut() {
-                            let history = obj.entry("history").or_insert_with(|| Value::Array(vec![]));
-                            if let Value::Array(arr) = history {
-                                for item in incoming_history {
-                                    let is_dup = arr.iter().any(|existing| {
-                                        existing == item
-                                            || (existing.get("diff").is_some() && existing.get("diff") == item.get("diff"))
-                                    });
-                                    if !is_dup {
-                                        arr.push(item.clone());
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    if let Some(map) = message.as_object() {
-                        for (key, value) in map {
-                            if key == "history" || key == "deleted" || key == "deleted_at" || key == "edited" || key == "edited_at" {
-                                continue;
-                            }
-                            old.as_object_mut().unwrap().insert(key.clone(), value.clone());
-                        }
-                    }
-
-                    if let Some(obj) = old.as_object_mut() {
-                        if was_deleted || is_deleted_status {
-                            obj.insert("deleted".to_string(), json!(true));
-                            if let Some(at) = old_deleted_at {
-                                obj.insert("deleted_at".to_string(), at);
-                            } else if !obj.contains_key("deleted_at") {
-                                obj.insert("deleted_at".to_string(), json!(chrono::Utc::now().timestamp_millis()));
-                            }
-                        }
-                        if was_edited || is_edited_status {
-                            obj.insert("edited".to_string(), json!(true));
-                            if let Some(at) = old_edited_at {
-                                obj.insert("edited_at".to_string(), at);
-                            } else if !obj.contains_key("edited_at") {
-                                obj.insert("edited_at".to_string(), json!(chrono::Utc::now().timestamp_millis()));
-                            }
-                        }
-                    }
-                } else {
-                    saved.push(message);
+        if let Some(m_cid) = m.get("cid").and_then(|x| x.as_i64()) {
+            if incoming_cids.contains(&m_cid) {
+                let matching_incoming_id = incoming.iter()
+                    .find(|inc| inc.get("cid").and_then(|x| x.as_i64()) == Some(m_cid))
+                    .and_then(|inc| inc.get("id"));
+                if matching_incoming_id.is_some() && m.get("id") != matching_incoming_id {
+                    return false;
                 }
             }
         }
 
-        saved.sort_by_key(|x| {
-            x.get("time")
+        true
+    });
+}
+
+fn merge_single_message(old: &mut Value, message: &Value) {
+    let old_text = old.get("text").and_then(|x| x.as_str()).unwrap_or("").to_string();
+    let new_text = message.get("text").and_then(|x| x.as_str()).unwrap_or("").to_string();
+    let empty_vec = vec![];
+    let old_atts = old.get("attaches").and_then(|x| x.as_array()).unwrap_or(&empty_vec).clone();
+    let new_atts = message.get("attaches").and_then(|x| x.as_array()).unwrap_or(&empty_vec).clone();
+
+    let text_changed = old_text != new_text && !new_text.is_empty() && !old_text.is_empty();
+    let atts_changed = old_atts != new_atts && message.get("attaches").is_some();
+    let is_edited_status = message.get("status").and_then(|x| x.as_str()) == Some("EDITED")
+        || message.get("edited").and_then(|x| x.as_bool()).unwrap_or(false);
+    let is_deleted_status = message.get("deleted").and_then(|x| x.as_bool()).unwrap_or(false)
+        || message.get("status").and_then(|x| x.as_str()) == Some("REMOVED");
+
+    let was_deleted = old.get("deleted").and_then(|x| x.as_bool()).unwrap_or(false);
+    let old_deleted_at = old.get("deleted_at").cloned();
+    let was_edited = old.get("edited").and_then(|x| x.as_bool()).unwrap_or(false);
+    let old_edited_at = old.get("edited_at").cloned();
+
+    let incoming_has_history = message.get("history")
+        .and_then(|x| x.as_array())
+        .map(|a| !a.is_empty())
+        .unwrap_or(false);
+
+    if (text_changed || atts_changed) && !incoming_has_history {
+        let at = chrono::Utc::now().timestamp_millis();
+        let text_diff = if text_changed {
+            compute_tokens_diff(&old_text, &new_text)
+        } else {
+            vec![]
+        };
+        let atts_diff = if atts_changed {
+            Some(compute_attaches_diff(&old_atts, &new_atts))
+        } else {
+            None
+        };
+
+        if let Some(obj) = old.as_object_mut() {
+            let history = obj.entry("history").or_insert_with(|| Value::Array(vec![]));
+            if let Value::Array(arr) = history {
+                let mut entry = serde_json::Map::new();
+                entry.insert("at".to_string(), json!(at));
+                if !text_diff.is_empty() {
+                    entry.insert("diff".to_string(), json!(text_diff));
+                }
+                if let Some(ad) = atts_diff {
+                    entry.insert("attaches_diff".to_string(), ad);
+                }
+                arr.push(Value::Object(entry));
+            }
+            obj.insert("edited".to_string(), json!(true));
+            obj.insert("edited_at".to_string(), json!(at));
+        }
+    }
+
+    if let Some(incoming_history) = message.get("history").and_then(|x| x.as_array()) {
+        if let Some(obj) = old.as_object_mut() {
+            let history = obj.entry("history").or_insert_with(|| Value::Array(vec![]));
+            if let Value::Array(arr) = history {
+                for item in incoming_history {
+                    let is_dup = arr.iter().any(|existing| {
+                        existing == item
+                            || (existing.get("diff").is_some() && existing.get("diff") == item.get("diff"))
+                    });
+                    if !is_dup {
+                        arr.push(item.clone());
+                    }
+                }
+            }
+        }
+    }
+
+    if let Some(map) = message.as_object() {
+        for (key, value) in map {
+            if key == "history" || key == "deleted" || key == "deleted_at" || key == "edited" || key == "edited_at" {
+                continue;
+            }
+            old.as_object_mut().unwrap().insert(key.clone(), value.clone());
+        }
+    }
+
+    if let Some(obj) = old.as_object_mut() {
+        if was_deleted || is_deleted_status {
+            obj.insert("deleted".to_string(), json!(true));
+            if let Some(at) = old_deleted_at {
+                obj.insert("deleted_at".to_string(), at);
+            } else if !obj.contains_key("deleted_at") {
+                obj.insert("deleted_at".to_string(), json!(chrono::Utc::now().timestamp_millis()));
+            }
+        }
+        if was_edited || is_edited_status {
+            obj.insert("edited".to_string(), json!(true));
+            if let Some(at) = old_edited_at {
+                obj.insert("edited_at".to_string(), at);
+            } else if !obj.contains_key("edited_at") {
+                obj.insert("edited_at".to_string(), json!(chrono::Utc::now().timestamp_millis()));
+            }
+        }
+    }
+}
+
+pub fn update_messages_sync(
+    app: &AppHandle,
+    account: u64,
+    chat_id: i64,
+    messages: Vec<Value>,
+) -> Result<(), String> {
+    let key = crypto_key(app, account);
+    let storage = Storage::new(key);
+    let dir = Paths::new(app, account).messages(chat_id);
+
+    let mut bulks: std::collections::HashMap<String, Vec<Value>> = std::collections::HashMap::new();
+
+    for message in messages {
+        let time = message.get("time")
             .and_then(|x| x.as_i64())
-            .unwrap_or(0)
+            .or_else(|| message.get("editTime").and_then(|x| x.as_i64()))
+            .or_else(|| message.get("created_at").and_then(|x| x.as_i64()))
+            .or_else(|| message.get("deleted_at").and_then(|x| x.as_i64()))
+            .unwrap_or_else(|| chrono::Utc::now().timestamp_millis());
+        let day = chrono::DateTime::from_timestamp(time / 1000, 0)
+            .unwrap_or_else(|| chrono::Utc::now())
+            .format("%Y-%m-%d")
+            .to_string();
+        bulks.entry(day).or_default().push(message);
+    }
+
+    for (day, incoming) in bulks {
+        let day_prefix = format!("1_{}_", day);
+        let legacy_name = format!("1_{}", day);
+
+        let mut day_files: Vec<PathBuf> = Storage::list(&dir)
+            .into_iter()
+            .filter(|p| {
+                p.file_name()
+                    .and_then(|n| n.to_str())
+                    .map(|s| s.starts_with(&day_prefix) || s == legacy_name)
+                    .unwrap_or(false)
+            })
+            .collect();
+        day_files.sort();
+
+        let mut to_process = incoming;
+        to_process.retain(|m| {
+            let is_sending = m.get("sending").and_then(|s| s.as_bool()).unwrap_or(false)
+                || m.get("status").and_then(|s| s.as_i64()) == Some(0)
+                || m.get("status").and_then(|s| s.as_str()) == Some("sending");
+            !is_sending
         });
 
-        storage.save(file, &Value::Array(saved))?;
+        if to_process.is_empty() {
+            continue;
+        }
+
+        let mut unhandled = Vec::new();
+
+        for message in to_process {
+            let id = message.get("id").cloned();
+            let mut found = false;
+
+            if let Some(id) = id {
+                for file in day_files.iter().rev() {
+                    let mut saved: Vec<Value> = storage
+                        .load(file)
+                        .and_then(|x| x.as_array().cloned())
+                        .unwrap_or_default();
+
+                    let orig_len = saved.len();
+                    clean_sending_and_cids(&mut saved, std::slice::from_ref(&message));
+
+                    if let Some(old) = saved.iter_mut().find(|x| x.get("id") == Some(&id)) {
+                        merge_single_message(old, &message);
+                        saved.sort_by_key(|x| x.get("time").and_then(|t| t.as_i64()).unwrap_or(0));
+                        storage.save_coalesced(file.clone(), &Value::Array(saved));
+                        found = true;
+                        break;
+                    } else if saved.len() != orig_len {
+                        storage.save_coalesced(file.clone(), &Value::Array(saved));
+                    }
+                }
+            }
+
+            if !found {
+                unhandled.push(message);
+            }
+        }
+
+        if unhandled.is_empty() {
+            continue;
+        }
+
+        unhandled.sort_by_key(|x| x.get("time").and_then(|t| t.as_i64()).unwrap_or(0));
+
+        let mut remaining = unhandled.as_slice();
+
+        if let Some(last_file) = day_files.last() {
+            let mut saved: Vec<Value> = storage
+                .load(last_file)
+                .and_then(|x| x.as_array().cloned())
+                .unwrap_or_default();
+
+            clean_sending_and_cids(&mut saved, remaining);
+
+            if saved.len() < MAX_CHUNK_MESSAGES {
+                let capacity = MAX_CHUNK_MESSAGES - saved.len();
+                let take_count = capacity.min(remaining.len());
+                saved.extend_from_slice(&remaining[..take_count]);
+                saved.sort_by_key(|x| x.get("time").and_then(|t| t.as_i64()).unwrap_or(0));
+                storage.save_coalesced(last_file.clone(), &Value::Array(saved));
+                remaining = &remaining[take_count..];
+            }
+        }
+
+        let mut next_idx = if let Some(last_file) = day_files.last() {
+            let last_name = last_file.file_name().and_then(|n| n.to_str()).unwrap_or("");
+            if let Some(suffix) = last_name.strip_prefix(&day_prefix) {
+                suffix.parse::<usize>().unwrap_or(0) + 1
+            } else {
+                1
+            }
+        } else {
+            0
+        };
+
+        while !remaining.is_empty() {
+            let take_count = MAX_CHUNK_MESSAGES.min(remaining.len());
+            let chunk_items = &remaining[..take_count];
+            let chunk_file = dir.join(format!("1_{}_{:04}", day, next_idx));
+            storage.save_coalesced(chunk_file, &Value::Array(chunk_items.to_vec()));
+            next_idx += 1;
+            remaining = &remaining[take_count..];
+        }
     }
 
     Ok(())
 }
 
 #[tauri::command]
-pub fn mark_message_deleted(
+pub async fn update_messages(
     app: AppHandle,
     account: u64,
     chat_id: i64,
-    message_id: String,
+    messages: Vec<Value>,
 ) -> Result<(), String> {
-    let key = crypto_key(&app, account);
-    let storage = Storage::new(key);
-    let dir = Paths::new(&app, account).messages(chat_id);
+    tokio::task::spawn_blocking(move || {
+        update_messages_sync(&app, account, chat_id, messages)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
 
-    let files = Storage::list(&dir);
-    for file in files {
+pub fn mark_message_deleted_sync(
+    app: &AppHandle,
+    account: u64,
+    chat_id: i64,
+    message_id: &str,
+) -> Result<(), String> {
+    let key = crypto_key(app, account);
+    let storage = Storage::new(key);
+    let dir = Paths::new(app, account).messages(chat_id);
+
+    let mut files = Storage::list(&dir);
+    files.retain(|x| {
+        x.file_name()
+            .and_then(|x| x.to_str())
+            .map(|x| x.starts_with("1_"))
+            .unwrap_or(false)
+    });
+
+    for file in files.into_iter().rev() {
         let mut saved: Vec<Value> = storage
             .load(&file)
             .and_then(|x| x.as_array().cloned())
@@ -804,7 +1033,7 @@ pub fn mark_message_deleted(
         let mut modified = false;
         for msg in saved.iter_mut() {
             let mid = msg.get("id").map(|x| x.to_string().replace('"', ""));
-            if mid.as_deref() == Some(&message_id) {
+            if mid.as_deref() == Some(message_id) {
                 if let Some(obj) = msg.as_object_mut() {
                     obj.insert("deleted".to_string(), json!(true));
                     obj.insert("deleted_at".to_string(), json!(chrono::Utc::now().timestamp_millis()));
@@ -814,12 +1043,26 @@ pub fn mark_message_deleted(
         }
 
         if modified {
-            storage.save(file, &Value::Array(saved))?;
+            storage.save_coalesced(file, &Value::Array(saved));
             break;
         }
     }
 
     Ok(())
+}
+
+#[tauri::command]
+pub async fn mark_message_deleted(
+    app: AppHandle,
+    account: u64,
+    chat_id: i64,
+    message_id: String,
+) -> Result<(), String> {
+    tokio::task::spawn_blocking(move || {
+        mark_message_deleted_sync(&app, account, chat_id, &message_id)
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 fn accounts_path(app: &AppHandle) -> PathBuf {
@@ -910,50 +1153,53 @@ pub fn accounts_add(
 
 
 #[tauri::command]
-pub fn account_get(
+pub async fn account_get(
     app: AppHandle,
     id: u64,
 ) -> Result<Value, String> {
-    if let Ok(guard) = ACCOUNT_CACHE.read() {
-        if let Some(val) = guard.get(&id) {
-            return Ok(val.clone());
+    tokio::task::spawn_blocking(move || {
+        if let Ok(guard) = ACCOUNT_CACHE.read() {
+            if let Some(val) = guard.get(&id) {
+                return Ok(val.clone());
+            }
         }
-    }
 
-    let store = load_accounts(&app);
+        let store = load_accounts(&app);
 
-    let account = store["accounts"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .find(|x| x["id"] == id)
-        .ok_or("Account not found")?;
+        let account = store["accounts"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|x| x["id"] == id)
+            .ok_or("Account not found")?;
 
-    let key = crypto_key(&app, id);
-    let storage = Storage::new(key);
+        let key = crypto_key(&app, id);
+        let storage = Storage::new(key);
 
-    let meta = storage.load(
-        account_path(&app, &id.to_string(), "meta")
-    ).unwrap_or(Value::Null);
+        let meta = storage.load(
+            account_path(&app, &id.to_string(), "meta")
+        ).unwrap_or(Value::Null);
 
-    let contact = storage.load(
-        account_path(&app, &id.to_string(), "self")
-    ).unwrap_or(Value::Null);
+        let contact = storage.load(
+            account_path(&app, &id.to_string(), "self")
+        ).unwrap_or(Value::Null);
 
-    let res = json!({
-        "id": account["id"],
-        "encryption": account["encryption"],
-        "meta": meta,
-        "contact": contact
-    });
+        let res = json!({
+            "id": account["id"],
+            "encryption": account["encryption"],
+            "meta": meta,
+            "contact": contact
+        });
 
-    if let Ok(mut guard) = ACCOUNT_CACHE.write() {
-        guard.insert(id, res.clone());
-    }
+        if let Ok(mut guard) = ACCOUNT_CACHE.write() {
+            guard.insert(id, res.clone());
+        }
 
-    Ok(res)
+        Ok(res)
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
-
 
 #[tauri::command]
 pub fn account_delete(
@@ -987,7 +1233,6 @@ pub fn account_delete(
     Ok(())
 }
 
-
 #[tauri::command]
 pub fn account_delete_by_uid(
     app: AppHandle,
@@ -1002,31 +1247,32 @@ pub fn account_delete_by_uid(
     account_delete(app, id)
 }
 
-
 #[tauri::command]
-pub fn account_contact(
+pub async fn account_contact(
     app: AppHandle,
     id: u64,
-    data: Option<Value>
+    data: Option<Value>,
 ) -> Result<Value, String> {
-    let key = crypto_key(&app, id);
+    tokio::task::spawn_blocking(move || {
+        let key = crypto_key(&app, id);
+        let storage = Storage::new(key);
 
-    let storage = Storage::new(key);
+        if let Some(ref d) = data {
+            storage.save(account_path(&app, &id.to_string(), "self"), d)?;
+        }
 
-    if data.is_some() {
-        storage.save(account_path(&app, &id.to_string().as_str(), "self"), &data.unwrap())?;
-    }
+        if let Ok(mut guard) = ACCOUNT_CACHE.write() {
+            guard.remove(&id);
+        }
 
-    if let Ok(mut guard) = ACCOUNT_CACHE.write() {
-        guard.remove(&id);
-    }
-
-    Ok(storage
-        .load(account_path(&app, &id.to_string().as_str(), "self"))
-        .unwrap_or(Value::Null)
-    )
+        Ok(storage
+            .load(account_path(&app, &id.to_string(), "self"))
+            .unwrap_or(Value::Null)
+        )
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
-
 
 #[tauri::command]
 pub fn current_get(
@@ -1036,7 +1282,6 @@ pub fn current_get(
         load_accounts(&app)["current"].clone()
     )
 }
-
 
 #[tauri::command]
 pub fn current_set(
@@ -1056,9 +1301,8 @@ pub fn current_set(
     save_accounts(&app, &store)
 }
 
-
 #[tauri::command]
-pub fn current_account_meta(
+pub async fn current_account_meta(
     app: AppHandle,
 ) -> Result<Value, String> {
     let id = current_get(app.clone())?;
@@ -1069,17 +1313,17 @@ pub fn current_account_meta(
 
     account_get(
         app, id.as_u64().expect("Wrong account id")
-    )
+    ).await
 }
 
 #[tauri::command]
-pub fn account_meta(
+pub async fn account_meta(
     app: AppHandle,
-    id: u64
+    id: u64,
 ) -> Result<Value, String> {
     account_get(
         app, id
-    )
+    ).await
 }
 
 #[tauri::command]
@@ -1107,7 +1351,6 @@ pub fn current_account(
     }))
 }
 
-
 #[tauri::command]
 pub fn current_account_set(
     app: AppHandle,
@@ -1117,67 +1360,71 @@ pub fn current_account_set(
 }
 
 #[tauri::command]
-pub fn decrypt_account(
+pub async fn decrypt_account(
     app: AppHandle,
     account: u64,
     key: String,
 ) -> Result<(), String> {
-    let store = load_accounts(&app);
+    tokio::task::spawn_blocking(move || {
+        let store = load_accounts(&app);
 
-    let entry = store["accounts"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .find(|x| x["id"] == account)
-        .ok_or("Account not found")?;
-
-    let encryption = &entry["encryption"];
-
-    if encryption.is_null() {
-        return Err(
-            "Account not encrypted".into()
-        );
-    }
-
-    let salt = encryption["salt"]
-        .as_str()
-        .unwrap();
-
-    let derived =
-        derive_key(
-            &key,
-            salt
-        )?;
-
-    if !verify_hash(
-        &derived,
-        encryption["hash"]
-            .as_str()
+        let entry = store["accounts"]
+            .as_array()
             .unwrap()
-    ) {
-        return Err(
-            "Wrong key".into()
-        );
-    }
+            .iter()
+            .find(|x| x["id"] == account)
+            .ok_or("Account not found")?;
 
-    *app.state::<AppState>()
-        .crypto
-        .write()
-        .unwrap() = Some(
-        CryptoSession{
-            account,
-            key: derived
+        let encryption = &entry["encryption"];
+
+        if encryption.is_null() {
+            return Err(
+                "Account not encrypted".into()
+            );
         }
-    );
 
-    if let Ok(mut guard) = ACCOUNT_CACHE.write() {
-        guard.remove(&account);
-    }
-    if let Ok(mut guard) = CACHE_INDEX_CACHE.write() {
-        guard.remove(&account);
-    }
+        let salt = encryption["salt"]
+            .as_str()
+            .unwrap();
 
-    Ok(())
+        let derived =
+            derive_key(
+                &key,
+                salt
+            )?;
+
+        if !verify_hash(
+            &derived,
+            encryption["hash"]
+                .as_str()
+                .unwrap()
+        ) {
+            return Err(
+                "Wrong key".into()
+            );
+        }
+
+        *app.state::<AppState>()
+            .crypto
+            .write()
+            .unwrap() = Some(
+            CryptoSession{
+                account,
+                key: derived
+            }
+        );
+
+        if let Ok(mut guard) = ACCOUNT_CACHE.write() {
+            guard.remove(&account);
+        }
+        if let Ok(mut guard) = CACHE_INDEX_CACHE.write() {
+            guard.remove(&account);
+        }
+
+        Ok(())
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 fn collect_db_files(root: &Path) -> Vec<PathBuf> {
@@ -1486,14 +1733,13 @@ fn verify_hash(key: &[u8; 32], hash: &str) -> bool {
     hash_key(key) == hash
 }
 
-#[tauri::command]
-pub fn get_cached_file(
-    app: AppHandle,
+pub fn get_cached_file_sync(
+    app: &AppHandle,
     account: u64,
-    src: String,
+    src: &str,
 ) -> Result<Option<String>, String> {
-    let paths = Paths::new(&app, account);
-    let direct_file = paths.cache_file(&hash(&src));
+    let paths = Paths::new(app, account);
+    let direct_file = paths.cache_file(&hash(src));
     if direct_file.exists() && fs::metadata(&direct_file).map(|m| m.len()).unwrap_or(0) > 0 {
         return Ok(Some(direct_file.to_string_lossy().to_string()));
     }
@@ -1507,7 +1753,7 @@ pub fn get_cached_file(
     let (mut index, key, storage) = match cached_opt {
         Some(idx) => (idx, None, None),
         None => {
-            let key = crypto_key(&app, account);
+            let key = crypto_key(app, account);
             let storage = Storage::new(key);
             let loaded = storage
                 .load(paths.cache_index())
@@ -1519,7 +1765,7 @@ pub fn get_cached_file(
         }
     };
 
-    let Some(entry) = index.get(&src) else {
+    let Some(entry) = index.get(src) else {
         return Ok(None);
     };
 
@@ -1531,16 +1777,16 @@ pub fn get_cached_file(
 
     if !full.exists() {
         if let Some(map) = index.as_object_mut() {
-            map.remove(&src);
+            map.remove(src);
         }
 
         if let Ok(mut guard) = CACHE_INDEX_CACHE.write() {
             guard.insert(account, index.clone());
         }
 
-        let key = key.unwrap_or_else(|| crypto_key(&app, account));
+        let key = key.unwrap_or_else(|| crypto_key(app, account));
         let storage = storage.unwrap_or_else(|| Storage::new(key));
-        storage.save(paths.cache_index(), &index)?;
+        storage.save_coalesced(paths.cache_index(), &index);
 
         return Ok(None);
     }
@@ -1549,28 +1795,31 @@ pub fn get_cached_file(
 }
 
 #[tauri::command]
-pub fn set_cached_file(
+pub async fn get_cached_file(
     app: AppHandle,
     account: u64,
     src: String,
-    bytes: Vec<u8>,
-) -> Result<String, String> {
-    set_cached_file_with_meta(app, account, src, bytes, None, None)
+) -> Result<Option<String>, String> {
+    tokio::task::spawn_blocking(move || {
+        get_cached_file_sync(&app, account, &src)
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
-pub fn set_cached_file_with_meta(
-    app: AppHandle,
+pub fn set_cached_file_with_meta_sync(
+    app: &AppHandle,
     account: u64,
     src: String,
     bytes: Vec<u8>,
     chat_id: Option<i64>,
     media_type: Option<String>,
 ) -> Result<String, String> {
-    let key = crypto_key(&app, account);
+    let key = crypto_key(app, account);
 
     let storage = Storage::new(key);
 
-    let paths = Paths::new(&app, account);
+    let paths = Paths::new(app, account);
 
     fs::create_dir_all(paths.cache_files())
         .map_err(|e| e.to_string())?;
@@ -1617,9 +1866,34 @@ pub fn set_cached_file_with_meta(
         guard.insert(account, index.clone());
     }
 
-    storage.save(paths.cache_index(), &index)?;
+    storage.save_coalesced(paths.cache_index(), &index);
 
     Ok(file.to_string_lossy().to_string())
+}
+
+pub fn set_cached_file_with_meta(
+    app: AppHandle,
+    account: u64,
+    src: String,
+    bytes: Vec<u8>,
+    chat_id: Option<i64>,
+    media_type: Option<String>,
+) -> Result<String, String> {
+    set_cached_file_with_meta_sync(&app, account, src, bytes, chat_id, media_type)
+}
+
+#[tauri::command]
+pub async fn set_cached_file(
+    app: AppHandle,
+    account: u64,
+    src: String,
+    bytes: Vec<u8>,
+) -> Result<String, String> {
+    tokio::task::spawn_blocking(move || {
+        set_cached_file_with_meta_sync(&app, account, src, bytes, None, None)
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 pub fn add_cache_index_alias(
@@ -1665,19 +1939,20 @@ pub fn add_cache_index_alias(
         guard.insert(account, index.clone());
     }
 
-    storage.save(paths.cache_index(), &index)
+    storage.save_coalesced(paths.cache_index(), &index);
+
+    Ok(())
 }
 
-#[tauri::command]
-pub fn delete_chat_cache(
-    app: AppHandle,
+pub fn delete_chat_cache_sync(
+    app: &AppHandle,
     account: u64,
     chat_id: i64,
     media_type: Option<String>,
 ) -> Result<usize, String> {
-    let key = crypto_key(&app, account);
+    let key = crypto_key(app, account);
     let storage = Storage::new(key);
-    let paths = Paths::new(&app, account);
+    let paths = Paths::new(app, account);
 
     let cached_opt = if let Ok(guard) = CACHE_INDEX_CACHE.read() {
         guard.get(&account).cloned()
@@ -1724,8 +1999,22 @@ pub fn delete_chat_cache(
         guard.insert(account, index.clone());
     }
 
-    storage.save(paths.cache_index(), &index)?;
+    storage.save_coalesced(paths.cache_index(), &index);
     Ok(deleted_count)
+}
+
+#[tauri::command]
+pub async fn delete_chat_cache(
+    app: AppHandle,
+    account: u64,
+    chat_id: i64,
+    media_type: Option<String>,
+) -> Result<usize, String> {
+    tokio::task::spawn_blocking(move || {
+        delete_chat_cache_sync(&app, account, chat_id, media_type)
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 pub(crate) fn hash(src: &str) -> String {
@@ -1758,102 +2047,122 @@ fn base36(mut value: u32) -> String {
     String::from_utf8(out).unwrap()
 }
 
-// settings
-
 #[tauri::command]
-pub fn get_device(app: AppHandle) -> Value {
-    Storage::new(None)
-    .load(app.path().app_data_dir().unwrap().join("data").join("device"))
-    .unwrap_or_else(|| {
-        json!(null)
+pub async fn get_device(app: AppHandle) -> Value {
+    tokio::task::spawn_blocking(move || {
+        Storage::new(None)
+            .load(app.path().app_data_dir().unwrap().join("data").join("device"))
+            .unwrap_or_else(|| json!(null))
     })
+    .await
+    .unwrap_or_else(|_| json!(null))
 }
 
 #[tauri::command]
-pub fn save_device(
+pub async fn save_device(
     app: AppHandle,
     device: Value,
-)->Result<(), String>{
-    Storage::new(None)
-    .save(app.path().app_data_dir().unwrap().join("data").join("device"), &device)
+) -> Result<(), String> {
+    tokio::task::spawn_blocking(move || {
+        Storage::new(None)
+            .save(app.path().app_data_dir().unwrap().join("data").join("device"), &device)
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
-pub fn save_dictionary(
+pub async fn save_dictionary(
     app: AppHandle,
     data: Value,
 ) -> Result<(), String> {
-    let path = app.path().app_data_dir().unwrap()
-    .join("data")
-    .join("dictionary");
+    tokio::task::spawn_blocking(move || {
+        let path = app.path().app_data_dir().unwrap()
+            .join("data")
+            .join("dictionary");
 
-    let mut store = Storage::new(None)
-    .load(&path)
-    .unwrap_or_else(|| json!({
-        "url": null,
-        "data": null
-    }));
+        let mut store = Storage::new(None)
+            .load(&path)
+            .unwrap_or_else(|| json!({
+                "url": null,
+                "data": null
+            }));
 
-    store["data"] = data.clone();
+        store["data"] = data;
 
-    Storage::new(None).save(&path, &store)
-}
-
-#[tauri::command]
-pub fn load_dictionary(app: AppHandle) -> Value {
-    let path = app.path().app_data_dir().unwrap()
-    .join("data")
-    .join("dictionary");
-
-    Storage::new(None)
-    .load(&path)
-    .unwrap_or_else(|| {
-        json!({
-            "url": null,
-            "data": null
-        })
+        Storage::new(None).save(&path, &store)
     })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
-pub fn get_dictionary_url(app: AppHandle) -> Value {
-    let path = app.path().app_data_dir().unwrap()
-    .join("data")
-    .join("dictionary");
+pub async fn load_dictionary(app: AppHandle) -> Value {
+    tokio::task::spawn_blocking(move || {
+        let path = app.path().app_data_dir().unwrap()
+            .join("data")
+            .join("dictionary");
 
-    let store = Storage::new(None)
-    .load(&path)
-    .unwrap_or_else(|| {
-        json!({
-            "url": null,
-            "data": null
-        })
-    });
-
-    store.get("url").cloned().unwrap_or(json!(null))
+        Storage::new(None)
+            .load(&path)
+            .unwrap_or_else(|| {
+                json!({
+                    "url": null,
+                    "data": null
+                })
+            })
+    })
+    .await
+    .unwrap_or_else(|_| json!({"url": null, "data": null}))
 }
 
 #[tauri::command]
-pub fn set_dictionary_url(
+pub async fn get_dictionary_url(app: AppHandle) -> Value {
+    tokio::task::spawn_blocking(move || {
+        let path = app.path().app_data_dir().unwrap()
+            .join("data")
+            .join("dictionary");
+
+        let store = Storage::new(None)
+            .load(&path)
+            .unwrap_or_else(|| {
+                json!({
+                    "url": null,
+                    "data": null
+                })
+            });
+
+        store.get("url").cloned().unwrap_or(json!(null))
+    })
+    .await
+    .unwrap_or_else(|_| json!(null))
+}
+
+#[tauri::command]
+pub async fn set_dictionary_url(
     app: AppHandle,
     url: Value,
 ) -> Result<(), String> {
-    let path = app.path().app_data_dir().unwrap()
-    .join("data")
-    .join("dictionary");
+    tokio::task::spawn_blocking(move || {
+        let path = app.path().app_data_dir().unwrap()
+            .join("data")
+            .join("dictionary");
 
-    let mut store = Storage::new(None)
-    .load(&path)
-    .unwrap_or_else(|| {
-        json!({
-            "url": null,
-            "data": null
-        })
-    });
+        let mut store = Storage::new(None)
+            .load(&path)
+            .unwrap_or_else(|| {
+                json!({
+                    "url": null,
+                    "data": null
+                })
+            });
 
-    store["url"] = url.clone();
+        store["url"] = url;
 
-    Storage::new(None).save(&path, &store)
+        Storage::new(None).save(&path, &store)
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 pub fn load_sync_state<T: serde::de::DeserializeOwned>(
@@ -1928,7 +2237,7 @@ fn get_webapp_path_and_storage(app: &AppHandle, account: Option<u64>, bot_id: &s
 }
 
 #[tauri::command]
-pub fn webapp_storage_save_key(
+pub async fn webapp_storage_save_key(
     app: AppHandle,
     account: Option<u64>,
     bot_id: String,
@@ -1936,124 +2245,148 @@ pub fn webapp_storage_save_key(
     key: String,
     value: Option<String>,
 ) -> Result<bool, String> {
-    if key.is_empty() {
-        return Ok(false);
-    }
-    let (path, storage) = get_webapp_path_and_storage(&app, account, &bot_id);
-    let mut data = storage.load(&path).unwrap_or_else(|| json!({}));
-    let scope_name = if is_secure { "sec" } else { "dev" };
+    tokio::task::spawn_blocking(move || {
+        if key.is_empty() {
+            return Ok(false);
+        }
+        let (path, storage) = get_webapp_path_and_storage(&app, account, &bot_id);
+        let mut data = storage.load(&path).unwrap_or_else(|| json!({}));
+        let scope_name = if is_secure { "sec" } else { "dev" };
 
-    let obj = data.as_object_mut().ok_or_else(|| "Invalid store format".to_string())?;
-    let scope_val = obj.entry(scope_name).or_insert_with(|| json!({}));
-    let scope_obj = scope_val.as_object_mut().ok_or_else(|| "Invalid scope format".to_string())?;
+        let obj = data.as_object_mut().ok_or_else(|| "Invalid store format".to_string())?;
+        let scope_val = obj.entry(scope_name).or_insert_with(|| json!({}));
+        let scope_obj = scope_val.as_object_mut().ok_or_else(|| "Invalid scope format".to_string())?;
 
-    match value {
-        Some(val) => {
-            if !scope_obj.contains_key(&key) && scope_obj.len() >= 500 {
-                return Ok(false);
+        match value {
+            Some(val) => {
+                if !scope_obj.contains_key(&key) && scope_obj.len() >= 500 {
+                    return Ok(false);
+                }
+                scope_obj.insert(key, Value::String(val));
             }
-            scope_obj.insert(key, Value::String(val));
+            None => {
+                scope_obj.remove(&key);
+            }
         }
-        None => {
-            scope_obj.remove(&key);
-        }
-    }
 
-    storage.save(&path, &data)?;
-    Ok(true)
+        storage.save(&path, &data)?;
+        Ok(true)
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
-pub fn webapp_storage_get_key(
+pub async fn webapp_storage_get_key(
     app: AppHandle,
     account: Option<u64>,
     bot_id: String,
     is_secure: bool,
     key: String,
 ) -> Result<Option<String>, String> {
-    let (path, storage) = get_webapp_path_and_storage(&app, account, &bot_id);
-    let data = match storage.load(&path) {
-        Some(d) => d,
-        None => return Ok(None),
-    };
-    let scope_name = if is_secure { "sec" } else { "dev" };
-    let val = data.get(scope_name)
-        .and_then(|s| s.get(&key))
-        .and_then(|v| {
-            if let Some(s) = v.as_str() {
-                Some(s.to_string())
-            } else if !v.is_null() {
-                Some(v.to_string())
-            } else {
-                None
-            }
-        });
-    Ok(val)
+    tokio::task::spawn_blocking(move || {
+        let (path, storage) = get_webapp_path_and_storage(&app, account, &bot_id);
+        let data = match storage.load(&path) {
+            Some(d) => d,
+            None => return Ok(None),
+        };
+        let scope_name = if is_secure { "sec" } else { "dev" };
+        let val = data.get(scope_name)
+            .and_then(|s| s.get(&key))
+            .and_then(|v| {
+                if let Some(s) = v.as_str() {
+                    Some(s.to_string())
+                } else if !v.is_null() {
+                    Some(v.to_string())
+                } else {
+                    None
+                }
+            });
+        Ok(val)
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
-pub fn webapp_storage_clear(
+pub async fn webapp_storage_clear(
     app: AppHandle,
     account: Option<u64>,
     bot_id: String,
     is_secure: bool,
 ) -> Result<(), String> {
-    let (path, storage) = get_webapp_path_and_storage(&app, account, &bot_id);
-    let mut data = storage.load(&path).unwrap_or_else(|| json!({}));
-    let scope_name = if is_secure { "sec" } else { "dev" };
-    if let Some(obj) = data.as_object_mut() {
-        obj.insert(scope_name.to_string(), json!({}));
-        storage.save(&path, &data)?;
-    }
-    Ok(())
+    tokio::task::spawn_blocking(move || {
+        let (path, storage) = get_webapp_path_and_storage(&app, account, &bot_id);
+        let mut data = storage.load(&path).unwrap_or_else(|| json!({}));
+        let scope_name = if is_secure { "sec" } else { "dev" };
+        if let Some(obj) = data.as_object_mut() {
+            obj.insert(scope_name.to_string(), json!({}));
+            storage.save(&path, &data)?;
+        }
+        Ok(())
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
-pub fn webapp_storage_get_keys(
+pub async fn webapp_storage_get_keys(
     app: AppHandle,
     account: Option<u64>,
     bot_id: String,
     is_secure: bool,
 ) -> Result<Vec<String>, String> {
-    let (path, storage) = get_webapp_path_and_storage(&app, account, &bot_id);
-    let data = match storage.load(&path) {
-        Some(d) => d,
-        None => return Ok(Vec::new()),
-    };
-    let scope_name = if is_secure { "sec" } else { "dev" };
-    let keys = data.get(scope_name)
-        .and_then(|s| s.as_object())
-        .map(|obj| obj.keys().cloned().collect())
-        .unwrap_or_default();
-    Ok(keys)
+    tokio::task::spawn_blocking(move || {
+        let (path, storage) = get_webapp_path_and_storage(&app, account, &bot_id);
+        let data = match storage.load(&path) {
+            Some(d) => d,
+            None => return Ok(Vec::new()),
+        };
+        let scope_name = if is_secure { "sec" } else { "dev" };
+        let keys = data.get(scope_name)
+            .and_then(|s| s.as_object())
+            .map(|obj| obj.keys().cloned().collect())
+            .unwrap_or_default();
+        Ok(keys)
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
-pub fn webapp_biometry_get(
+pub async fn webapp_biometry_get(
     app: AppHandle,
     account: Option<u64>,
     bot_id: String,
 ) -> Result<Value, String> {
-    let (path, storage) = get_webapp_path_and_storage(&app, account, &bot_id);
-    let data = storage.load(&path).unwrap_or_else(|| json!({}));
-    let bio = data.get("biometry").cloned().unwrap_or_else(|| json!({}));
-    Ok(bio)
+    tokio::task::spawn_blocking(move || {
+        let (path, storage) = get_webapp_path_and_storage(&app, account, &bot_id);
+        let data = storage.load(&path).unwrap_or_else(|| json!({}));
+        let bio = data.get("biometry").cloned().unwrap_or_else(|| json!({}));
+        Ok(bio)
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
-pub fn webapp_biometry_set(
+pub async fn webapp_biometry_set(
     app: AppHandle,
     account: Option<u64>,
     bot_id: String,
     biometry: Value,
 ) -> Result<(), String> {
-    let (path, storage) = get_webapp_path_and_storage(&app, account, &bot_id);
-    let mut data = storage.load(&path).unwrap_or_else(|| json!({}));
-    if let Some(obj) = data.as_object_mut() {
-        obj.insert("biometry".to_string(), biometry);
-        storage.save(&path, &data)?;
-    }
-    Ok(())
+    tokio::task::spawn_blocking(move || {
+        let (path, storage) = get_webapp_path_and_storage(&app, account, &bot_id);
+        let mut data = storage.load(&path).unwrap_or_else(|| json!({}));
+        if let Some(obj) = data.as_object_mut() {
+            obj.insert("biometry".to_string(), biometry);
+            storage.save(&path, &data)?;
+        }
+        Ok(())
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[cfg(target_os = "android")]

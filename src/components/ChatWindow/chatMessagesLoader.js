@@ -25,12 +25,15 @@ export function createMessagesLoader({
   let all_loaded_newer = true;
   let initialized = false;
 
+  const checkedPlaintextIds = new Set();
+
   async function decodeMessagesBatch(list) {
     if (!list || !list.length) return;
     try {
       const currentDecoded = get(decodedMessages);
       const toDecode = list.filter((m) => {
         const idStr = String(m.id);
+        if (checkedPlaintextIds.has(idStr) && !m.edited && m.status !== "EDITED") return false;
         const existing = currentDecoded[idStr];
         if (!existing) return true;
         if (m.edited || m.status === "EDITED") return true;
@@ -49,6 +52,15 @@ export function createMessagesLoader({
         toDecode,
         password
       );
+
+      for (const m of toDecode) {
+        const idStr = String(m.id);
+        if (!updates || !updates[idStr]) {
+          checkedPlaintextIds.add(idStr);
+        } else {
+          checkedPlaintextIds.delete(idStr);
+        }
+      }
 
       decodedMessages.update((old) => ({
         ...old,
