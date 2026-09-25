@@ -10,6 +10,11 @@
   import SferumTab from "$components/main/SferumTab.svelte";
   import Logs from "./settings/logs/+page.svelte";
   import Notifications from "./settings/notifications/+page.svelte";
+  import ProfileSettings from "./settings/profile/+page.svelte";
+  import LockSettings from "./settings/lock/+page.svelte";
+  import DictionarySettings from "./settings/e2e/dictionary/+page.svelte";
+  import AboutSettings from "./settings/about/+page.svelte";
+  import SessionsSettings from "./settings/sessions/+page.svelte";
   import Panel from "$components/Panel.svelte";
   import Card from "$components/main/Card.svelte";
   import ChatWindow from "$components/ChatWindow.svelte";
@@ -17,7 +22,7 @@
   import { panelConfig, CATALOG } from "$lib/stores/panel.js";
 
   import * as Caching from "$lib/utils/caching";
-  import Session, { openChat } from "$lib/stores/session";
+  import Session, { openChat, closeSettingsPage } from "$lib/stores/session";
   import { page } from "$app/stores";
 
   const COMPONENT_MAP = {
@@ -29,6 +34,16 @@
     sferum: SferumTab,
     logs: Logs,
     notifications: Notifications,
+  };
+
+  const SETTINGS_PAGES = {
+    profile: ProfileSettings,
+    notifications: Notifications,
+    lock: LockSettings,
+    dictionary: DictionarySettings,
+    logs: Logs,
+    about: AboutSettings,
+    sessions: SessionsSettings,
   };
 
   $: pages = ($panelConfig.items || [])
@@ -122,7 +137,11 @@
   });
 </script>
 
-<div class="container" class:has-chat={$Session.openedChats.length > 0}>
+<div
+  class="container"
+  class:has-chat={$Session.openedChats.length > 0}
+  class:has-overlay={!!$Session.settingsPage}
+>
   {#each pages as pageItem, index (pageItem.id)}
     <Card {index} {active}>
       {#if mountedCards.has(pageItem.id)}
@@ -137,6 +156,15 @@
   {#each $Session.openedChats as chatId (chatId)}
     <ChatWindow {chatId}/>
   {/each}
+
+  {#if $Session.settingsPage && SETTINGS_PAGES[$Session.settingsPage]}
+    <div class="settings-page-overlay">
+      <svelte:component
+        this={SETTINGS_PAGES[$Session.settingsPage]}
+        onClose={closeSettingsPage}
+      />
+    </div>
+  {/if}
 </div>
 
 <Panel on:open={openCard} {pages} {active} />
@@ -150,7 +178,18 @@
     overflow: hidden;
   }
 
-  .container.has-chat {
+  .container.has-chat,
+  .container.has-overlay {
     z-index: 20;
+  }
+
+  .settings-page-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 15;
+    overflow: hidden;
   }
 </style>

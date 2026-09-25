@@ -1,21 +1,18 @@
 <script>
   import { platform, version as getVersion } from "@tauri-apps/plugin-os";
   import { openUrl } from "@tauri-apps/plugin-opener";
-  import { goto } from "$app/navigation";
   import { onMount } from "svelte";
   import { app } from "@tauri-apps/api";
   import { page } from "$app/stores";
+  import SettingsPageWrapper from "$components/settings/SettingsPageWrapper.svelte";
 
-  import ActionButton from "$components/main/auth/ActionButton.svelte";
-
-  let autoCheck = true;
   let version = "...";
   let environment = "...";
-
   let doingStuff = "";
   let checking = false;
 
-  $: from = $page.url.searchParams.get("from") || "/auth/login";
+  export let onClose = null;
+  $: from = $page.url.searchParams.get("from") || "/?card=settings";
 
   async function checkUpdates() {
     if (checking) return;
@@ -46,12 +43,8 @@
     }
   }
 
-  function toggleAutoCheck() {
-    autoCheck = !autoCheck;
-  }
-
   onMount(async () => {
-    version = "v" + await app.getVersion();
+    version = "v" + (await app.getVersion());
     const _platform = await platform();
     environment =
       _platform[0].toUpperCase() +
@@ -61,180 +54,263 @@
   });
 
   function openGit() {
-    openUrl("https://github.com/me0wkie/maxplus");
+    openUrl("https://github.com/junioraww/maxplus");
   }
 
   function openBerg() {
     openUrl("https://codeberg.org/meowkie/maxplus");
   }
 
+  let phrase = getPhrase();
+
   function getPhrase() {
     const phrases = [
       "для любителей шифров.",
-      "с минимумом функций.",
-      "для нетакусек."
-    ]
+      "для нетакусек.",
+      "без магии. Почти.",
+      "для особо недоверчивых.",
+      "для тех самых.",
+      "для тех, кто понял.",
+      "с привкусом паранойи.",
+      "без лишних вопросов.",
+      "с духом DIY.",
+      "BLAZINGLY FAST!",
+      "для любителей плюсов.",
+      "с большим характером.",
+    ];
 
-    return phrases[Math.floor(Math.random() * phrases.length)]
+    return phrases[Math.floor(Math.random() * phrases.length)];
+  }
+
+  function updatePhrase() {
+    let generated = phrase;
+    while (generated === phrase) {
+      generated = getPhrase();
+    }
+    phrase = generated;
   }
 </script>
 
-<div class="page">
-  <h1>Max+</h1>
-  <a class="description">Клиент «Макс» {getPhrase()}</a>
-
-  <div class="sources">
-    <p class="text" style="margin-bottom: 10px;">Исходный код:</p>
-    <div class="source github" on:click={openGit}>
-      <img class="icon" src="/icons/web/github.svg">
-      <a>GitHub</a>
+<SettingsPageWrapper title="О приложении" {from} {onClose}>
+  <div class="content">
+    <div class="hero-section">
+      <div on:click={updatePhrase} class="app-icon-wrap">
+        <img class="app-logo" src="/favicon.png" alt="Max+" />
+      </div>
+      <h1>Max+</h1>
+      <p class="description">Клиент «Макс» {phrase}</p>
     </div>
-    <div class="source berg" on:click={openBerg}>
-      <img class="icon" src="/icons/web/codeberg.svg">
-      <a>Codeberg</a>
+
+    <div class="card sources-card">
+      <div class="card-title">Исходный код</div>
+      <div class="sources-list">
+        <div class="source-item" on:click={openGit}>
+          <img class="source-icon github-icon" src="/icons/web/github.svg" alt="GitHub" />
+          <span class="source-name">GitHub</span>
+          <svg class="chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="9 18 15 12 9 6"></polyline>
+          </svg>
+        </div>
+        <div class="divider"></div>
+        <div class="source-item" on:click={openBerg}>
+          <img class="source-icon" src="/icons/web/codeberg.svg" alt="Codeberg" />
+          <span class="source-name">Codeberg</span>
+          <svg class="chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="9 18 15 12 9 6"></polyline>
+          </svg>
+        </div>
+      </div>
+    </div>
+
+    <div class="card info-card">
+      <div class="info-row">
+        <span>Версия приложения</span>
+        <strong>{version}</strong>
+      </div>
+      <div class="divider"></div>
+      <div class="info-row">
+        <span>Платформа</span>
+        <strong>{environment}</strong>
+      </div>
+      <div class="divider"></div>
+      <div class="info-row">
+        <span>Собрано</span>
+        <strong>{__BUILD_DATE__}</strong>
+      </div>
     </div>
   </div>
-  <div class="about">
-    <div class="version">
-      <p>Версия приложения: <a>{version}</a></p>
-      <p><a>{environment}</a></p>
-      <p>Собрано <a>{__BUILD_DATE__}</a></p>
-    </div>
-  </div>
 
-  <div class="actions-panel">
-    <button class="check-btn" on:click={checkUpdates}>
-      Обновить{doingStuff}
+  <div class="actions-panel" slot="footer">
+    <button class="check-btn" on:click={checkUpdates} disabled={checking}>
+      Проверить обновления{doingStuff}
     </button>
-    <button class="back-btn" on:click={() => goto(from)}>Назад</button>
   </div>
-</div>
+</SettingsPageWrapper>
 
 <style>
-  .page {
+  .content {
+    flex: 1;
+    overflow-y: auto;
+    padding: 20px 16px;
     display: flex;
     flex-direction: column;
-    height: 100vh;
-    overflow: hidden;
-    background-color: #1a1a1f;
-    color: #ddd;
+    gap: 16px;
+    box-sizing: border-box;
+  }
+
+  .hero-section {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 10px 0 8px;
+    text-align: center;
+  }
+
+  .app-icon-wrap {
+    margin-bottom: 12px;
+    transition: 0.1s transform;
+  }
+
+  .app-icon-wrap:active {
+    transform: scale(0.97);
+  }
+
+  .app-logo {
+    width: 72px;
+    height: 72px;
+    border-radius: 16px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.35);
   }
 
   h1 {
-    color: #6366f1;
-    font-size: 28px;
-    margin-bottom: 5px;
-    text-align: center;
-    margin-bottom: 0;
+    color: #ffffff;
+    font-size: 24px;
+    font-weight: 700;
+    margin: 0;
   }
 
   .description {
-    color: #ddd;
-    margin: 20px 0;
-    text-align: center;
-    max-width: 80%;
-    align-self: center;
+    color: #888;
+    margin: 6px 0 0;
+    font-size: 0.95rem;
   }
 
-  .sources {
+  .card {
+    background: #24252a;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 14px;
+    overflow: hidden;
+  }
+
+  .card-title {
+    padding: 12px 16px 8px;
+    font-size: 0.78rem;
+    color: #7b7b88;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    font-weight: 600;
+  }
+
+  .sources-list {
     display: flex;
     flex-direction: column;
+  }
+
+  .source-item {
+    display: flex;
     align-items: center;
-    color: white;
-    font-size: 16px;
+    gap: 12px;
+    padding: 12px 16px;
+    cursor: pointer;
+    transition: background 0.12s;
+  }
+
+  .source-item:hover {
+    background: rgba(255, 255, 255, 0.05);
+  }
+
+  .source-icon {
+    width: 24px;
+    height: 24px;
+  }
+
+  .github-icon {
+    background: #fff;
+    border-radius: 50%;
+  }
+
+  .source-name {
+    flex: 1;
+    color: #fff;
+    font-size: 0.95rem;
     font-weight: 500;
   }
 
-  a {
-    color: #3ff;
-    text-decoration: none;
+  .chevron {
+    color: #555;
   }
 
-  p {
-    margin: 0;
-    text-align: center;
+  .divider {
+    height: 1px;
+    background: rgba(255, 255, 255, 0.06);
+    margin: 0 16px;
   }
 
-  .source {
+  .info-card {
     display: flex;
+    flex-direction: column;
+  }
+
+  .info-row {
+    display: flex;
+    justify-content: space-between;
     align-items: center;
-    margin: 10px 0;
-    gap: 10px;
-    font-weight: 400;
+    padding: 13px 16px;
+    font-size: 0.92rem;
   }
 
-  .github {
-    position: relative;
-    right: 10px;
+  .info-row span {
+    color: #888;
   }
 
-  .github img {
-    background-color: #fff;
-    clip-path: circle(48%);
-  }
-
-  .source img {
-    height: 32px;
-  }
-
-  .about {
-    display: flex;
-    flex-direction: column;
-    margin: 10px 0;
-    flex: 1;
-  }
-
-  .version {
-    display: flex;
-    flex-direction: column;
-  }
-
-  .version a {
-    color: white;
+  .info-row strong {
+    color: #fff;
+    font-weight: 500;
   }
 
   .actions-panel {
-    padding: 20px;
     flex-shrink: 0;
-    display: flex;
-    justify-content: flex-end;
-    gap: 20px;
-  }
-
-  button {
-    gap: 8px;
-    color: white;
-    border: none;
-    padding: 10px 40px;
-    border-radius: 8px;
-    font-weight: 600;
-    font-size: 0.92rem;
-    cursor: pointer;
-    transition: background 0.2s;
+    padding: 14px 16px;
+    background: #212126;
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
   }
 
   .check-btn {
-    background: #f25527dd;
-    flex: 1;
+    width: 100%;
+    height: 44px;
+    background: #3390ec;
+    color: white;
+    border: none;
+    border-radius: 12px;
+    font-size: 0.95rem;
+    font-weight: 600;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: transform 0.12s, opacity 0.15s, background 0.15s;
   }
 
   .check-btn:hover {
-    background: #f25527bb;
+    background: #2b7ecf;
   }
 
-  .back-btn {
-    background: #6366f1;
+  .check-btn:active {
+    transform: scale(0.98);
   }
 
-  .back-btn:hover {
-    background: #4f46e5;
-  }
-
-  .auto-check {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    color: #bbb;
-    font-size: 14px;
+  .check-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
   }
 </style>

@@ -65,6 +65,7 @@
         else if (onBack.dropout) onBack.dropout();
         else if (onBack.chat) onBack.chat();
         else if (onBack.addContact) onBack.addContact();
+        else if (onBack.settingsPage) onBack.settingsPage();
         else if (onBack.settings) onBack.settings();
       });
     }

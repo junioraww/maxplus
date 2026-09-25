@@ -19,10 +19,12 @@
   } from "$lib/stores/webappLogs";
   import FilterRulesModal from "$components/logs/FilterRulesModal.svelte";
   import { fade } from "svelte/transition";
+  import SettingsPageWrapper from "$components/settings/SettingsPageWrapper.svelte";
 
   export let isTab = false;
+  export let onClose = null;
 
-  $: from = $page.url.searchParams.get("from") || "/auth/login";
+  $: from = $page.url.searchParams.get("from") || "/?card=settings";
 
   let activeTab = "max_api";
   let expandedId = null;
@@ -152,50 +154,93 @@
   }
 </script>
 
-<div class="logs-page" class:is-tab={isTab}>
+<SettingsPageWrapper title="Сетевые логи" {from} {isTab} {onClose}>
   {#if toastMessage}
     <div class="toast-popup" transition:fade={{ duration: 120 }}>
       {toastMessage}
     </div>
   {/if}
 
-  <header>
-    <h1>Сетевые логи</h1>
-    <div class="header-controls">
-      {#if activeTab === "max_api"}
-        <span class="count">Всего {$total} запросов</span>
-        <button class="icon-btn" on:click={handleExport} title="Экспорт логов">
-          <img src="/icons/export.svg" alt="Экспорт" />
-        </button>
-        <button class="icon-btn danger-icon" on:click={handleClear} title="Очистить логи">
-          ✕
-        </button>
-      {:else if activeTab === "webapps"}
-        <span class="count">Всего {$webappLogs.length}</span>
-        <button class="icon-btn" on:click={handleExport} title="Экспорт логов">
-          <img src="/icons/export.svg" alt="Экспорт" />
-        </button>
-        <button class="icon-btn danger-icon" on:click={handleClear} title="Очистить логи">
-          ✕
-        </button>
-      {:else}
-        <span class="count">Всего {$filterRules.length}</span>
-        <button class="icon-btn" on:click={handleImport} title="Импорт правил">
-          <img src="/icons/import.svg" alt="Импорт" />
-        </button>
-        <button class="icon-btn filter-export-btn" on:click={handleExport} title="Экспорт правил">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#f97316" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-            <polyline points="17 8 12 3 7 8"></polyline>
-            <line x1="12" y1="3" x2="12" y2="15"></line>
-          </svg>
-        </button>
-        <button class="icon-btn add-icon" on:click={openCreateRule} title="Добавить правило">
-          +
-        </button>
-      {/if}
-    </div>
-  </header>
+  <svelte:fragment slot="header-extra">
+    {#if !isTab}
+      <div class="header-controls">
+        {#if activeTab === "max_api"}
+          <span class="count">Всего {$total} запросов</span>
+          <button class="icon-btn" on:click={handleExport} title="Экспорт логов">
+            <img src="/icons/export.svg" alt="Экспорт" />
+          </button>
+          <button class="icon-btn danger-icon" on:click={handleClear} title="Очистить логи">
+            ✕
+          </button>
+        {:else if activeTab === "webapps"}
+          <span class="count">Всего {$webappLogs.length}</span>
+          <button class="icon-btn" on:click={handleExport} title="Экспорт логов">
+            <img src="/icons/export.svg" alt="Экспорт" />
+          </button>
+          <button class="icon-btn danger-icon" on:click={handleClear} title="Очистить логи">
+            ✕
+          </button>
+        {:else}
+          <span class="count">Всего {$filterRules.length}</span>
+          <button class="icon-btn" on:click={handleImport} title="Импорт правил">
+            <img src="/icons/import.svg" alt="Импорт" />
+          </button>
+          <button class="icon-btn filter-export-btn" on:click={handleExport} title="Экспорт правил">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#f97316" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+              <polyline points="17 8 12 3 7 8"></polyline>
+              <line x1="12" y1="3" x2="12" y2="15"></line>
+            </svg>
+          </button>
+          <button class="icon-btn add-icon" on:click={openCreateRule} title="Добавить правило">
+            +
+          </button>
+        {/if}
+      </div>
+    {/if}
+  </svelte:fragment>
+
+  {#if isTab}
+    <header class="tab-header">
+      <h1>Сетевые логи</h1>
+      <div class="header-controls">
+        {#if activeTab === "max_api"}
+          <span class="count">Всего {$total} запросов</span>
+          <button class="icon-btn" on:click={handleExport} title="Экспорт логов">
+            <img src="/icons/export.svg" alt="Экспорт" />
+          </button>
+          <button class="icon-btn danger-icon" on:click={handleClear} title="Очистить логи">
+            ✕
+          </button>
+        {:else if activeTab === "webapps"}
+          <span class="count">Всего {$webappLogs.length}</span>
+          <button class="icon-btn" on:click={handleExport} title="Экспорт логов">
+            <img src="/icons/export.svg" alt="Экспорт" />
+          </button>
+          <button class="icon-btn danger-icon" on:click={handleClear} title="Очистить логи">
+            ✕
+          </button>
+        {:else}
+          <span class="count">Всего {$filterRules.length}</span>
+          <button class="icon-btn" on:click={handleImport} title="Импорт правил">
+            <img src="/icons/import.svg" alt="Импорт" />
+          </button>
+          <button class="icon-btn filter-export-btn" on:click={handleExport} title="Экспорт правил">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#f97316" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+              <polyline points="17 8 12 3 7 8"></polyline>
+              <line x1="12" y1="3" x2="12" y2="15"></line>
+            </svg>
+          </button>
+          <button class="icon-btn add-icon" on:click={openCreateRule} title="Добавить правило">
+            +
+          </button>
+        {/if}
+      </div>
+    </header>
+  {/if}
+
+  <div class="logs-body">
 
   <div class="tabs">
     <button
@@ -325,12 +370,7 @@
       {/each}
     {/if}
   </div>
-
-  {#if !isTab}
-    <div class="footer-panel">
-      <button class="back-btn" on:click={() => goto(from)}> Назад </button>
-    </div>
-  {/if}
+  </div>
 
   {#if isFilterModalOpen}
     <FilterRulesModal
@@ -342,23 +382,36 @@
       }}
     />
   {/if}
-</div>
+</SettingsPageWrapper>
 
 <style>
-  .logs-page {
+  .tab-header {
     display: flex;
-    flex-direction: column;
-    height: 100vh;
-    color: #ddd;
-    padding: 16px;
-    box-sizing: border-box;
-    background: #1a1a1f;
-    position: relative;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 16px;
+    background: #212126;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    flex-shrink: 0;
+    gap: 8px;
   }
 
-  .logs-page.is-tab {
-    height: 100%;
-    padding-bottom: 16px;
+  .tab-header h1 {
+    margin: 0;
+    font-size: 1.15rem;
+    font-weight: 600;
+    color: #fff;
+    white-space: nowrap;
+  }
+
+  .logs-body {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    padding: 16px;
+    box-sizing: border-box;
+    color: #ffffff;
   }
 
   .toast-popup {
@@ -377,23 +430,6 @@
     pointer-events: none;
   }
 
-  header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 12px;
-    flex-shrink: 0;
-    gap: 8px;
-  }
-
-  h1 {
-    margin: 0;
-    font-size: 1.15rem;
-    font-weight: 600;
-    color: #fff;
-    white-space: nowrap;
-  }
-
   .header-controls {
     display: flex;
     align-items: center;
@@ -402,7 +438,8 @@
 
   .count {
     font-size: 0.75rem;
-    opacity: 0.7;
+    color: #ffffff;
+    opacity: 0.85;
     background: #333;
     padding: 3px 8px;
     border-radius: 20px;
@@ -534,7 +571,8 @@
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    opacity: 0.8;
+    color: #ffffff;
+    opacity: 0.9;
   }
 
   .badge {
@@ -641,6 +679,7 @@
   .rule-title {
     flex: 1;
     min-width: 0;
+    color: #ffffff;
   }
 
   .rule-del-btn {
@@ -659,34 +698,6 @@
     background: rgba(239, 68, 68, 0.15);
   }
 
-  .footer-panel {
-    display: flex;
-    justify-content: flex-end;
-    padding-top: 14px;
-    border-top: 1px solid #2c2c35;
-    z-index: 1;
-    flex-shrink: 0;
-  }
-
-  .back-btn {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    background: #6366f1;
-    color: white;
-    border: none;
-    padding: 9px 36px;
-    border-radius: 8px;
-    font-weight: 600;
-    font-size: 0.9rem;
-    cursor: pointer;
-    transition: background 0.2s;
-  }
-
-  .back-btn:hover {
-    background: #4f46e5;
-  }
-
   .logs-container::-webkit-scrollbar {
     width: 5px;
   }
@@ -697,7 +708,7 @@
   }
 
   @media (max-width: 360px) {
-    .logs-page {
+    .logs-body {
       padding: 10px;
     }
     .header-controls {
@@ -706,7 +717,7 @@
     .count {
       display: none;
     }
-    h1 {
+    .tab-header h1 {
       font-size: 1.05rem;
     }
   }

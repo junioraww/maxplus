@@ -1,26 +1,26 @@
 <script>
   import { onMount } from "svelte";
-  import { goto } from "$app/navigation";
   import { slide, fly } from "svelte/transition";
   import { flip } from "svelte/animate";
   import { page } from "$app/stores";
-
+  import SettingsPageWrapper from "$components/settings/SettingsPageWrapper.svelte";
   import { getCurrentAccount } from "$lib/stores/accounts";
-  import API, { currentUser } from "$lib/stores/api";
+  import API from "$lib/stores/api";
 
   let sessions = [];
   let current = null;
   let loading = true;
   let expandedId = null;
 
-  $: from = $page.url.searchParams.get("from") || "/auth/login";
+  export let onClose = null;
+  $: from = $page.url.searchParams.get("from") || "/?card=settings";
 
   onMount(async () => {
     sessions = [];
     try {
       const res = await $API.getSessions();
       sessions = res?.sessions || res || [];
-      current = sessions.find(x => x.current);
+      current = sessions.find((x) => x.current);
     } catch (e) {
       console.error(e);
     } finally {
@@ -35,21 +35,16 @@
   async function handleTerminateAll() {
     const account = await getCurrentAccount();
     if (!account) throw new Error("Ошибка получения данных аккаунта");
-    console.log(account);
 
     if (account.meta.added + 1000 * 60 * 60 * 24 > Date.now()) {
-      alert("Должно пройти 24 часа со входа в аккаунт!")
+      alert("Должно пройти 24 часа со входа в аккаунт!");
       return;
     }
 
-    /*const confirmed = await confirm(
-      "Вы уверены, что хотите завершить все остальные сессии?",
-    );
-
-    if (!confirmed) return;*/
-
     try {
       await $API.closeAllSessions();
+      const res = await $API.getSessions();
+      sessions = res?.sessions || res || [];
     } catch (e) {
       console.error(e);
       alert("Ошибка при завершении сессий.");
@@ -67,11 +62,8 @@
   }
 </script>
 
-<div class="sessions-page">
-  <header>
-    <h1>Активные сессии</h1>
-    <span class="count">{sessions.length}</span>
-  </header>
+<SettingsPageWrapper title="Активные сессии" {from} {onClose}>
+  <span class="count" slot="header-extra">{sessions.length}</span>
 
   <div class="sessions-container">
     {#if loading}
@@ -89,9 +81,7 @@
         >
           <div class="session-header">
             <div class="main-info">
-              <span class="client-name"
-                >{session.client || "Unknown Client"}</span
-              >
+              <span class="client-name">{session.client || "Unknown Client"}</span>
               <span class="location-brief">
                 {session.location
                   ? session.location.split(",").slice(0, 2).join(",")
@@ -124,74 +114,52 @@
     {/if}
   </div>
 
-  <div class="actions-panel">
-    <button class="terminate-btn" on:click|stopPropagation={handleTerminateAll}>
-      Завершить все
-    </button>
-    <button class="back-btn" on:click|stopPropagation={() => goto(from)}>
-      Назад
-    </button>
-  </div>
-</div>
+  <svelte:fragment slot="footer">
+    {#if sessions.length > 1}
+      <div class="actions-panel">
+        <button class="terminate-btn" on:click|stopPropagation={handleTerminateAll}>
+          Завершить все другие сессии
+        </button>
+      </div>
+    {/if}
+  </svelte:fragment>
+</SettingsPageWrapper>
 
 <style>
-  .sessions-page {
-    display: flex;
-    flex-direction: column;
-    height: 100vh;
-    background-color: #1a1a1f;
-    color: #ddd;
-    box-sizing: border-box;
-    overflow: hidden;
-  }
-
-  header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 15px 20px;
-    flex-shrink: 0;
-  }
-
-  h1 {
-    margin: 0;
-    font-size: 1.1rem;
-    font-weight: 600;
-    color: #fff;
-  }
-
   .count {
     font-size: 0.75rem;
-    background: #333;
-    padding: 2px 8px;
-    border-radius: 10px;
+    background: #2c2c35;
+    padding: 3px 9px;
+    border-radius: 999px;
     color: #bbb;
+    font-weight: 600;
   }
 
   .sessions-container {
     flex: 1;
     overflow-y: auto;
-    padding: 10px 15px;
+    padding: 16px;
     display: flex;
     flex-direction: column;
     gap: 10px;
+    box-sizing: border-box;
   }
 
   .session-card {
-    background: #26262e;
-    border-radius: 12px;
-    border: 1px solid #333;
+    background: #24252a;
+    border-radius: 14px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
     cursor: pointer;
     transition: border-color 0.2s;
     flex-shrink: 0;
   }
 
   .session-card.expanded {
-    border-color: #3ff;
+    border-color: #3390ec;
   }
 
   .session-header {
-    padding: 14px;
+    padding: 14px 16px;
     display: flex;
     justify-content: space-between;
     align-items: center;
@@ -200,13 +168,13 @@
   .main-info {
     display: flex;
     flex-direction: column;
-    gap: 2px;
+    gap: 3px;
   }
 
   .client-name {
-    font-weight: 700;
+    font-weight: 600;
     color: #fff;
-    font-size: 1rem;
+    font-size: 0.95rem;
   }
 
   .location-brief {
@@ -220,14 +188,14 @@
   }
 
   .session-details {
-    padding: 0 14px 14px 14px;
-    border-top: 1px solid #333;
+    padding: 0 16px 14px 16px;
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
     display: flex;
     flex-direction: column;
     gap: 8px;
-    background: #212129;
-    border-bottom-left-radius: 12px;
-    border-bottom-right-radius: 12px;
+    background: #1e1e24;
+    border-bottom-left-radius: 14px;
+    border-bottom-right-radius: 14px;
   }
 
   .detail-row {
@@ -238,7 +206,7 @@
 
   .label {
     font-size: 0.7rem;
-    color: #555;
+    color: #666;
     text-transform: uppercase;
     letter-spacing: 0.5px;
   }
@@ -257,51 +225,40 @@
   }
 
   .actions-panel {
-    padding: 20px;
+    padding: 14px 16px;
+    background: #212126;
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
     flex-shrink: 0;
-    display: flex;
-    gap: 20px;
-    height: 40px;
-  }
-
-  button {
-    display: flex;
-    align-items: center;
-    justify-content: center;
   }
 
   .terminate-btn {
     width: 100%;
-    background: #f22727aa;
-    color: #fff;
-    border: none;
-    padding: 12px;
-    border-radius: 10px;
+    height: 44px;
+    background: rgba(239, 68, 68, 0.15);
+    color: #ff595a;
+    border: 1px solid rgba(239, 68, 68, 0.25);
+    border-radius: 12px;
     font-weight: 600;
     cursor: pointer;
-    font-size: 0.85rem;
-  }
-
-  .back-btn {
-    gap: 8px;
-    background: #6366f1;
-    color: white;
-    border: none;
-    padding: 10px 40px;
-    border-radius: 8px;
-    font-weight: 600;
     font-size: 0.92rem;
-    cursor: pointer;
-    transition: background 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: transform 0.12s, opacity 0.15s, background 0.15s;
   }
 
-  .back-btn:hover {
-    background: #4f46e5;
+  .terminate-btn:hover {
+    background: rgba(239, 68, 68, 0.25);
+  }
+
+  .terminate-btn:active {
+    transform: scale(0.98);
   }
 
   .sessions-container::-webkit-scrollbar {
     width: 4px;
   }
+
   .sessions-container::-webkit-scrollbar-thumb {
     background: #333;
     border-radius: 10px;
