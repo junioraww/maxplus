@@ -171,6 +171,21 @@
     }
 
     const task = (async () => {
+      const account = await getCurrentAccount().catch(() => null);
+      const accountId = Number(account?.id || 0);
+
+      try {
+        const cached = await invoke("get_cached_file", {
+          account: accountId,
+          src: cacheKey
+        }).catch(() => null);
+        if (cached) {
+          fetchedUrl = cached;
+          attach.localPath = cached;
+          return toPlayableUrl(cached);
+        }
+      } catch (_) {}
+
       if ((vId || token) && chatId != null && messageId != null) {
         try {
           const response = await $API.getVideoById(chatId, messageId, vId || 0, token);
@@ -187,12 +202,16 @@
             fetchedUrl = picked;
             if (picked.startsWith('http://') || picked.startsWith('https://')) {
               invoke('cache_url', {
+                account: accountId,
                 src: picked,
                 chatId: chatId != null ? Number(chatId) : null,
                 mediaType: 'video_note',
                 key: cacheKey,
               }).then((cached) => {
-                if (cached) fetchedUrl = cached;
+                if (cached) {
+                  fetchedUrl = cached;
+                  attach.localPath = cached;
+                }
               }).catch(() => {});
             }
             return toPlayableUrl(picked);
@@ -203,12 +222,16 @@
       if (fallback && (fallback.startsWith('http://') || fallback.startsWith('https://'))) {
         fetchedUrl = fallback;
         invoke('cache_url', {
+          account: accountId,
           src: fallback,
           chatId: chatId != null ? Number(chatId) : null,
           mediaType: 'video_note',
           key: cacheKey,
         }).then((cached) => {
-          if (cached) fetchedUrl = cached;
+          if (cached) {
+            fetchedUrl = cached;
+            attach.localPath = cached;
+          }
         }).catch(() => {});
         return toPlayableUrl(fallback);
       }

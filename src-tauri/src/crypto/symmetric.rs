@@ -39,8 +39,8 @@ pub fn encrypt(
     plaintext: &[u8],
     aad: Option<&[u8]>,
 ) -> Result<Vec<u8>, String> {
-    let cipher = ChaCha20Poly1305::new(Key::from_slice(key));
-    let n = Nonce::from_slice(nonce);
+    let cipher = ChaCha20Poly1305::new(&Key::from(*key));
+    let n = Nonce::from(*nonce);
 
     match aad {
         Some(ad) => {
@@ -61,8 +61,8 @@ pub fn decrypt(
     ciphertext: &[u8],
     aad: Option<&[u8]>,
 ) -> Result<Vec<u8>, String> {
-    let cipher = ChaCha20Poly1305::new(Key::from_slice(key));
-    let n = Nonce::from_slice(nonce);
+    let cipher = ChaCha20Poly1305::new(&Key::from(*key));
+    let n = Nonce::from(*nonce);
 
     match aad {
         Some(ad) => {

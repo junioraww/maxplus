@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::sync::{Arc, LazyLock};
+use tauri::Manager;
 use tokio::sync::Mutex;
 use crate::state::AppState;
 
@@ -619,7 +620,23 @@ pub async fn cache_url(
     media_type: Option<String>,
     key: Option<String>,
 ) -> Result<String, String> {
-    let acc = account.unwrap_or(0);
+    let acc = match account.filter(|&a| a != 0) {
+        Some(a) => a,
+        None => {
+            app.state::<AppState>()
+                .crypto
+                .read()
+                .unwrap()
+                .as_ref()
+                .map(|s| s.account)
+                .or_else(|| {
+                    crate::stores::load_accounts(&app)
+                        .get("current")
+                        .and_then(|v| v.as_u64())
+                })
+                .unwrap_or(0)
+        }
+    };
     let cache_key = key.unwrap_or_else(|| src.clone());
 
     if let Ok(Some(existing_path)) = crate::stores::get_cached_file(app.clone(), acc, cache_key.clone()) {

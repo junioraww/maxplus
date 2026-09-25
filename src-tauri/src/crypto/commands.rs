@@ -6,7 +6,7 @@ use crate::crypto::emoji::generate_fingerprint;
 use crate::crypto::media::{decrypt_media_bytes, encrypt_media_bytes, MediaDescriptor};
 use crate::crypto::obfuscation::{ChineseObfuscator, DictionaryData, WordsObfuscator};
 use crate::crypto::protocol::{pack_message, unpack_message, PayloadData};
-use crate::stores::{crypto_key, Paths, Storage};
+use crate::stores::Storage;
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
@@ -40,22 +40,19 @@ pub struct DecryptedMessageDto {
 }
 
 fn load_chat_settings_json(app: &AppHandle, account: u64, chat_id: i64) -> Value {
-    let key = crypto_key(app, account);
-    Storage::new(key)
-        .load(Paths::new(app, account).settings(chat_id))
-        .unwrap_or_else(|| {
-            json!({
-                "version": 1,
-                "keys": {
-                    "current": null,
-                    "keys": [],
-                    "messages": []
-                },
-                "password": null,
-                "obfs": null,
-                "reader": true
-            })
+    crate::stores::get_chat_settings(app.clone(), account, chat_id).unwrap_or_else(|_| {
+        json!({
+            "version": 1,
+            "keys": {
+                "current": null,
+                "keys": [],
+                "messages": []
+            },
+            "password": null,
+            "obfs": null,
+            "reader": true
         })
+    })
 }
 
 fn save_chat_settings_json(
@@ -64,8 +61,7 @@ fn save_chat_settings_json(
     chat_id: i64,
     data: &Value,
 ) -> Result<(), String> {
-    let key = crypto_key(app, account);
-    Storage::new(key).save(Paths::new(app, account).settings(chat_id), data)
+    crate::stores::set_chat_settings(app.clone(), account, chat_id, data.clone())
 }
 
 fn get_active_session_key(settings: &Value) -> Option<[u8; 32]> {

@@ -953,7 +953,7 @@
             isEncryptedMedia: true,
             encryptedAttach: att,
             localPath,
-            baseUrl: att.baseUrl || (localPath ? (resolvedType === "VIDEO" ? getProxiedMediaUrl(localPath) : convertFileSrc(localPath)) : null),
+            baseUrl: att.baseUrl || (localPath ? getProxiedMediaUrl(localPath) : null),
           };
         }
         return att;

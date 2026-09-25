@@ -5,16 +5,18 @@
   import { flip } from "svelte/animate";
   import { page } from "$app/stores";
 
-  import { getCurrentAccount } from "$lib/stores/accounts";
+  import { getCurrentAccount, getDatabaseFilesCount } from "$lib/stores/accounts";
   import API, { currentUser } from "$lib/stores/api";
 
   $: from = $page.url.searchParams.get("from") || "/auth/login";
 
   let encryption;
+  let fileCount = null;
 
   onMount(async () => {
     const account = await getCurrentAccount();
     encryption = account.encryption;
+    fileCount = await getDatabaseFilesCount(account.id).catch(() => null);
   });
 
   function formatDate(ms) {
@@ -43,6 +45,13 @@
           Шифрует все данные на устройстве и поможет защитить их в случае взлома или кражи телефона.
         </p>
 
+        {#if fileCount !== null}
+          <div class="info-row">
+            <span>Файлы базы данных</span>
+            <strong>{fileCount}</strong>
+          </div>
+        {/if}
+
         <button class="primary-btn" on:click={() => goto("/auth/lock?mode=create")}>
           Установить PIN
         </button>
@@ -55,6 +64,13 @@
           <span>Версия</span>
           <strong>{encryption.type.toUpperCase()}</strong>
         </div>
+
+        {#if fileCount !== null}
+          <div class="info-row">
+            <span>Файлы базы данных</span>
+            <strong>{fileCount}</strong>
+          </div>
+        {/if}
 
         <button class="secondary-btn" on:click={() => goto("/auth/lock?mode=disable")}>
           Отключить
@@ -107,7 +123,6 @@
     width: 100%;
     max-width: 360px;
     background: #24242d;
-    #border: 1px solid #32323d;
     border-radius: 18px;
     padding: 22px;
     display: flex;

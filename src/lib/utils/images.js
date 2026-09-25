@@ -77,17 +77,17 @@ export async function getAssetUrl(src) {
     if (resolvedAssetCache.has(src)) {
         return resolvedAssetCache.get(src);
     }
-    if (src.startsWith("data:") || src.startsWith("blob:") || src.startsWith("asset:") || src.startsWith("http://asset.localhost/")) {
+    if (src.startsWith("data:") || src.startsWith("blob:") || isProxiedMediaUrl(src)) {
         return src;
     }
     if (!src.startsWith("http://") && !src.startsWith("https://")) {
-        const res = convertFileSrc(src);
+        const res = getProxiedMediaUrl(src);
         setCachedAsset(src, res);
         return res;
     }
     const path = await getLocalFilePath(src);
     if (path) {
-        const res = convertFileSrc(path);
+        const res = getProxiedMediaUrl(path);
         setCachedAsset(src, res);
         return res;
     }

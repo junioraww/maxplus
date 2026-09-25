@@ -14,4 +14,5 @@ export const setAccountContact = (id, data) => invoke("account_contact", { id, d
 export const removeAccount = id => invoke("account_delete", { id });
 export const removeAccountByUserId = uid => invoke("account_delete_by_uid", { uid });
 export const setEncryption = (account, key, enabled) => invoke("set_encryption", { account, key, enabled });
+export const getDatabaseFilesCount = account => invoke("get_database_files_count", { account });
 export const decrypt = (account, key) => invoke("decrypt_account", { account, key });

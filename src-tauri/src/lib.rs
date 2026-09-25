@@ -73,6 +73,7 @@ pub fn run() {
             let handle = app.handle().clone();
             notifications::set_app_handle(handle.clone());
             webapp_proxy::set_app_handle(handle.clone());
+            video::set_app_handle(handle.clone());
 
             tauri::async_runtime::spawn(async move {
                 while let Ok(msg) = event_stream.recv().await {
@@ -206,6 +207,7 @@ pub fn run() {
             stores::update_messages,
             stores::mark_message_deleted,
             stores::set_encryption,
+            stores::get_database_files_count,
             stores::decrypt_account,
             stores::get_cached_file,
             stores::set_cached_file,

@@ -1,4 +1,4 @@
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Emitter, Manager};
 use crate::state::CryptoSession;
 use crate::AppState;
 use serde_json::{json, Value};
@@ -7,8 +7,13 @@ use base64::{engine::general_purpose::STANDARD, Engine as _};
 use sha2::{Digest, Sha256};
 use rand::{Rng, RngCore};
 use std::{
+    collections::HashMap,
     fs,
     path::{Path, PathBuf},
+    sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc, LazyLock, RwLock,
+    },
 };
 use chacha20poly1305::{
     aead::{Aead, KeyInit},
@@ -17,6 +22,17 @@ use chacha20poly1305::{
     Nonce,
 };
 
+static ACCOUNT_CACHE: LazyLock<RwLock<HashMap<u64, Value>>> =
+    LazyLock::new(|| RwLock::new(HashMap::new()));
+
+static CACHE_INDEX_CACHE: LazyLock<RwLock<HashMap<u64, Value>>> =
+    LazyLock::new(|| RwLock::new(HashMap::new()));
+
+static CHAT_SETTINGS_CACHE: LazyLock<RwLock<HashMap<(u64, i64), Value>>> =
+    LazyLock::new(|| RwLock::new(HashMap::new()));
+
+static DERIVE_KEY_CACHE: LazyLock<RwLock<HashMap<(String, String), [u8; 32]>>> =
+    LazyLock::new(|| RwLock::new(HashMap::new()));
 
 pub(crate) struct Storage {
     key: Option<[u8;32]>
@@ -30,13 +46,14 @@ impl Storage {
     }
 
     fn encrypt(
-        data:&[u8], key:&[u8;32]
-    )->Result<Vec<u8>,String>{
+        data: &[u8],
+        key: &[u8; 32],
+    ) -> Result<Vec<u8>, String> {
         let cipher = ChaCha20Poly1305::new(
             &Key::from(*key)
         );
 
-        let mut nonce_bytes = [0u8;12];
+        let mut nonce_bytes = [0u8; 12];
         rand::thread_rng().fill_bytes(&mut nonce_bytes);
 
         let nonce = Nonce::from(nonce_bytes);
@@ -44,9 +61,9 @@ impl Storage {
         let encrypted = cipher.encrypt(
             &nonce,
             data
-        ).map_err(|e|e.to_string())?;
+        ).map_err(|e| e.to_string())?;
 
-        let mut result = Vec::new();
+        let mut result = Vec::with_capacity(15 + encrypted.len());
 
         result.extend_from_slice(b"ENC");
         result.extend_from_slice(&nonce_bytes);
@@ -55,9 +72,13 @@ impl Storage {
         Ok(result)
     }
 
-    fn decrypt(data: &[u8], key: &[u8;32]) -> Result<Vec<u8>, String> {
+    pub fn decrypt(data: &[u8], key: &[u8; 32]) -> Result<Vec<u8>, String> {
         if !data.starts_with(b"ENC") {
             return Ok(data.to_vec());
+        }
+
+        if data.len() < 15 {
+            return Err("Encrypted data too short".into());
         }
 
         let cipher = ChaCha20Poly1305::new(
@@ -68,7 +89,7 @@ impl Storage {
 
         let encrypted = &data[15..];
 
-        cipher.decrypt(&nonce, encrypted).map_err(|e|e.to_string())
+        cipher.decrypt(&nonce, encrypted).map_err(|e| e.to_string())
     }
 
     pub(crate) fn load(&self, path: impl AsRef<Path>) -> Option<Value> {
@@ -192,7 +213,7 @@ impl Paths {
         self.cache.join("files")
     }
 
-    fn cache_file(&self, name: &str) -> PathBuf {
+    pub(crate) fn cache_file(&self, name: &str) -> PathBuf {
         self.cache_files().join(name)
     }
 
@@ -253,70 +274,78 @@ pub fn get_contacts(
 }
 
 #[tauri::command]
-pub fn save_chats(
+pub async fn save_chats(
     app: AppHandle,
     account: u64,
     chats: Vec<Value>,
 ) -> Result<(), String> {
-    let key = crypto_key(&app, account);
-    let storage = Storage::new(key);
-    let paths = Paths::new(&app, account);
+    tokio::task::spawn_blocking(move || {
+        let key = crypto_key(&app, account);
+        let storage = Storage::new(key);
+        let paths = Paths::new(&app, account);
 
-    for mut chat in chats {
-        let chat_id = chat.get("id").and_then(|v| {
-            v.as_i64()
-            .or_else(|| v.as_str().and_then(|s| s.parse::<i64>().ok()))
-        });
+        for mut chat in chats {
+            let chat_id = chat.get("id").and_then(|v| {
+                v.as_i64()
+                .or_else(|| v.as_str().and_then(|s| s.parse::<i64>().ok()))
+            });
 
-        if let Some(id) = chat_id {
-            let path = paths.info(id);
-            let missing_ddu = chat.get("dontDisturbUntil").map(|v| v.is_null()).unwrap_or(true);
-            if missing_ddu {
-                if let Some(existing) = storage.load(&path) {
-                    if let Some(ddu) = existing.get("dontDisturbUntil") {
-                        if !ddu.is_null() {
-                            if let Some(obj) = chat.as_object_mut() {
-                                obj.insert("dontDisturbUntil".to_string(), ddu.clone());
+            if let Some(id) = chat_id {
+                let path = paths.info(id);
+                let missing_ddu = chat.get("dontDisturbUntil").map(|v| v.is_null()).unwrap_or(true);
+                if missing_ddu {
+                    if let Some(existing) = storage.load(&path) {
+                        if let Some(ddu) = existing.get("dontDisturbUntil") {
+                            if !ddu.is_null() {
+                                if let Some(obj) = chat.as_object_mut() {
+                                    obj.insert("dontDisturbUntil".to_string(), ddu.clone());
+                                }
                             }
                         }
                     }
                 }
+                storage.save(path, &chat)?;
             }
-            storage.save(path, &chat)?;
         }
-    }
 
-    Ok(())
+        Ok(())
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
-pub fn load_chats(
+pub async fn load_chats(
     app: AppHandle,
     account: u64,
 ) -> Result<Vec<Value>, String> {
-    let key = crypto_key(&app, account);
-    let storage = Storage::new(key);
-    let paths = Paths::new(&app, account);
+    tokio::task::spawn_blocking(move || {
+        let key = crypto_key(&app, account);
+        let storage = Storage::new(key);
+        let paths = Paths::new(&app, account);
 
-    let mut chat_ids: Vec<i64> = Storage::list(paths.chats())
-    .into_iter()
-    .filter(|p| p.is_dir())
-    .filter_map(|p| {
-        p.file_name()?
-        .to_str()?
-        .parse::<i64>()
-        .ok()
+        let mut chat_ids: Vec<i64> = Storage::list(paths.chats())
+        .into_iter()
+        .filter(|p| p.is_dir())
+        .filter_map(|p| {
+            p.file_name()?
+            .to_str()?
+            .parse::<i64>()
+            .ok()
+        })
+        .collect();
+
+        chat_ids.sort();
+
+        let chats = chat_ids
+        .into_iter()
+        .filter_map(|id| storage.load(paths.info(id)))
+        .collect();
+
+        Ok(chats)
     })
-    .collect();
-
-    chat_ids.sort();
-
-    let chats = chat_ids
-    .into_iter()
-    .filter_map(|id| storage.load(paths.info(id)))
-    .collect();
-
-    Ok(chats)
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
@@ -324,28 +353,36 @@ pub fn get_chat_settings(
     app: AppHandle,
     account: u64,
     chat_id: i64,
-) -> Result<Value,String> {
-    let key = crypto_key(&app, account);
+) -> Result<Value, String> {
+    let cache_key = (account, chat_id);
+    if let Ok(guard) = CHAT_SETTINGS_CACHE.read() {
+        if let Some(val) = guard.get(&cache_key) {
+            return Ok(val.clone());
+        }
+    }
 
-    Ok(
-        Storage::new(key)
-        .load(
-            Paths::new(&app,account).settings(chat_id)
-        )
-        .unwrap_or_else(||{
+    let key = crypto_key(&app, account);
+    let val = Storage::new(key)
+        .load(Paths::new(&app, account).settings(chat_id))
+        .unwrap_or_else(|| {
             json!({
-                "version":1,
-                "keys":{
-                    "current":null,
-                    "keys":[],
-                    "messages":[]
+                "version": 1,
+                "keys": {
+                    "current": null,
+                    "keys": [],
+                    "messages": []
                 },
-                "password":null,
-                "obfs":null,
-                "reader":true
+                "password": null,
+                "obfs": null,
+                "reader": true
             })
-        })
-    )
+        });
+
+    if let Ok(mut guard) = CHAT_SETTINGS_CACHE.write() {
+        guard.insert(cache_key, val.clone());
+    }
+
+    Ok(val)
 }
 
 #[tauri::command]
@@ -357,9 +394,13 @@ pub fn set_chat_settings(
 ) -> Result<(), String> {
     let key = crypto_key(&app, account);
     let storage = Storage::new(key);
-    storage.save(
-        Paths::new(&app, account).settings(chat_id), &data
-    )
+    storage.save(Paths::new(&app, account).settings(chat_id), &data)?;
+
+    if let Ok(mut guard) = CHAT_SETTINGS_CACHE.write() {
+        guard.insert((account, chat_id), data);
+    }
+
+    Ok(())
 }
 
 #[tauri::command]
@@ -768,7 +809,7 @@ fn accounts_path(app: &AppHandle) -> PathBuf {
     app.path().app_data_dir().unwrap().join("accounts")
 }
 
-fn load_accounts(app: &AppHandle) -> Value {
+pub(crate) fn load_accounts(app: &AppHandle) -> Value {
     Storage::new(None)
         .load(accounts_path(app))
         .unwrap_or_else(|| {
@@ -856,6 +897,12 @@ pub fn account_get(
     app: AppHandle,
     id: u64,
 ) -> Result<Value, String> {
+    if let Ok(guard) = ACCOUNT_CACHE.read() {
+        if let Some(val) = guard.get(&id) {
+            return Ok(val.clone());
+        }
+    }
+
     let store = load_accounts(&app);
 
     let account = store["accounts"]
@@ -876,12 +923,18 @@ pub fn account_get(
         account_path(&app, &id.to_string(), "self")
     ).unwrap_or(Value::Null);
 
-    Ok(json!({
+    let res = json!({
         "id": account["id"],
         "encryption": account["encryption"],
         "meta": meta,
         "contact": contact
-    }))
+    });
+
+    if let Ok(mut guard) = ACCOUNT_CACHE.write() {
+        guard.insert(id, res.clone());
+    }
+
+    Ok(res)
 }
 
 
@@ -890,6 +943,13 @@ pub fn account_delete(
     app: AppHandle,
     id: u64,
 ) -> Result<(), String> {
+    if let Ok(mut guard) = ACCOUNT_CACHE.write() {
+        guard.remove(&id);
+    }
+    if let Ok(mut guard) = CACHE_INDEX_CACHE.write() {
+        guard.remove(&id);
+    }
+
     let mut store = load_accounts(&app);
 
     store["accounts"].as_array_mut().unwrap().retain(|x| x["id"] != id);
@@ -937,7 +997,11 @@ pub fn account_contact(
     let storage = Storage::new(key);
 
     if data.is_some() {
-        storage.save(account_path(&app, &id.to_string().as_str(), "self"), &data.unwrap());
+        storage.save(account_path(&app, &id.to_string().as_str(), "self"), &data.unwrap())?;
+    }
+
+    if let Ok(mut guard) = ACCOUNT_CACHE.write() {
+        guard.remove(&id);
     }
 
     Ok(storage
@@ -1089,146 +1153,275 @@ pub fn decrypt_account(
         }
     );
 
-    Ok(())
-}
-
-fn migrate_encrypt(
-    root: &Path,
-    key: &[u8;32],
-) -> Result<(), String>{
-    for entry in walkdir::WalkDir::new(root)
-    {
-        let entry = entry.map_err(|e|e.to_string())?;
-
-        if !entry.file_type().is_file(){
-            continue;
-        }
-
-        let path = entry.path();
-
-        let value = Storage::new(None)
-            .load(path)
-            .ok_or(
-                "Cannot read file"
-            )?;
-
-        Storage::new(Some(*key)).save(
-            path,
-            &value
-        )?;
+    if let Ok(mut guard) = ACCOUNT_CACHE.write() {
+        guard.remove(&account);
+    }
+    if let Ok(mut guard) = CACHE_INDEX_CACHE.write() {
+        guard.remove(&account);
     }
 
     Ok(())
 }
 
-fn migrate_decrypt(
-    root: &Path,
-    key: &[u8;32],
-)->Result<(),String>{
-    for entry in walkdir::WalkDir::new(root) {
-        let entry = entry.map_err(|e|e.to_string())?;
-
-        if !entry.file_type().is_file(){
-            continue;
-        }
-
-        let path = entry.path();
-
-        let value = Storage::new(Some(*key))
-            .load(path)
-            .ok_or(
-                "Cannot decrypt file"
-            )?;
-
-        Storage::new(None).save(
-            path,
-            &value
-        )?;
+fn collect_db_files(root: &Path) -> Vec<PathBuf> {
+    if !root.exists() {
+        return Vec::new();
     }
+    let mut files = Vec::new();
+    for entry in walkdir::WalkDir::new(root).into_iter().filter_map(|e| e.ok()) {
+        if entry.file_type().is_file() {
+            let path = entry.path();
+            if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+                if !name.contains(".tmp") {
+                    files.push(path.to_path_buf());
+                }
+            }
+        }
+    }
+    files.sort();
+    files
+}
+
+fn collect_all_account_files(paths: &Paths) -> Vec<PathBuf> {
+    let mut files = collect_db_files(&paths.root);
+    files.extend(collect_db_files(&paths.cache));
+    files.sort();
+    files
+}
+
+#[tauri::command]
+pub fn get_database_files_count(
+    app: AppHandle,
+    account: u64,
+) -> Result<usize, String> {
+    let paths = Paths::new(&app, account);
+    Ok(collect_all_account_files(&paths).len())
+}
+
+fn migrate_file_encrypt(path: &Path, key: &[u8; 32]) -> Result<(), String> {
+    let bytes = fs::read(path).map_err(|e| e.to_string())?;
+    if bytes.starts_with(b"ENC") {
+        return Ok(());
+    }
+    let encrypted = Storage::encrypt(&bytes, key)?;
+    let tmp_path = path.with_extension("tmp_enc");
+    if fs::write(&tmp_path, &encrypted).is_ok() && fs::rename(&tmp_path, path).is_ok() {
+        return Ok(());
+    }
+    let _ = fs::remove_file(&tmp_path);
+    fs::write(path, encrypted).map_err(|e| e.to_string())
+}
+
+fn migrate_file_decrypt(path: &Path, key: &[u8; 32]) -> Result<(), String> {
+    let bytes = fs::read(path).map_err(|e| e.to_string())?;
+    if !bytes.starts_with(b"ENC") {
+        return Ok(());
+    }
+    let decrypted = Storage::decrypt(&bytes, key)?;
+    let tmp_path = path.with_extension("tmp_dec");
+    if fs::write(&tmp_path, &decrypted).is_ok() && fs::rename(&tmp_path, path).is_ok() {
+        return Ok(());
+    }
+    let _ = fs::remove_file(&tmp_path);
+    fs::write(path, decrypted).map_err(|e| e.to_string())
+}
+
+fn migrate_all_files(
+    app: &AppHandle,
+    files: Vec<PathBuf>,
+    key: &[u8; 32],
+    encrypt: bool,
+) -> Result<(), String> {
+    let total = files.len();
+    let phase = if encrypt { "encrypt" } else { "decrypt" };
+
+    if total == 0 {
+        let _ = app.emit(
+            "encryption-migration-progress",
+            json!({
+                "current": 0,
+                "total": 0,
+                "percent": 100,
+                "phase": phase
+            }),
+        );
+        return Ok(());
+    }
+
+    let _ = app.emit(
+        "encryption-migration-progress",
+        json!({
+            "current": 0,
+            "total": total,
+            "percent": 0,
+            "phase": phase
+        }),
+    );
+
+    let cpus = std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(4);
+    let num_workers = cpus.min(total).clamp(1, 16);
+
+    let files = Arc::new(files);
+    let next_idx = Arc::new(AtomicUsize::new(0));
+    let done_counter = Arc::new(AtomicUsize::new(0));
+    let error_slot = Arc::new(std::sync::Mutex::new(None::<String>));
+    let key = *key;
+
+    let mut handles = Vec::with_capacity(num_workers);
+
+    for _ in 0..num_workers {
+        let files = Arc::clone(&files);
+        let next_idx = Arc::clone(&next_idx);
+        let done_counter = Arc::clone(&done_counter);
+        let error_slot = Arc::clone(&error_slot);
+        let app = app.clone();
+
+        handles.push(std::thread::spawn(move || {
+            loop {
+                if error_slot.lock().unwrap().is_some() {
+                    break;
+                }
+
+                let idx = next_idx.fetch_add(1, Ordering::Relaxed);
+                if idx >= total {
+                    break;
+                }
+
+                let path = &files[idx];
+                let res = if encrypt {
+                    migrate_file_encrypt(path, &key)
+                } else {
+                    migrate_file_decrypt(path, &key)
+                };
+
+                if let Err(err) = res {
+                    *error_slot.lock().unwrap() = Some(err);
+                    break;
+                }
+
+                let done = done_counter.fetch_add(1, Ordering::Relaxed) + 1;
+                let percent = ((done as f64 / total as f64) * 100.0).round() as usize;
+                let step = (total / 50).max(1);
+                if done == total || done == 1 || done % step == 0 {
+                    let _ = app.emit(
+                        "encryption-migration-progress",
+                        json!({
+                            "current": done,
+                            "total": total,
+                            "percent": percent,
+                            "phase": phase
+                        }),
+                    );
+                }
+            }
+        }));
+    }
+
+    for handle in handles {
+        let _ = handle.join();
+    }
+
+    if let Some(err) = error_slot.lock().unwrap().take() {
+        return Err(err);
+    }
+
+    let _ = app.emit(
+        "encryption-migration-progress",
+        json!({
+            "current": total,
+            "total": total,
+            "percent": 100,
+            "phase": phase
+        }),
+    );
 
     Ok(())
 }
 
 #[tauri::command]
-pub fn set_encryption(
+pub async fn set_encryption(
     app: AppHandle,
     account: u64,
     key: String,
     enabled: bool,
-) -> Result<(), String>{
-    let root = Paths::new(
-        &app, account
-    ).root;
+) -> Result<(), String> {
+    let app_clone = app.clone();
 
-    let mut store = load_accounts(&app);
+    tokio::task::spawn_blocking(move || {
+        let paths = Paths::new(&app_clone, account);
+        let files = collect_all_account_files(&paths);
 
-    let entry = store["accounts"]
-        .as_array_mut()
-        .unwrap()
-        .iter_mut()
-        .find(|x| x["id"] == account)
-        .ok_or("Account not found")?;
+        let mut store = load_accounts(&app_clone);
 
-    if enabled {
-        let salt = generate_salt();
+        let entry = store["accounts"]
+            .as_array_mut()
+            .unwrap()
+            .iter_mut()
+            .find(|x| x["id"] == account)
+            .ok_or("Account not found")?;
 
-        let derived = derive_key(
-            &key, &salt
-        )?;
+        if enabled {
+            let salt = generate_salt();
 
-        migrate_encrypt(
-            &root, &derived
-        )?;
+            let derived = derive_key(&key, &salt)?;
 
-        entry["encryption"] = json!({
-            "type": "pin-1",
-            "salt": salt,
-            "hash": hash_key(&derived)
-        });
+            migrate_all_files(&app_clone, files, &derived, true)?;
 
-        save_accounts(
-            &app,
-            &store
-        )?;
+            entry["encryption"] = json!({
+                "type": "pin-1",
+                "salt": salt,
+                "hash": hash_key(&derived)
+            });
 
-        *app.state::<AppState>().crypto.write().unwrap() = Some(
-            CryptoSession{
-                account,
-                key:derived
+            save_accounts(&app_clone, &store)?;
+
+            *app_clone.state::<AppState>().crypto.write().unwrap() = Some(
+                CryptoSession {
+                    account,
+                    key: derived,
+                }
+            );
+        } else {
+            let encryption = &entry["encryption"];
+
+            let salt = encryption["salt"]
+                .as_str()
+                .ok_or("Salt not found")?;
+
+            let derived = derive_key(&key, salt)?;
+
+            if !verify_hash(
+                &derived,
+                encryption["hash"].as_str().ok_or("Hash not found")?,
+            ) {
+                return Err("Wrong key".into());
             }
-        );
-    } else {
-        let encryption = &entry["encryption"];
 
-        let salt = encryption["salt"]
-        .as_str()
-        .unwrap();
+            migrate_all_files(&app_clone, files, &derived, false)?;
 
-        let derived = derive_key(&key, salt)?;
+            entry["encryption"] = Value::Null;
 
-        if !verify_hash(
-            &derived,
-            encryption["hash"].as_str().unwrap(),
-        ) {
-            return Err("Wrong key".into());
+            save_accounts(&app_clone, &store)?;
+
+            *app_clone.state::<AppState>().crypto.write().unwrap() = None;
         }
 
-        migrate_decrypt(
-            &root,
-            &derived
-        )?;
+        if let Ok(mut guard) = ACCOUNT_CACHE.write() {
+            guard.remove(&account);
+        }
+        if let Ok(mut guard) = CACHE_INDEX_CACHE.write() {
+            guard.remove(&account);
+        }
+        if let Ok(mut guard) = CHAT_SETTINGS_CACHE.write() {
+            guard.retain(|(acc, _), _| *acc != account);
+        }
 
-        entry["encryption"] = Value::Null;
-
-        save_accounts(
-            &app,
-            &store
-        )?;
-
-        *app.state::<AppState>().crypto.write().unwrap() = None;
-    }
-
-    Ok(())
+        Ok(())
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 fn generate_salt() -> String {
@@ -1238,7 +1431,14 @@ fn generate_salt() -> String {
 }
 
 fn derive_key(password: &str, salt: &str) -> Result<[u8; 32], String> {
-    let salt = STANDARD.decode(salt).map_err(|e| e.to_string())?;
+    let cache_key = (password.to_string(), salt.to_string());
+    if let Ok(guard) = DERIVE_KEY_CACHE.read() {
+        if let Some(cached) = guard.get(&cache_key) {
+            return Ok(*cached);
+        }
+    }
+
+    let salt_bytes = STANDARD.decode(salt).map_err(|e| e.to_string())?;
 
     let argon = Argon2::new(
         Algorithm::Argon2id,
@@ -1249,8 +1449,12 @@ fn derive_key(password: &str, salt: &str) -> Result<[u8; 32], String> {
     let mut key = [0u8; 32];
 
     argon
-        .hash_password_into(password.as_bytes(), &salt, &mut key)
+        .hash_password_into(password.as_bytes(), &salt_bytes, &mut key)
         .map_err(|e| e.to_string())?;
+
+    if let Ok(mut guard) = DERIVE_KEY_CACHE.write() {
+        guard.insert(cache_key, key);
+    }
 
     Ok(key)
 }
@@ -1265,22 +1469,38 @@ fn verify_hash(key: &[u8; 32], hash: &str) -> bool {
     hash_key(key) == hash
 }
 
-/* file cache */
-
 #[tauri::command]
 pub fn get_cached_file(
     app: AppHandle,
     account: u64,
     src: String,
 ) -> Result<Option<String>, String> {
-    let key = crypto_key(&app, account);
-    let storage = Storage::new(key);
-
     let paths = Paths::new(&app, account);
+    let direct_file = paths.cache_file(&hash(&src));
+    if direct_file.exists() && fs::metadata(&direct_file).map(|m| m.len()).unwrap_or(0) > 0 {
+        return Ok(Some(direct_file.to_string_lossy().to_string()));
+    }
 
-    let mut index = storage
-        .load(paths.cache_index())
-        .unwrap_or(json!({}));
+    let cached_opt = if let Ok(guard) = CACHE_INDEX_CACHE.read() {
+        guard.get(&account).cloned()
+    } else {
+        None
+    };
+
+    let (mut index, key, storage) = match cached_opt {
+        Some(idx) => (idx, None, None),
+        None => {
+            let key = crypto_key(&app, account);
+            let storage = Storage::new(key);
+            let loaded = storage
+                .load(paths.cache_index())
+                .unwrap_or(json!({}));
+            if let Ok(mut guard) = CACHE_INDEX_CACHE.write() {
+                guard.insert(account, loaded.clone());
+            }
+            (loaded, Some(key), Some(storage))
+        }
+    };
 
     let Some(entry) = index.get(&src) else {
         return Ok(None);
@@ -1297,6 +1517,12 @@ pub fn get_cached_file(
             map.remove(&src);
         }
 
+        if let Ok(mut guard) = CACHE_INDEX_CACHE.write() {
+            guard.insert(account, index.clone());
+        }
+
+        let key = key.unwrap_or_else(|| crypto_key(&app, account));
+        let storage = storage.unwrap_or_else(|| Storage::new(key));
         storage.save(paths.cache_index(), &index)?;
 
         return Ok(None);
@@ -1335,13 +1561,27 @@ pub fn set_cached_file_with_meta(
     let file = paths.cache_file(&hash(&src));
 
     if !file.exists() || fs::metadata(&file).map(|m| m.len()).unwrap_or(0) == 0 {
-        fs::write(&file, &bytes)
+        let to_write = if let Some(ref k) = key {
+            Storage::encrypt(&bytes, k)?
+        } else {
+            bytes.clone()
+        };
+        fs::write(&file, &to_write)
             .map_err(|e| e.to_string())?;
     }
 
-    let mut index = storage
-        .load(paths.cache_index())
-        .unwrap_or(json!({}));
+    let cached_opt = if let Ok(guard) = CACHE_INDEX_CACHE.read() {
+        guard.get(&account).cloned()
+    } else {
+        None
+    };
+
+    let mut index = match cached_opt {
+        Some(idx) => idx,
+        None => storage
+            .load(paths.cache_index())
+            .unwrap_or(json!({})),
+    };
 
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -1355,6 +1595,10 @@ pub fn set_cached_file_with_meta(
         media_type,
         now
     ]);
+
+    if let Ok(mut guard) = CACHE_INDEX_CACHE.write() {
+        guard.insert(account, index.clone());
+    }
 
     storage.save(paths.cache_index(), &index)?;
 
@@ -1374,9 +1618,18 @@ pub fn add_cache_index_alias(
     let storage = Storage::new(key);
     let paths = Paths::new(&app, account);
 
-    let mut index = storage
-        .load(paths.cache_index())
-        .unwrap_or(json!({}));
+    let cached_opt = if let Ok(guard) = CACHE_INDEX_CACHE.read() {
+        guard.get(&account).cloned()
+    } else {
+        None
+    };
+
+    let mut index = match cached_opt {
+        Some(idx) => idx,
+        None => storage
+            .load(paths.cache_index())
+            .unwrap_or(json!({})),
+    };
 
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -1390,6 +1643,10 @@ pub fn add_cache_index_alias(
         media_type,
         now
     ]);
+
+    if let Ok(mut guard) = CACHE_INDEX_CACHE.write() {
+        guard.insert(account, index.clone());
+    }
 
     storage.save(paths.cache_index(), &index)
 }
@@ -1405,9 +1662,18 @@ pub fn delete_chat_cache(
     let storage = Storage::new(key);
     let paths = Paths::new(&app, account);
 
-    let mut index = storage
-        .load(paths.cache_index())
-        .unwrap_or(json!({}));
+    let cached_opt = if let Ok(guard) = CACHE_INDEX_CACHE.read() {
+        guard.get(&account).cloned()
+    } else {
+        None
+    };
+
+    let mut index = match cached_opt {
+        Some(idx) => idx,
+        None => storage
+            .load(paths.cache_index())
+            .unwrap_or(json!({})),
+    };
 
     let mut to_remove = Vec::new();
     let mut deleted_count = 0;
@@ -1435,6 +1701,10 @@ pub fn delete_chat_cache(
         for src in to_remove {
             map.remove(&src);
         }
+    }
+
+    if let Ok(mut guard) = CACHE_INDEX_CACHE.write() {
+        guard.insert(account, index.clone());
     }
 
     storage.save(paths.cache_index(), &index)?;
