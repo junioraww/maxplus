@@ -376,7 +376,7 @@ export function createBridgeClient({
         const isSec = method.startsWith("WebAppSecure");
         const key = payload.key;
         const val = payload.value;
-        const saved = saveStorageKey(userId, botId, isSec, key, val);
+        const saved = await saveStorageKey(userId, botId, isSec, key, val);
         if (saved) {
           sendOk(method, requestId, val === null || val === undefined ? "removed" : "updated", isPrivate);
         } else {
@@ -393,7 +393,7 @@ export function createBridgeClient({
           sendError(method, requestId, "invalid_request", isPrivate);
           break;
         }
-        const value = getStorageKey(userId, botId, isSec, key);
+        const value = await getStorageKey(userId, botId, isSec, key);
         emitToWebApp(
           method,
           {
@@ -409,13 +409,13 @@ export function createBridgeClient({
       case "WebAppDeviceStorageClear":
       case "WebAppSecureStorageClear": {
         const isSec = method.startsWith("WebAppSecure");
-        clearStorageKeys(userId, botId, isSec);
+        await clearStorageKeys(userId, botId, isSec);
         sendOk(method, requestId, "cleared", isPrivate);
         break;
       }
 
       case "WebAppBiometryGetInfo": {
-        const info = fetchBiometryStatus(userId, botId, deviceId);
+        const info = await fetchBiometryStatus(userId, botId, deviceId);
         emitToWebApp(
           method,
           {
@@ -428,12 +428,12 @@ export function createBridgeClient({
       }
 
       case "WebAppBiometryRequestAccess": {
-        const info = fetchBiometryStatus(userId, botId, deviceId);
+        const info = await fetchBiometryStatus(userId, botId, deviceId);
         info.accessRequested = true;
         info.accessGranted = true;
         info.access_requested = true;
         info.access_granted = true;
-        const auth = requestBiometryAuth(userId, botId);
+        const auth = await requestBiometryAuth(userId, botId);
         emitToWebApp(
           method,
           {
@@ -447,7 +447,7 @@ export function createBridgeClient({
       }
 
       case "WebAppBiometryRequestAuth": {
-        const auth = requestBiometryAuth(userId, botId);
+        const auth = await requestBiometryAuth(userId, botId);
         emitToWebApp(
           method,
           {
@@ -461,7 +461,7 @@ export function createBridgeClient({
 
       case "WebAppBiometryUpdateToken": {
         const token = payload.token;
-        const result = updateBiometryTokenValue(userId, botId, token);
+        const result = await updateBiometryTokenValue(userId, botId, token);
         if (result.status) {
           sendOk(method, requestId, result.status, isPrivate);
         } else {
