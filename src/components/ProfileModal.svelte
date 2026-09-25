@@ -12,6 +12,10 @@
   import InputModal from "$components/main/InputModal.svelte";
   import Signature from "$components/main/Signature.svelte";
   import Avatar from "$components/main/Avatar.svelte";
+  import GroupAddMembersModal from "$components/chats/GroupAddMembersModal.svelte";
+  import GroupAdminModal from "$components/chats/GroupAdminModal.svelte";
+  import GroupSharedMedia from "$components/chats/GroupSharedMedia.svelte";
+  import GroupJoinRequestsModal from "$components/chats/GroupJoinRequestsModal.svelte";
 
   import { getContact } from "$lib/utils/caching";
   import { formatMs } from "$lib/utils/time";
@@ -19,7 +23,7 @@
   import { isChatMuted } from "$lib/utils/notifications";
   import { autoDownloadEncryptedMedia } from "$lib/stores/e2eSettings.js";
   import { switchEnc } from "$components/ChatWindow/e2e";
-  import { getChatSettings } from "$lib/stores/messages";
+  import { getChatSettings, getChat } from "$lib/stores/messages";
   import Session, {
     openChat as _openChat,
     closeChat as _closeChat,
@@ -37,9 +41,15 @@
 
   onBack.profileModal = () => {
     if (showDeleteConfirm) showDeleteConfirm = false;
+    else if (showPurgeConfirm) showPurgeConfirm = false;
+    else if (showRemoveMemberConfirm) showRemoveMemberConfirm = false;
+    else if (showAddMembersModal) showAddMembersModal = false;
+    else if (showAdminModal) showAdminModal = false;
+    else if (showJoinRequestsModal) showJoinRequestsModal = false;
     else if (showInputs) showInputs = false;
     else if (showMenu) showMenu = false;
-    else if (activeTab === "settings" && $Session.profile?.view !== "settings") activeTab = "info";
+    else if (selectedMemberMenuId) selectedMemberMenuId = null;
+    else if ((activeTab === "settings" || activeTab === "media") && $Session.profile?.view !== "settings") activeTab = "info";
     else closeModal();
   };
 
@@ -47,23 +57,18 @@
     delete onBack["profileModal"];
   });
 
-  $: userId = (() => {
-    const value = $Session.profile?.userId;
-    if (value) return value;
-    const cid = $Session.profile?.chatId;
-    if (cid && $currentUser) {
-      try {
-        return Number(BigInt(cid) ^ BigInt($currentUser));
-      } catch (e) {}
-    }
-    return undefined;
-  })();
-
   $: chatId = (() => {
-    const value = $Session.profile?.chatId;
-    if (value) return value;
+    const cid = $Session.profile?.chatId;
+    if (cid != null) return cid;
     const uid = $Session.profile?.userId;
-    if (uid && $currentUser) {
+    if (uid != null && $currentUser != null) {
+      const match = $currentSessionChats?.find(x =>
+        x.type === "DIALOG" && (
+          (x.participants && Object.keys(x.participants).some(p => Number(p) === Number(uid))) ||
+          Number(x.owner) === Number(uid)
+        )
+      );
+      if (match?.id != null) return match.id;
       try {
         return Number(BigInt(uid) ^ BigInt($currentUser));
       } catch (e) {}
@@ -71,7 +76,39 @@
     return undefined;
   })();
 
-  $: chat = $currentSessionChats.find(x => x.id === chatId);
+  $: chat = (() => {
+    if (chatId != null) {
+      const byId = $currentSessionChats?.find(x => x.id === chatId);
+      if (byId) return byId;
+    }
+    const uid = $Session.profile?.userId;
+    if (uid != null) {
+      const byParticipant = $currentSessionChats?.find(x =>
+        x.type === "DIALOG" && (
+          (x.participants && Object.keys(x.participants).some(p => Number(p) === Number(uid))) ||
+          Number(x.owner) === Number(uid)
+        )
+      );
+      if (byParticipant) return byParticipant;
+    }
+    return undefined;
+  })();
+
+  $: userId = (() => {
+    const uid = $Session.profile?.userId;
+    if (uid != null) return uid;
+    if (chat?.type === "DIALOG" && chat?.participants) {
+      const other = Object.keys(chat.participants).find(id => String(id) !== String($currentUser));
+      if (other) return Number(other);
+    }
+    const cid = chatId ?? $Session.profile?.chatId;
+    if (cid && $currentUser) {
+      try {
+        return Number(BigInt(cid) ^ BigInt($currentUser));
+      } catch (e) {}
+    }
+    return undefined;
+  })();
   $: contact = getContact(chat?.type === "DIALOG" || (!chat && userId) ? userId : undefined);
   $: chatSettings = chat?.id != null ? getChatSettings(chat.id) : null;
   $: muted = chat ? isChatMuted(chat) : false;
@@ -89,6 +126,79 @@
   let showDeleteConfirm = false;
   let showInputs = false;
   let memberSearch = "";
+
+  $: isGroupAdmin = chat?.type === "CHAT" && (chat?.admins?.includes(Number($currentUser)) || chat?.admins?.includes($currentUser) || Number(chat?.owner) === Number($currentUser));
+  $: isGroupOwner = chat?.type === "CHAT" && Number(chat?.owner) === Number($currentUser);
+
+  let groupMembers = [];
+  let groupMembersMarker = null;
+  let groupMembersLoading = false;
+  let groupMembersEnd = false;
+  let memberSearchResults = [];
+  let isSearchingMembers = false;
+  let searchDebounceTimer;
+
+  let showAddMembersModal = false;
+  let showAdminModal = false;
+  let adminModalMember = null;
+  let showJoinRequestsModal = false;
+  let joinRequests = [];
+  let showRemoveMemberConfirm = false;
+  let memberToRemove = null;
+  let showPurgeConfirm = false;
+  let showRefreshInviteConfirm = false;
+  let purgeForAll = false;
+  let selectedMemberMenuId = null;
+
+  let loadedGroupChatId = null;
+  $: if (chatId && chat?.type === "CHAT" && loadedGroupChatId !== chatId) {
+    loadedGroupChatId = chatId;
+    loadInitialMembers();
+  }
+
+  $: {
+    clearTimeout(searchDebounceTimer);
+    if (!memberSearch.trim()) {
+      memberSearchResults = [];
+      isSearchingMembers = false;
+    } else if (chat?.type === "CHAT") {
+      isSearchingMembers = true;
+      searchDebounceTimer = setTimeout(async () => {
+        try {
+          const res = await $API.searchGroupMembers(chatId, memberSearch.trim());
+          memberSearchResults = res?.members || res || [];
+        } catch (e) {
+          memberSearchResults = [];
+        } finally {
+          isSearchingMembers = false;
+        }
+      }, 300);
+    }
+  }
+
+  $: displayedMembers = memberSearch.trim()
+    ? (memberSearchResults.length > 0
+        ? memberSearchResults
+        : groupMembers.filter(m => {
+            const id = m.contact?.id || m.userId || m.id || m;
+            const c = get(getContact(id));
+            const name = m.contact?.names?.[0]?.name || c?.names?.[0]?.name || m.contact?.name || c?.name || "";
+            return name.toLowerCase().includes(memberSearch.toLowerCase().trim());
+          })
+      )
+    : (groupMembers.length > 0
+        ? groupMembers
+        : Object.keys(chat?.participants || {}).map(id => ({ contact: { id: Number(id) } })));
+
+  $: onlineCount = (() => {
+    if (chat?.type !== "CHAT") return 0;
+    const ids = groupMembers.length > 0
+      ? groupMembers.map(m => m.contact?.id || m.userId || m.id || m)
+      : Object.keys(chat?.participants || {});
+    return ids.filter(id => $currentPresence[id]?.status === 1 || $currentPresence[id]?.on === "ON" || Boolean($currentRealContacts?.[id]?.online)).length;
+  })();
+
+  $: totalMemberCount = chat?.participantsCount || Object.keys(chat?.participants || {}).length || groupMembers.length;
 
   let saveTimeout;
   let showPassword = false;
@@ -217,10 +327,263 @@
 
   function handleWindowClick(e) {
     if (showMenu && !e.target.closest(".tg-menu-container")) showMenu = false;
+    if (selectedMemberMenuId && !e.target.closest(".tg-member-more-container")) selectedMemberMenuId = null;
   }
 
   function formatId(num) {
     return num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, " ");
+  }
+
+  function formatMembersCount(count) {
+    const mod10 = count % 10;
+    const mod100 = count % 100;
+    if (mod100 >= 11 && mod100 <= 19) return `${count} участников`;
+    if (mod10 === 1) return `${count} участник`;
+    if (mod10 >= 2 && mod10 <= 4) return `${count} участника`;
+    return `${count} участников`;
+  }
+
+  function formatOnlineCount(count) {
+    if (count <= 0) return "";
+    return `${count} в сети`;
+  }
+
+  function getMemberName(memberItem) {
+    const id = memberItem?.contact?.id || memberItem?.userId || memberItem?.id || memberItem;
+    if (id && Number(id) === Number($currentUser)) {
+      return "Вы";
+    }
+    if (memberItem?.contact?.names?.[0]?.name) return memberItem.contact.names[0].name;
+    if (memberItem?.contact?.name) return memberItem.contact.name;
+    if (memberItem?.contact?.names?.[0]?.firstName) {
+      const n = memberItem.contact.names[0];
+      return [n.firstName, n.lastName].filter(Boolean).join(" ");
+    }
+    if (id) {
+      try {
+        const c = get(getContact(Number(id)));
+        if (c?.names?.[0]?.name) return c.names[0].name;
+        if (c?.name) return c.name;
+        if (c?.names?.[0]?.firstName) {
+          const n = c.names[0];
+          return [n.firstName, n.lastName].filter(Boolean).join(" ");
+        }
+      } catch (e) {}
+    }
+    return "Пользователь";
+  }
+
+  async function loadInitialMembers() {
+    if (!chatId || chat?.type !== "CHAT") return;
+    groupMembersLoading = true;
+    try {
+      const res = await $API.fetchGroupMembers(chatId, null, 50);
+      groupMembers = res?.members || [];
+      groupMembersMarker = res?.marker || null;
+      groupMembersEnd = !res?.marker || (res?.members?.length || 0) < 50;
+      if (isGroupAdmin) {
+        loadJoinRequests();
+      }
+    } catch (e) {
+      groupMembers = [];
+    } finally {
+      groupMembersLoading = false;
+    }
+  }
+
+  async function loadMoreMembers() {
+    if (groupMembersLoading || groupMembersEnd || !chatId) return;
+    groupMembersLoading = true;
+    try {
+      const res = await $API.fetchGroupMembers(chatId, groupMembersMarker, 50);
+      const newMembers = res?.members || [];
+      groupMembers = [...groupMembers, ...newMembers];
+      groupMembersMarker = res?.marker || null;
+      if (!res?.marker || newMembers.length < 50) {
+        groupMembersEnd = true;
+      }
+    } catch (e) {
+      groupMembersEnd = true;
+    } finally {
+      groupMembersLoading = false;
+    }
+  }
+
+  async function loadJoinRequests() {
+    if (!chatId || !isGroupAdmin) return;
+    try {
+      const reqs = await $API.fetchJoinRequests(chatId);
+      joinRequests = Array.isArray(reqs) ? reqs : [];
+    } catch (e) {
+      joinRequests = [];
+    }
+  }
+
+  function toggleMemberMenu(memberId) {
+    selectedMemberMenuId = selectedMemberMenuId === memberId ? null : memberId;
+  }
+
+  function canManageMember(mId) {
+    if (!isGroupAdmin) return false;
+    if (Number(mId) === Number($currentUser)) return false;
+    if (Number(mId) === Number(chat?.owner)) return false;
+    if (chat?.admins?.includes(Number(mId)) || chat?.admins?.includes(mId)) {
+      return isGroupOwner;
+    }
+    return true;
+  }
+
+  function promptKickMember(member) {
+    memberToRemove = member;
+    showRemoveMemberConfirm = true;
+  }
+
+  async function kickConfirmedMember() {
+    if (!memberToRemove || !chatId) return;
+    const uId = memberToRemove.contact?.id || memberToRemove.userId || memberToRemove.id || memberToRemove;
+    try {
+      await $API.kickGroupMember(chatId, uId);
+      groupMembers = groupMembers.filter(m => {
+        const id = m.contact?.id || m.userId || m.id || m;
+        return Number(id) !== Number(uId);
+      });
+      if (chat?.participants) {
+        delete chat.participants[uId];
+        delete chat.participants[String(uId)];
+      }
+      showToast("Участник удален");
+    } catch (e) {
+      showToast("Не удалось удалить участника");
+    } finally {
+      showRemoveMemberConfirm = false;
+      memberToRemove = null;
+    }
+  }
+
+  function openAdminModal(member) {
+    adminModalMember = member;
+    showAdminModal = true;
+  }
+
+  async function demoteAdmin(memberId) {
+    if (!chatId) return;
+    try {
+      await $API.revokeGroupAdmin(chatId, memberId);
+      if (chat?.admins) {
+        chat.admins = chat.admins.filter(id => Number(id) !== Number(memberId));
+      }
+      groupMembers = groupMembers.map(m => {
+        const id = m.contact?.id || m.userId || m.id || m;
+        if (Number(id) === Number(memberId)) {
+          return { ...m, permissions: [], alias: null };
+        }
+        return m;
+      });
+      showToast("Права администратора сняты");
+    } catch (e) {
+      showToast("Ошибка при снятии прав");
+    }
+  }
+
+  function onAdminSaved(event) {
+    const { userId, alias, permissions } = event.detail;
+    if (chat) {
+      if (!chat.admins) chat.admins = [];
+      if (!chat.admins.some(id => Number(id) === Number(userId))) {
+        chat.admins = [...chat.admins, Number(userId)];
+      }
+    }
+    groupMembers = groupMembers.map(m => {
+      const id = m.contact?.id || m.userId || m.id || m;
+      if (Number(id) === Number(userId)) {
+        return { ...m, permissions, alias };
+      }
+      return m;
+    });
+    showAdminModal = false;
+    adminModalMember = null;
+    showToast("Права администратора обновлены");
+  }
+
+  function onAdminRevoked(event) {
+    const { userId } = event.detail;
+    if (chat?.admins) {
+      chat.admins = chat.admins.filter(id => Number(id) !== Number(userId));
+    }
+    groupMembers = groupMembers.map(m => {
+      const id = m.contact?.id || m.userId || m.id || m;
+      if (Number(id) === Number(userId)) {
+        return { ...m, permissions: [], alias: null };
+      }
+      return m;
+    });
+    showAdminModal = false;
+    adminModalMember = null;
+    showToast("Права администратора сняты");
+  }
+
+  function onMembersAdded(event) {
+    const { userIds } = event.detail;
+    showAddMembersModal = false;
+    showToast(`Добавлено участников: ${userIds.length}`);
+    loadInitialMembers();
+  }
+
+  function onJoinRequestsUpdated() {
+    loadJoinRequests();
+    loadInitialMembers();
+  }
+
+  const OPTION_SERVER_KEYS = {
+    allCanPinMessage: "ALL_CAN_PIN_MESSAGE",
+    onlyAdminCanAddMember: "ONLY_ADMIN_CAN_ADD_MEMBER",
+    onlyAdminCanCall: "ONLY_ADMIN_CAN_CALL",
+    membersCanSeePrivateLink: "MEMBERS_CAN_SEE_PRIVATE_LINK",
+    onlyOwnerCanChangeIconTitle: "ONLY_OWNER_CAN_CHANGE_ICON_TITLE",
+  };
+
+  function getGroupOption(key) {
+    if (!chat) return false;
+    const serverKey = OPTION_SERVER_KEYS[key] || key;
+    return Boolean(
+      chat?.options?.[serverKey] ??
+      chat?.options?.[key] ??
+      chat?.[key]
+    );
+  }
+
+  async function toggleGroupOption(key) {
+    if (!chatId || !isGroupAdmin) return;
+    const serverKey = OPTION_SERVER_KEYS[key] || key;
+    const currentVal = getGroupOption(key);
+    const nextVal = !currentVal;
+    try {
+      await $API.setGroupOptions(chatId, {
+        [key]: nextVal,
+        [serverKey]: nextVal,
+      });
+      if (!chat.options) chat.options = {};
+      chat.options[key] = nextVal;
+      chat.options[serverKey] = nextVal;
+      chat[key] = nextVal;
+      showToast("Настройки обновлены");
+    } catch (e) {
+      showToast("Ошибка сохранения настроек");
+    }
+  }
+
+  async function confirmPurgeHistory() {
+    if (!chatId) return;
+    try {
+      await $API.purgeChatHistory(chatId, purgeForAll);
+      const c = getChat(chatId);
+      c?.receivedMessage?.set({ chatId: Number(chatId), type: "CLEAR_HISTORY" });
+      showToast(purgeForAll ? "История очищена для всех" : "История очищена");
+    } catch (e) {
+      showToast("Ошибка при очистке истории");
+    } finally {
+      showPurgeConfirm = false;
+    }
   }
 
   async function joinChannel() {
@@ -264,9 +627,18 @@
   };
 
   async function refreshInvite() {
-    const { chat: updated } = await $API.refreshInviteLink(chat.id);
-    chatLink = updated.link;
-    showToast("Ссылка приглашения обновлена");
+    if (!chat?.id) return;
+    try {
+      const res = await $API.refreshInviteLink(chat.id);
+      const updatedLink = res?.chat?.link || res?.link;
+      if (updatedLink) {
+        chat.link = updatedLink;
+        chatLink = updatedLink;
+      }
+      showToast("Ссылка приглашения обновлена");
+    } catch (e) {
+      showToast("Ошибка при обновлении ссылки");
+    }
   }
 
   function selectMember(memberId) {
@@ -280,7 +652,7 @@
   }
 
   function goBack() {
-    if (activeTab === "settings" && $Session.profile?.view !== "settings") {
+    if ((activeTab === "settings" || activeTab === "media") && $Session.profile?.view !== "settings") {
       activeTab = "info";
       return;
     }
@@ -396,6 +768,31 @@
               </div>
             {/if}
 
+            {#if chat?.type === "CHAT" && (isGroupAdmin || chat.owner === $currentUser)}
+              <div class="tg-menu-item" on:click={() => { showMenu = false; showRefreshInviteConfirm = true; }}>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <polyline points="23 4 23 10 17 10"/>
+                  <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+                </svg>
+                <span>Обновить ссылку</span>
+              </div>
+            {/if}
+
+            {#if chat?.type === "CHAT" && isGroupAdmin}
+              <div class="tg-menu-item" on:click={() => { showMenu = false; showJoinRequestsModal = true; }}>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+                  <circle cx="9" cy="7" r="4"/>
+                  <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+                  <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+                </svg>
+                <span>Заявки на вступление</span>
+                {#if joinRequests.length > 0}
+                  <span class="tg-menu-badge">{joinRequests.length}</span>
+                {/if}
+              </div>
+            {/if}
+
             {#if chat.owner === $currentUser || chat.type === "DIALOG"}
               <div class="tg-menu-divider"></div>
               <div class="tg-menu-item danger" on:click={() => handleAction("delete")}>
@@ -423,7 +820,7 @@
       </div>
     </div>
 
-    {#if hasSettings}
+    {#if chat}
       <div class="tg-tabs">
         <button
           type="button"
@@ -436,78 +833,94 @@
         <button
           type="button"
           class="tg-tab"
-          class:active={activeTab === "settings"}
-          on:click={() => (activeTab = "settings")}
+          class:active={activeTab === "media"}
+          on:click={() => (activeTab = "media")}
         >
-          Настройки
+          Медиа
         </button>
+        {#if hasSettings}
+          <button
+            type="button"
+            class="tg-tab"
+            class:active={activeTab === "settings"}
+            on:click={() => (activeTab = "settings")}
+          >
+            Настройки
+          </button>
+        {/if}
       </div>
     {/if}
 
     <div class="tg-scroll-content">
-      {#if activeTab === "settings" && hasSettings}
-        <div class="tg-section-header">Шифрование и безопасность</div>
-        <div class="tg-card">
-          <div class="tg-row">
-            <div class="tg-row-icon tg-icon-shield">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
-              </svg>
-            </div>
-            <div class="tg-row-main">
-              <div class="tg-row-title">Сквозное шифрование</div>
-              <div class="tg-row-subtitle">
-                {#if $chatSettings?.keys?.current || $chatSettings?.session}
-                  <span class="tg-badge tg-badge-success">Активно</span>
-                {:else if $chatSettings?.pending}
-                  <span class="tg-badge tg-badge-warning">Запрос отправлен</span>
-                {:else}
-                  <span class="tg-badge tg-badge-muted">Отключено</span>
-                {/if}
-              </div>
-            </div>
-            <button
-              type="button"
-              class="tg-btn-action"
-              class:danger={$chatSettings?.keys?.current || $chatSettings?.session}
-              on:click={triggerSwitchEnc}
-            >
-              { !($chatSettings?.keys?.current || $chatSettings?.session) ? "Новая сессия" : "Отключить" }
-            </button>
-          </div>
-
-          {#if $chatSettings?.session?.fingerprint}
-            <div class="tg-row tg-row-clickable" on:click={copyFingerprint}>
-              <div class="tg-row-icon tg-icon-key">
+      {#key (userId || chatId)}
+        <div class="tg-content-transition" in:fade={{ duration: 180, easing: cubicOut }}>
+          {#if activeTab === "media" && chat}
+            <GroupSharedMedia {chat} />
+          {:else if activeTab === "settings" && hasSettings}
+        {#if chat?.type !== "CHAT"}
+          <div class="tg-section-header">Шифрование и безопасность</div>
+          <div class="tg-card">
+            <div class="tg-row">
+              <div class="tg-row-icon tg-icon-shield">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <circle cx="7.5" cy="15.5" r="4.5"/>
-                  <path d="M21 2l-9.6 9.6M15.5 7.5l3 3M18.5 4.5l3 3"/>
+                  <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
                 </svg>
               </div>
               <div class="tg-row-main">
-                <div class="tg-row-title">Ключ сессии</div>
-                <div class="tg-fingerprint-emojis">
-                  {$chatSettings.session.fingerprint}
+                <div class="tg-row-title">Сквозное шифрование</div>
+                <div class="tg-row-subtitle">
+                  {#if $chatSettings?.keys?.current || $chatSettings?.session}
+                    <span class="tg-badge tg-badge-success">Активно</span>
+                  {:else if $chatSettings?.pending}
+                    <span class="tg-badge tg-badge-warning">Запрос отправлен</span>
+                  {:else}
+                    <span class="tg-badge tg-badge-muted">Отключено</span>
+                  {/if}
                 </div>
               </div>
-              <button type="button" class="tg-copy-btn" title="Скопировать ключ">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
-                  <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
-                </svg>
+              <button
+                type="button"
+                class="tg-btn-action"
+                class:danger={$chatSettings?.keys?.current || $chatSettings?.session}
+                on:click={triggerSwitchEnc}
+              >
+                { !($chatSettings?.keys?.current || $chatSettings?.session) ? "Новая сессия" : "Отключить" }
               </button>
             </div>
-          {/if}
-        </div>
 
-        <div class="tg-caption">
-          {#if $chatSettings?.session?.fingerprint}
-            Сравните эти 4 эмодзи с собеседником для проверки безопасности соединения.
-          {:else}
-            При включении переписка шифруется на устройстве, прочитать её можете только вы и собеседник.
-          {/if}
-          <div class="tg-caption-tag">Шифрование доступно между пользователями Max+</div>
-        </div>
+            {#if $chatSettings?.session?.fingerprint}
+              <div class="tg-row tg-row-clickable" on:click={copyFingerprint}>
+                <div class="tg-row-icon tg-icon-key">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="7.5" cy="15.5" r="4.5"/>
+                    <path d="M21 2l-9.6 9.6M15.5 7.5l3 3M18.5 4.5l3 3"/>
+                  </svg>
+                </div>
+                <div class="tg-row-main">
+                  <div class="tg-row-title">Ключ сессии</div>
+                  <div class="tg-fingerprint-emojis">
+                    {$chatSettings.session.fingerprint}
+                  </div>
+                </div>
+                <button type="button" class="tg-copy-btn" title="Скопировать ключ">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                  </svg>
+                </button>
+              </div>
+            {/if}
+          </div>
+
+          <div class="tg-caption">
+            {#if $chatSettings?.session?.fingerprint}
+              Сравните эти 4 эмодзи с собеседником для проверки безопасности соединения.
+            {:else}
+              При включении переписка шифруется на устройстве, прочитать её можете только вы и собеседник.
+            {/if}
+            <div class="tg-caption-tag">Шифрование доступно между пользователями Max+</div>
+          </div>
+        {/if}
 
         <div class="tg-section-header">Симметричный ключ (XOR)</div>
         <div class="tg-card">
@@ -675,6 +1088,76 @@
             <span class="tg-badge tg-badge-soon">Скоро</span>
           </div>
         </div>
+
+        {#if chat?.type === "CHAT" && isGroupAdmin}
+          <div class="tg-section-header">Разрешения группы</div>
+          <div class="tg-card">
+            <div class="tg-row tg-row-clickable" on:click={() => toggleGroupOption("allCanPinMessage")}>
+              <div class="tg-row-icon tg-icon-pin">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <line x1="12" y1="17" x2="12" y2="22"/>
+                  <path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z"/>
+                </svg>
+              </div>
+              <div class="tg-row-main">
+                <div class="tg-row-title">Закреплять сообщения</div>
+                <div class="tg-row-subtitle">Все участники могут закреплять</div>
+              </div>
+              <div class="tg-switch" class:active={getGroupOption("allCanPinMessage")}>
+                <div class="tg-switch-thumb"></div>
+              </div>
+            </div>
+
+            <div class="tg-row tg-row-clickable" on:click={() => toggleGroupOption("onlyAdminCanAddMember")}>
+              <div class="tg-row-icon tg-icon-invite">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+                  <circle cx="8.5" cy="7.5" r="4"/>
+                  <line x1="20" y1="8" x2="20" y2="14"/>
+                  <line x1="23" y1="11" x2="17" y2="11"/>
+                </svg>
+              </div>
+              <div class="tg-row-main">
+                <div class="tg-row-title">Добавление участников</div>
+                <div class="tg-row-subtitle">Только администраторы</div>
+              </div>
+              <div class="tg-switch" class:active={getGroupOption("onlyAdminCanAddMember")}>
+                <div class="tg-switch-thumb"></div>
+              </div>
+            </div>
+
+            <div class="tg-row tg-row-clickable" on:click={() => toggleGroupOption("onlyAdminCanCall")}>
+              <div class="tg-row-icon tg-icon-phone">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/>
+                </svg>
+              </div>
+              <div class="tg-row-main">
+                <div class="tg-row-title">Звонки в группе</div>
+                <div class="tg-row-subtitle">Только администраторы могут звонить</div>
+              </div>
+              <div class="tg-switch" class:active={getGroupOption("onlyAdminCanCall")}>
+                <div class="tg-switch-thumb"></div>
+              </div>
+            </div>
+
+            <div class="tg-row tg-row-clickable" on:click={() => toggleGroupOption("membersCanSeePrivateLink")}>
+              <div class="tg-row-icon tg-icon-link">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
+                  <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
+                </svg>
+              </div>
+              <div class="tg-row-main">
+                <div class="tg-row-title">Видимость ссылки приглашения</div>
+                <div class="tg-row-subtitle">Участники видят ссылку</div>
+              </div>
+              <div class="tg-switch" class:active={getGroupOption("membersCanSeePrivateLink")}>
+                <div class="tg-switch-thumb"></div>
+              </div>
+            </div>
+          </div>
+        {/if}
       {:else}
         <div class="tg-hero">
           <div class="tg-avatar-wrap">
@@ -689,7 +1172,7 @@
 
           <div class="tg-hero-status" class:online={$currentPresence[$contact?.id]?.status === 1 || $currentPresence[$contact?.id]?.on === "ON" || Boolean($contact?.online)}>
             {#if chat?.type === "CHAT"}
-              {Object.keys(chat.participants || {}).length} участников
+              {formatMembersCount(totalMemberCount)}{#if onlineCount > 0}, {formatOnlineCount(onlineCount)}{/if}
             {:else if chat?.type === "CHANNEL"}
               канал
             {:else}
@@ -764,12 +1247,20 @@
                   </div>
                   <div class="tg-row-subtitle">Имя пользователя / Ссылка</div>
                 </div>
-                <button type="button" class="tg-copy-btn" title="Скопировать ссылку">
+                <button type="button" class="tg-copy-btn" title="Скопировать ссылку" on:click|stopPropagation={copyLink}>
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
                     <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
                   </svg>
                 </button>
+                {#if chat?.type === "CHAT" && (isGroupAdmin || chat?.owner === $currentUser)}
+                  <button type="button" class="tg-copy-btn" title="Отозвать и создать новую ссылку" on:click|stopPropagation={() => (showRefreshInviteConfirm = true)}>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <polyline points="23 4 23 10 17 10"/>
+                      <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+                    </svg>
+                  </button>
+                {/if}
               </div>
             {/if}
 
@@ -833,12 +1324,12 @@
           </div>
         {/if}
 
-        {#if chat?.type === "CHAT" && chat?.participants}
+        {#if chat?.type === "CHAT"}
           <div class="tg-section-header">
-            Участники · {Object.keys(chat.participants).length}
+            Участники · {totalMemberCount}
           </div>
 
-          {#if Object.keys(chat.participants).length > 4}
+          {#if totalMemberCount > 4 || memberSearch}
             <div class="tg-search-bar">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <circle cx="11" cy="11" r="8"/>
@@ -853,10 +1344,31 @@
             </div>
           {/if}
 
-          <div class="tg-card">
+          <div class="tg-card tg-members-card">
+            {#if isGroupAdmin && joinRequests.length > 0}
+              <div
+                class="tg-row tg-requests-row"
+                on:click={() => (showJoinRequestsModal = true)}
+              >
+                <div class="tg-row-icon tg-icon-requests">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+                    <circle cx="9" cy="7" r="4"/>
+                    <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+                    <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+                  </svg>
+                </div>
+                <div class="tg-row-main">
+                  <div class="tg-row-title tg-requests-title">Заявки на вступление</div>
+                  <div class="tg-row-subtitle">Ожидают подтверждения: {joinRequests.length}</div>
+                </div>
+                <span class="tg-requests-badge">{joinRequests.length}</span>
+              </div>
+            {/if}
+
             <div
-              class="tg-row tg-invite-row"
-              on:click={() => showToast("Приглашение контактов в разработке")}
+              class="tg-row tg-row-clickable tg-invite-row"
+              on:click={() => (showAddMembersModal = true)}
             >
               <div class="tg-row-icon tg-icon-invite">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -871,40 +1383,118 @@
               </div>
             </div>
 
-            {#each Object.keys(chat.participants) as mUserId}
-              {#await getContact(mUserId)}
-              {:then member}
-                {#if !memberSearch || (get(member)?.names?.[0]?.name || '').toLowerCase().includes(memberSearch.toLowerCase())}
-                  <div
-                    class="tg-row tg-member-row"
-                    on:click={() => selectMember(get(member)?.id || mUserId)}
-                  >
-                    <Avatar contactId={mUserId} size={42} />
-                    <div class="tg-row-main">
-                      <div class="tg-member-name-row">
-                        <span class="tg-row-title">{get(member)?.names?.[0]?.name || "Пользователь"}</span>
-                        {#if Number(mUserId) === Number(chat.owner)}
-                          <span class="tg-role-badge">владелец</span>
-                        {:else if chat.admins?.includes(Number(mUserId)) || chat.admins?.includes(mUserId)}
-                          <span class="tg-role-badge admin">админ</span>
-                        {/if}
-                      </div>
-                      <div class="tg-row-subtitle">
-                        <Signature {member} />
-                      </div>
-                    </div>
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="tg-chevron">
-                      <polyline points="9 18 15 12 9 6"/>
-                    </svg>
+            {#each displayedMembers as memberItem, memberIdx (memberItem.contact?.id || memberItem.userId || memberItem.id || memberItem)}
+              {@const memberId = Number(memberItem.contact?.id || memberItem.userId || memberItem.id || memberItem)}
+              {@const isMemberOwner = Number(memberId) === Number(chat.owner)}
+              {@const isMemberAdmin = isMemberOwner || Boolean(chat.admins?.some(a => Number(a) === Number(memberId)))}
+              {@const memberAlias = memberItem.alias || (isMemberOwner ? "владелец" : isMemberAdmin ? "админ" : null)}
+              {@const canManage = canManageMember(memberId)}
+              <div
+                class="tg-row tg-member-row"
+                on:click={() => selectMember(memberId)}
+              >
+                <Avatar contactId={memberId} size={42} />
+                <div class="tg-row-main">
+                  <div class="tg-member-name-row">
+                    <span class="tg-row-title">
+                      {getMemberName(memberItem)}
+                    </span>
+                    {#if memberAlias}
+                      <span class="tg-role-badge" class:admin={isMemberAdmin && !isMemberOwner}>{memberAlias}</span>
+                    {/if}
                   </div>
+                  <div class="tg-row-subtitle">
+                    <Signature contactId={memberId} presence={memberItem.presence} />
+                  </div>
+                </div>
+
+                {#if canManage}
+                  <div class="tg-member-more-container" on:click|stopPropagation>
+                    <button
+                      type="button"
+                      class="tg-btn-member-more"
+                      on:click={() => toggleMemberMenu(memberId)}
+                      aria-label="Опции участника"
+                    >
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="1.5"/>
+                        <circle cx="12" cy="5" r="1.5"/>
+                        <circle cx="12" cy="19" r="1.5"/>
+                      </svg>
+                    </button>
+
+                    {#if selectedMemberMenuId === memberId}
+                      <div class="tg-dropdown tg-member-dropdown" class:bottom-up={memberIdx >= displayedMembers.length - 2 && displayedMembers.length > 2} transition:scale={{ duration: 120, start: 0.94 }}>
+                        <div class="tg-menu-item" on:click={() => { selectedMemberMenuId = null; selectMember(memberId); }}>
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+                            <circle cx="12" cy="7" r="4"/>
+                          </svg>
+                          <span>Профиль</span>
+                        </div>
+                        {#if isGroupOwner || (isGroupAdmin && !isMemberAdmin)}
+                          <div class="tg-menu-item" on:click={() => { selectedMemberMenuId = null; openAdminModal(memberItem); }}>
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                              <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
+                            </svg>
+                            <span>{isMemberAdmin ? "Настроить права" : "Назначить админом"}</span>
+                          </div>
+                        {/if}
+                        {#if isMemberAdmin && isGroupOwner && !isMemberOwner}
+                          <div class="tg-menu-item danger" on:click={() => { selectedMemberMenuId = null; demoteAdmin(memberId); }}>
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                              <line x1="18" y1="6" x2="6" y2="18"/>
+                              <line x1="6" y1="6" x2="18" y2="18"/>
+                            </svg>
+                            <span>Разжаловать</span>
+                          </div>
+                        {/if}
+                        <div class="tg-menu-item danger" on:click={() => { selectedMemberMenuId = null; promptKickMember(memberItem); }}>
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="3 6 5 6 21 6"/>
+                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                          </svg>
+                          <span>Исключить</span>
+                        </div>
+                      </div>
+                    {/if}
+                  </div>
+                {:else}
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="tg-chevron">
+                    <polyline points="9 18 15 12 9 6"/>
+                  </svg>
                 {/if}
-              {/await}
+              </div>
             {/each}
+
+            {#if !groupMembersEnd && !memberSearch.trim()}
+              <button
+                type="button"
+                class="tg-load-more-members"
+                disabled={groupMembersLoading}
+                on:click={loadMoreMembers}
+              >
+                {groupMembersLoading ? "Загрузка..." : "Показать еще"}
+              </button>
+            {/if}
           </div>
         {/if}
 
         <div class="tg-section-header">Действия</div>
         <div class="tg-card">
+          {#if chat}
+            <div class="tg-row tg-row-clickable tg-danger-row" on:click={() => (showPurgeConfirm = true)}>
+              <div class="tg-row-icon tg-icon-danger">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <polyline points="3 6 5 6 21 6"/>
+                  <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                </svg>
+              </div>
+              <div class="tg-row-main">
+                <div class="tg-row-title danger">Очистить историю</div>
+              </div>
+            </div>
+          {/if}
           {#if chat?.type === "CHANNEL"}
             {#if chat?.id && $currentRealChats.includes(chat.id)}
               <div class="tg-row tg-row-clickable tg-danger-row" on:click={quitChannel}>
@@ -962,6 +1552,8 @@
         </div>
       {/if}
     </div>
+  {/key}
+</div>
 
     {#if toastMessage}
       <div class="tg-toast" in:fly={{ y: 20, duration: 180 }} out:fade={{ duration: 150 }}>
@@ -1003,6 +1595,63 @@
     ]}
     on:submit={updateChatProfile}
     on:cancel={() => showInputs = false}
+  />
+{/if}
+
+{#if showAddMembersModal}
+  <GroupAddMembersModal
+    {chat}
+    existingMemberIds={new Set(groupMembers.map(m => Number(m.contact?.id || m.userId || m.id || m)))}
+    on:close={() => (showAddMembersModal = false)}
+    on:added={onMembersAdded}
+  />
+{/if}
+
+{#if showAdminModal}
+  <GroupAdminModal
+    {chat}
+    member={adminModalMember}
+    on:close={() => (showAdminModal = false)}
+    on:saved={onAdminSaved}
+    on:revoked={onAdminRevoked}
+  />
+{/if}
+
+{#if showJoinRequestsModal}
+  <GroupJoinRequestsModal
+    {chat}
+    on:close={() => (showJoinRequestsModal = false)}
+    on:updated={onJoinRequestsUpdated}
+  />
+{/if}
+
+{#if showRemoveMemberConfirm}
+  <ConfirmModal
+    title="Исключить участника?"
+    message="Вы действительно хотите удалить этого участника из группы?"
+    confirmText="Исключить"
+    on:confirm={kickConfirmedMember}
+    on:cancel={() => { showRemoveMemberConfirm = false; memberToRemove = null; }}
+  />
+{/if}
+
+{#if showPurgeConfirm}
+  <ConfirmModal
+    title="Очистить историю сообщений?"
+    message="Все сообщения в этом чате будут удалены."
+    confirmText="Очистить"
+    on:confirm={confirmPurgeHistory}
+    on:cancel={() => (showPurgeConfirm = false)}
+  />
+{/if}
+
+{#if showRefreshInviteConfirm}
+  <ConfirmModal
+    title="Отозвать ссылку приглашения?"
+    message="Предыдущая ссылка станет недействительной, и будет создана новая ссылка для приглашения."
+    confirmText="Отозвать и создать"
+    on:confirm={() => { showRefreshInviteConfirm = false; refreshInvite(); }}
+    on:cancel={() => (showRefreshInviteConfirm = false)}
   />
 {/if}
 
@@ -1354,6 +2003,11 @@
   .tg-icon-invite {
     background: rgba(51, 144, 236, 0.15);
     color: #3390ec;
+  }
+
+  .tg-icon-phone {
+    background: rgba(46, 201, 113, 0.15);
+    color: #2ecc71;
   }
 
   .tg-icon-danger {
@@ -1718,5 +2372,126 @@
   .tg-disabled-row {
     opacity: 0.6;
     cursor: not-allowed;
+  }
+
+  .tg-member-more-container {
+    position: relative;
+    display: flex;
+    align-items: center;
+  }
+
+  .tg-btn-member-more {
+    background: none;
+    border: none;
+    color: #8e8e93;
+    cursor: pointer;
+    padding: 6px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.15s, color 0.15s;
+  }
+
+  .tg-btn-member-more:hover {
+    background: rgba(255, 255, 255, 0.08);
+    color: #ffffff;
+  }
+
+  .tg-card.tg-members-card {
+    overflow: visible;
+  }
+
+  .tg-member-dropdown {
+    position: absolute;
+    right: 0;
+    top: 100%;
+    z-index: 50;
+    min-width: 180px;
+    margin-top: 4px;
+  }
+
+  .tg-member-dropdown.bottom-up {
+    top: auto;
+    bottom: 100%;
+    margin-top: 0;
+    margin-bottom: 4px;
+  }
+
+  .tg-load-more-members {
+    width: 100%;
+    padding: 12px;
+    background: none;
+    border: none;
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+    color: #5288c1;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    text-align: center;
+    transition: background 0.15s;
+  }
+
+  .tg-load-more-members:hover {
+    background: rgba(255, 255, 255, 0.04);
+  }
+
+  .tg-load-more-members:disabled {
+    opacity: 0.5;
+    cursor: default;
+  }
+
+  .tg-requests-row {
+    cursor: pointer;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  }
+
+  .tg-icon-requests {
+    background: rgba(82, 136, 193, 0.15);
+    color: #5288c1;
+  }
+
+  .tg-requests-title {
+    font-weight: 600;
+  }
+
+  .tg-requests-badge {
+    background: #5288c1;
+    color: #fff;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 2px 7px;
+    border-radius: 10px;
+    margin-left: auto;
+  }
+
+  .tg-menu-badge {
+    background: #5288c1;
+    color: #fff;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 2px 6px;
+    border-radius: 10px;
+    margin-left: auto;
+  }
+
+  .tg-icon-pin {
+    background: rgba(255, 179, 0, 0.15);
+    color: #ffb300;
+  }
+
+  .tg-content-transition {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+  }
+
+  .tg-invite-row {
+    cursor: pointer;
+    transition: background 0.15s ease;
+  }
+
+  .tg-invite-row:hover {
+    background: rgba(255, 255, 255, 0.05);
   }
 </style>

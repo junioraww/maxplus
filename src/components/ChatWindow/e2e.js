@@ -58,7 +58,7 @@ export async function checkForEncryptionRequest(
   decryptedBatch,
   newMessages = []
 ) {
-  if (!chat || !decryptedBatch) return null;
+  if (!chat || !decryptedBatch || chat.type === "CHAT") return null;
 
   const currentUid = get(currentUser);
   const isSavedMessagesChat = Number(chat.id) === 0 || Number(chat.id) === Number(currentUid);
@@ -222,6 +222,7 @@ export async function handleEnc(chat, chatSettings, messages, action) {
 }
 
 export async function switchEnc(chat, chatSettings, messages) {
+  if (!chat || chat.type === "CHAT") return;
   const account = await getCurrentAccount();
   const accId = Number(account?.id || 0);
   const settings = get(chatSettings);

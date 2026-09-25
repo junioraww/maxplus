@@ -321,6 +321,19 @@
       unsubReceivedMessage = currentChatCache.receivedMessage.subscribe(async (message) => {
         if (!message || String(message.chatId) !== String(targetChatId)) return;
 
+        if (message.type === "CLEAR_HISTORY" || message.action === "CLEAR") {
+          messages.set([]);
+          activeChatMessages.set([]);
+          decodedMessages.set({});
+          loader.all_loaded = true;
+          loader.all_loaded_newer = true;
+          await tick();
+          virtualScroll.applyPendingHeights([]);
+          virtualScroll.computeCumulativeHeights([]);
+          await updateVisibleMessages();
+          return;
+        }
+
         const msgKey = `${message.id}_${message.time || message.created_at || ""}_${message.status || ""}`;
         if (msgKey === lastProcessedMessageKey) return;
         lastProcessedMessageKey = msgKey;
@@ -774,12 +787,11 @@
   }
 
   function openSettings() {
-    if (chat && chat.type !== "CHANNEL") {
-      $Session.profile = { chatId: chat.id, view: "settings" };
-    } else {
-      settingsShown = !settingsShown;
-      if (settingsShown) onBack.chatSettings = () => (settingsShown = false);
-      else delete onBack["chatSettings"];
+    const targetChatId = chat?.id ?? chatId;
+    if (chat?.type === "DIALOG" || (!chat && avatarUserId)) {
+      $Session.profile = { chatId: targetChatId, userId: avatarUserId, view: "settings" };
+    } else if (targetChatId) {
+      $Session.profile = { chatId: targetChatId, view: "settings" };
     }
   }
 

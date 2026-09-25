@@ -51,6 +51,38 @@ delegate_cmd!(leave_group(chat_id: i64) => leave_group(chat_id));
 delegate_cmd!(change_group_profile(chat_id: i64, title: Option<String>, description: Option<String>) => change_group_profile(chat_id, title, description));
 delegate_cmd!(fetch_history(chat_id: i64, options: Option<FetchHistoryOptions>) => fetch_history(chat_id, options));
 delegate_cmd!(refresh_invite_link(chat_id: i64) => refresh_invite_link(chat_id));
+delegate_cmd!(fetch_group_members(chat_id: i64, count: Option<i64>, marker: Option<i64>) => get_members(chat_id, count.unwrap_or(50), marker));
+delegate_cmd!(search_group_members(chat_id: i64, query: String) => find_members(chat_id, query));
+delegate_cmd!(add_group_members(chat_id: i64, user_ids: Vec<i64>, show_history: Option<bool>) => invite_users_to_group(chat_id, user_ids, show_history));
+delegate_cmd!(kick_group_member(chat_id: i64, user_ids: Vec<i64>, clean_msg_period: Option<i64>) => remove_users_from_group(chat_id, user_ids, clean_msg_period.unwrap_or(0)));
+delegate_cmd!(grant_group_admin(chat_id: i64, user_id: i64, permissions: Vec<String>, alias: Option<String>) => assign_admin(chat_id, user_id, permissions, alias));
+delegate_cmd!(revoke_group_admin(chat_id: i64, user_id: i64) => revoke_admin(chat_id, user_id));
+delegate_cmd!(set_group_options(chat_id: i64, all_can_pin_message: Option<bool>, only_owner_can_change_icon_title: Option<bool>, only_admin_can_add_member: Option<bool>, only_admin_can_call: Option<bool>, members_can_see_private_link: Option<bool>) => change_group_settings(chat_id, all_can_pin_message, only_owner_can_change_icon_title, only_admin_can_add_member, only_admin_can_call, members_can_see_private_link));
+delegate_cmd!(fetch_join_requests(chat_id: i64) => get_join_requests(chat_id));
+delegate_cmd!(confirm_join_requests(chat_id: i64, user_ids: Vec<i64>, show_history: Option<bool>) => confirm_join_requests(chat_id, user_ids, show_history));
+delegate_cmd!(decline_join_requests(chat_id: i64, user_ids: Vec<i64>) => decline_join_requests(chat_id, user_ids));
+#[tauri::command]
+pub async fn purge_chat_history(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    chat_id: i64,
+    last_event_time: Option<i64>,
+    for_all: Option<bool>,
+) -> Result<Value, Value> {
+    let r = state
+        .client
+        .clear_chat_history(chat_id, last_event_time, for_all)
+        .await
+        .map_err(|e| e.to_json())?;
+
+    if let Ok(curr_id) = crate::stores::current_get(app.clone()) {
+        if let Some(account_id) = curr_id.as_u64() {
+            let _ = crate::stores::clear_local_messages(app, account_id, chat_id);
+        }
+    }
+
+    Ok(r.payload)
+}
 delegate_cmd!(sync_contacts() => sync_contacts());
 
 delegate_cmd!(add_reaction(chat_id: i64, message_id: String, reaction: String) => add_reaction(chat_id, p(message_id)?, reaction));

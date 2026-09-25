@@ -100,6 +100,10 @@ export const getChat = chatId => {
     loadMessages: async (time, amount) => {
       const account = await getCurrentAccount();
       return invoke("load_messages", { account: Number(account.id), chatId: Number(chatId), time, amount });
+    },
+    clearLocalMessages: async () => {
+      const account = await getCurrentAccount();
+      return invoke("clear_local_messages", { account: Number(account.id), chatId: Number(chatId) });
     }
   };
 

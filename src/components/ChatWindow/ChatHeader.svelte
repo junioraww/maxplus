@@ -39,9 +39,9 @@
   function handleProfileClick() {
     if (!chat) return;
     if (chat.id === 0) {
-      $Session.profile = { userId: $currentUser };
+      $Session.profile = { userId: $currentUser, chatId: 0 };
     } else if (chat.type === "DIALOG") {
-      $Session.profile = { userId: avatarUserId };
+      $Session.profile = { userId: avatarUserId, chatId: chat.id };
     } else {
       $Session.profile = { chatId: chat.id };
     }
@@ -76,7 +76,7 @@
     </div>
   </div>
   <div class="align-right">
-    {#if chat && chat.type !== "CHANNEL"}
+    {#if chat && chat.type !== "CHANNEL" && chat.type !== "CHAT"}
       {#if fingerprint}
         <div
           class="fingerprint-badge"
