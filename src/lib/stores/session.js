@@ -81,3 +81,11 @@ export function closeChat(chatId) {
     return session;
   });
 }
+
+export function openSettingsPage(pageId) {
+  data.update(current => ({ ...current, settingsPage: pageId }));
+}
+
+export function closeSettingsPage() {
+  data.update(current => ({ ...current, settingsPage: null }));
+}

@@ -19,8 +19,8 @@
     z-index: 1;
     top: 0;
     left: 0;
-    width: 100vw;
-    height: calc(100vh - 60px);
+    width: 100%;
+    height: calc(100% - 60px);
     transition: transform 0.22s ease-out;
     display: flex;
     flex-direction: column;

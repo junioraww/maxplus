@@ -4,6 +4,7 @@
   import Session, {
     get as sessionGet,
     set as sessionSet,
+    openSettingsPage,
   } from "$lib/stores/session";
   import {
     isTracing,
@@ -59,7 +60,7 @@
       <div
         on:click={() => {
           sessionSet("devSettings", false);
-          goto("/settings/logs?from=/?card=settings");
+          openSettingsPage("logs");
         }}
         class="button"
       >

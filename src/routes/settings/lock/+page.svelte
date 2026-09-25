@@ -1,40 +1,26 @@
 <script>
   import { onMount } from "svelte";
   import { goto } from "$app/navigation";
-  import { slide, fly } from "svelte/transition";
-  import { flip } from "svelte/animate";
   import { page } from "$app/stores";
-
+  import SettingsPageWrapper from "$components/settings/SettingsPageWrapper.svelte";
   import { getCurrentAccount, getDatabaseFilesCount } from "$lib/stores/accounts";
-  import API, { currentUser } from "$lib/stores/api";
 
-  $: from = $page.url.searchParams.get("from") || "/auth/login";
+  export let onClose = null;
+  $: from = $page.url.searchParams.get("from") || "/?card=settings";
 
   let encryption;
   let fileCount = null;
 
   onMount(async () => {
     const account = await getCurrentAccount();
-    encryption = account.encryption;
-    fileCount = await getDatabaseFilesCount(account.id).catch(() => null);
+    if (account) {
+      encryption = account.encryption;
+      fileCount = await getDatabaseFilesCount(account.id).catch(() => null);
+    }
   });
-
-  function formatDate(ms) {
-    if (!ms) return "";
-    const date = new Date(ms);
-    return (
-      date.toLocaleDateString() +
-      " " +
-      date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
-    );
-  }
 </script>
 
-<div class="page">
-  <header>
-    <h1>Защитный пин-код</h1>
-  </header>
-
+<SettingsPageWrapper title="Защита пин-кодом" {from} {onClose}>
   <div class="container">
     {#if encryption === undefined}
       <div class="status-msg">Загрузка данных...</div>
@@ -72,73 +58,40 @@
           </div>
         {/if}
 
-        <button class="secondary-btn" on:click={() => goto("/auth/lock?mode=disable")}>
+        <button class="danger-btn" on:click={() => goto("/auth/lock?mode=disable")}>
           Отключить
         </button>
       </div>
     {/if}
   </div>
-
-  <div class="actions-panel">
-    <button class="back-btn" on:click={() => history.back()}>
-      Назад
-    </button>
-  </div>
-</div>
+</SettingsPageWrapper>
 
 <style>
-  .page {
-    display: flex;
-    flex-direction: column;
-    height: 100vh;
-    background-color: #1a1a1f;
-    color: #ddd;
-    box-sizing: border-box;
-    overflow: hidden;
-  }
-
-  header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 15px 20px;
-    flex-shrink: 0;
-  }
-
-  h1 {
-    margin: 0;
-    font-size: 1.1rem;
-    font-weight: 600;
-    color: #fff;
-  }
-
   .container {
     flex: 1;
     display: flex;
     justify-content: center;
     align-items: center;
+    padding: 20px 16px;
+    box-sizing: border-box;
   }
 
   .card {
     width: 100%;
-    max-width: 360px;
-    background: #24242d;
-    border-radius: 18px;
-    padding: 22px;
+    max-width: 380px;
+    background: #24252a;
+    border-radius: 16px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    padding: 24px;
     display: flex;
     flex-direction: column;
     gap: 18px;
-  }
-
-  @media(max-width: 400px) {
-    .card {
-      border-radius: 0;
-    }
+    box-sizing: border-box;
   }
 
   .status {
     margin: 0;
-    font-size: 1.1rem;
+    font-size: 1.05rem;
   }
 
   .status.success {
@@ -153,27 +106,27 @@
     margin: 0;
     color: #9ca3af;
     line-height: 1.5;
-    font-size: .92rem;
+    font-size: 0.92rem;
   }
 
   .info-row {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    background: #1d1d25;
-    border: 1px solid #31313b;
+    background: #1b1c21;
+    border: 1px solid rgba(255, 255, 255, 0.06);
     border-radius: 12px;
     padding: 14px 16px;
   }
 
   .info-row span {
     color: #888;
-    font-size: .9rem;
+    font-size: 0.9rem;
   }
 
   .info-row strong {
     color: white;
-    font-size: .95rem;
+    font-size: 0.95rem;
   }
 
   button {
@@ -182,62 +135,39 @@
     justify-content: center;
     border: none;
     cursor: pointer;
-    transition: .2s;
     font-weight: 600;
+    width: 100%;
+    height: 44px;
+    border-radius: 12px;
+    font-size: 0.95rem;
+    transition: transform 0.12s, opacity 0.15s, background 0.15s;
   }
 
-  .primary-btn,
-  .secondary-btn {
-    width: 100%;
-    padding: 13px 18px;
-    border-radius: 12px;
-    font-size: .95rem;
+  button:active {
+    transform: scale(0.98);
   }
 
   .primary-btn {
-    background: #6366f1;
+    background: #3390ec;
     color: white;
   }
 
-  .secondary-btn {
-    background: #313244;
-    color: #ddd;
+  .primary-btn:hover {
+    background: #2b7ecf;
   }
 
-  .primary-btn:hover,
-  .secondary-btn:hover {
-    background: #4f46e5;
+  .danger-btn {
+    background: rgba(239, 68, 68, 0.15);
+    color: #ff595a;
+    border: 1px solid rgba(239, 68, 68, 0.25);
+  }
+
+  .danger-btn:hover {
+    background: rgba(239, 68, 68, 0.25);
   }
 
   .status-msg {
     color: #888;
-    font-size: .95rem;
-  }
-
-  .actions-panel {
-    padding: 20px;
-    flex-shrink: 0;
-    display: flex;
-    gap: 20px;
-    padding: 16px;
-    border-top: 1px solid #2c2c35;
-  }
-
-  .back-btn {
-    gap: 8px;
-    background: #6366f1;
-    color: white;
-    border: none;
-    padding: 10px 40px;
-    border-radius: 8px;
-    font-weight: 600;
-    font-size: 0.92rem;
-    cursor: pointer;
-    transition: background 0.2s;
-    margin-left: auto;
-  }
-
-  .back-btn:hover {
-    background: #4f46e5;
+    font-size: 0.95rem;
   }
 </style>

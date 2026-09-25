@@ -22,7 +22,7 @@ import { goto } from "$app/navigation";
     openAppSettings,
   } from "@tauri-apps/plugin-barcode-scanner";
 
-  import { set as sessionSet } from "$lib/stores/session";
+  import { set as sessionSet, openSettingsPage } from "$lib/stores/session";
   import { currentUserDetails } from "$lib/stores/api";
   import Avatar from "$components/main/Avatar.svelte";
   import API, { currentUser } from "$lib/stores/api";
@@ -71,22 +71,22 @@ import { goto } from "$app/navigation";
       {
         icon: "profile.svg",
         text: "Настроить профиль",
-        action: () => goto("/settings/profile?from=/?card=settings"),
+        action: () => openSettingsPage("profile"),
       },
       {
         icon: "bell.svg",
         text: "Уведомления",
-        action: () => goto("/settings/notifications?from=/?card=settings"),
+        action: () => openSettingsPage("notifications"),
       },
       {
         icon: "crypto.svg",
         text: "Защита пин-кодом",
-        action: () => goto("/settings/lock?from=/?card=settings"),
+        action: () => openSettingsPage("lock"),
       },
       {
         icon: "book.svg",
         text: "Словарь шифрования",
-        action: () => goto("/settings/e2e/dictionary?from=/?card=settings"),
+        action: () => openSettingsPage("dictionary"),
       },
       {
         icon: "crypto.svg",
@@ -112,7 +112,7 @@ import { goto } from "$app/navigation";
       {
         icon: "logs.svg",
         text: "Сетевые логи",
-        action: () => goto("/settings/logs?from=/?card=settings"),
+        action: () => openSettingsPage("logs"),
       },
       {
         icon: "debug.svg",
@@ -122,14 +122,14 @@ import { goto } from "$app/navigation";
       {
         icon: "about.svg",
         text: "О приложении",
-        action: () => goto("/settings/about?from=/?card=settings"),
+        action: () => openSettingsPage("about"),
       },
     ],
     [
       {
         icon: "devices.png",
         text: "Активные сессии",
-        action: () => goto("/settings/sessions?from=/?card=settings"),
+        action: () => openSettingsPage("sessions"),
       },
       {
         icon: "logout.svg",

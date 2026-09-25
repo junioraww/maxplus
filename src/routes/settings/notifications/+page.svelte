@@ -4,6 +4,7 @@
   import { page } from "$app/stores";
   import { slide } from "svelte/transition";
   import { flip } from "svelte/animate";
+  import SettingsPageWrapper from "$components/settings/SettingsPageWrapper.svelte";
 
   import { get } from "svelte/store";
   import API, { currentUser, currentSessionChats } from "$lib/stores/api";
@@ -26,6 +27,7 @@
   $: from = $page.url.searchParams.get("from") || "/?card=settings";
 
   export let isTab = false;
+  export let onClose = null;
 
   let activeTab = "all";
   let unmutingIds = new Set();
@@ -101,19 +103,12 @@
   }
 </script>
 
-<div class="notifications-page" class:is-tab={isTab}>
-  <header>
-    <div class="header-left">
-      {#if !isTab}
-        <button class="icon-back-btn" on:click={() => goto(from)}>
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <polyline points="15 18 9 12 15 6"></polyline>
-          </svg>
-        </button>
-      {/if}
+<SettingsPageWrapper title="Уведомления" {from} {isTab} {onClose}>
+  {#if isTab}
+    <header class="tab-header">
       <h1>Уведомления</h1>
-    </div>
-  </header>
+    </header>
+  {/if}
 
   <div class="content-container">
     <div class="settings-card">
@@ -288,63 +283,19 @@
     </div>
   </div>
 
-  {#if !isTab}
-    <div class="actions-panel">
-      <button class="back-btn" on:click={() => goto(from)}>Назад</button>
-    </div>
-  {/if}
-</div>
+</SettingsPageWrapper>
 
 <style>
-  .notifications-page {
+  .tab-header {
     display: flex;
-    flex-direction: column;
-    height: 100vh;
-    background-color: #1a1a1f;
-    color: #ddd;
-    box-sizing: border-box;
-    overflow: hidden;
-  }
-
-  .notifications-page.is-tab {
-    height: 100%;
-  }
-
-  header {
-    display: flex;
-    justify-content: space-between;
     align-items: center;
-    padding: 15px 20px;
+    padding: 12px 16px;
+    background: #212126;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
     flex-shrink: 0;
-    border-bottom: 1px solid #282830;
   }
 
-  .header-left {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-  }
-
-  .icon-back-btn {
-    background: none;
-    border: none;
-    color: #bbb;
-    padding: 4px;
-    margin: 0;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: 6px;
-    transition: color 0.15s, background 0.15s;
-  }
-
-  .icon-back-btn:hover {
-    color: #fff;
-    background: #282832;
-  }
-
-  h1 {
+  .tab-header h1 {
     margin: 0;
     font-size: 1.15rem;
     font-weight: 600;
@@ -598,27 +549,4 @@
     cursor: not-allowed;
   }
 
-  .actions-panel {
-    padding: 16px 20px;
-    flex-shrink: 0;
-    display: flex;
-    justify-content: flex-end;
-    border-top: 1px solid #282830;
-  }
-
-  .back-btn {
-    background: #6366f1;
-    color: white;
-    border: none;
-    padding: 10px 40px;
-    border-radius: 8px;
-    font-weight: 600;
-    font-size: 0.92rem;
-    cursor: pointer;
-    transition: background 0.2s;
-  }
-
-  .back-btn:hover {
-    background: #4f46e5;
-  }
 </style>
