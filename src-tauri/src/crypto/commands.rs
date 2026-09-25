@@ -40,7 +40,7 @@ pub struct DecryptedMessageDto {
 }
 
 fn load_chat_settings_json(app: &AppHandle, account: u64, chat_id: i64) -> Value {
-    crate::stores::get_chat_settings(app.clone(), account, chat_id).unwrap_or_else(|_| {
+    crate::stores::get_chat_settings_sync(app, account, chat_id).unwrap_or_else(|_| {
         json!({
             "version": 1,
             "keys": {
@@ -61,7 +61,7 @@ fn save_chat_settings_json(
     chat_id: i64,
     data: &Value,
 ) -> Result<(), String> {
-    crate::stores::set_chat_settings(app.clone(), account, chat_id, data.clone())
+    crate::stores::set_chat_settings_sync(app, account, chat_id, data.clone())
 }
 
 fn get_active_session_key(settings: &Value) -> Option<[u8; 32]> {
@@ -615,7 +615,7 @@ pub async fn cache_encrypted_media(
 ) -> Result<String, String> {
     let cache_key = format!("enc_media_{}", file_id);
 
-    if let Ok(Some(existing)) = crate::stores::get_cached_file(app.clone(), account, cache_key.clone()) {
+    if let Ok(Some(existing)) = crate::stores::get_cached_file_sync(&app, account, &cache_key) {
         if Path::new(&existing).exists() {
             return Ok(existing);
         }

@@ -340,7 +340,6 @@ export default class MobileApi extends BaseAPI {
           const chat = getChat(cId);
           for (const mId of messageIds) {
             chat.markMessageDeleted?.(mId);
-            chat.updateMessages([{ id: mId, deleted: true, deleted_at: Date.now() }]);
           }
         }
       }

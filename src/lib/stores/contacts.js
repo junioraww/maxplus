@@ -18,11 +18,15 @@ export const getContact = contactId => {
     const cached = await invoke("get_contact", { account: +account.id, contactId });
     if (cached) store.set(cached);
 
+    let initial = true;
     cache[contactId].unsubscribe = store.subscribe(async data => {
+      if (initial) {
+        initial = false;
+        return;
+      }
       if (data !== undefined) {
-        getCurrentAccount().then(async _account => {
-          invoke("set_contact", { account: +_account.id, contactId, data });
-        });
+        const _account = await getCurrentAccount();
+        invoke("set_contact", { account: +_account.id, contactId, data });
       }
     });
   });
