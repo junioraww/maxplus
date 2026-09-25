@@ -24,7 +24,7 @@
   import {
     getContact
   } from "$lib/stores/contacts";
-  import {
+  import Session, {
     openChat,
     closeChat,
     get as sessionGet,
@@ -774,9 +774,13 @@
   }
 
   function openSettings() {
-    settingsShown = !settingsShown;
-    if (settingsShown) onBack.chatSettings = () => (settingsShown = false);
-    else delete onBack["chatSettings"];
+    if (chat && chat.type !== "CHANNEL") {
+      $Session.profile = { chatId: chat.id, view: "settings" };
+    } else {
+      settingsShown = !settingsShown;
+      if (settingsShown) onBack.chatSettings = () => (settingsShown = false);
+      else delete onBack["chatSettings"];
+    }
   }
 
   let dateSeparators = {};
