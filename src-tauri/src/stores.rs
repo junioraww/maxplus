@@ -224,6 +224,23 @@ impl Paths {
     pub fn user_settings(&self) -> PathBuf {
         self.root.join("user_settings")
     }
+
+    pub fn webapps(&self) -> PathBuf {
+        self.root.join("webapps")
+    }
+
+    pub fn webapp(&self, bot_id: &str) -> PathBuf {
+        let safe_name: String = bot_id
+            .chars()
+            .filter(|c| c.is_alphanumeric() || *c == '_' || *c == '-')
+            .collect();
+        let name = if safe_name.is_empty() {
+            "default".to_string()
+        } else {
+            safe_name
+        };
+        self.webapps().join(name)
+    }
 }
 
 #[tauri::command]
@@ -1883,6 +1900,160 @@ pub fn load_user_settings(
 ) -> Option<Value> {
     let key = crypto_key(app, account);
     Storage::new(key).load(Paths::new(app, account).user_settings())
+}
+
+fn get_webapp_path_and_storage(app: &AppHandle, account: Option<u64>, bot_id: &str) -> (PathBuf, Storage) {
+    let acc_id = account.unwrap_or_else(|| {
+        let store = load_accounts(app);
+        store.get("current").and_then(|x| x.as_u64()).unwrap_or(0)
+    });
+
+    if acc_id > 0 {
+        let paths = Paths::new(app, acc_id);
+        let key = crypto_key(app, acc_id);
+        (paths.webapp(bot_id), Storage::new(key))
+    } else {
+        let safe_name: String = bot_id
+            .chars()
+            .filter(|c| c.is_alphanumeric() || *c == '_' || *c == '-')
+            .collect();
+        let name = if safe_name.is_empty() {
+            "default".to_string()
+        } else {
+            safe_name
+        };
+        let root = app.path().app_data_dir().unwrap().join("data").join("common").join("webapps");
+        (root.join(name), Storage::new(None))
+    }
+}
+
+#[tauri::command]
+pub fn webapp_storage_save_key(
+    app: AppHandle,
+    account: Option<u64>,
+    bot_id: String,
+    is_secure: bool,
+    key: String,
+    value: Option<String>,
+) -> Result<bool, String> {
+    if key.is_empty() {
+        return Ok(false);
+    }
+    let (path, storage) = get_webapp_path_and_storage(&app, account, &bot_id);
+    let mut data = storage.load(&path).unwrap_or_else(|| json!({}));
+    let scope_name = if is_secure { "sec" } else { "dev" };
+
+    let obj = data.as_object_mut().ok_or_else(|| "Invalid store format".to_string())?;
+    let scope_val = obj.entry(scope_name).or_insert_with(|| json!({}));
+    let scope_obj = scope_val.as_object_mut().ok_or_else(|| "Invalid scope format".to_string())?;
+
+    match value {
+        Some(val) => {
+            if !scope_obj.contains_key(&key) && scope_obj.len() >= 500 {
+                return Ok(false);
+            }
+            scope_obj.insert(key, Value::String(val));
+        }
+        None => {
+            scope_obj.remove(&key);
+        }
+    }
+
+    storage.save(&path, &data)?;
+    Ok(true)
+}
+
+#[tauri::command]
+pub fn webapp_storage_get_key(
+    app: AppHandle,
+    account: Option<u64>,
+    bot_id: String,
+    is_secure: bool,
+    key: String,
+) -> Result<Option<String>, String> {
+    let (path, storage) = get_webapp_path_and_storage(&app, account, &bot_id);
+    let data = match storage.load(&path) {
+        Some(d) => d,
+        None => return Ok(None),
+    };
+    let scope_name = if is_secure { "sec" } else { "dev" };
+    let val = data.get(scope_name)
+        .and_then(|s| s.get(&key))
+        .and_then(|v| {
+            if let Some(s) = v.as_str() {
+                Some(s.to_string())
+            } else if !v.is_null() {
+                Some(v.to_string())
+            } else {
+                None
+            }
+        });
+    Ok(val)
+}
+
+#[tauri::command]
+pub fn webapp_storage_clear(
+    app: AppHandle,
+    account: Option<u64>,
+    bot_id: String,
+    is_secure: bool,
+) -> Result<(), String> {
+    let (path, storage) = get_webapp_path_and_storage(&app, account, &bot_id);
+    let mut data = storage.load(&path).unwrap_or_else(|| json!({}));
+    let scope_name = if is_secure { "sec" } else { "dev" };
+    if let Some(obj) = data.as_object_mut() {
+        obj.insert(scope_name.to_string(), json!({}));
+        storage.save(&path, &data)?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub fn webapp_storage_get_keys(
+    app: AppHandle,
+    account: Option<u64>,
+    bot_id: String,
+    is_secure: bool,
+) -> Result<Vec<String>, String> {
+    let (path, storage) = get_webapp_path_and_storage(&app, account, &bot_id);
+    let data = match storage.load(&path) {
+        Some(d) => d,
+        None => return Ok(Vec::new()),
+    };
+    let scope_name = if is_secure { "sec" } else { "dev" };
+    let keys = data.get(scope_name)
+        .and_then(|s| s.as_object())
+        .map(|obj| obj.keys().cloned().collect())
+        .unwrap_or_default();
+    Ok(keys)
+}
+
+#[tauri::command]
+pub fn webapp_biometry_get(
+    app: AppHandle,
+    account: Option<u64>,
+    bot_id: String,
+) -> Result<Value, String> {
+    let (path, storage) = get_webapp_path_and_storage(&app, account, &bot_id);
+    let data = storage.load(&path).unwrap_or_else(|| json!({}));
+    let bio = data.get("biometry").cloned().unwrap_or_else(|| json!({}));
+    Ok(bio)
+}
+
+#[tauri::command]
+pub fn webapp_biometry_set(
+    app: AppHandle,
+    account: Option<u64>,
+    bot_id: String,
+    biometry: Value,
+) -> Result<(), String> {
+    let (path, storage) = get_webapp_path_and_storage(&app, account, &bot_id);
+    let mut data = storage.load(&path).unwrap_or_else(|| json!({}));
+    if let Some(obj) = data.as_object_mut() {
+        obj.insert("biometry".to_string(), biometry);
+        storage.save(&path, &data)?;
+    }
+    Ok(())
 }
 
 #[cfg(target_os = "android")]

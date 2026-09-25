@@ -1,5 +1,6 @@
 <script>
   import { onMount, onDestroy } from "svelte";
+  import { invoke } from "@tauri-apps/api/core";
   import { openUrl } from "@tauri-apps/plugin-opener";
   import { openChat, get as sessionGet } from "$lib/stores/session.js";
   import { getCurrentAccount } from "$lib/stores/accounts.js";
@@ -257,7 +258,10 @@
     }
     if (!deviceId) {
       try {
-        deviceId = localStorage.getItem("max_device_id") || "";
+        const dev = await invoke("get_device");
+        if (dev && typeof dev === "object" && dev.deviceId) {
+          deviceId = dev.deviceId;
+        }
       } catch {}
     }
 
