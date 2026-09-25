@@ -830,6 +830,22 @@ export async function resolvePlayableUrl(attach, chatId, messageId) {
   }
 
   const resolvePromise = (async () => {
+    const account = await getCurrentAccount().catch(() => null);
+    const accountId = Number(account?.id || 0);
+
+    try {
+      const cached = await invoke('get_cached_file', {
+        account: accountId,
+        src: mediaKey,
+      }).catch(() => null);
+      if (cached) {
+        attach.localPath = cached;
+        const playable = toPlayableUrl(cached);
+        resolvedUrlCache.set(mediaKey, playable);
+        return playable;
+      }
+    } catch (_) {}
+
     const mediaType = isVideoNote ? 'video_note' : 'voice';
     if ((vId || token) && chatId != null && messageId != null) {
       try {
@@ -847,12 +863,16 @@ export async function resolvePlayableUrl(attach, chatId, messageId) {
         if (picked) {
           if (picked.startsWith('http://') || picked.startsWith('https://')) {
             invoke('cache_url', {
+              account: accountId,
               src: picked,
               chatId: chatId != null ? Number(chatId) : null,
               mediaType,
               key: mediaKey,
             }).then((cached) => {
-              if (cached) resolvedUrlCache.set(mediaKey, toPlayableUrl(cached));
+              if (cached) {
+                attach.localPath = cached;
+                resolvedUrlCache.set(mediaKey, toPlayableUrl(cached));
+              }
             }).catch(() => {});
           }
           const playable = toPlayableUrl(picked);
@@ -866,12 +886,16 @@ export async function resolvePlayableUrl(attach, chatId, messageId) {
     if (fallback) {
       if (fallback.startsWith('http://') || fallback.startsWith('https://')) {
         invoke('cache_url', {
+          account: accountId,
           src: fallback,
           chatId: chatId != null ? Number(chatId) : null,
           mediaType,
           key: mediaKey,
         }).then((cached) => {
-          if (cached) resolvedUrlCache.set(mediaKey, toPlayableUrl(cached));
+          if (cached) {
+            attach.localPath = cached;
+            resolvedUrlCache.set(mediaKey, toPlayableUrl(cached));
+          }
         }).catch(() => {});
       }
       const playable = toPlayableUrl(fallback);

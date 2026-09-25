@@ -63,7 +63,10 @@
     const rawFallback = attach.fileUrl || attach.url || attach.baseUrl;
     if (rawFallback) {
       if (rawFallback.startsWith('http://') || rawFallback.startsWith('https://')) {
+        const account = await getCurrentAccount().catch(() => null);
+        const accountId = Number(account?.id || 0);
         invoke('cache_url', {
+          account: accountId,
           src: rawFallback,
           chatId: chatId != null ? Number(chatId) : null,
           mediaType: 'voice',

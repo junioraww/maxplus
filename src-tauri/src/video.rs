@@ -4,13 +4,75 @@ use reqwest::header::{
 };
 use std::collections::HashMap;
 use std::io::{Cursor, Read};
-use std::sync::{Arc, LazyLock, RwLock};
+use std::sync::{Arc, LazyLock, OnceLock, RwLock};
 use std::thread;
 use std::time::Duration;
+use tauri::Manager;
 use tiny_http::{Header, Method, Response, Server};
 
 static MIME_CACHE: LazyLock<RwLock<HashMap<String, String>>> =
     LazyLock::new(|| RwLock::new(HashMap::new()));
+
+static VIDEO_APP_HANDLE: OnceLock<tauri::AppHandle> = OnceLock::new();
+
+pub fn set_app_handle(handle: tauri::AppHandle) {
+    let _ = VIDEO_APP_HANDLE.set(handle);
+}
+
+fn get_active_crypto_key() -> Option<[u8; 32]> {
+    VIDEO_APP_HANDLE.get().and_then(|app| {
+        app.state::<crate::AppState>()
+            .crypto
+            .read()
+            .unwrap()
+            .as_ref()
+            .map(|s| s.key)
+    })
+}
+
+fn detect_mime_from_bytes(bytes: &[u8], path: &str) -> String {
+    if bytes.starts_with(b"\x89PNG\r\n\x1a\n") {
+        return "image/png".to_string();
+    }
+    if bytes.starts_with(b"\xff\xd8\xff") {
+        return "image/jpeg".to_string();
+    }
+    if bytes.len() >= 12 && &bytes[0..4] == b"RIFF" && &bytes[8..12] == b"WEBP" {
+        return "image/webp".to_string();
+    }
+    if bytes.starts_with(b"GIF87a") || bytes.starts_with(b"GIF89a") {
+        return "image/gif".to_string();
+    }
+    if bytes.starts_with(b"<svg") || (bytes.starts_with(b"<?xml") && bytes.windows(4).any(|w| w == b"<svg")) {
+        return "image/svg+xml".to_string();
+    }
+    if bytes.starts_with(b"%PDF") {
+        return "application/pdf".to_string();
+    }
+    if bytes.starts_with(b"OggS") {
+        return "audio/ogg".to_string();
+    }
+    if bytes.starts_with(b"\x1a\x45\xdf\xa3") {
+        return "video/webm".to_string();
+    }
+    if (bytes.len() >= 8 && &bytes[4..8] == b"ftyp") || bytes.windows(4).any(|w| w == b"ftyp" || w == b"moov") {
+        return "video/mp4".to_string();
+    }
+    if bytes.starts_with(b"ID3") || (bytes.len() >= 2 && bytes[0] == 0xff && (bytes[1] & 0xe0) == 0xe0) {
+        return "audio/mpeg".to_string();
+    }
+    if bytes.len() >= 12 && &bytes[0..4] == b"RIFF" && &bytes[8..12] == b"WAVE" {
+        return "audio/wav".to_string();
+    }
+    if bytes.starts_with(b"fLaC") {
+        return "audio/flac".to_string();
+    }
+    let guess = mime_guess::from_path(path).first_or_octet_stream().to_string();
+    if guess != "application/octet-stream" && guess != "binary/octet-stream" {
+        return guess;
+    }
+    "application/octet-stream".to_string()
+}
 
 fn handle_local_file(request: tiny_http::Request, mut path: &str) {
     if let Some(stripped) = path.strip_prefix("file://") {
@@ -28,11 +90,9 @@ fn handle_local_file(request: tiny_http::Request, mut path: &str) {
     } else {
         path
     };
-    use std::fs::File;
-    use std::io::{Seek, SeekFrom};
 
-    let mut file = match File::open(path) {
-        Ok(f) => f,
+    let raw_bytes = match std::fs::read(path) {
+        Ok(b) => b,
         Err(e) => {
             eprintln!("[VideoProxy] File Not Found: {} (error: {})", path, e);
             let _ = request.respond(Response::from_string("File Not Found").with_status_code(404));
@@ -40,41 +100,25 @@ fn handle_local_file(request: tiny_http::Request, mut path: &str) {
         }
     };
 
-    let file_len = match file.metadata() {
-        Ok(m) => m.len(),
-        Err(_) => {
-            let _ = request.respond(Response::from_string("Error reading file").with_status_code(500));
+    let data = if raw_bytes.starts_with(b"ENC") {
+        let Some(key) = get_active_crypto_key() else {
+            let _ = request.respond(Response::from_string("Encrypted file locked").with_status_code(403));
             return;
+        };
+
+        match crate::stores::Storage::decrypt(&raw_bytes, &key) {
+            Ok(d) => d,
+            Err(_) => {
+                let _ = request.respond(Response::from_string("Decryption error").with_status_code(500));
+                return;
+            }
         }
+    } else {
+        raw_bytes
     };
 
-    let mut mime = mime_guess::from_path(path).first_or_octet_stream().to_string();
-    if mime == "application/octet-stream" || mime == "binary/octet-stream" {
-        let mut peek_buf = [0u8; 64];
-        if let Ok(n) = file.read(&mut peek_buf) {
-            let peeked = &peek_buf[..n];
-            if peeked.starts_with(b"OggS") {
-                mime = "audio/ogg".to_string();
-            } else if peeked.starts_with(b"\x1a\x45\xdf\xa3") {
-                mime = "video/webm".to_string();
-            } else if (peeked.len() >= 8 && &peeked[4..8] == b"ftyp")
-                || peeked.windows(4).any(|w| w == b"ftyp" || w == b"moov")
-            {
-                mime = "video/mp4".to_string();
-            } else if peeked.starts_with(b"ID3")
-                || (peeked.len() >= 2 && peeked[0] == 0xff && (peeked[1] & 0xe0) == 0xe0)
-            {
-                mime = "audio/mpeg".to_string();
-            } else if peeked.starts_with(b"RIFF") {
-                mime = "audio/wav".to_string();
-            } else {
-                mime = "video/mp4".to_string();
-            }
-            let _ = file.seek(SeekFrom::Start(0));
-        }
-    }
-
-    println!("[VideoProxy] Serving local file: {}, mime: {}, size: {}", path, mime, file_len);
+    let file_len = data.len() as u64;
+    let mime = detect_mime_from_bytes(&data, path);
 
     let mut range_header = None;
     for h in request.headers() {
@@ -117,9 +161,8 @@ fn handle_local_file(request: tiny_http::Request, mut path: &str) {
                 };
 
                 if start <= end && start < file_len {
-                    let length = end - start + 1;
-                    let _ = file.seek(SeekFrom::Start(start));
-                    let take_reader = file.take(length);
+                    let length = (end - start + 1) as usize;
+                    let slice = data[start as usize..start as usize + length].to_vec();
 
                     headers.push(
                         Header::from_bytes(
@@ -139,8 +182,8 @@ fn handle_local_file(request: tiny_http::Request, mut path: &str) {
                     let res = Response::new(
                         206.into(),
                         headers,
-                        take_reader,
-                        Some(length as usize),
+                        Cursor::new(slice),
+                        Some(length),
                         None,
                     );
                     let _ = request.respond(res);
@@ -158,7 +201,7 @@ fn handle_local_file(request: tiny_http::Request, mut path: &str) {
     let res = Response::new(
         200.into(),
         headers,
-        file,
+        Cursor::new(data),
         Some(file_len as usize),
         None,
     );
@@ -241,8 +284,22 @@ fn handle_request(request: tiny_http::Request, client: &reqwest::blocking::Clien
     }
 
     if url.starts_with("http://") || url.starts_with("https://") {
-        if let Some(data_dir) = dirs::data_local_dir().or_else(dirs::data_dir) {
-            let p1 = data_dir.join("org.meowkie.max/cache/0/files").join(crate::stores::hash(&url));
+        if let Some(app) = VIDEO_APP_HANDLE.get() {
+            let acc = app.state::<crate::AppState>()
+                .crypto
+                .read()
+                .unwrap()
+                .as_ref()
+                .map(|s| s.account)
+                .or_else(|| {
+                    crate::stores::load_accounts(app)
+                        .get("current")
+                        .and_then(|v| v.as_u64())
+                })
+                .unwrap_or(0);
+
+            let paths = crate::stores::Paths::new(app, acc);
+            let p1 = paths.cache_file(&crate::stores::hash(&url));
             if p1.exists() && std::fs::metadata(&p1).map(|m| m.len()).unwrap_or(0) > 0 {
                 handle_local_file(request, &p1.to_string_lossy());
                 return;
@@ -258,7 +315,7 @@ fn handle_request(request: tiny_http::Request, client: &reqwest::blocking::Clien
                     || clean.ends_with(".wav")
                     || clean.ends_with(".mov");
                 if is_media {
-                    let p2 = data_dir.join("org.meowkie.max/cache/0/files").join(crate::stores::hash(clean));
+                    let p2 = paths.cache_file(&crate::stores::hash(clean));
                     if p2.exists() && std::fs::metadata(&p2).map(|m| m.len()).unwrap_or(0) > 0 {
                         handle_local_file(request, &p2.to_string_lossy());
                         return;

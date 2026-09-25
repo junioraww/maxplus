@@ -1,6 +1,6 @@
 <script>
   import { createEventDispatcher } from "svelte";
-  import { convertFileSrc } from "@tauri-apps/api/core";
+  import { getProxiedMediaUrl } from "$lib/utils/images";
   import VideoPreview from "$components/ChatWindow/VideoPreview.svelte";
 
   export let attaches = [];
@@ -25,7 +25,7 @@
         >✕</button>
 
         {#if attachType === "PHOTO"}
-          <img src={attach.path ? convertFileSrc(attach.path) : (attach.url || attach.baseUrl)} alt="preview" />
+          <img src={attach.path ? getProxiedMediaUrl(attach.path) : (attach.url || attach.baseUrl)} alt="preview" />
         {:else if attachType === "VIDEO"}
           {#if attach.path}
             <VideoPreview {attach} />

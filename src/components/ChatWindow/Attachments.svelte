@@ -185,7 +185,7 @@
     if (!fid) return null;
 
     if (attach.localPath) {
-      const url = convertFileSrc(attach.localPath);
+      const url = getProxiedMediaUrl(attach.localPath);
       if (encryptedMediaUrls[fid] !== url) {
         encryptedMediaUrls = { ...encryptedMediaUrls, [fid]: url };
       }
@@ -205,7 +205,7 @@
       }).catch(() => null);
 
       if (cached) {
-        const url = convertFileSrc(cached);
+        const url = getProxiedMediaUrl(cached);
         encryptedMediaUrls = { ...encryptedMediaUrls, [fid]: url };
         attach.localPath = cached;
         attach.baseUrl = url;
@@ -242,7 +242,7 @@
       });
 
       if (cachedPath) {
-        const url = convertFileSrc(cachedPath);
+        const url = getProxiedMediaUrl(cachedPath);
         encryptedMediaUrls = { ...encryptedMediaUrls, [fid]: url };
         attach.localPath = cachedPath;
         attach.baseUrl = url;
@@ -267,9 +267,8 @@
   function onMediaItemClick(attach) {
     if (attach.isEncryptedMedia) {
       const fid = attach.fileId || attach.encryptedAttach?.fileId;
-      const isVideo = (attach._type || attach.type) === "VIDEO";
       const resolved = attach.localPath
-        ? (isVideo ? getProxiedMediaUrl(attach.localPath) : convertFileSrc(attach.localPath))
+        ? getProxiedMediaUrl(attach.localPath)
         : encryptedMediaUrls[fid];
       if (!resolved) {
         downloadAndCacheEncrypted(attach);
@@ -514,7 +513,7 @@
           </div>
         {:else}
           <img
-            use:lazyLoad={attach.isEncryptedMedia ? (attach.localPath ? convertFileSrc(attach.localPath) : encryptedMediaUrls[attach.fileId || attach.encryptedAttach?.fileId]) : attach.baseUrl}
+            use:lazyLoad={attach.isEncryptedMedia ? (attach.localPath ? getProxiedMediaUrl(attach.localPath) : encryptedMediaUrls[attach.fileId || attach.encryptedAttach?.fileId]) : attach.baseUrl}
             src={getPlaceholderUrl(attach.previewData) || "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'/%3E"}
             alt=""
             loading="lazy"

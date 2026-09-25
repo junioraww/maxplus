@@ -56,7 +56,7 @@
       return media.baseUrl;
     }
     if (media.localPath) {
-      const url = media._type === "VIDEO" ? getProxiedMediaUrl(media.localPath) : convertFileSrc(media.localPath);
+      const url = getProxiedMediaUrl(media.localPath);
       media.baseUrl = url;
       return url;
     }
@@ -73,7 +73,7 @@
 
       if (cached) {
         media.localPath = cached;
-        const url = media._type === "VIDEO" ? getProxiedMediaUrl(cached) : convertFileSrc(cached);
+        const url = getProxiedMediaUrl(cached);
         media.baseUrl = url;
         console.log("[MediaViewer] Found encrypted media in cache:", fid, "path:", cached, "url:", url);
         return url;
@@ -91,7 +91,7 @@
         });
         if (cachedPath) {
           media.localPath = cachedPath;
-          const url = media._type === "VIDEO" ? getProxiedMediaUrl(cachedPath) : convertFileSrc(cachedPath);
+          const url = getProxiedMediaUrl(cachedPath);
           media.baseUrl = url;
           console.log("[MediaViewer] Decrypted and cached media:", fid, "url:", url);
           return url;
@@ -131,7 +131,7 @@
   $: {
     const posterSrc = currentMedia?.thumbnail;
     if (posterSrc) {
-      if (posterSrc.startsWith('data:') || posterSrc.startsWith('blob:') || posterSrc.startsWith('asset:') || posterSrc.startsWith('http://asset.localhost/')) {
+      if (posterSrc.startsWith('data:') || posterSrc.startsWith('blob:') || isProxiedMediaUrl(posterSrc)) {
         resolvedPoster = posterSrc;
       } else if (posterSrc.startsWith('http')) {
         getAssetUrl(posterSrc).then((url) => {
@@ -141,7 +141,7 @@
           resolvedPoster = getProxiedMediaUrl(posterSrc);
         });
       } else {
-        resolvedPoster = convertFileSrc(posterSrc);
+        resolvedPoster = getProxiedMediaUrl(posterSrc);
       }
     } else {
       resolvedPoster = null;
