@@ -405,6 +405,45 @@ pub extern "system" fn Java_org_meowkie_max_NotificationHelper_isNotificationsEn
 }
 
 #[cfg(target_os = "android")]
+#[no_mangle]
+pub extern "system" fn Java_org_meowkie_max_NotificationHelper_isChatGroupNative<'local>(
+    mut unowned_env: EnvUnowned<'local>,
+    _this: JObject<'local>,
+    account: i64,
+    chat_id: i64,
+    app_dir: JString<'local>,
+) -> jboolean {
+    let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let rust_app_dir: String = match unowned_env.with_env(|_env| -> Result<_, jni::errors::Error> {
+            let a = app_dir.try_to_string(_env)?;
+            Ok(a)
+        }).into_outcome() {
+            jni::Outcome::Ok(v) => v,
+            _ => return chat_id < 0,
+        };
+
+        let root = crate::stores::resolve_app_root(&rust_app_dir);
+        let creds = crate::stores::get_background_creds(&rust_app_dir, account as u64);
+        let local_id = creds.as_ref().map(|c| c.0).unwrap_or(account as u64);
+        let chat_info_path = root.join("data").join(local_id.to_string()).join("chats").join(chat_id.to_string()).join("info");
+
+        let storage = crate::stores::Storage::new(None);
+        if let Some(val) = storage.load(&chat_info_path) {
+            if let Some(t) = val.get("type").and_then(|v| v.as_str()) {
+                if t == "DIALOG" {
+                    return false;
+                }
+                return true;
+            }
+        }
+
+        chat_id < 0
+    }));
+
+    res.unwrap_or(chat_id < 0)
+}
+
+#[cfg(target_os = "android")]
 use tauri::Emitter;
 
 static GLOBAL_APP_HANDLE: std::sync::OnceLock<tauri::AppHandle> = std::sync::OnceLock::new();
@@ -474,16 +513,18 @@ pub async fn show_notification(
     sender_id: String,
     account: i64,
     sender_name: Option<String>,
+    is_group: Option<bool>,
 ) -> Result<(), String> {
     #[cfg(target_os = "android")]
     {
         let sender_name_val = sender_name.unwrap_or_else(|| title.clone());
+        let is_group_val = is_group.unwrap_or_else(|| chat_id < 0);
         android_log(
             3,
             "MaxPlusJNI",
             &format!(
-                "show_notification: chat_id={}, title={}, sender_id={}, account={}, sender_name={}",
-                chat_id, title, sender_id, account, sender_name_val
+                "show_notification: chat_id={}, title={}, sender_id={}, account={}, sender_name={}, is_group={}",
+                chat_id, title, sender_id, account, sender_name_val, is_group_val
             ),
         );
         if let (Some(vm), Some(global_class)) = (GLOBAL_JVM.get(), GLOBAL_NOTIFICATION_CLASS.get()) {
@@ -498,10 +539,10 @@ pub async fn show_notification(
                 let j_sender_obj = JObject::from(j_sender);
                 let j_sender_name_obj = JObject::from(j_sender_name);
 
-                env.call_static_method(
+                let call_result = env.call_static_method(
                     global_class,
                     jni_str!("showNotificationDirect"),
-                    jni_sig!("(JLjava/lang/String;Ljava/lang/String;Ljava/lang/String;JLjava/lang/String;)V"),
+                    jni_sig!("(JLjava/lang/String;Ljava/lang/String;Ljava/lang/String;JLjava/lang/String;Z)V"),
                     &[
                         jni::objects::JValue::Long(chat_id),
                         jni::objects::JValue::Object(&j_title_obj),
@@ -509,8 +550,26 @@ pub async fn show_notification(
                         jni::objects::JValue::Object(&j_sender_obj),
                         jni::objects::JValue::Long(account),
                         jni::objects::JValue::Object(&j_sender_name_obj),
+                        jni::objects::JValue::Bool(is_group_val),
                     ],
-                )?;
+                );
+
+                if call_result.is_err() {
+                    env.exception_clear();
+                    env.call_static_method(
+                        global_class,
+                        jni_str!("showNotificationDirect"),
+                        jni_sig!("(JLjava/lang/String;Ljava/lang/String;Ljava/lang/String;JLjava/lang/String;)V"),
+                        &[
+                            jni::objects::JValue::Long(chat_id),
+                            jni::objects::JValue::Object(&j_title_obj),
+                            jni::objects::JValue::Object(&j_text_obj),
+                            jni::objects::JValue::Object(&j_sender_obj),
+                            jni::objects::JValue::Long(account),
+                            jni::objects::JValue::Object(&j_sender_name_obj),
+                        ],
+                    )?;
+                }
                 Ok(())
             });
             match res {

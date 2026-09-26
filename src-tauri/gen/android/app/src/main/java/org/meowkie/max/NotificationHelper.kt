@@ -30,6 +30,7 @@ class NotificationHelper(private val ctx: Context) {
 
   private external fun isChatMutedNative(account: Long, chatId: Long, appDir: String): Boolean
   private external fun isNotificationsEnabledNative(account: Long, appDir: String): Boolean
+  private external fun isChatGroupNative(account: Long, chatId: Long, appDir: String): Boolean
   
   companion object {
     const val CHANNEL_ID = "MESSAGES_CHANNEL_ID"
@@ -39,23 +40,29 @@ class NotificationHelper(private val ctx: Context) {
 
     @JvmStatic
     fun showNotificationDirect(chatId: Long, title: String, text: String, senderId: String, account: Long) {
-      showNotificationDirect(chatId, title, text, senderId, account, "")
+      showNotificationDirect(chatId, title, text, senderId, account, "", chatId < 0)
     }
 
     @JvmStatic
     fun showNotificationDirect(chatId: Long, title: String, text: String, senderId: String, account: Long, senderName: String) {
+      showNotificationDirect(chatId, title, text, senderId, account, senderName, chatId < 0)
+    }
+
+    @JvmStatic
+    fun showNotificationDirect(chatId: Long, title: String, text: String, senderId: String, account: Long, senderName: String, isGroup: Boolean) {
       val ctx = MainActivity.appContext ?: MainActivity.instance?.applicationContext
       if (ctx == null) {
         Log.e("MaxPlus", "showNotificationDirect: no Context available")
         return
       }
-      Log.d("MaxPlus", "showNotificationDirect: chatId=$chatId, title=$title, senderName=$senderName, account=$account")
+      Log.d("MaxPlus", "showNotificationDirect: chatId=$chatId, title=$title, senderName=$senderName, account=$account, isGroup=$isGroup")
       val data = mutableMapOf(
         "mc" to chatId.toString(),
         "title" to title,
         "msg" to text,
         "suid" to senderId,
-        "c" to account.toString()
+        "c" to account.toString(),
+        "isGroup" to isGroup.toString()
       )
       if (senderName.isNotEmpty()) {
         data["userName"] = senderName
@@ -144,11 +151,21 @@ class NotificationHelper(private val ctx: Context) {
     val chatTitle = data["title"] ?: senderName
     val ts = data["ctime"]?.toLongOrNull() ?: System.currentTimeMillis()
     
+    val isGroup = if (data.containsKey("isGroup")) {
+      data["isGroup"] == "true"
+    } else {
+      try {
+        isChatGroupNative(account, chatId, ctx.applicationInfo.dataDir)
+      } catch (e: Throwable) {
+        chatId < 0
+      }
+    }
+
     ensureChannel()
     
     val history = appendHistory(chatId, Hist(text, senderId, senderName, ts, mid, false))
-    saveMeta(chatId, chatTitle, account)
-    render(chatId, chatTitle, account, history, alertOnce = false)
+    saveMeta(chatId, chatTitle, account, isGroup)
+    render(chatId, chatTitle, account, isGroup, history, alertOnce = false)
   }
   
   fun handleEditMessage(data: Map<String, String>) {
@@ -167,8 +184,8 @@ class NotificationHelper(private val ctx: Context) {
     history[index] = old.copy(text = newText)
     saveHistory(chatId, history)
     
-    val (title, account) = loadMeta(chatId)
-    render(chatId, title, account, history, alertOnce = true)
+    val (title, account, isGroup) = loadMeta(chatId)
+    render(chatId, title, account, isGroup, history, alertOnce = true)
   }
   
   fun handleRemoveMessage(data: Map<String, String>) {
@@ -183,12 +200,12 @@ class NotificationHelper(private val ctx: Context) {
     history[index] = history[index].copy(deleted = true)
     saveHistory(chatId, history)
     
-    val (title, account) = loadMeta(chatId)
-    render(chatId, title, account, history, alertOnce = true)
+    val (title, account, isGroup) = loadMeta(chatId)
+    render(chatId, title, account, isGroup, history, alertOnce = true)
   }
   
   fun handleOutgoingReply(chatId: Long, replyText: String) {
-    val (title, account) = loadMeta(chatId)
+    val (title, account, isGroup) = loadMeta(chatId)
     val history = appendHistory(
       chatId,
       Hist(
@@ -200,18 +217,17 @@ class NotificationHelper(private val ctx: Context) {
         deleted = false
       )
     )
-    render(chatId, title, account, history, alertOnce = true)
+    render(chatId, title, account, isGroup, history, alertOnce = true)
   }
 
-  private fun render(chatId: Long, title: String, account: Long, history: List<Hist>, alertOnce: Boolean) {
+  private fun render(chatId: Long, title: String, account: Long, isGroup: Boolean, history: List<Hist>, alertOnce: Boolean) {
     if (history.isEmpty()) return
     val notifId = (chatId and 0x7fffffff).toInt()
-    Log.d("MaxPlus", "render: chatId=$chatId, notifId=$notifId, account=$account, count=${history.size}")
+    Log.d("MaxPlus", "render: chatId=$chatId, notifId=$notifId, account=$account, isGroup=$isGroup, count=${history.size}")
     val newest = history.last()
     
     val userPerson = Person.Builder().setName("Вы").build()
     
-    val isGroup = chatId < 0 || title != newest.senderName
     val style = NotificationCompat.MessagingStyle(userPerson)
       .setGroupConversation(isGroup)
     if (isGroup) {
@@ -226,7 +242,7 @@ class NotificationHelper(private val ctx: Context) {
         val senderIdLong = h.senderId.toLongOrNull() ?: chatId
         val avatarBitmap = AvatarHelper.getAvatar(ctx, senderIdLong, h.senderName, null, account)
         Person.Builder()
-          .setName(h.senderName)
+          .setName(if (isGroup) h.senderName else title)
           .setKey(h.senderId)
           .setIcon(IconCompat.createWithBitmap(avatarBitmap))
           .build()
@@ -344,16 +360,21 @@ class NotificationHelper(private val ctx: Context) {
     return items
   }
   
-  private fun saveMeta(chatId: Long, title: String, account: Long) {
+  private fun saveMeta(chatId: Long, title: String, account: Long, isGroup: Boolean) {
     prefs().edit().putString("meta_$chatId", JSONObject().apply {
       put("title", title)
       put("account", account)
+      put("isGroup", isGroup)
     }.toString()).apply()
   }
   
-  private fun loadMeta(chatId: Long): Pair<String, Long> {
-    val raw = prefs().getString("meta_$chatId", null) ?: return Pair("Чат", 0L)
+  private fun loadMeta(chatId: Long): Triple<String, Long, Boolean> {
+    val raw = prefs().getString("meta_$chatId", null) ?: return Triple("Чат", 0L, chatId < 0)
     val obj = JSONObject(raw)
-    return Pair(obj.optString("title", "Чат"), obj.optLong("account", 0L))
+    return Triple(
+      obj.optString("title", "Чат"),
+      obj.optLong("account", 0L),
+      obj.optBoolean("isGroup", chatId < 0)
+    )
   }
 }

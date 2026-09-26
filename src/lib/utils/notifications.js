@@ -114,6 +114,16 @@ export function applyUserConfig(userConfig, accountId) {
   }
 }
 
+async function ensureActiveAccountId() {
+  if (!_activeAccountId) {
+    try {
+      const acc = await getCurrentAccount();
+      if (acc?.id) _activeAccountId = acc.id;
+    } catch (_) {}
+  }
+  return _activeAccountId;
+}
+
 export function loadAccountNotificationSettings(accountId) {
   _activeAccountId = accountId;
   clientNotificationsEnabled.set(lsGet(NOTIFICATIONS_KEY, accountId) !== 'false');
@@ -124,6 +134,7 @@ export function loadAccountNotificationSettings(accountId) {
 }
 
 export async function setAllNotificationsServer(enabled) {
+  await ensureActiveAccountId();
   setClientNotificationsEnabled(enabled);
   try {
     await get(API).updateUserSettings({
@@ -135,6 +146,7 @@ export async function setAllNotificationsServer(enabled) {
 }
 
 export async function setMessagePreviewServer(enabled) {
+  await ensureActiveAccountId();
   messagePreviewEnabled.set(enabled);
   lsSet(PREVIEW_KEY, enabled ? 'true' : 'false');
   try {
@@ -147,6 +159,7 @@ export async function setMessagePreviewServer(enabled) {
 }
 
 export async function setNotificationSoundServer(enabled) {
+  await ensureActiveAccountId();
   notificationSoundEnabled.set(enabled);
   lsSet(SOUND_KEY, enabled ? 'true' : 'false');
   const sound = enabled ? 'oki.aiff' : '';
@@ -161,6 +174,7 @@ export async function setNotificationSoundServer(enabled) {
 }
 
 export async function setCallNotificationsServer(enabled) {
+  await ensureActiveAccountId();
   callNotificationsEnabled.set(enabled);
   lsSet(CALLS_KEY, enabled ? 'true' : 'false');
   try {
@@ -173,6 +187,7 @@ export async function setCallNotificationsServer(enabled) {
 }
 
 export async function setNewContactsServer(enabled) {
+  await ensureActiveAccountId();
   newContactsNotificationsEnabled.set(enabled);
   lsSet(NEW_CONTACTS_KEY, enabled ? 'true' : 'false');
   try {
@@ -189,7 +204,7 @@ export function isChatMuted(chat) {
   let chatObj = typeof chat === "object" && chat !== null && typeof chat.getInfo === "function" ? chat.getInfo() : chat;
   const id = typeof chat === "number" || typeof chat === "string" ? Number(chat) : Number(chatObj?.id);
   if (!isNaN(id)) {
-    const found = get(currentSessionChats)?.find(c => c.id === id);
+    const found = get(currentSessionChats)?.find(c => String(c.id) === String(id));
     if (found) chatObj = found;
   }
   if (!chatObj) return false;
@@ -314,13 +329,15 @@ export async function newMessage(chatId, chat, contact, message) {
         const acc = await getCurrentAccount();
         if (acc?.id) account = Number(acc.id);
       } catch (_) {}
+      const isGroup = chatInfo.type ? chatInfo.type !== "DIALOG" : (Number(chatId) < 0);
       await invoke("show_notification", {
         chatId: Number(chatId),
         title,
         text: bodyText,
         senderId,
         account,
-        senderName
+        senderName,
+        isGroup
       });
       return;
     } catch (e) {

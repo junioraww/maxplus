@@ -386,7 +386,7 @@ pub async fn save_chats(
         let storage = Storage::new(key);
         let paths = Paths::new(&app, account);
 
-        for mut chat in chats {
+        for chat in chats {
             let chat_id = chat.get("id").and_then(|v| {
                 v.as_i64()
                 .or_else(|| v.as_str().and_then(|s| s.parse::<i64>().ok()))
@@ -394,19 +394,21 @@ pub async fn save_chats(
 
             if let Some(id) = chat_id {
                 let path = paths.info(id);
-                let missing_ddu = chat.get("dontDisturbUntil").map(|v| v.is_null()).unwrap_or(true);
-                if missing_ddu {
-                    if let Some(existing) = storage.load(&path) {
-                        if let Some(ddu) = existing.get("dontDisturbUntil") {
-                            if !ddu.is_null() {
-                                if let Some(obj) = chat.as_object_mut() {
-                                    obj.insert("dontDisturbUntil".to_string(), ddu.clone());
-                                }
+                let to_save = if let Some(mut existing) = storage.load(&path) {
+                    if let Some(existing_obj) = existing.as_object_mut() {
+                        if let Some(new_obj) = chat.as_object() {
+                            for (k, v) in new_obj {
+                                existing_obj.insert(k.clone(), v.clone());
                             }
                         }
+                        Value::Object(existing_obj.clone())
+                    } else {
+                        chat
                     }
-                }
-                storage.save(path, &chat)?;
+                } else {
+                    chat
+                };
+                storage.save(path, &to_save)?;
             }
         }
 
