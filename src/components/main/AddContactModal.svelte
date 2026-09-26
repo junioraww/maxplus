@@ -1,9 +1,18 @@
 <script>
   import { fade, scale, fly } from "svelte/transition";
-  import { createEventDispatcher } from "svelte";
+  import { createEventDispatcher, onDestroy } from "svelte";
   import API from "$lib/stores/api.js";
+  import { registerBackHandler } from "$lib/utils/backButton.js";
 
   const dispatch = createEventDispatcher();
+
+  const unregisterBack = registerBackHandler(() => {
+    close();
+  });
+
+  onDestroy(() => {
+    unregisterBack();
+  });
 
   let name = "";
   let phone = "+7";

@@ -26,10 +26,35 @@
   import Session from "$lib/stores/session";
   import { initDeepLink } from "$lib/utils/deepLink.js";
   import { initProxyConfig } from "$lib/utils/proxyConfig.js";
+  import { handleBackButton, registerBackHandler } from "$lib/utils/backButton.js";
 
   let settings;
-  const onBack = {};
+  const legacyUnregisterMap = new Map();
+  const onBack = new Proxy({}, {
+    set(target, prop, fn) {
+      if (legacyUnregisterMap.has(prop)) {
+        legacyUnregisterMap.get(prop)();
+        legacyUnregisterMap.delete(prop);
+      }
+      if (typeof fn === "function") {
+        const unreg = registerBackHandler(fn);
+        legacyUnregisterMap.set(prop, unreg);
+      }
+      target[prop] = fn;
+      return true;
+    },
+    deleteProperty(target, prop) {
+      if (legacyUnregisterMap.has(prop)) {
+        legacyUnregisterMap.get(prop)();
+        legacyUnregisterMap.delete(prop);
+      }
+      delete target[prop];
+      return true;
+    },
+  });
   let cleanupDeepLink = null;
+  let unlistenBackButton = null;
+  let handleKeydown = null;
 
   setContext("onBack", onBack);
 
@@ -40,6 +65,13 @@
     listen("max", async (event) => {
       addLog(event.payload);
     });
+
+    handleKeydown = (e) => {
+      if (e.key === "Escape") {
+        handleBackButton();
+      }
+    };
+    window.addEventListener("keydown", handleKeydown);
 
     const system = type();
 
@@ -59,19 +91,19 @@
     }
 
     if (system === "android" || system === "ios") {
-      await onBackButtonPress(payload => {
-        if (onBack.profileModal) onBack.profileModal();
-        else if (onBack.chatSettings) onBack.chatSettings();
-        else if (onBack.dropout) onBack.dropout();
-        else if (onBack.chat) onBack.chat();
-        else if (onBack.addContact) onBack.addContact();
-        else if (onBack.settingsPage) onBack.settingsPage();
-        else if (onBack.settings) onBack.settings();
-      });
+      try {
+        unlistenBackButton = await onBackButtonPress(() => {
+          handleBackButton();
+        });
+      } catch (e) {
+        console.warn("BackButton listener unavailable", e);
+      }
     }
   });
 
   onDestroy(() => {
+    if (handleKeydown) window.removeEventListener("keydown", handleKeydown);
+    if (unlistenBackButton) unlistenBackButton();
     if (cleanupDeepLink) cleanupDeepLink();
     $API.unlisten();
   });

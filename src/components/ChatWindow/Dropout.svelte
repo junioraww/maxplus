@@ -1,8 +1,9 @@
 <script>
-  import { createEventDispatcher, getContext, onDestroy } from "svelte";
+  import { createEventDispatcher, onDestroy } from "svelte";
   import { get as sessionGet } from "$lib/stores/session";
   import { fade, fly } from "svelte/transition";
   import { tick } from "svelte";
+  import { registerBackHandler } from "$lib/utils/backButton.js";
 
   import { handleReaction } from "$components/ChatWindow/actions";
   import API, { currentSessionChats, currentUser, serverConfig } from "$lib/stores/api";
@@ -20,7 +21,14 @@
 
   const reactions = sessionGet("reactions") || [];
 
-  const onBack = getContext("onBack");
+  let unregisterBack = null;
+
+  function cleanupBack() {
+    if (unregisterBack) {
+      unregisterBack();
+      unregisterBack = null;
+    }
+  }
 
   async function updatePosition(clientX, clientY) {
     await tick();
@@ -38,40 +46,38 @@
       if (y < 0) y = innerHeight - offsetHeight - 10;
     }
     menuPosition = { top: y, left: x };
-    if (onBack.chatSettings) onBack.chatSettings();
-    onBack["dropout"] = () => {
+    cleanupBack();
+    unregisterBack = registerBackHandler(() => {
       dispatch("close", { update: false });
-      delete onBack["dropout"];
-    };
+    });
   }
 
   $: if (activeAt) {
     updatePosition(activeAt.e.clientX, activeAt.e.clientY);
+  } else {
+    cleanupBack();
   }
 
   const clickReaction = async (emoji) => {
     handleReaction(chat, activeAt.msg, emoji);
 
     dispatch("close", { action: "reaction" });
-
-    if (onBack.dropout) delete onBack["dropout"];
+    cleanupBack();
   };
 
   onDestroy(() => {
-    delete onBack["dropout"];
+    cleanupBack();
   });
 
   function handleSetReply() {
     dispatch("reply", { id: activeAt.msg.id });
     dispatch("close", {});
-
-    if (onBack.dropout) delete onBack["dropout"];
+    cleanupBack();
   }
 
   async function handlePinMessage() {
     const response = await $API.pinMessage(chat.id, activeAt.msg.id);
 
-    // TODO Optimize
     currentSessionChats.update(chats => {
       const idx = chats.findIndex(x => x.id === chat.id);
       if (idx !== -1) chats.splice(idx, 1);
@@ -81,26 +87,26 @@
     await saveChats([ chat ]);
 
     dispatch("close", {});
-    if (onBack.dropout) delete onBack["dropout"];
+    cleanupBack();
   }
 
   function handleEditMessage() {
     dispatch("edit", { msg: activeAt.msg });
     dispatch("close", {});
-    if (onBack.dropout) delete onBack["dropout"];
+    cleanupBack();
   }
 
   function handleHistoryMessage() {
     dispatch("history", { msg: activeAt.msg });
     dispatch("close", {});
-    if (onBack.dropout) delete onBack["dropout"];
+    cleanupBack();
   }
 
   async function handleDeleteMessage() {
     const response = await $API.deleteMessage(chat.id, activeAt.msg.id, false);
 
     dispatch("close", { action: "delete" });
-    if (onBack.dropout) delete onBack["dropout"];
+    cleanupBack();
   }
   $: editTimeoutSec = Number($serverConfig?.["edit-timeout"]) || 86400;
 </script>

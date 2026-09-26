@@ -3,10 +3,10 @@
   import { cubicOut } from "svelte/easing";
   import {
     createEventDispatcher,
-    getContext,
     onDestroy
   } from "svelte";
   import { get } from "svelte/store";
+  import { registerBackHandler } from "$lib/utils/backButton.js";
 
   import ConfirmModal from "$components/main/ConfirmModal.svelte";
   import InputModal from "$components/main/InputModal.svelte";
@@ -37,24 +37,25 @@
     currentRealChats,
   } from "$lib/stores/api";
 
-  const onBack = getContext("onBack");
-
-  onBack.profileModal = () => {
-    if (showDeleteConfirm) showDeleteConfirm = false;
-    else if (showPurgeConfirm) showPurgeConfirm = false;
-    else if (showRemoveMemberConfirm) showRemoveMemberConfirm = false;
-    else if (showAddMembersModal) showAddMembersModal = false;
-    else if (showAdminModal) showAdminModal = false;
-    else if (showJoinRequestsModal) showJoinRequestsModal = false;
-    else if (showInputs) showInputs = false;
-    else if (showMenu) showMenu = false;
-    else if (selectedMemberMenuId) selectedMemberMenuId = null;
-    else if ((activeTab === "settings" || activeTab === "media") && $Session.profile?.view !== "settings") activeTab = "info";
-    else closeModal();
-  };
+  const unregisterBack = registerBackHandler(() => {
+    if (showDeleteConfirm) { showDeleteConfirm = false; return false; }
+    if (showPurgeConfirm) { showPurgeConfirm = false; return false; }
+    if (showRemoveMemberConfirm) { showRemoveMemberConfirm = false; return false; }
+    if (showAddMembersModal) { showAddMembersModal = false; return false; }
+    if (showAdminModal) { showAdminModal = false; return false; }
+    if (showJoinRequestsModal) { showJoinRequestsModal = false; return false; }
+    if (showInputs) { showInputs = false; return false; }
+    if (showMenu) { showMenu = false; return false; }
+    if (selectedMemberMenuId) { selectedMemberMenuId = null; return false; }
+    if ((activeTab === "settings" || activeTab === "media") && $Session.profile?.view !== "settings") {
+      activeTab = "info";
+      return false;
+    }
+    closeModal();
+  });
 
   onDestroy(() => {
-    delete onBack["profileModal"];
+    unregisterBack();
   });
 
   $: chatId = (() => {

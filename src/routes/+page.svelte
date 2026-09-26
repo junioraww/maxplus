@@ -20,6 +20,7 @@
   import ChatWindow from "$components/ChatWindow.svelte";
   import WebAppManager from "$components/webapp/WebAppManager.svelte";
   import { panelConfig, CATALOG } from "$lib/stores/panel.js";
+  import { setPanelNavigation } from "$lib/utils/backButton.js";
 
   import * as Caching from "$lib/utils/caching";
   import Session, { openChat, closeSettingsPage } from "$lib/stores/session";
@@ -104,7 +105,28 @@
     }
   };
 
+  function goToDefaultPanel() {
+    const defId = $panelConfig.defaultItem || "chats";
+    const defIndex = pages.findIndex((p) => p.id === defId);
+    active = defIndex !== -1 ? defIndex : 0;
+    activeId = pages[active]?.id || defId;
+    if (activeId && !mountedCards.has(activeId)) {
+      mountedCards.add(activeId);
+      mountedCards = new Set(mountedCards);
+    }
+  }
+
   onMount(() => {
+    const cleanupNav = setPanelNavigation({
+      isMain: () => {
+        const defId = $panelConfig.defaultItem || "chats";
+        return !activeId || activeId === defId;
+      },
+      goToMain: () => {
+        goToDefaultPanel();
+      },
+    });
+
     let unlisten;
     (async () => {
       try {
@@ -131,6 +153,7 @@
     document.addEventListener("visibilitychange", handleVisibility);
 
     return () => {
+      cleanupNav();
       if (unlisten) unlisten();
       document.removeEventListener("visibilitychange", handleVisibility);
     };

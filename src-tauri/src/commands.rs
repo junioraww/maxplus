@@ -352,4 +352,10 @@ pub async fn ext_api_request(
     Ok(ExtApiResponse { status, ok, data })
 }
 
+#[tauri::command]
+pub fn exit_app(app: AppHandle) {
+    app.exit(0);
+}
+
+
 

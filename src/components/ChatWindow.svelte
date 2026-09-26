@@ -8,6 +8,7 @@
     afterUpdate,
   } from "svelte";
   import { writable, get } from "svelte/store";
+  import { registerBackHandler } from "$lib/utils/backButton.js";
 
   import Message from "$components/ChatWindow/Message.svelte";
   import PinnedMessage from "$components/ChatWindow/PinnedMessage.svelte";
@@ -114,8 +115,6 @@
   $: unreadBadgeCount = Math.max(0, Number($currentSessionChats?.find((x) => x.id === chat?.id)?.newMessages ?? chat?.newMessages ?? 0));
   $: chatSettings = getChatSettings(chat?.id ?? chatId);
 
-  const onBack = getContext("onBack");
-
   function handleCloseChat() {
     if (savePositionTimeout) {
       clearTimeout(savePositionTimeout);
@@ -131,19 +130,16 @@
 
   $: swipeStyle = currentDragX > 0 ? `transform: translate3d(${currentDragX}px, 0, 0);` : "";
 
-  onBack["chat"] = () => {
+  const unregisterBack = registerBackHandler(() => {
     handleCloseChat();
-    delete onBack["chat"];
-  };
+  });
 
   onDestroy(() => {
+    unregisterBack();
     if (savePositionTimeout) {
       clearTimeout(savePositionTimeout);
       savePositionTimeout = null;
     }
-    delete onBack["chat"];
-    if (onBack.dropout) delete onBack["dropout"];
-    if (onBack.chatSettings) delete onBack["chatSettings"];
     scrollResizeObserver?.disconnect();
     virtualScroll.destroy();
   });
@@ -724,7 +720,6 @@
 
     if (!justOpenedDropout && dropoutActiveAt && !e.target.closest(".message-actions-dropout")) {
       dropoutActiveAt = null;
-      delete onBack.dropout;
     }
 
     if (attachesDropout && !e.target.closest(".attaches-dropout") && !e.target.closest(".input-button") && !e.target.closest(".attach-toggle-btn")) {

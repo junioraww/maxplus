@@ -1,10 +1,10 @@
 <script>
 import { goto } from "$app/navigation";
   import {
-    getContext,
     onMount,
     onDestroy
   } from "svelte";
+  import { registerBackHandler } from "$lib/utils/backButton.js";
 
   import {
     platform as getPlatform
@@ -36,19 +36,12 @@ import { goto } from "$app/navigation";
   let phone;
   let name;
 
-  // android qr scanner fix
   let closeScanner = null;
-
-  const onBack = getContext("onBack");
-
-  onBack["settings"] = () => {
-    if (closeScanner) closeScanner();
-    else {}
-  }
+  let unregisterScanner = null;
 
   onDestroy(() => {
-    delete onBack["settings"];
-  })
+    if (unregisterScanner) unregisterScanner();
+  });
 
   currentUserDetails.subscribe(updateSelf);
 
@@ -212,11 +205,18 @@ import { goto } from "$app/navigation";
       if ((await checkPermissions()) !== "granted") return;
 
       closeScanner = () => cancel();
+      unregisterScanner = registerBackHandler(() => {
+        if (closeScanner) closeScanner();
+      });
       let scanned;
       try {
         scanned = await scan({ formats: [Format.QRCode] });
       } finally {
         closeScanner = null;
+        if (unregisterScanner) {
+          unregisterScanner();
+          unregisterScanner = null;
+        }
       }
       if (!scanned?.content) return;
       content = scanned.content;
