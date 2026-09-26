@@ -99,6 +99,7 @@ pub fn run() {
             commands::get_proxy_config,
             commands::init,
             commands::start_auth,
+            commands::resend_auth,
             commands::check_code,
             commands::check_password,
             commands::logout,

@@ -9,6 +9,7 @@ export default class API {
     _telemetry() { throw "_telemetry: Unimplemented" }
 
     startAuth() { throw "startAuth: Unimplemented" }
+    resendAuth() { throw "resendAuth: Unimplemented" }
     login() { throw "login: Unimplemented" }
     register() { throw "register: Unimplemented" }
 

@@ -92,8 +92,40 @@
   let clickStartPos = { x: 0, y: 0 };
 
   const messages = writable([]);
-  $: if ($messages) {
-    activeChatMessages.set($messages);
+  $: {
+    const rawMsgs = $messages || [];
+    const decMap = $decodedMessages || {};
+    const effectiveMsgs = rawMsgs.map(msg => {
+      const dec = decMap[msg.id];
+      if (!dec?.media || !msg.attaches?.length) return msg;
+      const media = dec.media;
+      const targetIdx = media.attach_index ?? 0;
+      const effectiveAttaches = msg.attaches.map((att, idx) => {
+        if (idx === targetIdx) {
+          const resolvedType = media.media_type || att._type || "FILE";
+          return {
+            ...att,
+            _type: resolvedType,
+            type: resolvedType,
+            originalType: media.media_type,
+            name: media.name || att.name,
+            size: media.size || att.size,
+            mime: media.mime || att.mime,
+            width: media.width ?? att.width,
+            height: media.height ?? att.height,
+            duration: media.duration ?? att.duration,
+            wave: media.wave ?? att.wave,
+            videoType: media.video_type ?? att.videoType,
+            color: media.color || null,
+            isEncryptedMedia: true,
+            encryptedAttach: att,
+          };
+        }
+        return att;
+      });
+      return { ...msg, attaches: effectiveAttaches };
+    });
+    activeChatMessages.set(effectiveMsgs);
   }
 
   $: avatarUserId = (() => {

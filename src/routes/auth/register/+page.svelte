@@ -24,13 +24,18 @@
 
     error = "";
     console.log("Запрос на регистрацию:", { phone, name });
+    if (!phone.startsWith("+")) phone = "+" + phone;
+
+    sessionSet("phone", phone);
+    sessionSet("name", name);
+
     const response = await $API.startAuth(phone);
 
     if (!response.success) {
       error = "Ошибка!";
       alert(response.title);
     } else {
-      sessionSet("name", name);
+      if (response.codeDelay) sessionSet("codeDelay", response.codeDelay);
       goto("/auth/verify");
     }
   }

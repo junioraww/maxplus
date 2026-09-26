@@ -1,5 +1,5 @@
 <script>
-  import { onDestroy } from "svelte";
+  import { onDestroy, onMount } from "svelte";
   import { goto } from "$app/navigation";
   import {
     set as sessionSet,
@@ -14,18 +14,76 @@
   import { parseApiError } from "$lib/api/MobileApi.js";
 
   let error = "";
+  let infoMessage = "";
   let code = "";
   let loading = false;
+  let resending = false;
+
+  const phone = sessionGet("phone") || "";
+  const initialDelay = sessionGet("codeDelay");
+  let timerSeconds = typeof initialDelay === "number" && initialDelay > 0 ? initialDelay : 60;
+  let timerInterval = null;
+
   const name = sessionGet("name");
   const state = !name ? "login" : "register";
+
+  function startTimer() {
+    stopTimer();
+    timerInterval = setInterval(() => {
+      if (timerSeconds > 0) {
+        timerSeconds -= 1;
+      } else {
+        stopTimer();
+      }
+    }, 1000);
+  }
+
+  function stopTimer() {
+    if (timerInterval) {
+      clearInterval(timerInterval);
+      timerInterval = null;
+    }
+  }
+
+  onMount(() => {
+    startTimer();
+  });
 
   const unregisterBack = registerBackHandler(() => {
     goto("/auth/" + state);
   });
 
   onDestroy(() => {
+    stopTimer();
     unregisterBack();
   });
+
+  async function resendCode() {
+    if (resending || timerSeconds > 0) return;
+    if (!phone) {
+      error = "Номер телефона не найден";
+      return;
+    }
+
+    resending = true;
+    error = "";
+    infoMessage = "";
+
+    try {
+      const response = await $API.resendAuth(phone);
+      if (response?.error) {
+        error = parseApiError(response);
+      } else {
+        infoMessage = "Код отправлен по SMS";
+        timerSeconds = response?.codeDelay || 60;
+        startTimer();
+      }
+    } catch (e) {
+      error = parseApiError(e);
+    } finally {
+      resending = false;
+    }
+  }
 
   async function verify() {
     if (loading) return;
@@ -35,6 +93,7 @@
     }
 
     error = "";
+    infoMessage = "";
     loading = true;
 
     try {
@@ -88,9 +147,25 @@
 
 <div class="auth-page">
   <h1>Подтверждение</h1>
-  <p>Введите код, отправленный по указанному номеру телефона</p>
+  {#if phone}
+    <div class="phone-badge">{phone}</div>
+  {/if}
+  <p class="subtitle">
+    Код подтверждения может быть отправлен в приложение MAX на другом устройстве или по SMS.
+  </p>
+  <div class="hint-card">
+    <span class="hint-icon">ℹ</span>
+    <span>
+      Если вы уже вошли в аккаунт на другом устройстве с настроенной двухфакторной аутентификацией (облачным паролем), код поступит в приложение MAX. Если доступ к другому устройству отсутствует, дождитесь окончания таймера и запросите SMS.
+    </span>
+  </div>
   <div class="form">
-    <div class="error">{error}</div>
+    {#if error}
+      <div class="error">{error}</div>
+    {/if}
+    {#if infoMessage}
+      <div class="info">{infoMessage}</div>
+    {/if}
     <input
       type="text"
       inputmode="numeric"
@@ -101,6 +176,21 @@
       required
     />
     <ActionButton text="Подтвердить" action={verify}/>
+
+    <div class="resend-container">
+      {#if timerSeconds > 0}
+        <span class="timer-label">Отправить повторно через {timerSeconds} сек</span>
+      {:else}
+        <button
+          type="button"
+          class="resend-action"
+          on:click={resendCode}
+          disabled={resending}
+        >
+          {resending ? "Отправка..." : "Отправить код по SMS"}
+        </button>
+      {/if}
+    </div>
   </div>
   <BackButton/>
 </div>
@@ -111,20 +201,56 @@
     flex-direction: column;
     justify-content: center;
     align-items: center;
-    height: 100vh;
+    min-height: 100vh;
     text-align: center;
     color: #ddd;
-    max-width: min(300px, 90%);
+    max-width: min(340px, 92%);
     margin: 0 auto;
+    padding: 20px 0;
+    box-sizing: border-box;
   }
 
   .auth-page h1 {
     margin: 0;
+    font-size: 24px;
+    font-weight: 600;
   }
 
-  .auth-page p {
-    margin: 10px 0;
+  .phone-badge {
+    margin-top: 8px;
+    font-size: 16px;
+    font-weight: 500;
+    color: #4a90e2;
+    letter-spacing: 0.5px;
+  }
+
+  .subtitle {
+    margin: 10px 0 12px 0;
+    font-size: 13.5px;
+    color: #a0a0a8;
+    line-height: 1.4;
+  }
+
+  .hint-card {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    background: rgba(74, 144, 226, 0.08);
+    border: 1px solid rgba(74, 144, 226, 0.22);
+    border-radius: 8px;
+    padding: 10px 12px;
+    font-size: 12.5px;
+    line-height: 1.4;
+    color: #8cb8f0;
+    text-align: left;
+    margin-bottom: 14px;
+  }
+
+  .hint-icon {
     font-size: 14px;
+    line-height: 1;
+    margin-top: 1px;
+    flex-shrink: 0;
   }
 
   .form {
@@ -138,18 +264,64 @@
     padding: 0.75rem;
     border-radius: 8px;
     border: 1px solid #333;
-    font-size: 1rem;
+    font-size: 1.25rem;
     background-color: #26262e;
     color: #ccc;
     outline: none;
     text-align: center;
-    letter-spacing: 2px;
+    letter-spacing: 4px;
+    font-weight: 600;
+  }
+
+  input:focus {
+    border-color: #4a90e2;
+  }
+
+  .resend-container {
+    margin-top: 6px;
+    min-height: 24px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+  }
+
+  .timer-label {
+    font-size: 13.5px;
+    color: #777;
+  }
+
+  .resend-action {
+    background: transparent;
+    border: none;
+    color: #4a90e2;
+    font-size: 14px;
+    cursor: pointer;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+    padding: 4px 8px;
+    transition: color 0.15s, opacity 0.15s;
+  }
+
+  .resend-action:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .resend-action:hover:not(:disabled) {
+    color: #6ba6ec;
   }
 
   .error {
     color: #ff5555;
-    font-size: 14px;
-    min-height: 20px;
-    word-break: break-all;
+    font-size: 13.5px;
+    min-height: 18px;
+    word-break: break-word;
+  }
+
+  .info {
+    color: #4cd964;
+    font-size: 13.5px;
+    min-height: 18px;
+    word-break: break-word;
   }
 </style>

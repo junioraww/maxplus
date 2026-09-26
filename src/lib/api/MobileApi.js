@@ -436,8 +436,24 @@ export default class MobileApi extends BaseAPI {
     if (!success) return auth;
 
     return {
-      success: !!auth.token,
+      success: true,
       codeLength: auth.codeLength,
+      codeDelay: auth.codeDelay || (auth.altActionDuration ? Math.round(auth.altActionDuration / 1000) : 60),
+      ...auth,
+    };
+  }
+
+  async resendAuth(phone) {
+    const auth = await invoke("resend_auth", { phone });
+
+    const success = !!auth.token;
+    if (!success) return auth;
+
+    return {
+      success: true,
+      codeLength: auth.codeLength,
+      codeDelay: auth.codeDelay || (auth.altActionDuration ? Math.round(auth.altActionDuration / 1000) : 60),
+      ...auth,
     };
   }
 

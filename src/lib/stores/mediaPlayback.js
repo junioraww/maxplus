@@ -1,13 +1,25 @@
 import { writable, get } from 'svelte/store';
-import { convertFileSrc, invoke } from '@tauri-apps/api/core';
-import { getAssetUrl, getProxiedMediaUrl } from '$lib/utils/images';
+import { invoke } from '@tauri-apps/api/core';
+import { getProxiedMediaUrl } from '$lib/utils/images';
 import { getContactDirect } from '$lib/stores/contacts';
-import { currentUser } from '$lib/stores/api';
 import { getCurrentAccount } from '$lib/stores/accounts';
+
+let currentUserStore = null;
+
+if (typeof window !== 'undefined') {
+  import('$lib/stores/api').then(mod => {
+    if (mod?.currentUser) currentUserStore = mod.currentUser;
+  }).catch(() => {});
+}
+
+export function setCurrentUserStore(store) {
+  currentUserStore = store;
+}
 
 async function getApiInstance() {
   try {
     const mod = await import('$lib/stores/api');
+    if (mod?.currentUser) currentUserStore = mod.currentUser;
     return mod.default ? get(mod.default) : null;
   } catch {
     return null;
@@ -16,7 +28,10 @@ async function getApiInstance() {
 
 export function resolveSenderDisplayName(senderId, fallbackName = '') {
   if (senderId != null) {
-    const myId = get(currentUser);
+    let myId = null;
+    try {
+      if (currentUserStore) myId = get(currentUserStore);
+    } catch {}
     if (myId && Number(senderId) === Number(myId)) {
       return 'Вы';
     }
@@ -42,6 +57,13 @@ export async function fetchSenderDisplayName(senderId, fallbackName = '') {
   return fallbackName || 'Собеседник';
 }
 
+export function getMediaIdentifier(messageId, attach, fallbackType = 'voice') {
+  if (messageId != null && messageId !== '') return String(messageId);
+  if (!attach) return fallbackType;
+  const rawId = attach.audioId ?? attach.videoId ?? attach.id ?? attach.video_id ?? attach.token ?? attach.videoToken ?? attach.localPath;
+  return rawId ? String(rawId) : fallbackType;
+}
+
 export const activeMedia = writable(null);
 export const globalSpeed = writable(1.0);
 export const globalVolume = writable(1.0);
@@ -51,17 +73,13 @@ export const mediaPlaylist = writable({ chatId: null, items: [], currentIndex: -
 export const showPlaylistModal = writable(false);
 export const activeChatMessages = writable([]);
 
-let currentAudioElement = null;
-let currentVideoElement = null;
 let globalAudioElement = null;
 let globalVideoElement = null;
 
 const activeVideoCanvases = new Map();
-const activeAudioFades = new Set();
-const playingAudioElements = new Set();
-
 let videoCallbackId = null;
 let videoRafId = null;
+let isAdvancing = false;
 
 export function registerGlobalElements(audio, video) {
   globalAudioElement = audio;
@@ -113,7 +131,7 @@ export function registerVideoCanvas(id, canvasEl) {
   activeVideoCanvases.get(key).add(canvasEl);
 
   const cur = get(activeMedia);
-  if (cur && String(cur.id) === key && globalVideoElement) {
+  if (cur && (String(cur.id) === key || String(cur.messageId) === key) && globalVideoElement) {
     if (globalVideoElement.readyState >= 2 || globalVideoElement.videoWidth > 0) {
       drawVideoFrameToCanvas(globalVideoElement, canvasEl);
     }
@@ -191,110 +209,6 @@ export function startVideoRenderLoop() {
   }
 }
 
-export function fadeVolume(element, fromVol, toVol, durationMs = 160, onDone = null) {
-  if (!element) {
-    if (onDone) onDone();
-    return () => {};
-  }
-
-  const startVal = Math.max(0, Math.min(1, fromVol));
-  const endVal = Math.max(0, Math.min(1, toVol));
-  const startTime = Date.now();
-
-  try {
-    element.volume = startVal;
-  } catch {}
-
-  let timerId = null;
-  let cancelled = false;
-
-  const cancel = () => {
-    cancelled = true;
-    if (timerId) clearInterval(timerId);
-    activeAudioFades.delete(cancel);
-  };
-  activeAudioFades.add(cancel);
-
-  timerId = setInterval(() => {
-    if (cancelled) return;
-    const elapsed = Date.now() - startTime;
-    const progress = Math.min(1, elapsed / Math.max(1, durationMs));
-    const currentVol = startVal + (endVal - startVal) * progress;
-    try {
-      element.volume = Math.max(0, Math.min(1, currentVol));
-    } catch {}
-
-    if (progress >= 1) {
-      clearInterval(timerId);
-      activeAudioFades.delete(cancel);
-      if (onDone) onDone();
-    }
-  }, 16);
-
-  return cancel;
-}
-
-function fadeOutAndStop(el, durationMs = 160, keepSrc = false) {
-  if (!el) return;
-  const curVol = (typeof el.volume === 'number') ? el.volume : 1.0;
-  if (curVol <= 0.01 || el.paused) {
-    try {
-      el.pause();
-      if (!keepSrc) {
-        el.currentTime = 0;
-        el.removeAttribute('src');
-        el.load();
-      }
-    } catch {}
-    playingAudioElements.delete(el);
-    return;
-  }
-
-  fadeVolume(el, curVol, 0, durationMs, () => {
-    try {
-      el.pause();
-      if (!keepSrc) {
-        el.currentTime = 0;
-        el.removeAttribute('src');
-        el.load();
-      }
-    } catch {}
-    playingAudioElements.delete(el);
-  });
-}
-
-function fadeInAndPlay(el, targetVolume, durationMs = 160, onPlayErr = null) {
-  if (!el) return;
-  playingAudioElements.add(el);
-  if (targetVolume <= 0) {
-    try {
-      el.volume = 0;
-      el.muted = true;
-      const p = el.play();
-      if (p && typeof p.catch === 'function') p.catch(onPlayErr || (() => {}));
-    } catch (err) {
-      if (onPlayErr) onPlayErr(err);
-    }
-    return;
-  }
-
-  try {
-    el.volume = 0;
-    el.muted = false;
-    const p = el.play();
-    const handleStartFade = () => {
-      fadeVolume(el, 0, targetVolume, durationMs);
-    };
-    if (p && typeof p.then === 'function') {
-      p.then(handleStartFade).catch(onPlayErr || (() => {}));
-    } else {
-      handleStartFade();
-    }
-  } catch (err) {
-    if (onPlayErr) onPlayErr(err);
-  }
-}
-
 export function getMasterMediaCurrentTime() {
   const state = get(activeMedia);
   if (!state) return 0;
@@ -303,9 +217,6 @@ export function getMasterMediaCurrentTime() {
   }
   if (state.type === 'voice' && globalAudioElement && typeof globalAudioElement.currentTime === 'number') {
     return globalAudioElement.currentTime;
-  }
-  if (state.element && typeof state.element.currentTime === 'number') {
-    return state.element.currentTime;
   }
   return state.currentTime || 0;
 }
@@ -348,7 +259,6 @@ export function setTrackSpeed(id, newSpeed) {
 
   const state = get(activeMedia);
   if (state && (state.id === id || !id)) {
-    if (state.element) state.element.playbackRate = finalSpeed;
     if (globalAudioElement) globalAudioElement.playbackRate = finalSpeed;
     if (globalVideoElement) globalVideoElement.playbackRate = finalSpeed;
     activeMedia.update(s => s ? { ...s, speed: finalSpeed } : null);
@@ -388,10 +298,6 @@ export function setTrackVolume(id, newVolume) {
 
   const state = get(activeMedia);
   if (state && (state.id === id || !id)) {
-    if (state.element) {
-      state.element.volume = clamped;
-      state.element.muted = muted;
-    }
     if (globalAudioElement) {
       globalAudioElement.volume = clamped;
       globalAudioElement.muted = muted;
@@ -435,45 +341,29 @@ export function toggleMediaMute() {
 
 export function stopCurrentMedia() {
   stopVideoRenderLoop();
-  for (const cancel of activeAudioFades) {
-    cancel();
+
+  if (globalAudioElement) {
+    try {
+      globalAudioElement.pause();
+      globalAudioElement.currentTime = 0;
+      globalAudioElement.removeAttribute('src');
+      globalAudioElement.load();
+    } catch {}
   }
-  activeAudioFades.clear();
-
-  const allElements = new Set([
-    currentAudioElement,
-    currentVideoElement,
-    globalAudioElement,
-    globalVideoElement,
-    ...playingAudioElements,
-  ]);
-
-  for (const el of allElements) {
-    if (el) {
-      try {
-        el.pause();
-        el.currentTime = 0;
-        el.removeAttribute('src');
-        el.load();
-      } catch {}
-    }
+  if (globalVideoElement) {
+    try {
+      globalVideoElement.pause();
+      globalVideoElement.currentTime = 0;
+      globalVideoElement.removeAttribute('src');
+      globalVideoElement.load();
+    } catch {}
   }
 
-  currentAudioElement = null;
-  currentVideoElement = null;
-  playingAudioElements.clear();
   activeMedia.set(null);
 }
 
 export function pauseCurrentMedia() {
-  const state = get(activeMedia);
   stopVideoRenderLoop();
-  for (const cancel of activeAudioFades) {
-    cancel();
-  }
-  if (state?.element) {
-    try { state.element.pause(); } catch {}
-  }
   if (globalAudioElement) {
     try { globalAudioElement.pause(); } catch {}
   }
@@ -486,38 +376,30 @@ export function pauseCurrentMedia() {
 export function resumeCurrentMedia() {
   const state = get(activeMedia);
   if (!state) return;
-  activeMedia.update((s) => (s ? { ...s, isPlaying: true } : null));
-
-  const onErr = () => {
-    updateMediaPlaybackState(state.id, false);
-    stopVideoRenderLoop();
-  };
 
   const speed = getTrackSpeed(state.id);
   const muted = isTrackMuted(state.id);
   const vol = muted ? 0 : getTrackVolume(state.id);
-
-  let target = state.element;
-  if (!target) {
-    target = state.type === 'voice' ? globalAudioElement : globalVideoElement;
-  }
+  const target = state.type === 'video_note' ? globalVideoElement : globalAudioElement;
 
   if (target) {
     target.playbackRate = speed;
-    fadeInAndPlay(target, vol, 160, onErr);
+    target.volume = vol;
+    target.muted = muted;
+    const p = target.play();
+    if (p && typeof p.catch === 'function') {
+      p.catch((err) => {
+        if (err && err.name !== 'AbortError') {
+          updateMediaPlaybackState(state.id, false);
+        }
+      });
+    }
     if (state.type === 'video_note') {
       startVideoRenderLoop();
     }
-  } else {
-    if (state.type === 'voice' && globalAudioElement) {
-      globalAudioElement.playbackRate = speed;
-      fadeInAndPlay(globalAudioElement, vol, 160, onErr);
-    } else if (state.type === 'video_note' && globalVideoElement) {
-      globalVideoElement.playbackRate = speed;
-      fadeInAndPlay(globalVideoElement, vol, 160, onErr);
-      startVideoRenderLoop();
-    }
   }
+
+  activeMedia.update((s) => (s ? { ...s, isPlaying: true } : null));
 }
 
 export function togglePlayPause() {
@@ -531,29 +413,16 @@ export function togglePlayPause() {
 }
 
 export function registerAudio(id, element, metadata = {}) {
-  if (currentVideoElement && currentVideoElement !== element) {
-    try { currentVideoElement.pause(); } catch {}
-    currentVideoElement = null;
-  }
-  if (currentAudioElement && currentAudioElement !== element) {
-    try { currentAudioElement.pause(); } catch {}
-  }
-  currentAudioElement = element;
   const speed = getTrackSpeed(id);
   const muted = isTrackMuted(id);
   const vol = muted ? 0 : getTrackVolume(id);
 
-  element.playbackRate = speed;
-  element.volume = vol;
-  element.muted = muted;
-
   activeMedia.set({
     id,
     type: 'voice',
-    element,
-    isPlaying: !element.paused,
-    currentTime: element.currentTime || 0,
-    duration: element.duration || metadata.duration || 0,
+    isPlaying: true,
+    currentTime: 0,
+    duration: metadata.duration || 0,
     speed,
     volume: vol,
     muted,
@@ -562,29 +431,16 @@ export function registerAudio(id, element, metadata = {}) {
 }
 
 export function registerVideo(id, element, metadata = {}) {
-  if (currentAudioElement && currentAudioElement !== element) {
-    try { currentAudioElement.pause(); } catch {}
-    currentAudioElement = null;
-  }
-  if (currentVideoElement && currentVideoElement !== element) {
-    try { currentVideoElement.pause(); } catch {}
-  }
-  currentVideoElement = element;
   const speed = getTrackSpeed(id);
   const muted = isTrackMuted(id);
   const vol = muted ? 0 : getTrackVolume(id);
 
-  element.playbackRate = speed;
-  element.volume = vol;
-  element.muted = muted;
-
   activeMedia.set({
     id,
     type: metadata.isNote ? 'video_note' : 'video',
-    element,
-    isPlaying: !element.paused,
-    currentTime: element.currentTime || 0,
-    duration: element.duration || metadata.duration || 0,
+    isPlaying: true,
+    currentTime: 0,
+    duration: metadata.duration || 0,
     speed,
     volume: vol,
     muted,
@@ -593,135 +449,27 @@ export function registerVideo(id, element, metadata = {}) {
 }
 
 export function handOffToGlobal(data = {}) {
-  const speed = getTrackSpeed(data.id);
-  const muted = isTrackMuted(data.id);
-  const vol = muted ? 0 : getTrackVolume(data.id);
-
-  if (data.type === 'video_note') {
-    if (globalVideoElement) {
-      const isAlreadyPlayingSame = Boolean(
-        (data.id && globalVideoElement.dataset.trackId === String(data.id)) ||
-        (data.url && globalVideoElement.src && globalVideoElement.src.includes(data.url))
-      );
-
-      if (data.id) {
-        globalVideoElement.dataset.trackId = String(data.id);
-      }
-
-      if (!isAlreadyPlayingSame && data.url) {
-        const targetTime = data.currentTime || 0;
-        const applyState = () => {
-          try {
-            if (targetTime > 0) globalVideoElement.currentTime = targetTime;
-            globalVideoElement.playbackRate = speed;
-            globalVideoElement.volume = vol;
-            globalVideoElement.muted = muted;
-            if (data.isPlaying) {
-              globalVideoElement.play().catch(() => {});
-              startVideoRenderLoop();
-            }
-          } catch {}
-        };
-
-        globalVideoElement.src = data.url;
-        if (globalVideoElement.readyState >= 1 || typeof globalVideoElement.addEventListener !== 'function') {
-          applyState();
-        } else {
-          globalVideoElement.addEventListener('loadedmetadata', applyState, { once: true });
-        }
-      } else {
-        globalVideoElement.playbackRate = speed;
-        globalVideoElement.volume = vol;
-        globalVideoElement.muted = muted;
-        if (data.isPlaying && globalVideoElement.paused) {
-          globalVideoElement.play().catch(() => {});
-        }
-        startVideoRenderLoop();
-      }
-    }
-  } else if (data.type === 'voice') {
-    if (currentAudioElement && currentAudioElement !== globalAudioElement) {
-      try {
-        currentAudioElement.pause();
-      } catch {}
-    }
-    if (globalAudioElement) {
-      const isAlreadyPlayingSame = Boolean(
-        data.url && globalAudioElement.src && globalAudioElement.src.includes(data.url)
-      );
-      if (!isAlreadyPlayingSame && data.url) {
-        globalAudioElement.src = data.url;
-        globalAudioElement.currentTime = data.currentTime || 0;
-      }
-      globalAudioElement.playbackRate = speed;
-      globalAudioElement.volume = vol;
-      globalAudioElement.muted = muted;
-      if (data.isPlaying && globalAudioElement.paused) {
-        globalAudioElement.play().catch(() => {});
-      }
-    }
-  }
-
-  activeMedia.update((s) => ({
-    ...(s || {}),
-    ...data,
-    isGlobalPlayback: true,
-    speed,
-    volume: vol,
-    muted,
-  }));
+  activeMedia.update(s => s ? { ...s, isGlobalPlayback: true } : null);
 }
 
 export function takeOverFromGlobal(id, element) {
-  const state = get(activeMedia);
-  if (!state || state.id !== id) return;
-
-  if (state.type === 'video_note') {
-    renderAllCanvasesForTrack(id);
-    if (globalVideoElement && state.isPlaying) {
-      startVideoRenderLoop();
-    }
-  } else if (state.type === 'voice') {
-    if (element && element !== globalAudioElement) {
-      const isElementReady = element.src && (element.src.includes(state.url) || element.readyState >= 1);
-      if (!isElementReady) {
-        activeMedia.update((s) => (s ? { ...s, isGlobalPlayback: false } : null));
-        return;
-      }
-      if (globalAudioElement) {
-        try {
-          state.currentTime = globalAudioElement.currentTime || state.currentTime;
-          globalAudioElement.pause();
-        } catch {}
-      }
-      currentAudioElement = element;
-      element.currentTime = state.currentTime || 0;
-      element.playbackRate = state.speed || 1.0;
-      element.volume = state.muted ? 0 : (state.volume ?? 1.0);
-      element.muted = !!state.muted;
-      if (state.isPlaying && typeof element.play === 'function') {
-        element.play().catch(() => {});
-      }
-    }
-  }
-
-  activeMedia.update((s) => (s ? { ...s, element: element || s.element, isGlobalPlayback: false } : null));
+  activeMedia.update(s => s ? { ...s, isGlobalPlayback: false } : null);
 }
 
 export function updateMediaProgress(id, currentTime, duration) {
   activeMedia.update((state) => {
-    if (!state || state.id !== id) return state;
+    if (!state || (state.id !== id && String(state.messageId) !== String(id))) return state;
     return {
       ...state,
       currentTime,
-      duration: duration || state.duration,
+      duration: (duration && isFinite(duration) && duration > 0) ? duration : state.duration,
     };
   });
 }
 
 export function updateMediaPlaybackState(id, isPlaying) {
   activeMedia.update((state) => {
-    if (!state || state.id !== id) return state;
+    if (!state || (state.id !== id && String(state.messageId) !== String(id))) return state;
     return {
       ...state,
       isPlaying,
@@ -733,27 +481,17 @@ export function seekMedia(id, targetTime) {
   const state = get(activeMedia);
   if (!state) return;
   const clampedTime = Math.max(0, targetTime);
-  const applySeek = (el) => {
-    if (!el) return;
-    if (el.readyState === undefined || el.readyState >= 1 || typeof el.addEventListener !== 'function') {
-      try { el.currentTime = clampedTime; } catch {}
-    } else {
-      el.addEventListener('loadedmetadata', () => {
-        try { el.currentTime = clampedTime; } catch {}
-      }, { once: true });
-    }
-  };
+  const target = state.type === 'video_note' ? globalVideoElement : globalAudioElement;
 
-  if (state.element) {
-    applySeek(state.element);
+  if (target) {
+    try {
+      target.currentTime = clampedTime;
+    } catch {}
   }
-  if (state.type === 'voice' && globalAudioElement) {
-    applySeek(globalAudioElement);
-  }
-  if (state.type === 'video_note' && globalVideoElement) {
-    applySeek(globalVideoElement);
+  if (state.type === 'video_note') {
     renderAllCanvasesForTrack(id);
   }
+
   activeMedia.update((s) => (s ? { ...s, currentTime: clampedTime } : null));
 }
 
@@ -809,11 +547,15 @@ export async function resolvePlayableUrl(attach, chatId, messageId) {
             return playable;
           }
         }
-      } catch (e) {
-        console.error('Failed to resolve encrypted playable url:', e);
-      }
+      } catch {}
     }
     return null;
+  }
+
+  const directUrl = attach.url || attach.fileUrl || attach.baseUrl || attach.videoUrl;
+  if (directUrl) {
+    const playable = toPlayableUrl(directUrl);
+    return playable;
   }
 
   const isVideoNote = (attach.videoType === 1 || attach.isNote || attach._type === 'VIDEO' || attach.type === 'VIDEO');
@@ -844,21 +586,22 @@ export async function resolvePlayableUrl(attach, chatId, messageId) {
         resolvedUrlCache.set(mediaKey, playable);
         return playable;
       }
-    } catch (_) {}
+    } catch {}
 
     const mediaType = isVideoNote ? 'video_note' : 'voice';
+
     if ((vId || token) && chatId != null && messageId != null) {
       try {
         const api = await getApiInstance();
         const res = await api.getVideoById(chatId, messageId, vId, token);
-        const qualityPriority = ['MP4_720', 'MP4_480', 'MP4_360', 'MP4_240', 'MP4_144', 'MP4_1080', 'OGG', 'MP3', 'AUDIO', 'audio', 'EXTERNAL', 'url', 'baseUrl', 'fileUrl'];
+        const qualityPriority = ['MP4_720', 'MP4_480', 'MP4_360', 'MP4_240', 'MP4_144', 'MP4_1080', 'OGG', 'MP3', 'AUDIO', 'EXTERNAL', 'url', 'baseUrl', 'fileUrl'];
         let picked = null;
         for (const q of qualityPriority) {
           if (res && res[q]) { picked = res[q]; break; }
         }
         if (!picked && res && res.HLS) picked = res.HLS;
         if (!picked && res && typeof res === 'object') {
-          picked = Object.values(res).find(v => typeof v === 'string' && (v.startsWith('http://') || v.startsWith('https://')));
+          picked = Object.values(res).find(v => typeof v === 'string' && (v.startsWith('http://') || v.startsWith('https://')) && !v.endsWith('.jpg') && !v.endsWith('.png') && !v.endsWith('.webp'));
         }
         if (picked) {
           if (picked.startsWith('http://') || picked.startsWith('https://')) {
@@ -880,28 +623,20 @@ export async function resolvePlayableUrl(attach, chatId, messageId) {
           return playable;
         }
       } catch {}
+
+      try {
+        const api = await getApiInstance();
+        if (api && api.getFileById) {
+          const fileRes = await api.getFileById(chatId, messageId, vId);
+          if (fileRes?.url) {
+            const playable = toPlayableUrl(fileRes.url);
+            resolvedUrlCache.set(mediaKey, playable);
+            return playable;
+          }
+        }
+      } catch {}
     }
 
-    const fallback = isVideoNote ? (attach.videoUrl || attach.fileUrl) : (attach.url || attach.fileUrl || attach.baseUrl);
-    if (fallback) {
-      if (fallback.startsWith('http://') || fallback.startsWith('https://')) {
-        invoke('cache_url', {
-          account: accountId,
-          src: fallback,
-          chatId: chatId != null ? Number(chatId) : null,
-          mediaType,
-          key: mediaKey,
-        }).then((cached) => {
-          if (cached) {
-            attach.localPath = cached;
-            resolvedUrlCache.set(mediaKey, toPlayableUrl(cached));
-          }
-        }).catch(() => {});
-      }
-      const playable = toPlayableUrl(fallback);
-      resolvedUrlCache.set(mediaKey, playable);
-      return playable;
-    }
     return null;
   })().finally(() => {
     inFlightResolutions.delete(mediaKey);
@@ -916,23 +651,30 @@ function parseMediaItems(messages, chatId) {
   const items = [];
   for (const m of messages) {
     if (!m) continue;
-    if (m.attach && (m.type === 'voice' || m.type === 'video_note')) {
+    if (m.type === 'voice' || m.type === 'video_note') {
       items.push(m);
       continue;
     }
-    if (!m.attaches || !Array.isArray(m.attaches)) continue;
-    for (const attach of m.attaches) {
+    const attaches = m.attaches || m.attachments || [];
+    if (!Array.isArray(attaches)) continue;
+
+    for (const attach of attaches) {
       const type = (attach._type || attach.type || '').toUpperCase();
       const vType = Number(attach.videoType ?? attach.video_type);
-      if (type === 'AUDIO' || type === 'VOICE') {
+      const isVoice = type === 'AUDIO' || type === 'VOICE' || !!attach.audioId || !!attach.wave || !!attach.waveform || attach.mime?.startsWith('audio/') || attach.name?.endsWith('.ogg');
+      const isVideoNote = (type === 'VIDEO' && (vType === 1 || attach.isNote || attach.videoType === 'VIDEO_NOTE' || attach.is_note)) || vType === 1 || !!attach.isNote;
+
+      if (isVoice) {
         const dur = attach.duration ? (attach.duration > 120 ? attach.duration / 1000 : attach.duration) : 0;
-        const id = String(m.id || attach.audioId || attach.videoId || attach.token || attach.localPath || Math.random());
+        const id = getMediaIdentifier(m.id, attach, 'voice');
         const initialSender = resolveSenderDisplayName(m.sender, m.senderName) || (m.senderName && isNaN(Number(m.senderName)) ? m.senderName : 'Собеседник');
+        const directUrl = attach.localPath || (!attach.isEncryptedMedia ? (attach.url || attach.fileUrl || attach.baseUrl) : null) || null;
         const item = {
           id,
           chatId: chatId ?? m.chatId,
           messageId: m.id,
           type: 'voice',
+          url: directUrl ? toPlayableUrl(directUrl) : null,
           duration: dur,
           time: Number(m.time || m.created_at || 0),
           senderName: initialSender,
@@ -949,15 +691,17 @@ function parseMediaItems(messages, chatId) {
             }
           });
         }
-      } else if (type === 'VIDEO' && (vType === 1 || attach.isNote || attach.videoType === 'VIDEO_NOTE' || attach.is_note)) {
+      } else if (isVideoNote) {
         const dur = attach.duration ? (attach.duration > 120 ? attach.duration / 1000 : attach.duration) : 0;
-        const id = String(m.id || attach.videoId || attach.token || attach.audioId || attach.localPath || Math.random());
+        const id = getMediaIdentifier(m.id, attach, 'video_note');
         const initialSender = resolveSenderDisplayName(m.sender, m.senderName) || (m.senderName && isNaN(Number(m.senderName)) ? m.senderName : 'Собеседник');
+        const directUrl = attach.localPath || (!attach.isEncryptedMedia ? (attach.videoUrl || attach.fileUrl || attach.url || attach.baseUrl) : null) || null;
         const item = {
           id,
           chatId: chatId ?? m.chatId,
           messageId: m.id,
           type: 'video_note',
+          url: directUrl ? toPlayableUrl(directUrl) : null,
           duration: dur,
           time: Number(m.time || m.created_at || 0),
           senderName: initialSender,
@@ -981,8 +725,27 @@ function parseMediaItems(messages, chatId) {
   return items;
 }
 
+function isSameMedia(item, target) {
+  if (!item || !target) return false;
+  if (item === target) return true;
+  if (item.id && target.id) {
+    return String(item.id) === String(target.id);
+  }
+  if (item.messageId != null && target.messageId != null && String(item.messageId) === String(target.messageId)) {
+    const a1 = item.attach;
+    const a2 = target.attach;
+    if (a1 && a2) {
+      const id1 = a1.audioId ?? a1.videoId ?? a1.id ?? a1.video_id ?? a1.token;
+      const id2 = a2.audioId ?? a2.videoId ?? a2.id ?? a2.video_id ?? a2.token;
+      if (id1 && id2) return String(id1) === String(id2);
+      if (a1.localPath && a2.localPath) return a1.localPath === a2.localPath;
+    }
+    return true;
+  }
+  return false;
+}
+
 const preloadedMedia = new Map();
-const preloadedAudioElements = new Map();
 
 export async function preloadTrack(item) {
   if (!item || !item.id || preloadedMedia.has(item.id)) return;
@@ -990,18 +753,11 @@ export async function preloadTrack(item) {
     const url = await resolvePlayableUrl(item.attach, item.chatId, item.messageId);
     if (url) {
       preloadedMedia.set(item.id, url);
-      if (typeof document !== 'undefined') {
-        const el = item.type === 'video_note' ? document.createElement('video') : new Audio();
-        el.preload = 'auto';
-        el.src = url;
-        try { el.load(); } catch {}
-        preloadedAudioElements.set(item.id, el);
-      }
     }
   } catch {}
 }
 
-export async function buildChatPlaylist(chatId, currentMessageId, initialMessages = [], forcedIndex = -1) {
+export function buildChatPlaylist(chatId, currentMessageId, initialMessages = [], forcedIndex = -1) {
   if (!initialMessages || initialMessages.length === 0) {
     initialMessages = get(activeChatMessages) || [];
   }
@@ -1009,7 +765,7 @@ export async function buildChatPlaylist(chatId, currentMessageId, initialMessage
 
   const cur = get(activeMedia);
   if (cur && (cur.chatId === chatId || cur.chatId == null)) {
-    if (!combined.some(i => String(i.id) === String(cur.id) || (cur.messageId && String(i.messageId) === String(cur.messageId)))) {
+    if (!combined.some(i => isSameMedia(i, cur))) {
       combined.push({
         id: cur.id,
         chatId: chatId ?? cur.chatId,
@@ -1026,56 +782,67 @@ export async function buildChatPlaylist(chatId, currentMessageId, initialMessage
     }
   }
 
-  try {
-    const api = await getApiInstance();
-    if (api && api.getChatMedia) {
-      const resp = await api.getChatMedia(chatId, currentMessageId, ['AUDIO', 'VIDEO'], 50, 50);
-      const list = (resp && Array.isArray(resp.messages)) ? resp.messages : (Array.isArray(resp) ? resp : []);
-      if (list.length > 0) {
-        const remote = parseMediaItems(list, chatId);
-        const seen = new Set(combined.map(i => `${i.messageId}_${i.type}`));
-        for (const it of remote) {
-          const key = `${it.messageId}_${it.type}`;
-          if (!seen.has(key)) {
-            seen.add(key);
-            combined.push(it);
-          }
-        }
-        combined.sort((a, b) => (a.time || 0) - (b.time || 0));
+  let targetIdx = -1;
+  if (forcedIndex >= 0 && forcedIndex < combined.length) {
+    targetIdx = forcedIndex;
+  } else {
+    targetIdx = combined.findIndex(
+      i => (currentMessageId != null && String(i.messageId) === String(currentMessageId)) || (cur && isSameMedia(i, cur))
+    );
+    if (targetIdx < 0) {
+      const prevPl = get(mediaPlaylist);
+      if (prevPl?.currentIndex >= 0 && (prevPl.chatId === chatId || chatId == null)) {
+        targetIdx = prevPl.currentIndex;
       }
     }
-  } catch {}
-
-  const prevPl = get(mediaPlaylist);
-  const sameItems = prevPl && prevPl.chatId === chatId && prevPl.items &&
-    prevPl.items.length === combined.length &&
-    prevPl.items.every((it, idx) => String(it.id) === String(combined[idx]?.id));
-
-  let currentIdx;
-  if (forcedIndex >= 0 && prevPl?.items?.[forcedIndex]) {
-    const forcedId = String(prevPl.items[forcedIndex].id);
-    const found = combined.findIndex(i => String(i.id) === forcedId);
-    currentIdx = found >= 0 ? found : forcedIndex;
-  } else {
-    currentIdx = combined.findIndex(
-      i => (currentMessageId && String(i.messageId) === String(currentMessageId)) || (cur && String(i.id) === String(cur.id))
-    );
-    if (currentIdx < 0 && prevPl?.currentIndex >= 0 && (prevPl.chatId === chatId || chatId == null)) {
-      currentIdx = prevPl.currentIndex;
-    }
   }
-
-  const resolvedItems = sameItems ? prevPl.items : combined;
-  const targetIdx = currentIdx >= 0 ? currentIdx : 0;
+  if (targetIdx < 0) targetIdx = 0;
 
   mediaPlaylist.set({
     chatId,
-    items: resolvedItems,
+    items: combined,
     currentIndex: targetIdx,
   });
 
-  if (targetIdx + 1 < resolvedItems.length) {
-    preloadTrack(resolvedItems[targetIdx + 1]);
+  if (targetIdx + 1 < combined.length) {
+    preloadTrack(combined[targetIdx + 1]);
+  }
+
+  if (forcedIndex < 0) {
+    (async () => {
+      try {
+        const api = await getApiInstance();
+        if (api && api.getChatMedia) {
+          const resp = await api.getChatMedia(chatId, currentMessageId, ['AUDIO', 'VIDEO'], 50, 50);
+          const list = (resp && Array.isArray(resp.messages)) ? resp.messages : (Array.isArray(resp) ? resp : []);
+          if (list.length > 0) {
+            const remote = parseMediaItems(list, chatId);
+            const currentList = get(mediaPlaylist).items || combined;
+            let changed = false;
+            const merged = [...currentList];
+            for (const it of remote) {
+              if (!merged.some(m => isSameMedia(m, it))) {
+                merged.push(it);
+                changed = true;
+              }
+            }
+            if (changed) {
+              merged.sort((a, b) => (a.time || 0) - (b.time || 0));
+              const activeNow = get(activeMedia);
+              const newIdx = activeNow ? merged.findIndex(i => isSameMedia(i, activeNow)) : targetIdx;
+              mediaPlaylist.set({
+                chatId,
+                items: merged,
+                currentIndex: newIdx >= 0 ? newIdx : targetIdx,
+              });
+              if (newIdx >= 0 && newIdx + 1 < merged.length) {
+                preloadTrack(merged[newIdx + 1]);
+              }
+            }
+          }
+        }
+      } catch {}
+    })();
   }
 
   return combined;
@@ -1083,9 +850,21 @@ export async function buildChatPlaylist(chatId, currentMessageId, initialMessage
 
 export async function playMedia(track, playlistContext = {}) {
   const current = get(activeMedia);
-  if (current && current.id === track.id) {
+  if (current && isSameMedia(current, track) && !playlistContext.forceReload) {
     togglePlayPause();
     return;
+  }
+
+  stopVideoRenderLoop();
+  if (globalAudioElement) {
+    try {
+      globalAudioElement.pause();
+    } catch {}
+  }
+  if (globalVideoElement) {
+    try {
+      globalVideoElement.pause();
+    } catch {}
   }
 
   let playUrl = track.url || preloadedMedia.get(track.id);
@@ -1097,39 +876,17 @@ export async function playMedia(track, playlistContext = {}) {
   const muted = isTrackMuted(track.id);
   const vol = muted ? 0 : getTrackVolume(track.id);
 
-  let targetElement = null;
-  if (track.type === 'voice') {
-    targetElement = globalAudioElement || track.element;
-  } else if (track.type === 'video_note') {
-    targetElement = globalVideoElement || track.element;
-  } else {
-    targetElement = track.element || globalVideoElement;
+  const targetElement = track.type === 'video_note' ? globalVideoElement : globalAudioElement;
+  const otherElement = track.type === 'video_note' ? globalAudioElement : globalVideoElement;
+
+  if (otherElement) {
+    try {
+      otherElement.pause();
+      otherElement.currentTime = 0;
+      otherElement.removeAttribute('src');
+      otherElement.load();
+    } catch {}
   }
-
-  const candidatesToStop = new Set([
-    currentAudioElement,
-    currentVideoElement,
-    globalAudioElement,
-    globalVideoElement,
-    ...playingAudioElements,
-  ]);
-
-  for (const el of candidatesToStop) {
-    if (el && el !== targetElement) {
-      fadeOutAndStop(el, 160);
-    }
-  }
-
-  if (track.type === 'voice') {
-    currentAudioElement = targetElement;
-    currentVideoElement = null;
-  } else {
-    currentVideoElement = targetElement;
-    currentAudioElement = null;
-  }
-
-  const hasCanvases = track.type === 'video_note' && activeVideoCanvases.has(String(track.id)) && activeVideoCanvases.get(String(track.id)).size > 0;
-  const isGlobal = track.isGlobalPlayback !== undefined ? !!track.isGlobalPlayback : (track.element ? false : (track.type === 'video_note' ? !hasCanvases : true));
 
   const resolvedSender = resolveSenderDisplayName(track.senderId, track.senderName) ||
     (track.senderName && isNaN(Number(track.senderName)) ? track.senderName : 'Собеседник');
@@ -1143,8 +900,8 @@ export async function playMedia(track, playlistContext = {}) {
     muted,
     isPlaying: true,
     currentTime: 0,
-    element: targetElement,
-    isGlobalPlayback: isGlobal,
+    duration: track.duration || 0,
+    isGlobalPlayback: !!track.isGlobalPlayback,
   };
 
   activeMedia.set(newState);
@@ -1157,54 +914,54 @@ export async function playMedia(track, playlistContext = {}) {
     });
   }
 
-  const onPlayErr = (err) => {
-    if (err && (err.name === 'AbortError' || err.name === 'NotAllowedError')) return;
-    updateMediaPlaybackState(track.id, false);
-    stopVideoRenderLoop();
-  };
-
   if (targetElement) {
-    const isSameTrack = (targetElement.dataset?.trackId === String(track.id)) ||
-      (playUrl && targetElement.src && targetElement.src.includes(playUrl));
-
-    if (targetElement.dataset) {
-      targetElement.dataset.trackId = String(track.id);
-    }
-
-    if (!isSameTrack && playUrl) {
-      targetElement.src = playUrl;
-      targetElement.currentTime = 0;
-    }
     targetElement.playbackRate = speed;
+    targetElement.volume = vol;
+    targetElement.muted = muted;
 
-    const triggerPlay = () => {
-      fadeInAndPlay(targetElement, vol, 160, onPlayErr);
-    };
+    if (playUrl) {
+      const isSameSrc = targetElement.src && (targetElement.src === playUrl || targetElement.src.endsWith(playUrl));
+      if (!isSameSrc) {
+        targetElement.src = playUrl;
+      }
+      targetElement.currentTime = 0;
 
-    if (targetElement.readyState >= 1) {
-      triggerPlay();
-    } else {
-      let started = false;
-      const onReady = () => {
-        if (started) return;
-        started = true;
-        targetElement.removeEventListener('loadedmetadata', onReady);
-        targetElement.removeEventListener('canplay', onReady);
-        triggerPlay();
+      const attemptPlay = () => {
+        const p = targetElement.play();
+        if (p && typeof p.catch === 'function') {
+          p.catch((err) => {
+            if (err && err.name !== 'AbortError') {
+              updateMediaPlaybackState(track.id, false);
+              stopVideoRenderLoop();
+            }
+          });
+        }
       };
-      targetElement.addEventListener('loadedmetadata', onReady, { once: true });
-      targetElement.addEventListener('canplay', onReady, { once: true });
-      setTimeout(onReady, 250);
-    }
 
-    if (track.type === 'video_note') {
-      startVideoRenderLoop();
-      if (typeof targetElement.addEventListener === 'function') {
-        const renderOnce = () => {
-          renderAllCanvasesForTrack(track.id);
+      if (isSameSrc && targetElement.readyState >= 2) {
+        attemptPlay();
+      } else {
+        let started = false;
+        const onCanPlay = () => {
+          if (started) return;
+          started = true;
+          targetElement.removeEventListener('canplay', onCanPlay);
+          targetElement.removeEventListener('loadeddata', onCanPlay);
+          attemptPlay();
         };
-        targetElement.addEventListener('loadeddata', renderOnce, { once: true });
-        targetElement.addEventListener('canplay', renderOnce, { once: true });
+        targetElement.addEventListener('canplay', onCanPlay, { once: true });
+        targetElement.addEventListener('loadeddata', onCanPlay, { once: true });
+        attemptPlay();
+      }
+
+      if (track.type === 'video_note') {
+        startVideoRenderLoop();
+        renderAllCanvasesForTrack(track.id);
+      }
+    } else {
+      updateMediaPlaybackState(track.id, false);
+      if (isAdvancing) {
+        playNextMedia();
       }
     }
   }
@@ -1233,20 +990,26 @@ export async function playPlaylistItem(index) {
   if (!pl || !pl.items || index < 0 || index >= pl.items.length) return;
   const item = pl.items[index];
   mediaPlaylist.update(p => ({ ...p, currentIndex: index }));
-  await playMedia(item, { chatId: pl.chatId, messages: pl.items, forcedIndex: index });
+  await playMedia(item, { chatId: pl.chatId, messages: pl.items, forcedIndex: index, forceReload: true });
 }
 
 export async function playNextMedia() {
-  const pl = get(mediaPlaylist);
-  if (!pl || !pl.items || pl.items.length === 0) {
-    stopCurrentMedia();
-    return;
-  }
-  const nextIdx = pl.currentIndex + 1;
-  if (nextIdx < pl.items.length) {
-    await playPlaylistItem(nextIdx);
-  } else {
-    stopCurrentMedia();
+  if (isAdvancing) return;
+  isAdvancing = true;
+  try {
+    const pl = get(mediaPlaylist);
+    if (!pl || !pl.items || pl.items.length === 0) {
+      stopCurrentMedia();
+      return;
+    }
+    const nextIdx = pl.currentIndex + 1;
+    if (nextIdx < pl.items.length) {
+      await playPlaylistItem(nextIdx);
+    } else {
+      stopCurrentMedia();
+    }
+  } finally {
+    isAdvancing = false;
   }
 }
 

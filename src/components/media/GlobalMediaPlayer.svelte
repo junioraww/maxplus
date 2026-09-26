@@ -74,7 +74,7 @@
       }
       let cur = 0;
       let dur = state.duration || 0;
-      const el = state.type === 'voice' ? audioEl : (videoEl || state.element);
+      const el = state.type === 'voice' ? audioEl : videoEl;
       if (el && el.currentTime !== undefined) {
         cur = el.currentTime;
         if (el.duration && isFinite(el.duration) && el.duration > 0) {

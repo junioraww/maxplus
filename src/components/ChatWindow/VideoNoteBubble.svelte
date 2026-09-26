@@ -11,13 +11,11 @@
     trackSettings,
     seekMedia,
     playMedia,
-    pauseCurrentMedia,
-    resumeCurrentMedia,
+    togglePlayPause,
     registerVideoCanvas,
     unregisterVideoCanvas,
     getMasterMediaCurrentTime,
-    handOffToGlobal,
-    takeOverFromGlobal,
+    getMediaIdentifier,
   } from '$lib/stores/mediaPlayback';
 
   export let attach;
@@ -32,12 +30,9 @@
   let isVisibleOnScreen = true;
   let observer = null;
 
-  $: mId = String(messageId ?? attach.videoId ?? attach.token ?? attach.audioId ?? attach.localPath ?? 'video_note');
+  $: mId = getMediaIdentifier(messageId, attach, 'video_note');
   $: isCurrentTrack = $activeMedia?.id === mId || (messageId != null && String($activeMedia?.messageId) === String(messageId));
   $: isPlaying = isCurrentTrack && !!$activeMedia?.isPlaying;
-  $: currentSpeed = $trackSettings[mId]?.speed ?? 1.0;
-  $: currentVolume = $trackSettings[mId]?.volume ?? 1.0;
-  $: currentMuted = $trackSettings[mId]?.muted ?? false;
   $: attachDur = attach.duration
     ? (attach.duration > 120 ? attach.duration / 1000 : attach.duration)
     : ($activeMedia?.duration || 0);
@@ -132,7 +127,7 @@
         try {
           const account = await getCurrentAccount().catch(() => null);
           const accountId = Number(account?.id || 0);
-          const cached = await invoke("get_cached_file", {
+          const cached = await invoke('get_cached_file', {
             account: accountId,
             src: `enc_media_${fid}`
           }).catch(() => null);
@@ -143,7 +138,7 @@
           }
           const fileRes = await $API.getFileById(chatId, messageId, fid);
           if (fileRes?.url) {
-            const cachedPath = await invoke("cache_encrypted_media", {
+            const cachedPath = await invoke('cache_encrypted_media', {
               account: accountId,
               chatId: Number(chatId || 0),
               fileId: Number(fid),
@@ -156,9 +151,7 @@
               return toPlayableUrl(cachedPath);
             }
           }
-        } catch (e) {
-          console.error(e);
-        }
+        } catch (e) {}
       }
       return null;
     }
@@ -175,7 +168,7 @@
       const accountId = Number(account?.id || 0);
 
       try {
-        const cached = await invoke("get_cached_file", {
+        const cached = await invoke('get_cached_file', {
           account: accountId,
           src: cacheKey
         }).catch(() => null);
@@ -248,11 +241,7 @@
 
   async function handleTogglePlay() {
     if (isCurrentTrack) {
-      if (isPlaying) {
-        pauseCurrentMedia();
-      } else {
-        resumeCurrentMedia();
-      }
+      togglePlayPause();
       return;
     }
 
@@ -372,24 +361,12 @@
     if (!resolvedVideoUrl && !fetchedUrl) {
       ensureVideoUrl().catch(() => {});
     }
-    if (isCurrentTrack) {
-      takeOverFromGlobal($activeMedia?.id || mId);
-    }
     if (typeof IntersectionObserver !== 'undefined' && containerEl) {
       observer = new IntersectionObserver((entries) => {
         for (const entry of entries) {
           isVisibleOnScreen = entry.isIntersecting && entry.intersectionRatio > 0.05;
           if (isCurrentTrack) {
-            if (!isVisibleOnScreen && isPlaying) {
-              handOffToGlobal({
-                id: $activeMedia?.id || mId,
-                type: 'video_note',
-                url: resolvedVideoUrl || rawUrl,
-                isPlaying: true,
-              });
-            } else if (isVisibleOnScreen && $activeMedia?.isGlobalPlayback) {
-              takeOverFromGlobal($activeMedia?.id || mId);
-            }
+            activeMedia.update((s) => (s && (s.id === mId || String(s.messageId) === String(messageId)) ? { ...s, isGlobalPlayback: !isVisibleOnScreen } : s));
           }
         }
       }, { threshold: [0, 0.05, 0.5, 1.0] });
@@ -412,12 +389,7 @@
       unregisterVideoCanvas($activeMedia.id, canvasEl);
     }
     if (isCurrentTrack && isPlaying) {
-      handOffToGlobal({
-        id: $activeMedia.id || mId,
-        type: 'video_note',
-        url: resolvedVideoUrl || rawUrl,
-        isPlaying: true,
-      });
+      activeMedia.update((s) => (s && (s.id === mId || String(s.messageId) === String(messageId)) ? { ...s, isGlobalPlayback: true } : s));
     }
   });
 </script>

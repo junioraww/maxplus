@@ -238,6 +238,22 @@ export default class MaxClient {
     return { success, ...resp.payload };
   }
 
+  async resendAuth(phone) {
+    if (!this.ws) await this.connect();
+    const phoneToUse = phone || this.phone;
+    const resp = await this.sendAndWait(17, {
+      phone: phoneToUse,
+      type: "RESEND",
+      language: "ru",
+    });
+
+    if (resp.payload?.token) {
+      this.tempToken = resp.payload.token;
+    }
+    const success = this.tempToken !== undefined;
+    return { success, ...resp.payload };
+  }
+
   async checkCode(code) {
     const check = await this.sendAndWait(18, {
       token: this.tempToken,

@@ -1,23 +1,17 @@
 <script>
-  import { onMount, onDestroy } from 'svelte';
   import { invoke } from '@tauri-apps/api/core';
   import { save } from '@tauri-apps/plugin-dialog';
   import { showAlert } from '$lib/utils/alert';
   import { getProxiedMediaUrl } from '$lib/utils/images';
   import { parseWaveform } from '$lib/utils/waveform';
+  import { getCurrentAccount } from '$lib/stores/accounts';
   import {
     activeMedia,
-    trackSettings,
+    getMediaIdentifier,
     seekMedia,
     playMedia,
-    pauseCurrentMedia,
-    resumeCurrentMedia,
+    togglePlayPause,
     resolvePlayableUrl,
-    updateMediaProgress,
-    updateMediaPlaybackState,
-    playNextMedia,
-    handOffToGlobal,
-    takeOverFromGlobal,
   } from '$lib/stores/mediaPlayback';
   import {
     transcriptions,
@@ -29,10 +23,9 @@
   export let chatId;
   export let isMe = false;
 
-  $: mId = String(messageId ?? attach.audioId ?? attach.videoId ?? attach.token ?? attach.localPath ?? 'voice');
-  $: isCurrentTrack = $activeMedia?.id === mId;
-  $: isPlaying = isCurrentTrack && $activeMedia?.isPlaying;
-  $: currentSpeed = $trackSettings[mId]?.speed ?? 1.0;
+  $: mId = getMediaIdentifier(messageId, attach, 'voice');
+  $: isCurrentTrack = $activeMedia?.id === mId || (messageId != null && String($activeMedia?.messageId) === String(messageId));
+  $: isPlaying = isCurrentTrack && !!$activeMedia?.isPlaying;
   $: duration = ($activeMedia?.id === mId && $activeMedia?.duration > 0)
     ? $activeMedia.duration
     : (attach.duration
@@ -91,27 +84,11 @@
     return `${m}:${s < 10 ? '0' : ''}${s}`;
   }
 
-  let audioEl;
-
-  $: if (isCurrentTrack && audioEl && mediaUrl && $activeMedia?.isGlobalPlayback && audioEl.readyState >= 1) {
-    takeOverFromGlobal(mId, audioEl);
-  }
-
   async function handleTogglePlay() {
     if (isCurrentTrack) {
-      if (isPlaying) {
-        pauseCurrentMedia();
-      } else {
-        resumeCurrentMedia();
-      }
+      togglePlayPause();
     } else {
       const url = mediaUrl || await ensureVoiceUrl();
-      if (audioEl) {
-        if (url && audioEl.src !== url) {
-          audioEl.src = url;
-        }
-        audioEl.play().catch(() => {});
-      }
       await playMedia({
         id: mId,
         chatId,
@@ -122,7 +99,6 @@
         senderName: isMe ? 'Вы' : (attach.senderName || 'Собеседник'),
         title: 'Голосовое сообщение',
         attach,
-        element: audioEl,
       }, { chatId, currentMessageId: messageId });
     }
   }
@@ -133,10 +109,6 @@
     const target = ratio * duration;
     if (!isCurrentTrack) {
       const url = mediaUrl || await ensureVoiceUrl();
-      if (audioEl) {
-        if (url && audioEl.src !== url) audioEl.src = url;
-        audioEl.play().catch(() => {});
-      }
       await playMedia({
         id: mId,
         chatId,
@@ -147,7 +119,6 @@
         senderName: isMe ? 'Вы' : (attach.senderName || 'Собеседник'),
         title: 'Голосовое сообщение',
         attach,
-        element: audioEl,
       }, { chatId, currentMessageId: messageId });
     }
     seekMedia(mId, target);
@@ -185,44 +156,9 @@
       }
     }
   }
-
-
-  onDestroy(() => {
-    if (isCurrentTrack && audioEl) {
-      try { audioEl.pause(); } catch {}
-      const state = $activeMedia;
-      handOffToGlobal({
-        ...(state || {}),
-        id: mId,
-        type: 'voice',
-        currentTime: audioEl.currentTime || 0,
-        isPlaying: !audioEl.paused,
-      });
-    }
-  });
 </script>
 
 <div class="voice-message-bubble" class:is-me={isMe}>
-  <audio
-    bind:this={audioEl}
-    src={mediaUrl}
-    preload="auto"
-    on:timeupdate={() => {
-      if (isCurrentTrack && audioEl) {
-        updateMediaProgress(mId, audioEl.currentTime, audioEl.duration || duration);
-      }
-    }}
-    on:play={() => {
-      if (isCurrentTrack) updateMediaPlaybackState(mId, true);
-    }}
-    on:pause={() => {
-      if (isCurrentTrack) updateMediaPlaybackState(mId, false);
-    }}
-    on:ended={() => {
-      if (isCurrentTrack) playNextMedia();
-    }}
-  ></audio>
-
   <div class="voice-row">
     <button
       type="button"

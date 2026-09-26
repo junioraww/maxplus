@@ -34,10 +34,16 @@
     console.log("Запрос на вход:", phone);
     if (!phone.startsWith("+")) phone = "+" + phone;
 
+    sessionSet("phone", phone);
+
     const response = await $API.startAuth(phone);
 
-    if (response.success) goto("/auth/verify");
-    else error = response.title || response.message;
+    if (response.success) {
+      if (response.codeDelay) sessionSet("codeDelay", response.codeDelay);
+      goto("/auth/verify");
+    } else {
+      error = response.title || response.message;
+    }
   }
 
   async function showBackButton() {
