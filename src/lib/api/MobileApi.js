@@ -602,7 +602,7 @@ export default class MobileApi extends BaseAPI {
       if (chats.length) {
         const configChats = config?.chats || {};
         const mergedChats = chats.map((chat) => {
-          const chatConfig = configChats[String(chat.id)];
+          const chatConfig = configChats[String(chat.id)] || configChats[chat.id];
           if (chatConfig && chatConfig.dontDisturbUntil != null) {
             return { ...chat, dontDisturbUntil: chatConfig.dontDisturbUntil };
           }
@@ -627,8 +627,22 @@ export default class MobileApi extends BaseAPI {
       }
 
       const currentChats = await loadChats();
-      currentRealChats.set(currentChats.map(x => x.id));
-      currentSessionChats.set(currentChats);
+      const configChats = config?.chats || {};
+      const updatedExisting = [];
+      const updatedCurrentChats = currentChats.map((c) => {
+        const conf = configChats[String(c.id)] || configChats[c.id];
+        if (conf && conf.dontDisturbUntil != null && conf.dontDisturbUntil !== c.dontDisturbUntil) {
+          const updated = { ...c, dontDisturbUntil: conf.dontDisturbUntil };
+          updatedExisting.push(updated);
+          return updated;
+        }
+        return c;
+      });
+      if (updatedExisting.length) {
+        await saveChats(updatedExisting);
+      }
+      currentRealChats.set(updatedCurrentChats.map(x => x.id));
+      currentSessionChats.set(updatedCurrentChats);
 
       const telemetrySetupResp = await invoke("set_chats_for_telemetry", {
         chats: currentChats.map(c => ({ chatId: c.id, chatType: c.type }))
@@ -866,6 +880,8 @@ export default class MobileApi extends BaseAPI {
     });
     if (updatedChat) {
       await saveChats([updatedChat]);
+    } else {
+      await saveChats([{ id: chatId, dontDisturbUntil }]);
     }
     return res;
   }
