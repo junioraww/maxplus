@@ -1,7 +1,8 @@
 <script>
   import { goto } from "$app/navigation";
-  import { getContext, onMount, onDestroy, createEventDispatcher } from "svelte";
+  import { onMount, createEventDispatcher } from "svelte";
   import { swipeToClose } from "$components/ChatWindow/swipeToClose.js";
+  import { registerBackHandler } from "$lib/utils/backButton.js";
 
   export let title = "";
   export let from = "/?card=settings";
@@ -17,8 +18,6 @@
   let isClosingBySwipe = false;
   let isClosing = false;
   let isOpening = true;
-
-  const onBack = getContext("onBack");
 
   function finishClose() {
     dispatch("close");
@@ -56,19 +55,17 @@
       isOpening = false;
     }, 280);
 
-    if (!isTab && onBack) {
-      onBack.settingsPage = () => {
+    let unregisterBack = null;
+    if (!isTab) {
+      unregisterBack = registerBackHandler(() => {
         close();
-      };
+      });
     }
 
-    return () => clearTimeout(timer);
-  });
-
-  onDestroy(() => {
-    if (onBack && onBack.settingsPage) {
-      delete onBack.settingsPage;
-    }
+    return () => {
+      clearTimeout(timer);
+      if (unregisterBack) unregisterBack();
+    };
   });
 
   $: swipeStyle = isSwiping && currentDragX > 0 ? `transform: translate3d(${currentDragX}px, 0, 0);` : "";

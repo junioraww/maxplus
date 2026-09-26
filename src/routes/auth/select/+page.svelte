@@ -18,12 +18,12 @@
   import "$lib/styles/AnimatedPanel.css";
   import Avatar from "$components/main/Avatar.svelte";
   import OpenDevSettingsButton from "$components/main/dev/OpenButton.svelte";
+  import { registerBackHandler } from "$lib/utils/backButton.js";
 
   let menu = null;
   let longPressed = false;
   let holdTimer;
-
-  const onBack = getContext("onBack");
+  let unregisterMenuBack = null;
 
   let accountsPromise;
   onMount(() => {
@@ -105,10 +105,12 @@
       account, x, y
     };
 
-    onBack["dropout"] = () => {
+    if (unregisterMenuBack) {
+      unregisterMenuBack();
+    }
+    unregisterMenuBack = registerBackHandler(() => {
       closeMenu();
-      delete onBack["dropout"];
-    };
+    });
   }
 
   const writeFile = (path, content) => invoke("write_file_string", { path, content });
@@ -155,6 +157,10 @@
 
   function closeMenu() {
     menu = null;
+    if (unregisterMenuBack) {
+      unregisterMenuBack();
+      unregisterMenuBack = null;
+    }
   }
 
   function handleClick(e) {
@@ -168,6 +174,10 @@
   });
 
   onDestroy(() => {
+    if (unregisterMenuBack) {
+      unregisterMenuBack();
+      unregisterMenuBack = null;
+    }
     window.removeEventListener("pointerdown", handleClick);
   });
 </script>

@@ -1,10 +1,11 @@
 <script>
-  import { getContext, onDestroy, onMount } from "svelte";
+  import { onDestroy, onMount } from "svelte";
   import { goto } from "$app/navigation";
   import {
     set as sessionSet,
     get as sessionGet
   } from "$lib/stores/session.js";
+  import { registerBackHandler } from "$lib/utils/backButton.js";
 
   import BackButton from "$components/main/auth/BackButton.svelte";
   import ActionButton from "$components/main/auth/ActionButton.svelte";
@@ -18,14 +19,12 @@
   let loading = false;
   const challenge = sessionGet("challenge");
 
-  const onBack = getContext("onBack");
-  if (onBack) {
-    onBack["auth"] = () => {
-      goto("/auth/login");
-    };
-  }
+  const unregisterBack = registerBackHandler(() => {
+    goto("/auth/login");
+  });
+
   onDestroy(() => {
-    if (onBack) delete onBack["auth"];
+    unregisterBack();
   });
 
   onMount(() => {

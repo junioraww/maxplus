@@ -1,10 +1,11 @@
 <script>
-  import { getContext, onDestroy } from "svelte";
+  import { onDestroy } from "svelte";
   import { goto } from "$app/navigation";
   import {
     set as sessionSet,
     get as sessionGet
   } from "$lib/stores/session.js";
+  import { registerBackHandler } from "$lib/utils/backButton.js";
 
   import BackButton from "$components/main/auth/BackButton.svelte";
   import ActionButton from "$components/main/auth/ActionButton.svelte";
@@ -18,14 +19,12 @@
   const name = sessionGet("name");
   const state = !name ? "login" : "register";
 
-  const onBack = getContext("onBack");
-  if (onBack) {
-    onBack["sms"] = () => {
-      goto("/auth/" + state);
-    };
-  }
+  const unregisterBack = registerBackHandler(() => {
+    goto("/auth/" + state);
+  });
+
   onDestroy(() => {
-    if (onBack) delete onBack["sms"];
+    unregisterBack();
   });
 
   async function verify() {

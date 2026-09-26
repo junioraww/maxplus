@@ -19,6 +19,7 @@
   import { createBridgeClient } from "$lib/webapp/bridge.js";
   import { processMaxLink } from "$lib/utils/maxLink.js";
   import ConfirmModal from "$components/main/ConfirmModal.svelte";
+  import { registerBackHandler } from "$lib/utils/backButton.js";
 
   export let app;
 
@@ -307,7 +308,16 @@
       });
     });
 
+    const unregisterBack = registerBackHandler(() => {
+      if (openedLinksStack.length > 0) {
+        handleGoBack();
+        return false;
+      }
+      handleClose();
+    });
+
     return () => {
+      unregisterBack();
       window.removeEventListener("message", handleWindowMessage);
       cleanupDragListeners();
     };
