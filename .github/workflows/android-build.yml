@@ -103,6 +103,11 @@ jobs:
       - name: Init Tauri Android
         run: |
           bunx tauri android init
+          sed -i 's|gradle-9\.[0-9.]*-bin\.zip|gradle-8.14.3-bin.zip|g' src-tauri/gen/android/gradle/wrapper/gradle-wrapper.properties
+          grep -q "android.useAndroidX" src-tauri/gen/android/gradle.properties 2>/dev/null || echo "android.useAndroidX=true" >> src-tauri/gen/android/gradle.properties
+          sed -i 's|org.gradle.configuration-cache=true|org.gradle.configuration-cache=false|g' src-tauri/gen/android/gradle.properties
+          find src-tauri/gen/android/buildSrc -name "RustPlugin.kt" -exec sed -i 's|rootDirRel = config.rootDirRel$|rootDirRel = config.rootDirRel\n                        projectDir = project.projectDir.path|g' {} + 2>/dev/null || true
+          find src-tauri/gen/android/buildSrc -name "BuildTask.kt" -exec sed -i 's|var projectDir: String? = null|@org.gradle.api.tasks.Optional\n    var projectDir: String? = null|g' {} + 2>/dev/null || true
           rm -f src-tauri/gen/android/app/src/main/res/drawable/ic_launcher_background.xml
           rm -f src-tauri/gen/android/app/src/main/res/values/ic_launcher_background.xml
           rm -rf src-tauri/gen/android/buildSrc/src/main/java/org/meowkie 2>/dev/null || true

@@ -20,5 +20,3 @@ allprojects {
 tasks.register("clean").configure {
     delete("build")
 }
-
-apply(plugin = "com.google.gms.google-services")

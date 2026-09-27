@@ -4,11 +4,15 @@ import org.gradle.api.DefaultTask
 import org.gradle.api.GradleException
 import org.gradle.api.logging.LogLevel
 import org.gradle.api.tasks.Input
+import org.gradle.api.tasks.Optional
 import org.gradle.api.tasks.TaskAction
 
 open class BuildTask : DefaultTask() {
     @Input
     var rootDirRel: String? = null
+    @Input
+    @Optional
+    var projectDir: String? = null
     @Input
     var target: String? = null
     @Input
@@ -34,8 +38,9 @@ open class BuildTask : DefaultTask() {
         val release = release ?: throw GradleException("release cannot be null")
         val args = listOf("tauri", "android", "android-studio-script");
 
+        val baseDir = projectDir?.let { File(it) } ?: project.projectDir
         project.exec {
-            workingDir(File(project.projectDir, rootDirRel))
+            workingDir(File(baseDir, rootDirRel))
             executable(executable)
             args(args)
             if (project.logger.isEnabled(LogLevel.DEBUG)) {

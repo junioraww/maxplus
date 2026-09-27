@@ -11,7 +11,11 @@ key.properties
 
 /.tauri
 /tauri.settings.gradle
-/gradle**
+/gradlew*
+/gradle/*
+!/gradle/wrapper/
+/gradle/wrapper/*
+!/gradle/wrapper/gradle-wrapper.properties
 /settings.gradle
 /.idea
 /keystore.properties
