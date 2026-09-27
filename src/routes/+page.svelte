@@ -15,10 +15,12 @@
   import DictionarySettings from "./settings/e2e/dictionary/+page.svelte";
   import AboutSettings from "./settings/about/+page.svelte";
   import SessionsSettings from "./settings/sessions/+page.svelte";
+  import PluginsSettings from "./settings/plugins/+page.svelte";
   import Panel from "$components/Panel.svelte";
   import Card from "$components/main/Card.svelte";
   import ChatWindow from "$components/ChatWindow.svelte";
   import WebAppManager from "$components/webapp/WebAppManager.svelte";
+  import PluginImportModal from "$components/plugins/PluginImportModal.svelte";
   import { panelConfig, CATALOG } from "$lib/stores/panel.js";
   import { setPanelNavigation } from "$lib/utils/backButton.js";
 
@@ -45,6 +47,7 @@
     logs: Logs,
     about: AboutSettings,
     sessions: SessionsSettings,
+    plugins: PluginsSettings,
   };
 
   $: pages = ($panelConfig.items || [])
@@ -152,6 +155,17 @@
     };
     document.addEventListener("visibilitychange", handleVisibility);
 
+    (async () => {
+      try {
+        const { pluginStore } = await import("$lib/stores/plugins.js");
+        const { initPluginSystem } = await import("$lib/plugins/runtime.js");
+        await pluginStore.load();
+        await initPluginSystem();
+      } catch (e) {
+        console.error("[plugins] init error:", e);
+      }
+    })();
+
     return () => {
       cleanupNav();
       if (unlisten) unlisten();
@@ -192,6 +206,7 @@
 
 <Panel on:open={openCard} {pages} {active} />
 <WebAppManager />
+<PluginImportModal />
 
 <style>
   .container {

@@ -896,38 +896,6 @@
     color: #fff2;
   }
 
-  .chat-list-inner {
-    flex: 1;
-    overflow-y: auto;
-    margin: 6px 0;
-    display: flex;
-    flex-direction: column;
-  }
-
- .chat-list-inner::-webkit-scrollbar {
-    width: 4px;
-    display: block;
-  }
-
-  .chat-list-inner::-webkit-scrollbar-track {
-    background: transparent;
-  }
-
-  .chat-list-inner::-webkit-scrollbar-thumb {
-    background: rgba(255, 255, 255, 0.1);
-    border-radius: 4px;
-  }
-
-  .chat-list-inner::-webkit-scrollbar-thumb:hover {
-    background: rgba(255, 255, 255, 0.2);
-  }
-
-  .state {
-    text-align: center;
-    color: #777;
-    margin-top: 50px;
-  }
-
   .search-scrollable {
     display: flex;
     flex-direction: column;

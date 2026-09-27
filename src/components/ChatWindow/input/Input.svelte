@@ -1,8 +1,9 @@
 <script>
   import { invoke, convertFileSrc } from "@tauri-apps/api/core";
   import { platform } from "@tauri-apps/plugin-os";
-  import { tick, onDestroy } from "svelte";
+  import { tick, onMount, onDestroy } from "svelte";
   import { get } from "svelte/store";
+  import { pluginOn, pluginOff } from "$lib/plugins/events.js";
 
   import { scrollToBottom } from "$lib/utils/scroll.js";
   import { sendMessage } from "$components/ChatWindow/actions.js";
@@ -68,6 +69,28 @@
   let showCommandsMenu = false;
   let stickerSuggestions = [];
   let suggestionTimer = null;
+
+  function handlePluginInsert({ text }) {
+    if (!text) return;
+    if (textareaEl) {
+      const start = textareaEl.selectionStart ?? newMessage.length;
+      const end = textareaEl.selectionEnd ?? newMessage.length;
+      newMessage = newMessage.slice(0, start) + text + newMessage.slice(end);
+      tick().then(() => {
+        const pos = start + text.length;
+        textareaEl.setSelectionRange(pos, pos);
+        textareaEl.focus();
+        autoResize();
+      });
+    } else {
+      newMessage += text;
+    }
+  }
+
+  onMount(() => {
+    pluginOn("input:insert", handlePluginInsert);
+    return () => pluginOff("input:insert", handlePluginInsert);
+  });
 
   $: commandFilter = newMessage.startsWith("/") ? newMessage : "";
   $: hasSlash = newMessage.startsWith("/");
@@ -1336,8 +1359,8 @@
     position: relative;
     padding: 0;
     flex-shrink: 0;
-    background: #17191d;
-    border-top: 1px solid rgba(255, 255, 255, 0.06);
+    background: var(--bg-app);
+    border-top: 1px solid var(--border-card);
     z-index: 10;
     width: 100%;
     max-width: 100%;
@@ -1360,7 +1383,7 @@
   .input-container {
     display: flex;
     align-items: flex-end;
-    background-color: #1e2025;
+    background-color: var(--bg-surface);
     border-radius: 18px;
     flex-grow: 1;
     min-height: 48px;
@@ -1377,7 +1400,7 @@
     box-sizing: border-box;
     flex-grow: 1;
     background-color: transparent;
-    color: #edf0f5;
+    color: var(--text-secondary);
     border: none;
     resize: none;
     overflow-y: auto;
@@ -1392,7 +1415,7 @@
   }
 
   textarea::placeholder {
-    color: #697282;
+    color: var(--text-subtle);
   }
 
   .button {
@@ -1406,7 +1429,7 @@
     justify-content: center;
     cursor: pointer;
     background: transparent;
-    color: #8b929e;
+    color: var(--text-muted);
     transition: all 0.18s ease;
   }
 
@@ -1420,18 +1443,18 @@
   }
 
   .attach-toggle-btn.active {
-    color: #248bfe;
-    background: rgba(36, 139, 254, 0.12);
+    color: var(--accent-primary);
+    background: var(--accent-subtle);
   }
 
   .send-button {
-    color: #248bfe;
-    background: rgba(36, 139, 254, 0.12);
+    color: var(--accent-primary);
+    background: var(--accent-subtle);
   }
 
   .send-button:hover {
     color: #fff;
-    background: #248bfe;
+    background: var(--accent-primary);
   }
 
   .emoji-btn {
@@ -1463,7 +1486,7 @@
 
   .emoji-btn.active {
     opacity: 1;
-    background: rgba(36, 139, 254, 0.2);
+    background: var(--accent-subtle-hover);
     filter: brightness(1.2);
   }
 
@@ -1480,7 +1503,7 @@
     align-items: center;
     justify-content: center;
     opacity: 0.65;
-    color: #edf0f5;
+    color: var(--text-secondary);
     border-radius: 50%;
     flex-shrink: 0;
     transition: all 0.18s ease;
@@ -1494,8 +1517,8 @@
 
   .bot-cmd-btn.active {
     opacity: 1;
-    color: #248bfe;
-    background: rgba(36, 139, 254, 0.2);
+    color: var(--accent-primary);
+    background: var(--accent-subtle-hover);
     filter: brightness(1.2);
   }
 

@@ -127,8 +127,8 @@
     display: flex;
     flex-direction: column;
     overflow: hidden;
-    background-color: #1a1a1f;
-    color: #ffffff;
+    background-color: var(--bg-app);
+    color: var(--text-primary);
   }
 
   .settings-page-wrapper {
@@ -142,8 +142,8 @@
     display: flex;
     flex-direction: column;
     overflow: hidden;
-    background-color: #1a1a1f;
-    color: #ffffff;
+    background-color: var(--bg-app);
+    color: var(--text-primary);
     will-change: transform;
     transform: translate3d(0, 0, 0);
     box-shadow: -4px 0 25px rgba(0, 0, 0, 0.45);
@@ -174,8 +174,8 @@
     justify-content: space-between;
     height: 52px;
     padding: 0 12px;
-    background: #212126;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    background: var(--bg-topbar);
+    border-bottom: 1px solid var(--border-subtle);
     flex-shrink: 0;
     z-index: 10;
   }
@@ -186,7 +186,7 @@
     border: none;
     border-radius: 50%;
     background: transparent;
-    color: #aaaaaa;
+    color: var(--text-muted);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -197,7 +197,7 @@
 
   .settings-back-btn:hover {
     background: rgba(255, 255, 255, 0.08);
-    color: #ffffff;
+    color: var(--text-primary);
   }
 
   .settings-back-btn:active {
@@ -205,7 +205,7 @@
   }
 
   .settings-topbar-title {
-    color: #ffffff;
+    color: var(--text-primary);
     font-size: 17px;
     font-weight: 600;
     letter-spacing: -0.2px;

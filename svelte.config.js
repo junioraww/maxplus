@@ -18,6 +18,9 @@ const config = {
     adapter: adapter({
       fallback: "index.html",
     }),
+    alias: {
+      $components: "src/components",
+    },
   },
 };
 

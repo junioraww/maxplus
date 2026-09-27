@@ -24,11 +24,11 @@
   });
 </script>
 
-<div class="video-wrapper">
+<div class="video-wrapper" title={attach?.name || attach?.path || ""}>
   {#if loading}
     <div class="loading">...</div>
   {:else}
-    <img src={thumb} />
+    <img src={thumb} alt={attach?.name || "video"} />
   {/if}
 
   <div class="overlay">▶</div>

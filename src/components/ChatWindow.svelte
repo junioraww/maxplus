@@ -1228,7 +1228,7 @@
     width: 100%;
     height: 100%;
     max-height: 100%;
-    background-color: #161621;
+    background-color: var(--bg-chat);
     padding-top: env(safe-area-inset-top, 10px);
     padding-bottom: env(safe-area-inset-bottom, 20px);
     box-shadow: -4px 0 24px rgba(0, 0, 0, 0.45);

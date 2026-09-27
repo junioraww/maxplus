@@ -92,6 +92,18 @@ export function extractMaxUrlInfo(rawInput) {
     };
   }
 
+  if (cleanName === 'get-plugin') {
+    return {
+      isMax: true,
+      kind: 'get_plugin',
+      pluginId: parsed.searchParams.get('id') || null,
+      canonicalUrl: value,
+      startPayload: null,
+      startAppParam: null,
+      targetName: null,
+    };
+  }
+
   if (RESERVED_SLUGS.has(cleanName.toLowerCase())) return null;
   if (!VALID_IDENTIFIER_REGEX.test(cleanName)) return null;
 
@@ -146,6 +158,18 @@ export async function processMaxLink(targetUrl, { currentUserId, api, onOpenChat
       }
     }
     return false;
+  }
+
+  if (info.kind === 'get_plugin') {
+    if (info.pluginId) {
+      try {
+        const { handlePluginDeepLink } = await import('../plugins/runtime.js');
+        await handlePluginDeepLink(info.pluginId);
+      } catch (err) {
+        console.error(err);
+      }
+    }
+    return true;
   }
 
   if (info.kind === "app") {

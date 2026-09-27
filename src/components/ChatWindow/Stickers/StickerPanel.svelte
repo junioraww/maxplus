@@ -15,6 +15,7 @@
   import StickerSection from "./StickerSection.svelte";
   import StickerCatalogModal from "./StickerCatalogModal.svelte";
   import StickerPackModal from "./StickerPackModal.svelte";
+  import { getMountStore } from "$lib/plugins/mount-registry.js";
 
   const dispatch = createEventDispatcher();
 
@@ -36,6 +37,9 @@
 
   let peekSticker = null;
   let peekTimer = null;
+
+  const pluginTabs = getMountStore("sticker-panel:tab");
+  const pluginContents = getMountStore("sticker-panel:tab-content");
 
   const emojiCategories = [
     {
@@ -325,15 +329,46 @@
   }
 
   function endPeek() {
-    clearTimeout(peekTimer);
+    if (peekTimer) {
+      clearTimeout(peekTimer);
+      peekTimer = null;
+    }
     peekSticker = null;
+  }
+
+  function isPluginActive(item, currentTab) {
+    if (!currentTab || !currentTab.startsWith("plugin-")) return false;
+    const target = currentTab.slice(7);
+    return target === String(item.pluginId) ||
+           target === String(item.id) ||
+           (item.options?.tabId && target === item.options.tabId) ||
+           (item.pluginId && target.includes(item.pluginId)) ||
+           (item.pluginId && item.pluginId.includes(target));
+  }
+
+  function handleModeToggleClick(e) {
+    const wrapper = e.target.closest("[data-plugin-tab]");
+    if (wrapper) {
+      const pTab = wrapper.getAttribute("data-plugin-tab");
+      if (pTab) {
+        activeTab = "plugin-" + pTab;
+        return;
+      }
+    }
+    const btn = e.target.closest("button");
+    if (!btn) return;
+    const tabId = btn.getAttribute("data-tab-id");
+    if (tabId) {
+      activeTab = "plugin-" + tabId;
+      return;
+    }
   }
 </script>
 
 <svelte:window on:mouseup={endPeek} on:touchend={endPeek} />
 
 <div class="sticker-panel-wrapper">
-  <div class="panel-mode-toggle">
+  <div class="panel-mode-toggle" on:click={handleModeToggleClick}>
     <button
       type="button"
       class="mode-btn"
@@ -380,6 +415,11 @@
       </svg>
       <span class="mode-text">Стикеры</span>
     </button>
+    {#each $pluginTabs as item (item.id)}
+      <div class="plugin-tab-btn-wrap" class:active={isPluginActive(item, activeTab)} data-plugin-tab={item.pluginId || item.id}>
+        {@html item.html}
+      </div>
+    {/each}
   </div>
 
   {#if activeTab === "emoji"}
@@ -417,7 +457,7 @@
         {/each}
       </div>
     </div>
-  {:else}
+  {:else if activeTab === "stickers"}
     <div class="stickers-view">
       <div class="search-bar">
         <div class="search-input-box">
@@ -593,6 +633,14 @@
         {/if}
       </div>
     </div>
+  {:else}
+    <div class="plugin-tab-view">
+      {#each $pluginContents as item (item.id)}
+        {#if isPluginActive(item, activeTab)}
+          {@html item.html}
+        {/if}
+      {/each}
+    </div>
   {/if}
 
   {#if showCatalogModal}
@@ -649,8 +697,8 @@
     display: flex;
     flex-direction: column;
     height: 340px;
-    background: #17191d;
-    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    background: var(--bg-app);
+    border-top: 1px solid var(--border-subtle);
     user-select: none;
     position: relative;
     overflow: hidden;
@@ -663,10 +711,19 @@
     gap: 12px;
     padding: 4px 16px;
     min-height: 44px;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-    background: #1b1d22;
+    border-bottom: 1px solid var(--border-card);
+    background: var(--bg-topbar);
     width: 100%;
     box-sizing: border-box;
+    flex-wrap: wrap;
+  }
+
+  .plugin-tab-view {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    overflow-y: auto;
   }
 
   .mode-btn {
@@ -679,7 +736,7 @@
     background: transparent;
     border: none;
     border-radius: 20px;
-    color: #8b929e;
+    color: var(--text-muted);
     font-size: 14px;
     font-weight: 600;
     cursor: pointer;
@@ -692,9 +749,10 @@
     background: rgba(255, 255, 255, 0.04);
   }
 
-  .mode-btn.active {
+  .mode-btn.active,
+  :global(.plugin-tab-btn-wrap.active .mode-btn) {
     color: #fff;
-    background: rgba(36, 139, 254, 0.2);
+    background: var(--accent-subtle-hover);
   }
 
   .mode-icon-svg {
@@ -714,7 +772,7 @@
     gap: 4px;
     padding: 4px 8px;
     overflow-x: auto;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    border-bottom: 1px solid var(--border-card);
     scrollbar-width: none;
     flex-shrink: 0;
   }
@@ -762,7 +820,7 @@
   .category-title {
     font-size: 12px;
     font-weight: 700;
-    color: #8b929e;
+    color: var(--text-muted);
     text-transform: uppercase;
     letter-spacing: 0.5px;
     margin-bottom: 8px;
@@ -817,7 +875,7 @@
   }
 
   .search-icon {
-    color: #8b929e;
+    color: var(--text-muted);
     flex-shrink: 0;
   }
 
@@ -837,7 +895,7 @@
   .clear-btn {
     background: none;
     border: none;
-    color: #8b929e;
+    color: var(--text-muted);
     cursor: pointer;
     padding: 0;
     display: flex;
@@ -851,7 +909,7 @@
     gap: 4px;
     padding: 4px 8px;
     overflow-x: auto;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    border-bottom: 1px solid var(--border-card);
     scrollbar-width: none;
     flex-shrink: 0;
   }
@@ -870,7 +928,7 @@
     align-items: center;
     justify-content: center;
     cursor: pointer;
-    color: #8b929e;
+    color: var(--text-muted);
     transition: background-color 0.15s, color 0.15s;
     flex-shrink: 0;
   }
@@ -906,7 +964,7 @@
   .tab-placeholder {
     font-size: 13px;
     font-weight: 700;
-    color: #8b929e;
+    color: var(--text-muted);
   }
 
   .stickers-content-area {
@@ -971,7 +1029,7 @@
     justify-content: center;
     gap: 10px;
     padding: 40px 0;
-    color: #8b929e;
+    color: var(--text-muted);
     font-size: 13px;
   }
 

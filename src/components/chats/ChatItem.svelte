@@ -228,7 +228,7 @@
   /*.online-badge {
         position: absolute; bottom: 2px; right: 2px;
         width: 12px; height: 12px;
-        background-color: #4ade80;
+        background-color: var(--status-success);
         border: 2px solid #1e1e1e;
         border-radius: 50%;
         z-index: 1;
@@ -252,7 +252,7 @@
   .name {
     font-weight: 500;
     font-size: 16px;
-    color: #eee;
+    color: var(--text-primary);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -276,7 +276,7 @@
   }
 
   .status-icon.read {
-    color: #4ade80;
+    color: var(--status-success);
   }
 
   .preview {
@@ -294,7 +294,7 @@
   }
 
   .badge {
-    background-color: #3b82f6;
+    background-color: var(--badge-unread);
     color: white;
     font-size: 11px;
     font-weight: bold;

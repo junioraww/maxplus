@@ -120,6 +120,13 @@ import { goto } from "$app/navigation";
     ],
     [
       {
+        icon: "phone.svg",
+        text: "Плагины",
+        action: () => openSettingsPage("plugins"),
+      },
+    ],
+    [
+      {
         icon: "devices.png",
         text: "Активные сессии",
         action: () => openSettingsPage("sessions"),

@@ -65,8 +65,7 @@
       Набор слов для обфускации (запутывания). Например, превращает "123" в "Том Красил Забор".
     </div>
 
-    {#await dictionary}
-    {:then data}
+    {#await dictionary then data}
       <div class="info-card">
         <img
           src={downloading ? "/icons/reload.svg" : "/icons/crypto.svg"}
@@ -80,8 +79,7 @@
       </div>
     {/await}
 
-    {#await url}
-    {:then loaded}
+    {#await url then loaded}
       <div class="input-card">
         <label>Ссылка на словарь</label>
         <input value={loaded} placeholder="Ссылка" />

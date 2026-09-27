@@ -1,6 +1,7 @@
 import { listen } from "@tauri-apps/api/event";
 import { goto } from "$app/navigation";
 import { get } from "svelte/store";
+import { pluginEmit } from "$lib/plugins/events.js";
 
 import { invoke } from "$lib/utils/invoke";
 import {
@@ -182,6 +183,7 @@ export default class MobileApi extends BaseAPI {
 
         if (message.status === "EDITED") {
           chat.receivedMessage.set(message);
+          pluginEmit("message:edited", { message, chatId: message.chatId });
 
           currentSessionChats.update((chats) => {
             if (!chats) return chats;
@@ -199,6 +201,7 @@ export default class MobileApi extends BaseAPI {
           });
         } else {
           chat.receivedMessage.set(message);
+          pluginEmit("message:received", { message, chatId: message.chatId });
 
           const myId = Number(get(currentUser));
           const isOutgoing = Number(message.sender) === myId || Number(message.from) === myId;

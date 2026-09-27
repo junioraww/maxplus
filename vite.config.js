@@ -14,7 +14,8 @@ export default defineConfig(async () => ({
   },
 
   define: {
-    __BUILD_DATE__: JSON.stringify(new Date().toLocaleDateString("ru-RU"))
+    __BUILD_DATE__: JSON.stringify(new Date().toLocaleDateString("ru-RU")),
+    __APP_VERSION__: JSON.stringify(process.env.npm_package_version || "0.1.5"),
   },
 
   build: {

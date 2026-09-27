@@ -356,17 +356,17 @@
   }
 
   .done-btn {
-    background: #0077ff;
+    background: var(--accent-primary);
     color: #fff;
     font-weight: 600;
   }
 
   .done-btn:hover {
-    background: #0066dd;
+    background: var(--accent-primary-hover);
   }
 
   .panel {
-    background-color: #1c1d1f;
+    background-color: var(--bg-panel);
     height: 60px;
     width: 100%;
     display: flex;
@@ -375,15 +375,15 @@
     color: #999;
     padding-top: env(safe-area-inset-top, 4px);
     padding-bottom: env(safe-area-inset-bottom, 14px);
-    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    border-top: 1px solid var(--border-subtle);
     box-sizing: border-box;
     user-select: none;
     -webkit-user-select: none;
   }
 
   .panel-container.editing .panel {
-    background-color: #1c1d1f;
-    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    background-color: var(--bg-panel);
+    border-top: 1px solid var(--border-subtle);
   }
 
   .option-wrapper {
@@ -612,7 +612,7 @@
   }
 
   .modal-sheet {
-    background: #1e1f24;
+    background: var(--bg-sheet);
     width: 100%;
     max-width: 480px;
     border-top-left-radius: 18px;
@@ -631,7 +631,7 @@
     align-items: center;
     justify-content: space-between;
     padding: 16px 20px;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    border-bottom: 1px solid var(--border-subtle);
   }
 
   .sheet-title {
@@ -674,7 +674,7 @@
 
   .catalog-item:hover {
     background: #2e303a;
-    border-color: #0077ff;
+    border-color: var(--accent-primary);
   }
 
   .catalog-icon {
@@ -709,7 +709,7 @@
     width: 32px;
     height: 32px;
     border-radius: 50%;
-    background: #0077ff;
+    background: var(--accent-primary);
     color: #fff;
     border: none;
     display: flex;
