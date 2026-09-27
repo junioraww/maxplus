@@ -70,6 +70,8 @@ function makeLog(pluginId) {
 function injectCSS(css, pluginId) {
   const el = document.createElement('style');
   el.setAttribute('data-plugin', pluginId);
+  const nonce = document.querySelector('style[nonce]')?.nonce || document.querySelector('script[nonce]')?.nonce;
+  if (nonce) el.nonce = nonce;
   el.textContent = css;
   document.head.appendChild(el);
   return el;
