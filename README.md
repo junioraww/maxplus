@@ -2,47 +2,31 @@
 
 <img src="static/favicon.png" width="120" height="120" alt="Max+ Logo" style="border-radius: 24px; margin-bottom: 20px;">
 
-<h1>Max+ Client</h1>
+# Max+ Client
 
 **Неофициальный клиент «Макс» с поддержкой сквозного E2E-шифрования.**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg?style=for-the-badge)](https://opensource.org/licenses/MIT)
 [![Rust](https://img.shields.io/badge/Rust-red?style=for-the-badge&logo=rust&logoColor=white)](https://www.rust-lang.org/)
-[![JavaScript](https://img.shields.io/badge/JavaScript-orange?style=for-the-badge&logo=javascript&logoColor=white)](https://developer.mozilla.org/en-US/docs/Web/JavaScript)
+[![Tauri](https://img.shields.io/badge/Tauri-24C8D8?style=for-the-badge&logo=tauri&logoColor=white)](https://tauri.app/)
+[![Svelte](https://img.shields.io/badge/Svelte-FF3E00?style=for-the-badge&logo=svelte&logoColor=white)](https://svelte.dev/)
 
 </div>
-
-<b>Что реализовано:</b>  
-➕ Двухслойное шифрование сообщений и медиа, сохранение сообщений, работа с несколькими аккаунтами, кружки и голосовые из файла, цифровой ID и сферум
-
-<b>Что еще будет:</b>  
-➕ Безопасные шифруемые звонки, плагины, поддержка кастомных серверов
 
 ## Предостережения
 
 > [!WARNING]
-> Не призываю никого скачивать данный клиент и заводить аккаунт в Max <b>как альтернативу Telegram</b>. Делайте это только в крайнем случае, когда активны белые списки или хочется поэкспериментировать.
+> Не призываю никого скачивать данный клиент и заводить аккаунт в Max **как альтернативу Telegram**. Делайте это только в крайнем случае, когда активны белые списки или хочется поэкспериментировать.
 
 > [!WARNING]
-> <b>Сервер может опознать сторонний клиент,</b> используйте на свой риск!
+> **Сервер может опознать сторонний клиент,** используйте на свой риск!
 
 > [!IMPORTANT]
-> Поддерживаются версии <b>Android 9 и выше</b> (рекомендуется Android 13 и выше)
+> Поддерживаются версии **Android 9 и выше** (рекомендуется Android 13 и выше)
 
-### ✨ Стать тестером Max+ (.apk, .ipa)
+## ✨ Стать тестером Max+ (.apk, .ipa)
 
-[![Download APK](https://img.shields.io/badge/Скачать_Pre--release-APK-blue?style=for-the-badge&logo=android&logoColor=white)](https://github.com/me0wkie/maxplus/releases/latest)
-
-### 💖 Поддержи проект!
-
-Понравился Max+ или хочешь поддержать его развитие?  
-Твоя поддержка помогает мне уделять больше времени разработке, добавлять новые функции и поддерживать проект.
-
-⭐ **Если проект оказался полезным — поставь звезду!**
-
-- ☕ **Boosty:** https://boosty.to/catsoft
-- 💰 **BTC:** `1FsDaiMXPtEjtfiAoTPDG5s2GXzMSJY5G9`
-- 💳 **ETH:** `0x8F6eD9e232dD06b87a68DdD1AF8b1B5AE5aAa070`
+[![Download APK](https://img.shields.io/badge/Скачать_Pre--release-APK-blue?style=for-the-badge&logo=android&logoColor=white)](https://github.com/junioraww/maxplus/releases/latest)
 
 ## Содержание
 
@@ -50,32 +34,30 @@
 - [Использование](#использование)
 - [Разработка](#разработка)
 - [Сборка проекта](#сборка-проекта)
-- [В планах](#в-планах)
-- [Источники](#источники)
+- [Поддержать проект](#-поддержи-проект)
+- [Источники](#благодарности)
 
-### Особенности
+## Особенности
 
-- <b>Открытый исходный код</b>
-- Приложение весит всего <b>от 5 до 20 МБ</b>
-- Написано с нуля, есть <b>почти все</b> из официального клиента
-- Возможность <b>шифровать все сообщения и медиафайлы</b>
-- Просмотр и <b>блокировка запросов</b> к oneme[.]ru и ok[.]ru
+- **Открытый исходный код**
+- Приложение весит всего **от 5 до 20 МБ**
+- Написано с нуля, есть **почти все** из официального клиента
+- Возможность **шифровать все сообщения и медиафайлы**
+- Просмотр и **блокировка запросов** к oneme[.]ru и ok[.]ru
 
-<b>Небольшой размер приложения достигается использованием системного WebView (Tauri)</b>
+**Небольшой размер приложения достигается использованием системного WebView (Tauri)**
 
 ## Использование
 
-Предварительные версии доступны в разделе [Releases](https://github.com/me0wkie/maxplus/releases)
+Скачать клиент можно из раздела [Releases](https://github.com/junioraww/maxplus/releases) или [на сайте.](https://maxplus.dev/)
 
-- <b>Чтобы приложение запустилось, архитектура процессора должна совпасть</b>.  
-  Например: устройство имеет процессор arm64, тогда устанавливаете maxplus-android-aarch64.apk
-
-- <b>Если не удается запустить, попробуйте заменить браузер по умолчанию на устройстве</b>.
+- **Чтобы приложение запустилось, архитектура процессора должна совпасть**.  
+  Например: ваш смартфон современный и имеет процессор arm64, тогда устанавливаете maxplus-arm64-x.y.z.apk
 
 ### Про обновления
 
-Проверять обновления можно в настройках. <b>Если GitHub ограничен:</b>
-- <b>[Зеркало Codeberg](https://codeberg.org/meowkie/maxplus)</b>
+Проверять обновления можно в настройках. **Если GitHub ограничен:**
+- **[Зеркало Codeberg](https://codeberg.org/meowkie/maxplus)**
 
 ## Разработка
 
@@ -83,22 +65,21 @@
 
 ### Требования
 
-- <b>[Bun](https://bun.sh)</b> или [NodeJS](https://nodejs.org/)
-- <b>[Rust](https://www.rust-lang.org/)</b> (для Tauri и сборки)
-- <b>[Android Studio](https://developer.android.com/studio)</b> и зависимости для сборки под Android
-- Немного знания Svelte и Rust, либо наличие ChatGPT Pro
+- **[Bun](https://bun.sh)** или [NodeJS](https://nodejs.org/)
+- **[Rust](https://www.rust-lang.org/)** (для Tauri и сборки)
+- **[Android Studio](https://developer.android.com/studio)** и зависимости для сборки под Android
+- Немного знания Svelte и Rust
 
 ### Установка
 
 ```sh
-$ git clone https://github.com/me0wkie/maxplus
-git clone https://github.com/me0wkie/rumax
+# Папка rumax должна быть наравне с папкой maxplus (можно изменить в Cargo.toml)
+git clone https://github.com/junioraww/maxplus
+git clone https://github.com/junioraww/rumax
 cd maxplus
 bun install # Или npm install / pnpm install
 bun run tauri icon static/favicon.png # Важно для запуска
 ```
-
-В стандартном окружении, папка [rumax](https://github.com/me0wkie/rumax) должна быть наравне с папкой `maxplus` (можно изменить в `Cargo.toml`)
 
 ### Запуск Development сервера
 
@@ -106,15 +87,16 @@ bun run tauri icon static/favicon.png # Важно для запуска
 
 ```sh
 # Разработка в Desktop-режиме (не поддерживает Android-специфичные плагины)
-$ bun run tauri dev
+bun run tauri dev
+```
 
-ИЛИ
-
+```sh
 # Разработка через adb (предварительно запустите Android Studio и законнектите устройство)
-$ bun run tauri android dev
-
+bun run tauri android dev
+```
+```sh
 # Опционально (если ошибки из-за jdk > 17)
-$ JAVA_HOME=/usr/lib/путь_к_jdk_17 bun run tauri android dev
+JAVA_HOME=/usr/lib/путь_к_jdk_17 bun run tauri android dev
 ```
 
 Чтобы ускорить запуск на Android, создайте копию `tauri.conf.json` - `tauri.android.conf.json`
@@ -138,42 +120,43 @@ $ JAVA_HOME=/usr/lib/путь_к_jdk_17 bun run tauri android dev
 ### Сборка под Android в среде Linux
 
 > [!IMPORTANT]
-> Вместо локальной сборки, можно воспользоваться готовым скриптом <b>GitHub Actions</b>. Это сэкономит ~5-10 ГБ на диске.
+> Вместо локальной сборки, можно воспользоваться готовым скриптом **GitHub Actions**. Это сэкономит ~5-10 ГБ на диске.
 
 1. Установите `Android Studio`, а в нём дополнительно: `Android NDK`, `Android SDK` и по желанию `Android Emulator`
 
-2. Согласно инструкции на сайте Tauri, настройте переменные среды <b>`NDK_HOME`, `ANDROID_HOME`</b>
+2. Согласно инструкции на сайте Tauri, настройте переменные среды **`NDK_HOME`, `ANDROID_HOME`**
 
 3. Создайте [Java Keystore](https://v2.tauri.app/distribute/sign/android/#creating-a-keystore-and-upload-key) в папке проекта:
 
 ```sh
-$ keytool -genkeypair -v \
+keytool -genkeypair -v \
   -keystore src-tauri/gen/android/app/keystore.jks \
   -keyalg RSA \
   -keysize 2048 \
   -validity 10000 \
-  -alias SECRET_123
+  -alias app-release-key
 ```
 
 4. Настройте `keystore.properties` в папке проекта:
 
 ```
-$ cd src-tauri/gen/android
+# Если указали пароль при создании keystore, здесь его надо повторить
+cd src-tauri/gen/android
 mv keystore.properties.example keystore.properties
 nano keystore.properties
 ```
 
-5. <b>Сама сборка</b>  
+5. **Сама сборка**  
    Вместо aarch64 можно подставить другую архитектуру (armv7, i686, x86_64). Можно собрать для всех платформ Android сразу (увеличится размер .apk)
 
 ```sh
 # Для конкретной архитектуры
-$ cargo tauri android build --target aarch64
+cargo tauri android build --target aarch64
+```
 
-ИЛИ
-
+```sh
 # Единый .apk для всех архитектур
-$ cargo tauri android build
+cargo tauri android build
 ```
 
 ### Сборка под iOS 15+ на macOS
@@ -191,28 +174,51 @@ bun tauri ios build --target aarch64 --no-sign
 GitHub Actions **Build Max+ iOS** выполняет ту же release-сборку при push в `main`, в pull request и вручную через `workflow_dispatch`. IPA доступен в артефакте `maxplus-ios-unsigned` завершённого запуска. Workflow не публикует GitHub Release.
 
 ## Сброс данных клиента
-Секретные чаты теряются!
 
-<b>Для Linux:</b>
+> [!CAUTION]
+> Секретные чаты и ключи шифрования удаляются безвозвратно!
+
+**Для Linux:**
 
 ```sh
-$ rm -rf ~/.local/share/org.meowkie.max
+rm -rf ~/.local/share/org.meowkie.max
 ```
 
-<b>Для Android:</b>
+**Для Android:**
 
-Очистка кеша и данных приложения через настройки
+Очистка кеша и данных приложения через настройки.
 
 ## В планах
 
-- [x] Мини-приложения и Сферум
+- [x] Мини-приложения
 - [x] Уведомления
-- [ ] Шифрование в группах по схеме MLS
-- [ ] Установка любых реакций и фона
-- [ ] Звонки с e2e шифрованием
+- [ ] Звонки с шифрованием
+- [ ] Новый дизайн приложения
+- [ ] Шифрование в группах
+- [ ] Кастом реакции и фон
 
-## Источники
+## 💖 Поддержи проект!
 
-- [PyMax](https://github.com/noxzion/PyMax) — работа с Max API (портировано на Rust в репозитории [rumax](https://github.com/me0wkie/rumax))
+Понравился Max+ или хочешь поддержать его развитие?  
+Твоя поддержка помогает мне уделять больше времени разработке, добавлять новые функции и обслуживать проект.
+
+- 💎 **Донат:** https://web.tribute.tg/d/RcC
+- 💰 **BTC:** `1FsDaiMXPtEjtfiAoTPDG5s2GXzMSJY5G9`
+- 💳 **ETH:** `0x8F6eD9e232dD06b87a68DdD1AF8b1B5AE5aAa070`
+- ☕ **Boosty:** https://boosty.to/catsoft
+
+⭐ **Если проект оказался полезным — поставь звезду!**
+
+<a href="https://www.star-history.com/?repos=junioraww%2Fmaxplus&type=date&legend=top-left">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=junioraww/maxplus&type=date&theme=dark&legend=top-left" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=junioraww/maxplus&type=date&legend=top-left" />
+   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=junioraww/maxplus&type=date&legend=top-left" />
+ </picture>
+</a>
+
+## Благодарности
+
+- [PyMax](https://github.com/noxzion/PyMax) — работа с Max API (портировано на Rust в репозитории [rumax](https://github.com/junioraww/rumax))
 - [Tauri](https://github.com/tauri-apps/tauri) — фреймворк для разработки приложений на WebView
 - [x25519-dalek](https://crates.io/crates/x25519-dalek), [ed25519-dalek](https://crates.io/crates/ed25519-dalek) и [chacha20poly1305](https://crates.io/crates/chacha20poly1305) — криптография для сквозного шифрования
