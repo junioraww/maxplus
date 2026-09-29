@@ -11,26 +11,11 @@ const MAXPLUS_API_BASE = 'https://maxplus.dev';
 const activePlugins = new Map();
 
 async function parseMxp(arrayBuffer) {
-  const { default: JSZip } = await import('jszip');
-  const zip = await JSZip.loadAsync(arrayBuffer);
+  const bytes = Array.from(new Uint8Array(arrayBuffer));
+  const result = await invoke('parse_mxp', { bytes });
 
-  const files = new Map();
-  for (const [path, zipObj] of Object.entries(zip.files)) {
-    if (!zipObj.dir) {
-      const content = await zipObj.async('string');
-      files.set(path, content);
-    }
-  }
-
-  const manifestRaw = files.get('manifest.json');
-  if (!manifestRaw) throw new PluginLoadError('MISSING_MANIFEST', 'manifest.json not found in .mxp archive');
-
-  let manifest;
-  try {
-    manifest = JSON.parse(manifestRaw);
-  } catch {
-    throw new PluginLoadError('MISSING_MANIFEST', 'manifest.json is not valid JSON');
-  }
+  const files = new Map(Object.entries(result.files));
+  const manifest = result.manifest;
 
   validateManifest(manifest, files);
 
@@ -189,16 +174,9 @@ export async function handlePluginDeepLink(pluginId) {
     if (!res.ok) throw new Error('Plugin not found');
     const arrayBuffer = await res.arrayBuffer();
 
-    const { default: JSZip } = await import('jszip');
-    const zip = await JSZip.loadAsync(arrayBuffer);
-    const manifestStr = await zip.file("manifest.json")?.async("string");
-    if (!manifestStr) throw new Error('В архиве плагина отсутствует manifest.json');
-    const manifest = JSON.parse(manifestStr);
+    const { manifest, files } = await parseMxp(arrayBuffer);
 
-    let entryCode = "";
-    if (manifest.entry && zip.file(manifest.entry)) {
-      entryCode = await zip.file(manifest.entry).async("string");
-    }
+    const entryCode = manifest.entry ? (files.get(manifest.entry) || '') : '';
 
     const { showPluginImportModal } = await import('$lib/stores/plugins.js');
     showPluginImportModal({

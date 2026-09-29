@@ -707,15 +707,46 @@
   .panel-mode-toggle {
     display: flex;
     align-items: center;
-    justify-content: center;
-    gap: 12px;
-    padding: 4px 16px;
+    justify-content: safe center;
+    gap: 4px;
+    padding: 4px 8px;
     min-height: 44px;
     border-bottom: 1px solid var(--border-card);
     background: var(--bg-topbar);
     width: 100%;
     box-sizing: border-box;
-    flex-wrap: wrap;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: none;
+    scroll-snap-type: x mandatory;
+    overscroll-behavior-x: contain;
+    -webkit-overflow-scrolling: touch;
+    flex-shrink: 0;
+  }
+
+  .panel-mode-toggle::-webkit-scrollbar {
+    display: none;
+  }
+
+  @media (min-width: 601px) {
+    .panel-mode-toggle {
+      scrollbar-width: thin;
+      scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+    }
+
+    .panel-mode-toggle::-webkit-scrollbar {
+      display: block;
+      height: 4px;
+    }
+
+    .panel-mode-toggle::-webkit-scrollbar-track {
+      background: transparent;
+    }
+
+    .panel-mode-toggle::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.2);
+      border-radius: 4px;
+    }
   }
 
   .plugin-tab-view {
@@ -731,7 +762,7 @@
     align-items: center;
     justify-content: center;
     gap: 6px;
-    padding: 8px 20px;
+    padding: 8px 16px;
     min-height: 36px;
     background: transparent;
     border: none;
@@ -742,6 +773,14 @@
     cursor: pointer;
     transition: all 0.15s ease;
     box-sizing: border-box;
+    flex-shrink: 0;
+    scroll-snap-align: start;
+    white-space: nowrap;
+  }
+
+  .plugin-tab-btn-wrap {
+    flex-shrink: 0;
+    scroll-snap-align: start;
   }
 
   .mode-btn:hover {
@@ -993,6 +1032,12 @@
     gap: 6px;
     width: 100%;
     box-sizing: border-box;
+  }
+
+  @media (min-width: 601px) {
+    .stickers-grid {
+      grid-template-columns: repeat(auto-fill, minmax(0, 80px));
+    }
   }
 
   .sticker-cell {

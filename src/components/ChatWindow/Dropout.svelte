@@ -56,9 +56,18 @@
     menuPosition = { top: y, left: x };
     cleanupBack();
     unregisterBack = registerBackHandler(() => {
+      if (reactionsExpanded) {
+        reactionsExpanded = false;
+        return true;
+      }
       dispatch("close", { update: false });
+      return true;
     });
   }
+
+  onDestroy(() => {
+    cleanupBack();
+  });
 
   $: if (activeAt) {
     reactionsExpanded = false;

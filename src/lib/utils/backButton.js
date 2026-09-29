@@ -12,7 +12,7 @@ export function registerBackHandler(handler) {
   return () => {
     const idx = stack.indexOf(entry);
     if (idx !== -1) {
-      stack.splice(idx);
+      stack.splice(idx, 1);
     }
   };
 }

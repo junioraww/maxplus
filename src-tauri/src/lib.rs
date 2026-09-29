@@ -267,6 +267,7 @@ pub fn run() {
             crypto::commands::cache_encrypted_media,
             crypto::commands::register_media_cache,
             commands::exit_app,
+            commands::parse_mxp,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

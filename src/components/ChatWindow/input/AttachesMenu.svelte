@@ -37,7 +37,7 @@
       <circle cx="12" cy="12" r="9"/>
       <polygon points="10 8 16 12 10 16 10 8" fill="currentColor"/>
     </svg>
-    <span>Видеосообщение из файла</span>
+    <span>Кружок из файла</span>
   </button>
   <button type="button" class="dropout-item" on:click={() => selectFile("FILE")}>
     <svg class="dropout-svg" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">

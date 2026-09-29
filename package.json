@@ -22,7 +22,6 @@
     "@tauri-apps/plugin-opener": "^2.6.0",
     "@tauri-apps/plugin-os": "^2.4.0",
     "jsqr": "^1.4.0",
-    "jszip": "^3.10.2",
     "lottie-web": "^5.13.0",
     "mp4-muxer": "^5.2.2"
   },

@@ -80,16 +80,10 @@
       if (path) {
         const bytes = await invoke("read_file", { path });
         const arrayBuffer = new Uint8Array(bytes).buffer;
-        
-        const JSZip = (await import("jszip")).default;
-        const zip = await JSZip.loadAsync(arrayBuffer);
-        const manifestStr = await zip.file("manifest.json").async("string");
-        const manifest = JSON.parse(manifestStr);
 
-        let entryCode = "";
-        if (manifest.entry && zip.file(manifest.entry)) {
-          entryCode = await zip.file(manifest.entry).async("string");
-        }
+        const result = await invoke("parse_mxp", { bytes: Array.from(new Uint8Array(arrayBuffer)) });
+        const { manifest, files } = result;
+        const entryCode = manifest.entry ? (files[manifest.entry] || '') : '';
 
         showPluginImportModal({
           arrayBuffer,
@@ -113,18 +107,12 @@
         return;
       }
       if (!response.ok) throw new Error("Не удалось скачать плагин");
-      
-      const arrayBuffer = await response.arrayBuffer();
-      
-      const JSZip = (await import("jszip")).default;
-      const zip = await JSZip.loadAsync(arrayBuffer);
-      const manifestStr = await zip.file("manifest.json").async("string");
-      const manifest = JSON.parse(manifestStr);
 
-      let entryCode = "";
-      if (manifest.entry && zip.file(manifest.entry)) {
-        entryCode = await zip.file(manifest.entry).async("string");
-      }
+      const arrayBuffer = await response.arrayBuffer();
+
+      const result = await invoke("parse_mxp", { bytes: Array.from(new Uint8Array(arrayBuffer)) });
+      const { manifest, files } = result;
+      const entryCode = manifest.entry ? (files[manifest.entry] || '') : '';
 
       showPluginImportModal({
         arrayBuffer,

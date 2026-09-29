@@ -665,7 +665,7 @@ function parseMediaItems(messages, chatId) {
       const isVideoNote = (type === 'VIDEO' && (vType === 1 || attach.isNote || attach.videoType === 'VIDEO_NOTE' || attach.is_note)) || vType === 1 || !!attach.isNote;
 
       if (isVoice) {
-        const dur = attach.duration ? (attach.duration > 120 ? attach.duration / 1000 : attach.duration) : 0;
+        const dur = attach.duration ? (attach.duration > 1000 ? Math.round(attach.duration / 1000) : attach.duration) : 0;
         const id = getMediaIdentifier(m.id, attach, 'voice');
         const initialSender = resolveSenderDisplayName(m.sender, m.senderName) || (m.senderName && isNaN(Number(m.senderName)) ? m.senderName : 'Собеседник');
         const directUrl = attach.localPath || (!attach.isEncryptedMedia ? (attach.url || attach.fileUrl || attach.baseUrl) : null) || null;
@@ -692,7 +692,7 @@ function parseMediaItems(messages, chatId) {
           });
         }
       } else if (isVideoNote) {
-        const dur = attach.duration ? (attach.duration > 120 ? attach.duration / 1000 : attach.duration) : 0;
+        const dur = attach.duration ? (attach.duration > 1000 ? Math.round(attach.duration / 1000) : attach.duration) : 0;
         const id = getMediaIdentifier(m.id, attach, 'video_note');
         const initialSender = resolveSenderDisplayName(m.sender, m.senderName) || (m.senderName && isNaN(Number(m.senderName)) ? m.senderName : 'Собеседник');
         const directUrl = attach.localPath || (!attach.isEncryptedMedia ? (attach.videoUrl || attach.fileUrl || attach.url || attach.baseUrl) : null) || null;

@@ -389,5 +389,40 @@ pub fn exit_app(app: AppHandle) {
     app.exit(0);
 }
 
+#[tauri::command]
+pub fn parse_mxp(bytes: Vec<u8>) -> Result<Value, String> {
+    use std::io::{Cursor, Read};
 
+    let cursor = Cursor::new(bytes);
+    let mut archive = zip::ZipArchive::new(cursor).map_err(|e| format!("Invalid zip: {e}"))?;
 
+    let mut files: HashMap<String, String> = HashMap::new();
+
+    for i in 0..archive.len() {
+        let mut entry = archive.by_index(i).map_err(|e| format!("Zip read error: {e}"))?;
+        if entry.is_dir() {
+            continue;
+        }
+        let name = entry.name().to_string();
+        let mut content = String::new();
+        entry.read_to_string(&mut content).unwrap_or(0);
+        files.insert(name, content);
+    }
+
+    let manifest_str = files
+        .get("manifest.json")
+        .ok_or_else(|| "manifest.json not found in archive".to_string())?;
+
+    let manifest: Value = serde_json::from_str(manifest_str)
+        .map_err(|e| format!("Invalid manifest.json: {e}"))?;
+
+    let files_value: serde_json::Map<String, Value> = files
+        .into_iter()
+        .map(|(k, v)| (k, Value::String(v)))
+        .collect();
+
+    Ok(json!({
+        "manifest": manifest,
+        "files": files_value,
+    }))
+}

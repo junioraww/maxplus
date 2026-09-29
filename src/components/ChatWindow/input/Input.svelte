@@ -6,6 +6,7 @@
   import { pluginOn, pluginOff } from "$lib/plugins/events.js";
 
   import { scrollToBottom } from "$lib/utils/scroll.js";
+  import { registerBackHandler } from "$lib/utils/backButton.js";
   import { sendMessage, forwardMessages } from "$components/ChatWindow/actions.js";
   import Reply from "$components/ChatWindow/input/Reply.svelte";
   import ForwardPreview from "$components/ChatWindow/input/ForwardPreview.svelte";
@@ -466,11 +467,56 @@
     textareaEl.style.height = Math.min(textareaEl.scrollHeight, 120) + "px";
   }
 
+  let unregisterStickerBack = null;
+  let unregisterAttachesBack = null;
+
+  $: if (showStickerPanel) {
+    if (!unregisterStickerBack) {
+      unregisterStickerBack = registerBackHandler(() => {
+        showStickerPanel = false;
+        return true;
+      });
+    }
+  } else {
+    if (unregisterStickerBack) {
+      unregisterStickerBack();
+      unregisterStickerBack = null;
+    }
+  }
+
+  $: if (attachesDropout) {
+    if (!unregisterAttachesBack) {
+      unregisterAttachesBack = registerBackHandler(() => {
+        attachesDropout = null;
+        return true;
+      });
+    }
+  } else {
+    if (unregisterAttachesBack) {
+      unregisterAttachesBack();
+      unregisterAttachesBack = null;
+    }
+  }
+
+  onDestroy(() => {
+    if (unregisterStickerBack) {
+      unregisterStickerBack();
+      unregisterStickerBack = null;
+    }
+    if (unregisterAttachesBack) {
+      unregisterAttachesBack();
+      unregisterAttachesBack = null;
+    }
+  });
+
   function toggleAttachesDropout() {
     attachesDropout = attachesDropout ? null : { active: true };
     if (attachesDropout) {
       showStickerPanel = false;
       showCommandsMenu = false;
+      if (isMobile && textareaEl) {
+        textareaEl.blur();
+      }
     }
   }
 
@@ -479,6 +525,15 @@
     if (showStickerPanel) {
       attachesDropout = null;
       showCommandsMenu = false;
+      if (isMobile && textareaEl) {
+        textareaEl.blur();
+      }
+    }
+  }
+
+  function handleTextareaFocus() {
+    if (isMobile && showStickerPanel) {
+      showStickerPanel = false;
     }
   }
 
@@ -487,7 +542,9 @@
     if (!emoji) return;
     newMessage += emoji;
     if (textareaEl) {
-      textareaEl.focus();
+      if (!isMobile) {
+        textareaEl.focus();
+      }
       autoResize();
     }
   }
@@ -1280,6 +1337,7 @@
             rows="1"
             placeholder="Сообщение"
             bind:value={newMessage}
+            on:focus={handleTextareaFocus}
             on:input={autoResize}
             on:keydown={async (e) => {
               if (e.key === "Escape") {

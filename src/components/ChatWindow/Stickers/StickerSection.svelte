@@ -346,6 +346,12 @@
     box-sizing: border-box;
   }
 
+  @media (min-width: 601px) {
+    .stickers-grid {
+      grid-template-columns: repeat(auto-fill, minmax(0, 80px));
+    }
+  }
+
   .grid-placeholder {
     width: 100%;
     min-height: 82px;

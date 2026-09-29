@@ -26,11 +26,10 @@
   $: mId = getMediaIdentifier(messageId, attach, 'voice');
   $: isCurrentTrack = $activeMedia?.id === mId || (messageId != null && String($activeMedia?.messageId) === String(messageId));
   $: isPlaying = isCurrentTrack && !!$activeMedia?.isPlaying;
+  $: attachDur = attach.duration ? (attach.duration > 1000 ? Math.round(attach.duration / 1000) : attach.duration) : 0;
   $: duration = ($activeMedia?.id === mId && $activeMedia?.duration > 0)
     ? $activeMedia.duration
-    : (attach.duration
-        ? (attach.duration > 120 ? attach.duration / 1000 : attach.duration)
-        : ($activeMedia?.duration || 0));
+    : (attachDur || ($activeMedia?.duration || 0));
   $: currentTime = isCurrentTrack ? ($activeMedia?.currentTime ?? 0) : 0;
   $: progress = duration > 0 ? Math.min(1, Math.max(0, currentTime / duration)) : 0;
   $: waveBars = parseWaveform(attach.wave || attach.waveform, 45);

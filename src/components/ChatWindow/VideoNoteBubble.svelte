@@ -34,7 +34,7 @@
   $: isCurrentTrack = $activeMedia?.id === mId || (messageId != null && String($activeMedia?.messageId) === String(messageId));
   $: isPlaying = isCurrentTrack && !!$activeMedia?.isPlaying;
   $: attachDur = attach.duration
-    ? (attach.duration > 120 ? attach.duration / 1000 : attach.duration)
+    ? (attach.duration > 1000 ? Math.round(attach.duration / 1000) : attach.duration)
     : ($activeMedia?.duration || 0);
   $: duration = attachDur || ($activeMedia?.duration || 0);
 

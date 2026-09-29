@@ -343,27 +343,31 @@
     if (readTimer) clearTimeout(readTimer);
 
     readTimer = setTimeout(async () => {
-      const readDisabled = !$chatSettings?.reader;
-      if (readDisabled) return;
+      if (!$chatSettings?.reader) return;
 
       const msgId = getLowestVisibleMessageId();
       if (!msgId) return;
-
       if (msgId === lastReadMessageId) return;
 
-      const index = $messages.length - $messages.findIndex((x) => x.id === msgId);
-      if (index > chat?.newMessages) return;
+      const myId = Number($currentUser);
+      const myMark = Number(chat?.participants?.[myId] || 0);
+      const msg = $messages.find((x) => String(x.id) === String(msgId));
+      if (!msg) return;
+
+      if (myMark > 0 && Number(msg.time || 0) <= myMark) return;
+
+      if (!chat?.newMessages || chat.newMessages <= 0) return;
 
       lastReadMessageId = msgId;
 
       try {
-        if (chat) chat.newMessages = index - 1;
         await $API.readMessage(chat.id, msgId);
       } catch (e) {
         console.error("readMessage failed", e);
       }
     }, 500);
   }
+
 
   let unsubReceivedMessage = null;
   let currentSubscribedChatId = null;
@@ -683,6 +687,10 @@
       await tick();
     }
     scrollToBottom(scrollElement, true);
+    userHasScrolled = true;
+    showScrollDown = false;
+    await tick();
+    await updateVisibleMessages();
   }
 
   let holdSelectTimer = null;
@@ -1202,11 +1210,11 @@
     const list = $messages || [];
     const decodedMap = $decodedMessages || {};
     const myId = Number($currentUser);
-    return list.flatMap((m) => {
-      const decoded = decodedMap[String(m.id)];
+
+    function extractMediaFromAttaches(attaches, messageId, decoded) {
       const media = decoded?.media;
-      const isMe = Number(m.sender) === myId;
-      const attaches = (m.attaches || []).map((att, idx) => {
+      const isMe = Number(decoded?.sender ?? 0) === myId;
+      const resolved = (attaches || []).map((att, idx) => {
         if (media && idx === (media.attach_index ?? 0)) {
           const resolvedType = media.media_type || att._type || "FILE";
           const localPath = att.localPath || (isMe ? att.path : null);
@@ -1233,17 +1241,28 @@
         return att;
       });
 
-      return attaches
-        .filter((a) => a._type === "PHOTO" || a._type === "VIDEO")
+      return resolved
+        .filter((a) => a._type === "PHOTO" || (a._type === "VIDEO" && a.videoType !== 1 && !a.isNote))
         .map((a) => {
           const fid = a.fileId || a.encryptedAttach?.fileId;
-          const uid = a.videoId || a.photoId || fid || a.url || a.baseUrl || a.localPath || `${m.id}_${a.name || 'media'}`;
-          return {
-            ...a,
-            messageId: m.id,
-            uid: String(uid),
-          };
+          const uid = a.videoId || a.photoId || fid || a.url || a.baseUrl || a.localPath || `${messageId}_${a.name || 'media'}`;
+          return { ...a, messageId, uid: String(uid) };
         });
+    }
+
+    return list.flatMap((m) => {
+      const decoded = decodedMap[String(m.id)];
+      const direct = extractMediaFromAttaches(m.attaches, m.id, decoded);
+
+      const forwarded = (() => {
+        const link = m.link;
+        if (!link || link.type !== "FORWARD") return [];
+        const fwdMsg = link.message;
+        if (!fwdMsg?.attaches?.length) return [];
+        return extractMediaFromAttaches(fwdMsg.attaches, m.id, null);
+      })();
+
+      return [...direct, ...forwarded];
     });
   }
 
