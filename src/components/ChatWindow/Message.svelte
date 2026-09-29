@@ -2,7 +2,7 @@
   import { createEventDispatcher, onMount } from "svelte";
   import { writable } from "svelte/store";
   import { openPath } from "@tauri-apps/plugin-opener";
-  import API, { currentUser, currentUserDetails } from "$lib/stores/api";
+  import API, { currentUser, currentUserDetails, currentSessionChats } from "$lib/stores/api";
   import { getContact } from "$lib/utils/caching";
   import Session, { openChat } from "$lib/stores/session";
   import {
@@ -26,6 +26,8 @@
   export let decoded;
   export let makeVisible;
   export let otherReadTime = 0;
+  export let selected = false;
+  export let selectionMode = false;
 
   $: isMe = Number(msg.sender) === Number($currentUser);
   $: isSending = msg.status === "sending" || msg.status === "pending" || msg.status === 0 || msg.sending === true;
@@ -71,7 +73,9 @@
   }
 
   function handleForwardHeaderClick() {
-    return openChat(msg.link.chatId, msg.link.message.id);
+    if (msg.link?.chatId != null) {
+      return openChat(msg.link.chatId, msg.link.message?.id || msg.link.messageId);
+    }
   }
 
   function getFile(fileId) {
@@ -101,7 +105,18 @@
   }
 
   $: linkedMsg = (() => {
-    if (msg.link) return msg.link.message;
+    if (msg.link) {
+      if (msg.link.message) return msg.link.message;
+      if (msg.link.messageId) {
+        return {
+          id: msg.link.messageId,
+          text: msg.link.text || "",
+          sender: msg.link.senderId || msg.link.sender,
+          time: msg.link.time,
+          attaches: msg.link.attaches || [],
+        };
+      }
+    }
     if (isSystem) {
       return msg.attaches?.find((x) => x._type === "CONTROL")?.pinnedMessage;
     }
@@ -111,8 +126,55 @@
   $: linkedType = msg.link ? msg.link.type : "REPLY";
   $: forwardLines = linkedMsg?.text?.split("\n");
 
-  const cachedLinkedContact = linkedMsg && getContact(linkedMsg.sender);
-  $: linkedMsgContact = cachedLinkedContact && $cachedLinkedContact;
+  $: isReplyToMe = Number(linkedMsg?.sender) === Number($currentUser);
+  $: cachedLinkedContact = linkedMsg?.sender ? getContact(linkedMsg.sender) : null;
+  $: linkedMsgContact = cachedLinkedContact ? $cachedLinkedContact : null;
+  $: replyAuthorName = isReplyToMe
+    ? "Вы"
+    : (linkedMsgContact?.names?.[0]?.firstName || linkedMsgContact?.names?.[0]?.first_name || (linkedMsg?.sender ? String(linkedMsg.sender) : "?"));
+
+  $: isForwardFromMe = Number(linkedMsg?.sender) === Number($currentUser);
+  $: cachedForwardContact = linkedMsg?.sender ? getContact(linkedMsg.sender) : null;
+  $: forwardContact = cachedForwardContact ? $cachedForwardContact : null;
+  $: forwardChat = msg.link?.chatId != null ? $currentSessionChats?.find((c) => String(c.id) === String(msg.link.chatId)) : null;
+  $: isForwardChannel = linkedMsg?.type === "CHANNEL" || forwardChat?.type === "CHANNEL" || (Boolean(msg.link?.chatName) && !linkedMsg?.sender);
+
+  $: forwardAuthorName = (() => {
+    if (isForwardChannel) {
+      return msg.link?.chatName || forwardChat?.title || "Канал";
+    }
+    if (isForwardFromMe) {
+      if ($currentUserDetails?.names?.[0]?.firstName) {
+        return `${$currentUserDetails.names[0].firstName} ${$currentUserDetails.names[0].lastName || ""}`.trim();
+      }
+      return $currentUserDetails?.name || "Вы";
+    }
+    if (forwardContact?.names?.[0]?.firstName) {
+      return `${forwardContact.names[0].firstName} ${forwardContact.names[0].lastName || ""}`.trim();
+    }
+    if (forwardContact?.name) return forwardContact.name;
+    if (msg.link?.chatName) return msg.link.chatName;
+    if (forwardChat?.title) return forwardChat.title;
+    if (linkedMsg?.sender) return String(linkedMsg.sender);
+    return "Пользователь";
+  })();
+
+  $: forwardAvatarUrl = (() => {
+    if (msg.link?.chatIconUrl) return msg.link.chatIconUrl;
+    if (isForwardChannel && forwardChat) {
+      return forwardChat.avatar || forwardChat.baseIconUrl || forwardChat.iconUrl || forwardChat.baseUrl;
+    }
+    if (isForwardFromMe && $currentUserDetails) {
+      return $currentUserDetails.avatar || $currentUserDetails.baseUrl;
+    }
+    if (forwardContact) {
+      return forwardContact.avatar || forwardContact.baseUrl;
+    }
+    if (forwardChat) {
+      return forwardChat.avatar || forwardChat.baseIconUrl || forwardChat.iconUrl;
+    }
+    return null;
+  })();
 
   $: column =
     rawText?.length > 20 ||
@@ -128,6 +190,102 @@
   $: stickerAttach = effectiveAttaches?.find(x => x._type === "STICKER");
   $: isStickerOnly = stickerAttach && (!lines || lines.length === 0 || (lines.length === 1 && !lines[0]?.trim())) && (!effectiveAttaches || effectiveAttaches.length === 1) && !linkedMsg;
   $: isVideoNoteOnly = effectiveAttaches?.some(x => x._type === "VIDEO" && x.videoType === 1) && (!lines || lines.length === 0 || (lines.length === 1 && !lines[0]?.trim())) && (!effectiveAttaches || effectiveAttaches.length === 1) && !linkedMsg;
+
+  let pressTimer = null;
+  let isLongPress = false;
+  let startX = 0;
+  let startY = 0;
+
+  function handleTouchStart(e) {
+    if (e.target.closest("button, a, input, textarea, .avatar-msg-btn, .reply-block, .forward-block, .inline-keyboard, .sticker-wrapper, .media-grid, .file-attachment, .voice-play-btn, .transcription-card, .reactions-bar, .edited-badge")) return;
+    const touch = e.touches[0];
+    if (!touch) return;
+    startX = touch.clientX;
+    startY = touch.clientY;
+    isLongPress = false;
+    clearTimeout(pressTimer);
+    pressTimer = setTimeout(() => {
+      isLongPress = true;
+      dispatch("longpress", { msg });
+      if (typeof navigator !== "undefined" && navigator.vibrate) {
+        navigator.vibrate(40);
+      }
+    }, 350);
+  }
+
+  function handleTouchMove(e) {
+    if (!pressTimer) return;
+    const touch = e.touches[0];
+    if (!touch) return;
+    if (Math.abs(touch.clientX - startX) > 10 || Math.abs(touch.clientY - startY) > 10) {
+      clearTimeout(pressTimer);
+      pressTimer = null;
+    }
+  }
+
+  function handleTouchEnd(e) {
+    clearTimeout(pressTimer);
+    pressTimer = null;
+    if (isLongPress) {
+      e?.stopPropagation?.();
+      setTimeout(() => {
+        isLongPress = false;
+      }, 400);
+    }
+  }
+
+  function handleMouseDown(e) {
+    if (e.button !== 0) return;
+    if (e.target.closest("button, a, input, textarea, .avatar-msg-btn, .reply-block, .forward-block, .inline-keyboard, .sticker-wrapper, .media-grid, .file-attachment, .voice-play-btn, .transcription-card, .reactions-bar, .edited-badge")) return;
+    startX = e.clientX;
+    startY = e.clientY;
+    isLongPress = false;
+    clearTimeout(pressTimer);
+    pressTimer = setTimeout(() => {
+      isLongPress = true;
+      dispatch("longpress", { msg });
+    }, 380);
+  }
+
+  function handleMouseMove(e) {
+    if (!pressTimer) return;
+    if (Math.abs(e.clientX - startX) > 8 || Math.abs(e.clientY - startY) > 8) {
+      clearTimeout(pressTimer);
+      pressTimer = null;
+    }
+  }
+
+  function handleMouseUp(e) {
+    clearTimeout(pressTimer);
+    pressTimer = null;
+    if (isLongPress) {
+      e?.stopPropagation?.();
+      setTimeout(() => {
+        isLongPress = false;
+      }, 400);
+    }
+  }
+
+  function handleContextMenu(e) {
+    if (e.target.closest("input, textarea")) return;
+    e.preventDefault();
+    dispatch("contextmenu", { msg, e });
+  }
+
+  function handleClick(e) {
+    if (isLongPress) {
+      e.stopPropagation();
+      e.preventDefault();
+      setTimeout(() => {
+        isLongPress = false;
+      }, 400);
+      return;
+    }
+    if (selectionMode) {
+      e.stopPropagation();
+      dispatch("toggleSelect", { id: msg.id });
+    }
+  }
 </script>
 
 <div
@@ -138,8 +296,18 @@
   class:is-sticker={isStickerOnly}
   class:is-video-note={isVideoNoteOnly}
   class:is-channel={chat.type === "CHANNEL"}
-  class:inactive={/* todo optimize */
-  dropoutActiveAt && dropoutActiveAt?.msg?.id !== msg.id}
+  class:is-selected={selected}
+  class:selection-active={selectionMode}
+  class:inactive={dropoutActiveAt && dropoutActiveAt?.msg?.id !== msg.id}
+  on:dragstart|preventDefault
+  on:touchstart|passive={handleTouchStart}
+  on:touchmove|passive={handleTouchMove}
+  on:touchend={handleTouchEnd}
+  on:mousedown={handleMouseDown}
+  on:mousemove={handleMouseMove}
+  on:mouseup={handleMouseUp}
+  on:contextmenu={handleContextMenu}
+  on:click={handleClick}
 >
   <div class="indent">
     {#if showAvatar}
@@ -201,7 +369,7 @@
         </div>
         {#if msg.reactionInfo?.totalCount}
           <div class="sticker-reactions">
-            <Reactions info={msg.reactionInfo} {isMe} />
+            <Reactions info={msg.reactionInfo} {isMe} msgId={msg.id} on:react={(e) => dispatch("react", e.detail)} />
           </div>
         {/if}
       </div>
@@ -216,15 +384,17 @@
                 class="forward-header"
                 on:click|stopPropagation={handleForwardHeaderClick}
               >
-                {#if msg.link.chatIconUrl}
-                  <img
-                    src={msg.link.chatIconUrl}
-                    alt=""
-                    class="forward-avatar"
+                <div class="forward-avatar-placeholder">
+                  <Avatar
+                    contactId={isForwardChannel ? null : (isForwardFromMe ? Number($currentUser) : (linkedMsg?.sender ? Number(linkedMsg.sender) : null))}
+                    chat={isForwardChannel ? (forwardChat || { title: forwardAuthorName }) : forwardChat}
+                    src={forwardAvatarUrl}
+                    title={forwardAuthorName}
+                    size={22}
                   />
-                {/if}
+                </div>
                 <div class="forward-info">
-                  <span class="forward-name">{msg.link.chatName}</span>
+                  <span class="forward-name">{forwardAuthorName}</span>
                   <span class="forward-label">Пересланное сообщение</span>
                 </div>
                 <svg class="forward-arrow" viewBox="0 0 24 24"
@@ -256,7 +426,7 @@
             <div on:click|stopPropagation={openReply} class="reply-block">
               <div class="reply-content">
                 <p class="line allow-selection">
-                  <b>{linkedMsgContact?.names?.[0]?.firstName || "?"}</b>
+                  <b>{replyAuthorName}</b>
                   <MessagePreview {chat} msg={linkedMsg} cut={true} />
                 </p>
               </div>
@@ -309,7 +479,7 @@
         {/if}
       </div>
       <div class={column ? "bottom cmn" : "bottom"}>
-        <Reactions info={msg.reactionInfo} {isMe} />
+        <Reactions info={msg.reactionInfo} {isMe} msgId={msg.id} on:react={(e) => dispatch("react", e.detail)} />
 
         <div class="message-status">
           <div class="status-meta">
@@ -408,9 +578,20 @@
     display: flex;
     align-items: flex-end;
     width: 100%;
-    transition:
-      opacity 0.2s,
-      background 0.5s;
+    transition: opacity 0.2s;
+    border-radius: 0;
+  }
+
+  .message-row.selection-active,
+  .message-row.selection-active * {
+    cursor: pointer;
+    user-select: none !important;
+    -webkit-user-select: none !important;
+    -webkit-user-drag: none !important;
+  }
+
+  .message-row.is-selected {
+    background: transparent;
   }
 
   .placeholder {
@@ -431,6 +612,9 @@
     .message-row.is-me .indent {
       display: none;
     }
+    .message-bubble-container {
+      max-width: 85%;
+    }
   }
 
   .indent:empty {
@@ -440,7 +624,7 @@
   .message-bubble-container {
     display: flex;
     flex-direction: column;
-    max-width: 80%;
+    max-width: min(480px, 72%);
     min-width: 100px;
     margin-right: 10px;
     position: relative;
@@ -456,10 +640,15 @@
     box-sizing: border-box;
     font-size: 13px;
     position: relative;
+    user-select: text;
+    -webkit-user-select: text;
   }
 
   .text {
     min-width: 0;
+    user-select: text;
+    -webkit-user-select: text;
+    cursor: text;
   }
 
   .message-bubble.column .text {
@@ -635,11 +824,29 @@
     margin-bottom: 4px;
   }
 
-  .forward-avatar {
-    width: 18px;
-    height: 18px;
+  .forward-avatar-placeholder {
+    width: 22px;
+    height: 22px;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     border-radius: 50%;
-    object-fit: cover;
+  }
+
+  .forward-info {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    line-height: 1.25;
+  }
+
+  .forward-label {
+    font-size: 10px;
+    opacity: 0.65;
+    color: inherit;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
   }
 
   .forward-name {
@@ -654,6 +861,8 @@
     width: 14px;
     height: 14px;
     fill: #34b7f1;
+    flex-shrink: 0;
+    margin-left: auto;
   }
 
   .reply-block {
@@ -823,6 +1032,9 @@
     line-height: 1.4;
     word-break: break-word;
     pointer-events: auto;
+    user-select: text;
+    -webkit-user-select: text;
+    cursor: text;
   }
 
   .line.system {

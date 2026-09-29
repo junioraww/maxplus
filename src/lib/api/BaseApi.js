@@ -21,6 +21,11 @@ export default class API {
     getMessages() { throw "getMessages: Unimplemented" }
     sendMessage() { throw "sendMessage: Unimplemented" }
     pinMessage() { throw "pinMessage: Unimplemented" }
+    unpinMessage() { throw "unpinMessage: Unimplemented" }
+    deleteMessage() { throw "deleteMessage: Unimplemented" }
+    deleteMessages() { throw "deleteMessages: Unimplemented" }
+    getComplaintReasons() { throw "getComplaintReasons: Unimplemented" }
+    sendComplaint() { throw "sendComplaint: Unimplemented" }
     reaction() { throw "reaction: Unimplemented" }
     addContact() { throw "addContact: Unimplemented" }
     removeContact() { throw "removeContact: Unimplemented" }

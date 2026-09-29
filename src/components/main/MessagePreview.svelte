@@ -14,22 +14,17 @@
   $: rawText = strip(isControl ? (getSystemText(msg, false) || msg?.text || "") : (msg?.text || ""));
   $: sameText = Boolean(attachText && rawText && (attachText === rawText || rawText.includes(attachText) || attachText.includes(rawText)));
 
-  $: displayText = isControl
-    ? rawText
-    : (sameText
-      ? (rawText || attachText)
-      : (attachText ? (rawText ? `${attachText}, ${rawText}` : attachText) : rawText));
-
-  $: previewText = cut ? displayText.slice(0, 20) : displayText;
+  $: displayText = sameText ? (rawText || attachText) : rawText;
+  $: bodyText = cut ? displayText.slice(0, 20) : displayText;
   $: isLong = cut && displayText.length > 20;
 </script>
 
 <div class="message">
   {#if !isControl && !sameText && attachText && rawText}
-    <b>{attachText},</b> {previewText}{#if isLong}...{/if}
+    <b>{attachText},</b> {bodyText}{#if isLong}...{/if}
   {:else if !isControl && !sameText && attachText}
     <b>{attachText}</b>
   {:else}
-    {previewText}{#if isLong}...{/if}
+    {bodyText}{#if isLong}...{/if}
   {/if}
 </div>

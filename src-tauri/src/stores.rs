@@ -1073,6 +1073,59 @@ pub async fn mark_message_deleted(
     .map_err(|e| e.to_string())?
 }
 
+pub fn remove_message_from_storage_sync(
+    app: &AppHandle,
+    account: u64,
+    chat_id: i64,
+    message_id: &str,
+) -> Result<(), String> {
+    let key = crypto_key(app, account);
+    let storage = Storage::new(key);
+    let dir = Paths::new(app, account).messages(chat_id);
+
+    let mut files = Storage::list(&dir);
+    files.retain(|x| {
+        x.file_name()
+            .and_then(|x| x.to_str())
+            .map(|x| x.starts_with("1_"))
+            .unwrap_or(false)
+    });
+
+    for file in files.into_iter().rev() {
+        let mut saved: Vec<Value> = storage
+            .load(&file)
+            .and_then(|x| x.as_array().cloned())
+            .unwrap_or_default();
+
+        let initial_len = saved.len();
+        saved.retain(|msg| {
+            let mid = msg.get("id").map(|x| x.to_string().replace('"', ""));
+            mid.as_deref() != Some(message_id)
+        });
+
+        if saved.len() != initial_len {
+            storage.save_coalesced(file, &Value::Array(saved));
+            break;
+        }
+    }
+
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn remove_message_from_storage(
+    app: AppHandle,
+    account: u64,
+    chat_id: i64,
+    message_id: String,
+) -> Result<(), String> {
+    tokio::task::spawn_blocking(move || {
+        remove_message_from_storage_sync(&app, account, chat_id, &message_id)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 #[tauri::command]
 pub fn clear_local_messages(
     app: AppHandle,

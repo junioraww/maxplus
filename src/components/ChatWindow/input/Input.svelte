@@ -6,8 +6,10 @@
   import { pluginOn, pluginOff } from "$lib/plugins/events.js";
 
   import { scrollToBottom } from "$lib/utils/scroll.js";
-  import { sendMessage } from "$components/ChatWindow/actions.js";
+  import { sendMessage, forwardMessages } from "$components/ChatWindow/actions.js";
   import Reply from "$components/ChatWindow/input/Reply.svelte";
+  import ForwardPreview from "$components/ChatWindow/input/ForwardPreview.svelte";
+  import { forwardDraft, clearForwardDraft } from "$lib/stores/forwardDraft.js";
   import BotCommandsMenu from "$components/ChatWindow/BotCommandsMenu.svelte";
   import API, { currentUser } from "$lib/stores/api";
   import { getChat } from "$lib/stores/messages";
@@ -96,19 +98,27 @@
   $: hasSlash = newMessage.startsWith("/");
   $: isMenuVisible = (showCommandsMenu || (hasSlash && botCommands.length > 0)) && botCommands.length > 0;
 
+  let activeSearchQuery = "";
   $: {
     const trimmed = newMessage.trim();
     clearTimeout(suggestionTimer);
+    activeSearchQuery = trimmed;
     if (!trimmed || trimmed.startsWith("/")) {
       stickerSuggestions = [];
     } else {
+      const queryForThisSearch = trimmed;
       suggestionTimer = setTimeout(async () => {
         try {
-          stickerSuggestions = await searchStickers(trimmed, 10);
+          const res = await searchStickers(queryForThisSearch, 10);
+          if (newMessage.trim() === queryForThisSearch && activeSearchQuery === queryForThisSearch) {
+            stickerSuggestions = res || [];
+          }
         } catch {
-          stickerSuggestions = [];
+          if (newMessage.trim() === queryForThisSearch) {
+            stickerSuggestions = [];
+          }
         }
-      }, 180);
+      }, 200);
     }
   }
 
@@ -257,9 +267,13 @@
 
   async function onSend() {
     if (isSending) return;
-    if (!newMessage.trim() && !attaches.length) return;
+    if (!newMessage.trim() && !attaches.length && !($forwardDraft?.messages?.length)) return;
+    clearTimeout(suggestionTimer);
+    activeSearchQuery = "";
+    stickerSuggestions = [];
     isSending = true;
-    const textToSend = newMessage;
+    let textToSend = newMessage;
+    newMessage = "";
 
     if (editingMessage) {
       const targetMsgId = editingMessage.id;
@@ -408,26 +422,35 @@
       }
     }
 
-    if (!textToSend && !_attaches.length) {
+    const msgsToForward = $forwardDraft?.messages ? [...$forwardDraft.messages] : [];
+    if (!textToSend && !_attaches.length && !msgsToForward.length) {
       isSending = false;
       return;
     }
 
     try {
-      await sendMessage(
-        chat,
-        chatSettings,
-        messages,
-        textToSend,
-        _replyTo,
-        _attaches,
-        _elements,
-        false,
-        mediaDescriptor,
-        decodedMessages
-      );
-      attaches = [];
-      elements.length = 0;
+      if (msgsToForward.length > 0) {
+        const ok = await forwardMessages(chat.id, msgsToForward, "", messages);
+        if (ok) {
+          clearForwardDraft();
+        }
+      }
+      if (textToSend || _attaches.length) {
+        await sendMessage(
+          chat,
+          chatSettings,
+          messages,
+          textToSend,
+          _replyTo,
+          _attaches,
+          _elements,
+          false,
+          mediaDescriptor,
+          decodedMessages
+        );
+        attaches = [];
+        elements.length = 0;
+      }
     } catch (e) {
       console.error(e);
     } finally {
@@ -1163,6 +1186,10 @@
 
 <SelectedAttaches {attaches} on:remove={(e) => removeAttach(e.detail.index)} />
 
+{#if $forwardDraft && $forwardDraft.messages?.length > 0}
+  <ForwardPreview />
+{/if}
+
 <EditingBanner {editingMessage} on:cancel={cancelEdit} />
 
 {#if replyTo}
@@ -1170,7 +1197,7 @@
 {/if}
 
 <div class="input-area">
-  {#if stickerSuggestions.length > 0}
+  {#if stickerSuggestions.length > 0 && newMessage.trim().length > 0}
     <StickerSuggestionsDropout
       suggestions={stickerSuggestions}
       on:select={(e) => sendSticker(e.detail.sticker)}
@@ -1298,7 +1325,7 @@
           </button>
         </div>
 
-        {#if newMessage.length || attaches.length}
+        {#if newMessage.length || attaches.length || ($forwardDraft && $forwardDraft.messages?.length > 0)}
           <button class="button send-button" type="button" on:click={onSend} title="Отправить">
             <svg viewBox="0 0 24 24" width="22" height="22">
               <path fill="currentColor" d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />

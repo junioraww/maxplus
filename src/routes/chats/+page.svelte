@@ -36,6 +36,9 @@
     updateContact
   } from "$lib/stores/contacts";
   import { isChatMuted } from "$lib/utils/notifications";
+  import { forwardDraft, clearForwardDraft } from "$lib/stores/forwardDraft.js";
+  import { forwardMessages } from "$components/ChatWindow/actions.js";
+  import { showAlert } from "$lib/utils/alert.js";
 
   let localFolders = [];
   const isAllChatsFolder = (f) => {
@@ -168,6 +171,18 @@
 
   function clearSelection() {
     selectedChats = new Set();
+  }
+
+  async function handleBatchForward() {
+    if (!selectedChats.size || !$forwardDraft?.messages?.length) return;
+    const msgs = [...$forwardDraft.messages];
+    const targets = Array.from(selectedChats);
+    clearForwardDraft();
+    clearSelection();
+    for (const targetId of targets) {
+      await forwardMessages(Number(targetId), msgs);
+    }
+    showAlert("Сообщения пересланы");
   }
 
   function deleteSelected() {
@@ -520,7 +535,7 @@
     {#if isSelectionMode}
       <div class="action-header" transition:fly={{ y: -50, duration: 200 }}>
         <div class="action-left">
-          <button class="icon-btn" on:click={clearSelection}>
+          <button class="icon-btn" on:click={() => { if ($forwardDraft && $forwardDraft.messages?.length) { clearForwardDraft(); } clearSelection(); }}>
             <svg
               viewBox="0 0 24 24"
               width="24"
@@ -540,99 +555,131 @@
         </div>
 
         <div class="action-right">
-          <button class="icon-btn" on:click={pinSelected} title="Закрепить">
-            <svg
-              viewBox="0 0 24 24"
-              width="20"
-              height="20"
-              stroke="currentColor"
-              stroke-width="2"
-              fill="none"
-              ><path
-                d="M21.41 11.58l-9-9C12.05 2.22 11.55 2 11 2H4a2 2 0 0 0-2 2v7c0 .55.22 1.05.59 1.42l9 9c.36.36.86.58 1.41.58s1.05-.22 1.41-.59l7-7c.37-.36.59-.86.59-1.41s-.23-1.06-.59-1.42zM5.5 7A1.5 1.5 0 1 1 7 5.5 1.5 1.5 0 0 1 5.5 7z"
-              ></path></svg
+          {#if $forwardDraft && $forwardDraft.messages?.length > 0}
+            <button class="icon-btn send-forward-btn" on:click={handleBatchForward} title="Отправить">
+              <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor">
+                <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
+              </svg>
+            </button>
+          {:else}
+            <button class="icon-btn" on:click={pinSelected} title="Закрепить">
+              <svg
+                viewBox="0 0 24 24"
+                width="20"
+                height="20"
+                stroke="currentColor"
+                stroke-width="2"
+                fill="none"
+                ><path
+                  d="M21.41 11.58l-9-9C12.05 2.22 11.55 2 11 2H4a2 2 0 0 0-2 2v7c0 .55.22 1.05.59 1.42l9 9c.36.36.86.58 1.41.58s1.05-.22 1.41-.59l7-7c.37-.36.59-.86.59-1.41s-.23-1.06-.59-1.42zM5.5 7A1.5 1.5 0 1 1 7 5.5 1.5 1.5 0 0 1 5.5 7z"
+                ></path></svg
+              >
+            </button>
+            <button
+              class="icon-btn"
+              on:click={muteNotifications}
+              title="Уведомления"
             >
-          </button>
-          <button
-            class="icon-btn"
-            on:click={muteNotifications}
-            title="Уведомления"
-          >
-            <svg
-              viewBox="0 0 24 24"
-              width="20"
-              height="20"
-              stroke="currentColor"
-              stroke-width="2"
-              fill="none"
-              ><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"
-              ></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg
-            >
-          </button>
-          <button class="icon-btn" on:click={addToFolder} title="В папку">
-            <svg
-              viewBox="0 0 24 24"
-              width="20"
-              height="20"
-              stroke="currentColor"
-              stroke-width="2"
-              fill="none"
-              ><path
-                d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"
-              ></path></svg
-            >
-          </button>
-          <button class="icon-btn" on:click={downloadSelected} title="Скачать">
-            <svg
-              viewBox="0 0 24 24"
-              width="20"
-              height="20"
-              stroke="currentColor"
-              stroke-width="2"
-              fill="none"
-              ><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"
-              ></path><polyline points="7 10 12 15 17 10"></polyline><line
-                x1="12"
-                y1="15"
-                x2="12"
-                y2="3"
-              ></line></svg
-            >
-          </button>
-          <button class="icon-btn" on:click={deleteSelected} title="Удалить">
-            <svg
-              viewBox="0 0 24 24"
-              width="20"
-              height="20"
-              stroke="currentColor"
-              stroke-width="2"
-              fill="none"
-              ><polyline points="3 6 5 6 21 6"></polyline><path
-                d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"
-              ></path></svg
-            >
-          </button>
+              <svg
+                viewBox="0 0 24 24"
+                width="20"
+                height="20"
+                stroke="currentColor"
+                stroke-width="2"
+                fill="none"
+                ><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"
+                ></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg
+              >
+            </button>
+            <button class="icon-btn" on:click={addToFolder} title="В папку">
+              <svg
+                viewBox="0 0 24 24"
+                width="20"
+                height="20"
+                stroke="currentColor"
+                stroke-width="2"
+                fill="none"
+                ><path
+                  d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"
+                ></path></svg
+              >
+            </button>
+            <button class="icon-btn" on:click={downloadSelected} title="Скачать">
+              <svg
+                viewBox="0 0 24 24"
+                width="20"
+                height="20"
+                stroke="currentColor"
+                stroke-width="2"
+                fill="none"
+                ><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"
+                ></path><polyline points="7 10 12 15 17 10"></polyline><line
+                  x1="12"
+                  y1="15"
+                  x2="12"
+                  y2="3"
+                ></line></svg
+              >
+            </button>
+            <button class="icon-btn" on:click={deleteSelected} title="Удалить">
+              <svg
+                viewBox="0 0 24 24"
+                width="20"
+                height="20"
+                stroke="currentColor"
+                stroke-width="2"
+                fill="none"
+                ><polyline points="3 6 5 6 21 6"></polyline><path
+                  d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"
+                ></path></svg
+              >
+            </button>
+          {/if}
         </div>
       </div>
     {:else}
       <div class="normal-header">
         <div class="row">
-          <h3 style="margin-left: 15px;">Чаты</h3>
-          <div style="margin-right: 15px; display: flex; align-items: center; gap: 8px;">
-            <button
-              class="top-btn contacts-header-btn animated-panel"
-              on:click={() => (showContactsModal = true)}
-              title="Контакты"
-            >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
-                <circle cx="9" cy="7" r="4"></circle>
-                <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
-                <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
-              </svg>
-            </button>
-            <AddContactBtn />
+          <div style="display: flex; align-items: center; gap: 10px; margin-left: 15px;">
+            {#if $forwardDraft && $forwardDraft.messages?.length > 0}
+              <button class="icon-btn" on:click={() => { clearForwardDraft(); clearSelection(); }} title="Отмена">
+                <svg
+                  viewBox="0 0 24 24"
+                  width="22"
+                  height="22"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  fill="none"
+                  ><line x1="18" y1="6" x2="6" y2="18"></line><line
+                    x1="6"
+                    y1="6"
+                    x2="18"
+                    y2="18"
+                  ></line></svg
+                >
+              </button>
+              <h3 style="margin: 0;">Выбери получателя</h3>
+            {:else}
+              <h3 style="margin: 0;">Чаты</h3>
+            {/if}
           </div>
+          {#if !$forwardDraft || !$forwardDraft.messages?.length}
+            <div style="margin-right: 15px; display: flex; align-items: center; gap: 8px;">
+              <button
+                class="top-btn contacts-header-btn animated-panel"
+                on:click={() => (showContactsModal = true)}
+                title="Контакты"
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                  <circle cx="9" cy="7" r="4"></circle>
+                  <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+                  <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+                </svg>
+              </button>
+              <AddContactBtn />
+            </div>
+          {/if}
         </div>
         <Search input={handleSearch} placeholder="Поиск" />
       </div>
@@ -671,7 +718,7 @@
               else if (result.contact) {
                 const contact = result.contact;
 
-                chatId = $currentUser ^ contact.id;
+                chatId = Number(BigInt($currentUser) ^ BigInt(contact.id));
 
                 await updateContact(contact);
               }
@@ -846,6 +893,14 @@
 
   .icon-btn:hover {
     background-color: rgba(255, 255, 255, 0.1);
+  }
+
+  .send-forward-btn {
+    color: #7b4cd6;
+  }
+
+  .send-forward-btn:hover {
+    color: #9d70ff;
   }
 
   .row {

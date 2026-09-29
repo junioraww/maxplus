@@ -83,6 +83,7 @@ export function createMessagesLoader({
       get(messages).map((m) => [String(m.id), m])
     );
 
+    const activeChatId = getChatObj()?.id ?? getChatId();
     const changed = [];
 
     for (const msg of incoming) {
@@ -94,6 +95,7 @@ export function createMessagesLoader({
         const entry = {
           ...msg,
           id: msgId,
+          chatId: msg.chatId ?? activeChatId,
           ...(isEdited ? { edited: true } : {}),
         };
         map.set(msgId, entry);
@@ -124,6 +126,7 @@ export function createMessagesLoader({
         ...old,
         ...msg,
         id: msgId,
+        chatId: msg.chatId ?? old.chatId ?? activeChatId,
         ...(isDeletedStatus ? { deleted: true, deleted_at: old.deleted_at || msg.deleted_at || Date.now() } : {}),
         ...(isEditedStatus ? { edited: true, edited_at: old.edited_at || msg.edited_at || msg.editTime || Date.now() } : {}),
         ...(newHistory.length ? { history: newHistory } : {}),

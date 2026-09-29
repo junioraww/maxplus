@@ -219,52 +219,174 @@ export async function sendMessage(
 }
 
 export async function handleReaction(chat, msg, emoji) {
-  const reactionInfo = msg.reactionInfo;
+  if (!chat?.id || !msg?.id || !emoji) return msg;
 
-  if (reactionInfo?.counters) {
-    const your = reactionInfo.yourReaction;
-    if (your) {
-      if (your === emoji) {
-        get(API)
-          .react(chat.id, msg.id)
-          .then(console.warn);
-        if (reactionInfo.totalCount === 1) msg.reactionInfo = {};
-        else {
-          reactionInfo.totalCount -= 1;
-          reactionInfo.yourReaction = undefined;
-          const entry = reactionInfo.counters.find((x) => x.reaction === emoji);
-          if (entry) entry.count -= 1;
-        }
+  const currentInfo = msg.reactionInfo || {};
+  const currentCounters = Array.isArray(currentInfo.counters)
+    ? currentInfo.counters.map(c => ({ ...c }))
+    : [];
+  const currentTotal = Number(currentInfo.totalCount || 0);
+  const yourPrev = currentInfo.yourReaction;
+
+  let newYour = yourPrev;
+  let newCounters = [...currentCounters];
+  let newTotal = currentTotal;
+
+  if (yourPrev === emoji) {
+    newYour = undefined;
+    newTotal = Math.max(0, currentTotal - 1);
+    const idx = newCounters.findIndex(c => c.reaction === emoji);
+    if (idx !== -1) {
+      if (newCounters[idx].count <= 1) {
+        newCounters.splice(idx, 1);
       } else {
-        const counters = reactionInfo.counters;
-        const prev = counters.findIndex((x) => x.reaction === your);
-        if (counters[prev].count === 1) counters.splice(prev, 1);
-        else counters[prev].count -= 1;
-        reactionInfo.yourReaction = emoji;
-        get(API)
-          .react(chat.id, msg.id, emoji)
-          .then(console.warn);
-        const entry = counters.find((x) => x.reaction === emoji);
-        if (entry) entry.count += 1;
-        else counters.push({ count: 1, reaction: emoji });
+        newCounters[idx].count -= 1;
+      }
+    }
+    get(API)
+      .react(chat.id, msg.id)
+      .catch(console.error);
+  } else {
+    if (yourPrev) {
+      const prevIdx = newCounters.findIndex(c => c.reaction === yourPrev);
+      if (prevIdx !== -1) {
+        if (newCounters[prevIdx].count <= 1) {
+          newCounters.splice(prevIdx, 1);
+        } else {
+          newCounters[prevIdx].count -= 1;
+        }
       }
     } else {
-      get(API)
-        .react(chat.id, msg.id, emoji)
-        .then(console.warn);
-      reactionInfo.yourReaction = emoji;
-      const entry = reactionInfo.counters.find((x) => x.reaction === emoji);
-      if (entry) entry.count += 1;
-      else reactionInfo.counters.push({ count: 1, reaction: emoji });
+      newTotal += 1;
     }
-  } else {
+
+    newYour = emoji;
+    const targetIdx = newCounters.findIndex(c => c.reaction === emoji);
+    if (targetIdx !== -1) {
+      newCounters[targetIdx].count += 1;
+    } else {
+      newCounters.push({ reaction: emoji, count: 1 });
+    }
+
     get(API)
       .react(chat.id, msg.id, emoji)
-      .then(console.warn);
-    msg.reactionInfo = {
-      counters: [{ count: 1, reaction: emoji }],
-      totalCount: 1,
-      yourReaction: emoji,
-    };
+      .catch(console.error);
   }
+
+  const updatedReactionInfo = newTotal > 0
+    ? {
+        counters: newCounters,
+        totalCount: newTotal,
+        yourReaction: newYour,
+      }
+    : {};
+
+  msg.reactionInfo = updatedReactionInfo;
+  return {
+    ...msg,
+    reactionInfo: updatedReactionInfo,
+  };
+}
+
+export async function copyMessageText(msg, decoded) {
+  const text = decoded?.text ?? msg?.text ?? "";
+  if (!text) return false;
+  try {
+    if (navigator?.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch (err) {
+    console.warn("navigator.clipboard failed:", err);
+  }
+
+  try {
+    const el = document.createElement("textarea");
+    el.value = text;
+    el.style.position = "fixed";
+    el.style.opacity = "0";
+    document.body.appendChild(el);
+    el.focus();
+    el.select();
+    document.execCommand("copy");
+    document.body.removeChild(el);
+    return true;
+  } catch (e) {
+    console.error("execCommand copy failed:", e);
+    return false;
+  }
+}
+
+export async function forwardMessages(targetChatId, messagesToForward, optionalText = "", messagesStore = null) {
+  if (targetChatId == null || !messagesToForward?.length) return false;
+  const api = get(API);
+  const targetIdNum = Number(targetChatId);
+
+  for (let i = 0; i < messagesToForward.length; i++) {
+    const m = messagesToForward[i];
+    const sourceChatId = m.chatId ?? m.chat_id ?? m.sourceChatId;
+    const msgIdStr = m.id != null ? String(m.id) : null;
+    if (sourceChatId == null || !msgIdStr) continue;
+    const sourceChat = get(currentSessionChats)?.find((c) => String(c.id) === String(sourceChatId));
+    const channelName = m.link?.chatName || (sourceChat?.type === "CHANNEL" ? sourceChat.title : null);
+    const channelIcon = m.link?.chatIconUrl || (sourceChat?.type === "CHANNEL" ? (sourceChat.avatar || sourceChat.baseIconUrl || sourceChat.iconUrl) : null);
+    const link = {
+      type: "FORWARD",
+      chatId: Number(sourceChatId),
+      messageId: msgIdStr,
+    };
+    const params = {
+      notify: true,
+      cid: -(Date.now() + i),
+      link,
+      elements: [],
+      attaches: [],
+    };
+    const textToSend = i === 0 ? (optionalText || "") : "";
+    try {
+      const resp = await api.sendMessage(textToSend, targetIdNum, params);
+      const sentMsg = resp?.message || resp?.payload?.message;
+      if (sentMsg) {
+        const originalMsg = m.link?.message ? { ...m.link.message } : {
+          id: msgIdStr,
+          sender: m.sender,
+          time: m.time,
+          text: m.text || "",
+          attaches: m.attaches || [],
+          elements: m.elements || [],
+          type: m.type || (sourceChat?.type === "CHANNEL" ? "CHANNEL" : "USER"),
+        };
+        const displayMsg = {
+          ...sentMsg,
+          chatId: targetIdNum,
+          id: sentMsg?.id ? String(sentMsg.id) : String(Date.now() + i),
+          sender: get(currentUser),
+          text: textToSend || "",
+          time: sentMsg?.time || Date.now(),
+          link: {
+            type: "FORWARD",
+            chatId: Number(sourceChatId),
+            messageId: msgIdStr,
+            message: originalMsg,
+            ...(channelName && { chatName: channelName }),
+            ...(channelIcon && { chatIconUrl: channelIcon }),
+          },
+        };
+        if (messagesStore) {
+          messagesStore.update((msgs) => [...msgs, displayMsg]);
+        }
+        const chatCache = getChat(targetIdNum);
+        if (chatCache?.receivedMessage) {
+          chatCache.receivedMessage.set(displayMsg);
+        }
+        if (chatCache?.updateMessages) {
+          chatCache.updateMessages([displayMsg]);
+        }
+      }
+    } catch (e) {
+      console.error("Failed to forward message:", m.id, e);
+      return false;
+    }
+  }
+  return true;
 }

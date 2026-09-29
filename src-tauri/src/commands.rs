@@ -91,11 +91,41 @@ delegate_cmd!(remove_reaction(chat_id: i64, message_id: String) => remove_reacti
 delegate_cmd!(read_message(chat_id: i64, message_id: String) => read_message(chat_id, p(message_id)?));
 delegate_cmd!(pin_message(chat_id: i64, message_id: String, notify: bool) => pin_message(chat_id, p(message_id)?, notify));
 delegate_cmd!(delete_message(chat_id: i64, message_id: String, for_me: bool) => delete_message(chat_id, p(message_id)?, for_me));
+#[tauri::command]
+pub async fn delete_messages(
+    state: State<'_, AppState>,
+    chat_id: i64,
+    message_ids: Vec<String>,
+    for_me: bool,
+) -> Result<Value, Value> {
+    let mut ids = Vec::with_capacity(message_ids.len());
+    for s in message_ids {
+        ids.push(p(s)?);
+    }
+    let r = state.client.delete_messages(chat_id, ids, for_me).await.map_err(|e| e.to_json())?;
+    Ok(r.payload)
+}
 delegate_cmd!(edit_message(chat_id: i64, message_id: String, text: String, attaches: Option<Vec<Value>>, elements: Option<Vec<Value>>) => edit_message(chat_id, p(message_id)?, text, attaches, elements));
 delegate_cmd!(get_video_by_id(chat_id: i64, message_id: String, video_id: i64, token: Option<String>) => get_video_by_id(chat_id, message_id.parse::<u64>().unwrap_or(0), video_id, token));
 delegate_cmd!(get_file_by_id(chat_id: i64, message_id: String, file_id: i64) => get_file_by_id(chat_id, message_id.parse::<u64>().unwrap_or(0), file_id));
 delegate_cmd!(get_chat_media(chat_id: i64, message_id: Option<String>, attach_types: Vec<String>, forward: i32, backward: i32) => get_chat_media(chat_id, message_id.as_deref().and_then(|s| s.parse::<i64>().ok()).unwrap_or(0), attach_types, forward, backward));
 delegate_cmd!(request_transcription(chat_id: i64, message_id: String, media_id: String) => request_transcription(chat_id, p(message_id)?, p(media_id)?));
+delegate_cmd!(get_complaint_reasons() => get_complaint_reasons());
+#[tauri::command]
+pub async fn send_complaint(
+    state: State<'_, AppState>,
+    reason_id: i64,
+    type_id: i64,
+    ids: Vec<String>,
+    parent_id: Option<i64>,
+) -> Result<Value, Value> {
+    let mut parsed_ids = Vec::with_capacity(ids.len());
+    for s in ids {
+        parsed_ids.push(p(s)?);
+    }
+    let r = state.client.send_complaint(reason_id, type_id, parsed_ids, parent_id).await.map_err(|e| e.to_json())?;
+    Ok(r.payload)
+}
 
 delegate_cmd!(send_message(
     chat_id: i64,
@@ -115,6 +145,7 @@ delegate_cmd!(reorder_folders(folders_order: Vec<String>) => reorder_folders(fol
 delegate_cmd!(delete_folders(folder_ids: Vec<String>) => delete_folders(folder_ids));
 delegate_cmd!(get_sticker_sections(sync: i64) => get_sticker_sections(sync));
 delegate_cmd!(get_favorite_stickers(sync: i64) => get_favorite_stickers(sync));
+delegate_cmd!(get_animoji_sets(sync: i64) => get_animoji_sets(sync));
 delegate_cmd!(get_assets_section(section_id: String, from: i64, count: i32) => get_assets_section(section_id, from, count));
 delegate_cmd!(get_assets_by_ids(asset_type: String, ids: Vec<i64>) => get_assets_by_ids(asset_type, ids));
 delegate_cmd!(add_favorite_sticker_set(set_id: i64) => add_favorite_sticker_set(set_id));

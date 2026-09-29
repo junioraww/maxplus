@@ -24,6 +24,8 @@ import {
   syncContacts,
 } from "$lib/utils/caching";
 import { handlePushUpdate } from "$lib/stores/stickers";
+import { ensureReactionsLoaded } from "$lib/stores/reactions.js";
+import { preloadComplaintReasons } from "$lib/stores/complaints.js";
 import { handleTranscriptionPush } from "$lib/stores/transcription.js";
 import {
   addAccount,
@@ -749,6 +751,9 @@ export default class MobileApi extends BaseAPI {
           const calls = await this.getCalls();
           if (calls) currentSessionCalls.set(calls);
         } catch {}
+
+        ensureReactionsLoaded().catch(() => {});
+        preloadComplaintReasons().catch(() => {});
       }
     }
   }
@@ -801,7 +806,20 @@ export default class MobileApi extends BaseAPI {
 
   async pinMessage(chatId, messageId) {
     await this.waitSync();
-    return await invoke("pin_message", { chatId, messageId, notify: true });
+    return await invoke("pin_message", {
+      chatId: Number(chatId),
+      messageId: String(messageId ?? "0"),
+      notify: true,
+    });
+  }
+
+  async unpinMessage(chatId) {
+    await this.waitSync();
+    return await invoke("pin_message", {
+      chatId: Number(chatId),
+      messageId: "0",
+      notify: false,
+    });
   }
 
   async deleteMessage(chatId, messageId, forMe) {
@@ -809,14 +827,50 @@ export default class MobileApi extends BaseAPI {
     try {
       const account = await getCurrentAccount();
       if (account?.id) {
-        await invoke("mark_message_deleted", {
+        await invoke("remove_message_from_storage", {
           account: Number(account.id),
           chatId: Number(chatId),
           messageId: String(messageId),
-        });
+        }).catch(() => {});
       }
     } catch {}
     return await invoke("delete_message", { chatId, messageId, forMe });
+  }
+
+  async deleteMessages(chatId, messageIds, forMe) {
+    await this.waitSync();
+    try {
+      const account = await getCurrentAccount();
+      if (account?.id) {
+        for (const mid of messageIds) {
+          invoke("remove_message_from_storage", {
+            account: Number(account.id),
+            chatId: Number(chatId),
+            messageId: String(mid),
+          }).catch(() => {});
+        }
+      }
+    } catch {}
+    return await invoke("delete_messages", {
+      chatId: Number(chatId),
+      messageIds: messageIds.map(String),
+      forMe: Boolean(forMe),
+    });
+  }
+
+  async getComplaintReasons() {
+    await this.waitSync();
+    return await invoke("get_complaint_reasons");
+  }
+
+  async sendComplaint(reasonId, typeId, ids, parentId = null) {
+    await this.waitSync();
+    return await invoke("send_complaint", {
+      reasonId: Number(reasonId),
+      typeId: Number(typeId),
+      ids: ids.map(String),
+      parentId: parentId != null ? Number(parentId) : null,
+    });
   }
 
   async editMessage(chatId, messageId, text, attaches = [], elements = []) {

@@ -97,6 +97,38 @@ export const getChat = chatId => {
         messageId: String(messageId),
       });
     },
+    markMessagesDeleted: async messageIds => {
+      const account = await getCurrentAccount();
+      return Promise.all(
+        messageIds.map(id =>
+          invoke("mark_message_deleted", {
+            account: Number(account.id),
+            chatId: Number(chatId),
+            messageId: String(id),
+          })
+        )
+      );
+    },
+    removeMessageFromStorage: async messageId => {
+      const account = await getCurrentAccount();
+      return invoke("remove_message_from_storage", {
+        account: Number(account.id),
+        chatId: Number(chatId),
+        messageId: String(messageId),
+      }).catch(() => {});
+    },
+    removeMessagesFromStorage: async messageIds => {
+      const account = await getCurrentAccount();
+      return Promise.all(
+        messageIds.map(id =>
+          invoke("remove_message_from_storage", {
+            account: Number(account.id),
+            chatId: Number(chatId),
+            messageId: String(id),
+          }).catch(() => {})
+        )
+      );
+    },
     loadMessages: async (time, amount) => {
       const account = await getCurrentAccount();
       return invoke("load_messages", { account: Number(account.id), chatId: Number(chatId), time, amount });

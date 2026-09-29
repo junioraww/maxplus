@@ -24,6 +24,7 @@
     <div class="content">
       <h3>{title}</h3>
       <p>{message}</p>
+      <slot />
     </div>
 
     <div class="footer">

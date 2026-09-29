@@ -8,6 +8,7 @@
     afterUpdate,
   } from "svelte";
   import { writable, get } from "svelte/store";
+  import { fly } from "svelte/transition";
   import { registerBackHandler } from "$lib/utils/backButton.js";
 
   import Message from "$components/ChatWindow/Message.svelte";
@@ -20,7 +21,8 @@
   } from "$lib/stores/api";
   import {
     getChatSettings,
-    getChat
+    getChat,
+    saveChats,
   } from "$lib/stores/messages";
   import {
     getContact
@@ -48,6 +50,21 @@
   import EditHistoryModal from "$components/ChatWindow/EditHistoryModal.svelte";
   import { computeTextDiff } from "$lib/utils/diff.js";
   import { clearChatNotification } from "$lib/utils/notifications.js";
+  import { showAlert } from "$lib/utils/alert.js";
+  import {
+    selectionState,
+    isSelecting,
+    selectedCount,
+    startSelection,
+    toggleMessageSelection,
+    setSelectedMessages,
+    clearSelection,
+  } from "$lib/stores/messageSelection.js";
+  import { setForwardDraft } from "$lib/stores/forwardDraft.js";
+  import ConfirmModal from "$components/main/ConfirmModal.svelte";
+  import ComplaintModal from "$components/ChatWindow/ComplaintModal.svelte";
+  import { copyMessageText, forwardMessages } from "$components/ChatWindow/actions.js";
+  import { hideMyDeletedMessages, saveOthersDeletedMessages } from "$lib/stores/deletionSettings.js";
 
   import ChatHeader from "$components/ChatWindow/ChatHeader.svelte";
   import ScrollDownButton from "$components/ChatWindow/ScrollDownButton.svelte";
@@ -56,6 +73,11 @@
   import { createMessagesLoader, BATCH_SIZE } from "$components/ChatWindow/chatMessagesLoader.js";
 
   export let chatId;
+  let prevActiveChatId = null;
+  $: if (chatId !== prevActiveChatId) {
+    prevActiveChatId = chatId;
+    clearSelection();
+  }
 
   $: chat = $currentSessionChats?.find((c) => String(c.id) === String(chatId));
 
@@ -72,6 +94,19 @@
   let activeStickerPack = null;
   let inputComponent;
   let showStickerPanel = false;
+
+  let deleteConfirmActive = false;
+  let deleteForEveryone = false;
+  let pendingDeleteIds = [];
+  $: canDeleteForEveryone = pendingDeleteIds.some((id) => {
+    const m = $messages?.find((x) => String(x.id) === String(id));
+    return m && Number(m.sender) === Number($currentUser);
+  }) || (chat?.owner && Number(chat.owner) === Number($currentUser));
+  let complaintMessage = null;
+  let isDragSelecting = false;
+  let dragSelectStartY = null;
+  let dragSelectStartX = null;
+  let dragInitialSelected = new Set();
 
   function handleOpenStickerPack(sticker) {
     if (!sticker) return;
@@ -168,6 +203,7 @@
 
   onDestroy(() => {
     unregisterBack();
+    clearSelection();
     if (savePositionTimeout) {
       clearTimeout(savePositionTimeout);
       savePositionTimeout = null;
@@ -244,10 +280,6 @@
   }
 
   function handleScroll(event) {
-    if (!isDragging) {
-      startY = null;
-      startScrollTop = null;
-    }
     if (isInitialMounting || isProgrammaticScroll) return;
 
     userHasScrolled = true;
@@ -457,8 +489,17 @@
     const seen = new Set();
     const result = [];
     const list = $messages || [];
+    const myId = Number($currentUser);
+    const hideMine = $hideMyDeletedMessages;
+    const saveOthers = $saveOthersDeletedMessages;
     for (let i = list.length - 1; i >= 0; i--) {
       const m = list[i];
+      if (!m) continue;
+      const isMine = Number(m.sender) === myId;
+      if (m.deleted) {
+        if (isMine && hideMine) continue;
+        if (!isMine && !saveOthers) continue;
+      }
       const key = m?.id != null ? String(m.id) : null;
       if (key) {
         if (seen.has(key)) continue;
@@ -644,38 +685,132 @@
     scrollToBottom(scrollElement, true);
   }
 
-  let isDragging = false;
-  let startY = null;
-  let startScrollTop = null;
+  let holdSelectTimer = null;
+  let isHoldSelectTriggered = false;
+  let justLongPressed = false;
+  let justLongPressedTimer = null;
+
+  function markLongPressOccurred() {
+    justLongPressed = true;
+    clearTimeout(justLongPressedTimer);
+    justLongPressedTimer = setTimeout(() => {
+      justLongPressed = false;
+    }, 450);
+  }
 
   function startDrag(e) {
     if (isClosingBySwipe || isSwipingChat || currentDragX > 0) return;
     clickStartPos = { x: e.clientX, y: e.clientY };
+    clearTimeout(holdSelectTimer);
+    isHoldSelectTriggered = false;
     if (e.button !== 0) return;
-    if (e.target.closest(".message-row, .message-bubble, button, a, input, textarea, .icon-button, .voice-play-btn, .circular-wrapper, .voice-message-bubble, .video-note-bubble, .reaction, .reactions-picker")) return;
-    startY = e.pageY;
-    startScrollTop = scrollElement ? scrollElement.scrollTop : null;
+    if (e.target.closest("button, a, input, textarea, .avatar-msg-btn, .reply-block, .forward-block, .inline-keyboard, .sticker-wrapper, .media-grid, .file-attachment, .voice-play-btn, .circular-wrapper, .voice-message-bubble, .video-note-bubble, .reaction, .reactions-picker, .reaction-bubble")) return;
+    dragSelectStartY = e.clientY;
+    dragSelectStartX = e.clientX;
+    isDragSelecting = false;
+    dragInitialSelected = new Set($selectionState.selected);
+
+    const messageWrapper = e.target.closest(".message-wrapper");
+    if (messageWrapper) {
+      const id = messageWrapper.id?.replace("m-", "");
+      if (id) {
+        holdSelectTimer = setTimeout(() => {
+          isHoldSelectTriggered = true;
+          markLongPressOccurred();
+          if (!$isSelecting) {
+            startSelection(chat?.id || chatId, id);
+          } else {
+            toggleMessageSelection(id);
+          }
+          if (navigator?.vibrate) navigator.vibrate(40);
+        }, 1000);
+      }
+    }
   }
 
   function stopDrag() {
-    isDragging = false;
-    startY = null;
-    startScrollTop = null;
-    if (scrollElement) scrollElement.style.cursor = "grab";
-    document.body.style.userSelect = "";
+    clearTimeout(holdSelectTimer);
+    isDragSelecting = false;
+    dragSelectStartY = null;
+    dragSelectStartX = null;
+  }
+
+  function moveDrag(e) {
+    if (isSwipingChat || currentDragX > 0 || isClosingBySwipe) {
+      stopDrag();
+      return;
+    }
+    if (dragSelectStartX !== null && dragSelectStartY !== null) {
+      if (Math.abs(e.clientX - dragSelectStartX) > 6 || Math.abs(e.clientY - dragSelectStartY) > 6) {
+        clearTimeout(holdSelectTimer);
+      }
+    }
+    if (e.buttons !== 1 || dragSelectStartY === null) {
+      if (isDragSelecting) stopDrag();
+      return;
+    }
+    const dy = e.clientY - dragSelectStartY;
+    if (!isDragSelecting) {
+      if (Math.abs(dy) > 10 || ($isSelecting && Math.abs(dy) > 4)) {
+        isDragSelecting = true;
+        if (!$isSelecting) {
+          startSelection(chat?.id || chatId);
+        }
+      } else {
+        return;
+      }
+    }
+
+    const topY = Math.min(dragSelectStartY, e.clientY);
+    const bottomY = Math.max(dragSelectStartY, e.clientY);
+
+    const nextSelected = new Set(dragInitialSelected);
+    const wrappers = scrollElement?.querySelectorAll(".message-wrapper");
+    if (wrappers) {
+      for (const wrapper of wrappers) {
+        const rect = wrapper.getBoundingClientRect();
+        const id = wrapper.id?.replace("m-", "");
+        if (!id) continue;
+        if (rect.bottom >= topY && rect.top <= bottomY) {
+          nextSelected.add(String(id));
+        }
+      }
+    }
+    setSelectedMessages(chat?.id || chatId, Array.from(nextSelected));
+
+    if (scrollElement) {
+      const containerRect = scrollElement.getBoundingClientRect();
+      if (e.clientY < containerRect.top + 40) {
+        scrollElement.scrollTop -= 10;
+      } else if (e.clientY > containerRect.bottom - 40) {
+        scrollElement.scrollTop += 10;
+      }
+    }
   }
 
   async function mouseUp(e) {
+    clearTimeout(holdSelectTimer);
+    if (isHoldSelectTriggered) {
+      isHoldSelectTriggered = false;
+      stopDrag();
+      return;
+    }
     if (currentDragX > 10 || isClosingBySwipe) {
       stopDrag();
       return;
     }
-    const currentScroll = scrollElement ? scrollElement.scrollTop : 0;
-    const clicked =
-      !isDragging ||
-      (startScrollTop !== null && Math.abs(startScrollTop - currentScroll) < 5);
-
+    if (isDragSelecting) {
+      stopDrag();
+      return;
+    }
+    if (justLongPressed || isHoldSelectTriggered) {
+      stopDrag();
+      return;
+    }
     stopDrag();
+
+    const hasTextSelection = typeof window !== "undefined" && window.getSelection && window.getSelection().toString().trim().length > 0;
+    if (hasTextSelection) return;
 
     if (
       e.target.closest(".reply-block") ||
@@ -698,48 +833,18 @@
       e.target.closest(".encrypted-media-placeholder")
     ) return;
 
-    if (clicked) {
-      const messageWrapper = e.target.closest(".message-wrapper");
-      if (messageWrapper) {
-        const id = messageWrapper.id?.replace("m-", "");
-        const msg = $messages.find((x) => String(x.id) === String(id));
+    const dx = Math.abs(e.clientX - clickStartPos.x);
+    const dy = Math.abs(e.clientY - clickStartPos.y);
+    if (dx > 5 || dy > 5) return;
 
-        if (e.target.closest(".reaction")) {
-          const reaction = e.target.childNodes[0]?.nodeValue?.trim();
-          if (reaction && msg) {
-            await handleReaction(chat, msg, reaction);
-            messages.update((x) => x);
-          }
-        } else if (msg && !dropoutActiveAt) {
-          selectMessage(e, msg);
-        }
-      }
-    }
-  }
+    const messageWrapper = e.target.closest(".message-wrapper");
+    if (messageWrapper) {
+      const id = messageWrapper.id?.replace("m-", "");
+      const msg = $messages.find((x) => String(x.id) === String(id));
 
-  function moveDrag(e) {
-    if (isSwipingChat || currentDragX > 0 || isClosingBySwipe) {
-      stopDrag();
-      return;
-    }
-    if (e.buttons !== 1 || startScrollTop === null || startY === null) {
-      if (isDragging) stopDrag();
-      return;
-    }
-    const y = e.pageY;
-    const walk = y - startY;
-    if (!isDragging) {
-      if (Math.abs(walk) > 5) {
-        isDragging = true;
-        if (scrollElement) scrollElement.style.cursor = "grabbing";
-        document.body.style.userSelect = "none";
-      } else {
-        return;
+      if (!$isSelecting && msg && !dropoutActiveAt) {
+        selectMessage(e, msg);
       }
-    }
-    e.preventDefault();
-    if (scrollElement) {
-      scrollElement.scrollTop = startScrollTop - walk;
     }
   }
 
@@ -750,7 +855,7 @@
       return;
     }
 
-    if (!justOpenedDropout && dropoutActiveAt && !e.target.closest(".message-actions-dropout")) {
+    if (!justOpenedDropout && dropoutActiveAt && !e.target.closest(".dropout-container, .dropout-backdrop, .message-actions-dropout")) {
       dropoutActiveAt = null;
     }
 
@@ -792,24 +897,150 @@
 
   function handleDropout(e) {
     const msgId = dropoutActiveAt?.msg?.id;
+    const currentMsg = dropoutActiveAt?.msg;
     dropoutActiveAt = null;
 
     const action = e.detail?.action;
-    if (action === "delete") {
-      messages.update((x) => {
-        const idx = x.findIndex((m) => String(m.id) === String(msgId));
-        if (idx !== -1) {
-          x[idx] = {
-            ...x[idx],
-            deleted: true,
-            deleted_at: Date.now(),
-          };
+    if (action === "reaction") {
+      messages.update((x) => [...x]);
+    }
+  }
+
+  async function handleMessageReact(e) {
+    const { reaction, msgId } = e.detail || {};
+    if (!reaction || !msgId) return;
+    const msg = $messages.find((x) => String(x.id) === String(msgId));
+    if (msg) {
+      await handleReaction(chat, msg, reaction);
+      messages.update((x) => [...x]);
+    }
+  }
+
+  async function handleCopyText(msg) {
+    const decoded = $decodedMessages?.[msg?.id];
+    const success = await copyMessageText(msg, decoded);
+    if (success) {
+      showAlert("Текст скопирован");
+    }
+  }
+
+  async function handleCopySelected() {
+    const selectedMsgs = $messages.filter((m) => $selectionState.selected.has(String(m.id)));
+    if (!selectedMsgs.length) return;
+    const texts = selectedMsgs.map((m) => m.text).filter(Boolean);
+    if (texts.length > 0) {
+      await navigator.clipboard.writeText(texts.join("\n\n"));
+      showAlert("Текст скопирован");
+    } else {
+      showAlert("Нет текста для копирования");
+    }
+    clearSelection();
+  }
+
+  function handleForwardSelected() {
+    const selectedMsgs = $messages.filter((m) => $selectionState.selected.has(String(m.id)));
+    if (!selectedMsgs.length) return;
+    handleStartForward(selectedMsgs);
+  }
+
+  function handleDeleteSelected() {
+    const ids = Array.from($selectionState.selected);
+    if (!ids.length) return;
+    promptDelete(ids);
+  }
+
+  function handleMessageLongPress(msg) {
+    if (!msg) return;
+    markLongPressOccurred();
+    dropoutActiveAt = null;
+    if (!$isSelecting) {
+      startSelection(chat?.id || chatId, msg.id);
+    } else {
+      toggleMessageSelection(msg.id);
+    }
+  }
+
+  function handleMessageContextMenu(msg, e) {
+    if (!msg) return;
+    if ($isSelecting) {
+      toggleMessageSelection(msg.id);
+    } else {
+      selectMessage(e, msg);
+    }
+  }
+
+  function handleStartForward(msgs) {
+    if (!msgs || !msgs.length) return;
+    setForwardDraft(msgs, chat?.id || chatId);
+    clearSelection();
+    dropoutActiveAt = null;
+    handleCloseChat();
+  }
+
+  function promptDelete(messageIds) {
+    if (!messageIds || !messageIds.length) return;
+    pendingDeleteIds = messageIds.map(String);
+    deleteForEveryone = false;
+    deleteConfirmActive = true;
+  }
+
+  async function handleConfirmDelete() {
+    deleteConfirmActive = false;
+    const ids = [...pendingDeleteIds];
+    const forMe = !deleteForEveryone;
+    pendingDeleteIds = [];
+    if (!ids.length) return;
+
+    try {
+      if (ids.length === 1) {
+        await $API.deleteMessage(chat.id, ids[0], forMe);
+      } else {
+        await $API.deleteMessages(chat.id, ids, forMe);
+      }
+
+      const shouldHide = get(hideMyDeletedMessages);
+      messages.update((msgs) => {
+        const idSet = new Set(ids);
+        if (shouldHide) {
+          return msgs.filter((m) => !idSet.has(String(m.id)));
         }
-        return [...x];
+        return msgs.map((m) => {
+          if (idSet.has(String(m.id))) {
+            return {
+              ...m,
+              deleted: true,
+              deleted_at: Date.now(),
+            };
+          }
+          return m;
+        });
       });
-      getChat(chat?.id || chatId).markMessageDeleted?.(msgId);
-    } else if (action === "reaction") {
-      messages.update((x) => x);
+
+      const chatStore = getChat(chat?.id || chatId);
+      chatStore.markMessagesDeleted?.(ids);
+      clearSelection();
+    } catch (err) {
+      console.error("Delete failed:", err);
+      showAlert("Ошибка удаления сообщений");
+    }
+  }
+
+  async function handleUnpinMessage(msgId) {
+    try {
+      await $API.unpinMessage(chat.id);
+      const updatedChat = {
+        ...chat,
+        pinnedMessage: null,
+      };
+      currentSessionChats.update(chats => {
+        const idx = chats.findIndex(x => x.id === chat.id);
+        if (idx !== -1) chats[idx] = updatedChat;
+        return [...chats];
+      });
+      await saveChats([ updatedChat ]);
+      showAlert("Сообщение откреплено");
+    } catch (e) {
+      console.error("Failed to unpin message:", e);
     }
   }
 
@@ -1044,6 +1275,7 @@
   class="chat-window"
   class:swiping={isSwipingChat}
   class:animating={!isSwipingChat && (currentDragX > 0 || isClosingBySwipe)}
+  class:is-selecting={$isSelecting || isDragSelecting}
   style={swipeStyle}
   use:swipeToClose={{
     canSwipe: () => !viewerOpen && !settingsShown && !dropoutActiveAt && !isClosingBySwipe,
@@ -1067,13 +1299,49 @@
     />
   {/if}
 
-  <ChatHeader
-    {chat}
-    {avatarUserId}
-    {title}
-    on:close={handleCloseChat}
-    on:openSettings={openSettings}
-  />
+  <div class="chat-header-container">
+    <ChatHeader
+      {chat}
+      {avatarUserId}
+      {title}
+      on:close={handleCloseChat}
+      on:openSettings={openSettings}
+    />
+    {#if $isSelecting}
+      <div class="action-header" transition:fly={{ y: -56, duration: 180 }}>
+        <div class="action-left">
+          <button class="icon-btn" on:click={clearSelection} aria-label="Отменить выбор">
+            <svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" stroke-width="2" fill="none">
+              <line x1="18" y1="6" x2="6" y2="18"></line>
+              <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+          </button>
+          <span class="selection-count">{$selectedCount}</span>
+        </div>
+
+        <div class="action-right">
+          <button class="icon-btn" on:click={handleCopySelected} title="Копировать">
+            <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2" fill="none">
+              <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+            </svg>
+          </button>
+          <button class="icon-btn" on:click={handleForwardSelected} title="Переслать">
+            <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2" fill="none">
+              <polyline points="15 14 20 9 15 4"></polyline>
+              <path d="M4 20v-7a4 4 0 0 1 4-4h12"></path>
+            </svg>
+          </button>
+          <button class="icon-btn" on:click={handleDeleteSelected} title="Удалить">
+            <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2" fill="none">
+              <polyline points="3 6 5 6 21 6"></polyline>
+              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+            </svg>
+          </button>
+        </div>
+      </div>
+    {/if}
+  </div>
 
   {#if $activeMedia}
     <MediaPlaybackHeader isChatHeader={true} />
@@ -1106,7 +1374,7 @@
     />
 
     {#if chat.pinnedMessage}
-      <PinnedMessage msg={chat.pinnedMessage} {chat} />
+      <PinnedMessage msg={chat.pinnedMessage} {chat} on:unpin={(e) => handleUnpinMessage(e.detail.id)} />
     {/if}
 
     <div
@@ -1117,7 +1385,15 @@
       <div style={"flex-shrink: 0; height: " + (chat.pinnedMessage ? "60px" : "10px")}></div>
 
       {#each uniqueMessages as msg (msg.id)}
-        <div class="message-wrapper" id={"m-" + msg.id}>
+        <div
+          class="message-wrapper"
+          class:is-selected={$selectionState.selected.has(String(msg.id))}
+          id={"m-" + msg.id}
+          on:click={() => {
+            if (justLongPressed) return;
+            if ($isSelecting) toggleMessageSelection(msg.id);
+          }}
+        >
           {#if visibleMessages[msg.id] || !$messageHeights[msg.id]}
             <div
               class="observer-area"
@@ -1134,10 +1410,16 @@
                 {otherReadTime}
                 makeVisible={makeVisible}
                 decoded={$decodedMessages[msg.id]}
+                selected={$selectionState.selected.has(String(msg.id))}
+                selectionMode={$isSelecting}
                 on:openMedia={(e) => openMedia(e.detail.attach)}
                 on:openChat={() => openChat(chat.id, msg.id)}
                 on:openStickerPack={(e) => handleOpenStickerPack(e.detail.sticker)}
                 on:openHistory={(e) => (historyModalMessage = e.detail.msg)}
+                on:react={handleMessageReact}
+                on:toggleSelect={(e) => toggleMessageSelection(e.detail.id)}
+                on:longpress={(e) => handleMessageLongPress(e.detail.msg)}
+                on:contextmenu={(e) => handleMessageContextMenu(e.detail.msg, e.detail.e)}
               />
             </div>
           {:else}
@@ -1156,6 +1438,11 @@
     on:reply={(e) => (replyTo = e.detail.id)}
     on:edit={(e) => (editingMessage = e.detail.msg)}
     on:history={(e) => (historyModalMessage = e.detail.msg)}
+    on:copyText={(e) => handleCopyText(e.detail.msg)}
+    on:forward={(e) => handleStartForward([e.detail.msg])}
+    on:select={(e) => startSelection(chat?.id || chatId, e.detail.msg?.id)}
+    on:report={(e) => (complaintMessage = e.detail.msg)}
+    on:delete={(e) => promptDelete([e.detail.msg?.id])}
     on:close={handleDropout}
   />
 
@@ -1210,6 +1497,42 @@
     {unreadBadgeCount}
     on:click={jumpToBottom}
   />
+
+  {#if complaintMessage}
+    <ComplaintModal
+      messageId={complaintMessage.id}
+      chatId={chat?.id || chatId}
+      on:close={() => (complaintMessage = null)}
+      on:success={() => {
+        complaintMessage = null;
+        showAlert("Жалоба отправлена");
+      }}
+      on:error={() => {
+        showAlert("Не удалось отправить жалобу");
+      }}
+    />
+  {/if}
+
+  {#if deleteConfirmActive}
+    <ConfirmModal
+      title="Удалить {pendingDeleteIds.length > 1 ? `${pendingDeleteIds.length} сообщений` : 'сообщение'}?"
+      message="Вы уверены?"
+      confirmText="Удалить"
+      isDangerous={true}
+      on:cancel={() => {
+        deleteConfirmActive = false;
+        pendingDeleteIds = [];
+      }}
+      on:confirm={handleConfirmDelete}
+    >
+      {#if canDeleteForEveryone}
+        <label class="delete-everyone-label">
+          <input type="checkbox" bind:checked={deleteForEveryone} />
+          <span>Удалить для всех</span>
+        </label>
+      {/if}
+    </ConfirmModal>
+  {/if}
 </div>
 
 <style>
@@ -1235,6 +1558,13 @@
     will-change: transform;
   }
 
+  .chat-window.is-selecting,
+  .chat-window.is-selecting * {
+    user-select: none !important;
+    -webkit-user-select: none !important;
+    -webkit-user-drag: none !important;
+  }
+
   .chat-window.animating {
     transition: transform 0.22s cubic-bezier(0.25, 1, 0.5, 1);
   }
@@ -1254,7 +1584,7 @@
   }
 
   .message-list-inner {
-    width: min(500px, 100%);
+    width: 100%;
     display: flex;
     gap: 8px;
     flex-direction: column;
@@ -1286,20 +1616,104 @@
   }
 
   .grab-scroll {
-    cursor: grab;
-  }
-
-  .grab-scroll:active {
-    cursor: grabbing;
+    cursor: default;
   }
 
   .message-wrapper {
     position: relative;
     width: 100%;
-    transition: background 0.3s;
+    border-radius: 0;
+    box-sizing: border-box;
+    transition: background 0.15s ease;
+  }
+
+  .message-wrapper.is-selected {
+    background: rgba(123, 76, 214, 0.22);
+    border-radius: 0;
   }
 
   .observer-area {
     position: relative;
+    width: 100%;
+  }
+
+  .chat-header-container {
+    position: relative;
+    width: 100%;
+    z-index: 25;
+    flex-shrink: 0;
+  }
+
+  .action-header {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: #252525;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 12px;
+    box-sizing: border-box;
+    border-bottom: 1px solid #333;
+    z-index: 30;
+  }
+
+  .action-left {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+
+  .selection-count {
+    font-size: 17px;
+    font-weight: 600;
+    color: #fff;
+  }
+
+  .action-right {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .icon-btn {
+    background: none;
+    border: none;
+    color: #eee;
+    padding: 8px;
+    border-radius: 50%;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.15s ease, transform 0.1s ease;
+  }
+
+  .icon-btn:hover {
+    background-color: rgba(255, 255, 255, 0.1);
+  }
+
+  .icon-btn:active {
+    transform: scale(0.95);
+  }
+
+  .delete-everyone-label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 12px;
+    font-size: 14px;
+    color: #e0e0e0;
+    cursor: pointer;
+    user-select: none;
+  }
+
+  .delete-everyone-label input[type="checkbox"] {
+    accent-color: #8b5cf6;
+    width: 16px;
+    height: 16px;
+    cursor: pointer;
   }
 </style>

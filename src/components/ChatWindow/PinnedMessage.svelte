@@ -70,20 +70,19 @@
 
   .unpin-btn {
     flex: 0 0 auto;
-
     border: none;
     background: transparent;
     cursor: pointer;
-
-    font-size: 12px;
-    opacity: 0.6;
-
+    font-size: 13px;
+    color: #ffffff;
+    opacity: 0.9;
     padding: 4px 6px;
     border-radius: 6px;
   }
 
   .unpin-btn:hover {
+    color: #ffffff;
     opacity: 1;
-    background: rgba(255, 255, 255, 0.08);
+    background: rgba(255, 255, 255, 0.12);
   }
 </style>

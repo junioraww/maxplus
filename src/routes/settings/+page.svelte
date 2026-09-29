@@ -29,6 +29,7 @@ import { goto } from "$app/navigation";
   import { clientNotificationsEnabled, toggleClientNotifications } from "$lib/utils/notifications";
   import { openDigitalIdApp, openSferumApp } from "$lib/stores/webapp.js";
   import { autoDownloadEncryptedMedia } from "$lib/stores/e2eSettings.js";
+  import { saveOthersDeletedMessages, hideMyDeletedMessages } from "$lib/stores/deletionSettings.js";
 
   let platform;
 
@@ -87,6 +88,20 @@ import { goto } from "$app/navigation";
         action: () => autoDownloadEncryptedMedia.toggle(),
         isToggle: true,
         toggleValue: $autoDownloadEncryptedMedia,
+      },
+      {
+        icon: "chat.svg",
+        text: "Сохранять чужие удаленные сообщения?",
+        action: () => saveOthersDeletedMessages.toggle(),
+        isToggle: true,
+        toggleValue: $saveOthersDeletedMessages,
+      },
+      {
+        icon: "chat.svg",
+        text: "Скрывать мои удаленные сообщения?",
+        action: () => hideMyDeletedMessages.toggle(),
+        isToggle: true,
+        toggleValue: $hideMyDeletedMessages,
       },
     ],
     [

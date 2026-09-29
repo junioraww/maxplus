@@ -4,37 +4,48 @@
 
   import Image from "$components/main/Image.svelte";
 
-  import { currentPresence } from "$lib/stores/api";
+  import { currentPresence, currentUser, currentUserDetails } from "$lib/stores/api";
 
-  export let size;
-  export let selectionMode;
-  export let isSelected;
+  export let size = 50;
+  export let selectionMode = false;
+  export let isSelected = false;
   export let chat = {};
-  export let contactId;
-  export let title;
-  export let style;
-  export let seed;
+  export let contactId = null;
+  export let userId = null;
+  export let src = null;
+  export let title = null;
+  export let style = "";
+  export let seed = null;
 
-  $: contact = getContact(contactId);
-  $: effectiveContactId = contactId || $contact?.id;
+  $: resolvedContactId = contactId ?? userId;
+  $: contact = getContact(resolvedContactId);
+  $: effectiveContactId = resolvedContactId || $contact?.id;
+  $: isMe = effectiveContactId && Number(effectiveContactId) === Number($currentUser);
+  $: selfDetails = isMe ? $currentUserDetails : null;
+
   $: isOnline = Boolean(
     $contact?.online ||
     (effectiveContactId && $currentPresence && $currentPresence[effectiveContactId]?.status === 1)
   );
 
-  if (!size) size = 50;
-  if (!title)
-    title =
-      chat.id === 0
-        ? "Избранное"
-        : chat.title || contact?.names?.[0]?.name || "Без названия";
+  $: effectiveTitle =
+    title ||
+    (chat?.id === 0
+      ? "Избранное"
+      : (chat?.title ||
+         (isMe
+           ? (selfDetails?.names?.[0]?.firstName ? `${selfDetails.names[0].firstName} ${selfDetails.names[0].lastName || ""}`.trim() : (selfDetails?.name || "Вы"))
+           : ($contact?.names?.[0]?.firstName ? `${$contact.names[0].firstName} ${$contact.names[0].lastName || ""}`.trim() : ($contact?.name || "Без названия")))));
 
   $: avatarUrl =
+    src ||
     chat?.avatar ||
     chat?.baseIconUrl ||
     chat?.iconUrl ||
     chat?.baseRawIconUrl ||
     chat?.baseUrl ||
+    selfDetails?.avatar ||
+    selfDetails?.baseUrl ||
     $contact?.avatar ||
     $contact?.baseUrl;
 
@@ -61,16 +72,16 @@
   {/if}
 
   <div class="avatar-container">
-    {#if chat.id === 0}
-      <img src="/saved.webp" style={imageStyle} />
+    {#if chat?.id === 0}
+      <img src="/saved.webp" style={imageStyle} alt={effectiveTitle} />
     {:else if avatarUrl}
-      <Image src={avatarUrl} alt={title} style={imageStyle} />
+      <Image src={avatarUrl} alt={effectiveTitle} style={imageStyle} />
     {:else}
       <div
         class="avatar-placeholder"
-        style="background: {getAvatarPlaceholder($contact?.id || chat?.id || seed)}; font-size: {size / 2.5}px;"
+        style="background: {getAvatarPlaceholder($contact?.id || selfDetails?.id || chat?.id || seed || effectiveTitle)}; font-size: {size / 2.5}px;"
       >
-        {getInitials(title)}
+        {getInitials(effectiveTitle)}
       </div>
     {/if}
 
