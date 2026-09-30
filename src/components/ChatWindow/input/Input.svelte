@@ -35,6 +35,11 @@
   import VideoRecorderPreview from "$components/ChatWindow/input/VideoRecorderPreview.svelte";
   import RecordingBar from "$components/ChatWindow/input/RecordingBar.svelte";
   import { MediaRecorderSession, extractAudioAmplitudes } from "$components/ChatWindow/input/mediaRecorderManager.js";
+  import FormattingToolbar from "$components/ChatWindow/input/FormattingToolbar.svelte";
+  import InputContextMenu from "$components/ChatWindow/input/InputContextMenu.svelte";
+  import { ComposerFormatState } from "$lib/formatting/composerState.js";
+  import { STYLE_KEYS, COMPOSER_STYLES } from "$lib/formatting/constants.js";
+  import { compileBackdropSpans } from "$lib/formatting/parser.js";
 
   export let replyTo;
   export let scrollElement;
@@ -47,20 +52,52 @@
   export let decodedMessages = null;
   export let showStickerPanel = false;
 
+  const composerFormat = new ComposerFormatState();
+  let previousMessageText = "";
+  let activeFormatStyles = [];
+  let showFormatToolbar = false;
+  let formatRevision = 0;
+  let backdropEl;
+
+  $: hasFormatting = formatRevision >= 0 && composerFormat.hasAnyFormatting();
+  $: backdropSpans = (formatRevision >= 0 && hasFormatting)
+    ? compileBackdropSpans(newMessage, composerFormat.getRawElements(newMessage))
+    : [];
+
+  function syncScroll() {
+    if (backdropEl && textareaEl) {
+      backdropEl.scrollTop = textareaEl.scrollTop;
+      backdropEl.scrollLeft = textareaEl.scrollLeft;
+    }
+  }
+
   let prevEditingId = null;
   $: if (editingMessage && editingMessage.id !== prevEditingId) {
     prevEditingId = editingMessage.id;
     newMessage = editingMessage.text || "";
+    previousMessageText = newMessage;
+    composerFormat.importData(newMessage, editingMessage.elements || []);
+    formatRevision++;
     attaches = Array.isArray(editingMessage.attaches) ? [...editingMessage.attaches] : [];
-    tick().then(() => autoResize());
+    tick().then(() => {
+      autoResize();
+      syncScroll();
+    });
   } else if (!editingMessage && prevEditingId !== null) {
     prevEditingId = null;
+    composerFormat.clear();
+    formatRevision++;
+    showFormatToolbar = false;
   }
 
   function cancelEdit() {
     editingMessage = null;
     prevEditingId = null;
     newMessage = "";
+    previousMessageText = "";
+    composerFormat.clear();
+    formatRevision++;
+    showFormatToolbar = false;
     attaches = [];
     tick().then(() => autoResize());
   }
@@ -72,6 +109,175 @@
   let showCommandsMenu = false;
   let stickerSuggestions = [];
   let suggestionTimer = null;
+
+  function handleComposerInput() {
+    composerFormat.onTextChanged(previousMessageText, newMessage);
+    previousMessageText = newMessage;
+    formatRevision++;
+    autoResize();
+    updateSelectionState();
+    tick().then(syncScroll);
+  }
+
+  function updateSelectionState() {
+    if (!textareaEl) return;
+    const start = textareaEl.selectionStart;
+    const end = textareaEl.selectionEnd;
+    if (start != null && end != null && end > start) {
+      activeFormatStyles = COMPOSER_STYLES.filter((style) =>
+        composerFormat.isStyleActive(style, start, end)
+      );
+      if (composerFormat.isStyleActive(STYLE_KEYS.LINK, start, end)) {
+        activeFormatStyles = [...activeFormatStyles, STYLE_KEYS.LINK];
+      }
+      showFormatToolbar = true;
+    } else {
+      showFormatToolbar = false;
+      activeFormatStyles = [];
+    }
+  }
+
+  function handleTextareaSelect() {
+    updateSelectionState();
+    if (isMobile && textareaEl) {
+      const start = textareaEl.selectionStart ?? 0;
+      const end = textareaEl.selectionEnd ?? 0;
+      if (start < end) {
+        savedSelectionRange = { start, end };
+        const rect = textareaEl.getBoundingClientRect();
+        contextMenuState = {
+          clientX: Math.max(16, rect.left + (rect.width - 220) / 2),
+          clientY: Math.max(16, rect.top - 240),
+          hasSelection: true,
+          activeStyles: [...activeFormatStyles],
+        };
+      }
+    }
+  }
+
+  function handleFormatToggle(style, metadata = null) {
+    if (!textareaEl) return;
+    const start = textareaEl.selectionStart;
+    const end = textareaEl.selectionEnd;
+    if (start == null || end == null || start >= end) return;
+    composerFormat.toggleStyle(style, start, end, metadata);
+    formatRevision++;
+    updateSelectionState();
+    tick().then(syncScroll);
+  }
+
+  let contextMenuState = null;
+  let savedSelectionRange = null;
+
+  function handleTextareaContextMenu(e) {
+    if (!textareaEl) return;
+    let start = textareaEl.selectionStart ?? 0;
+    let end = textareaEl.selectionEnd ?? 0;
+
+    if (start === end) {
+      const text = textareaEl.value;
+      let left = start;
+      let right = start;
+      while (left > 0 && /\S/.test(text[left - 1])) left--;
+      while (right < text.length && /\S/.test(text[right])) right++;
+      if (right > left) {
+        textareaEl.setSelectionRange(left, right);
+        start = left;
+        end = right;
+      }
+    }
+
+    savedSelectionRange = { start, end };
+    updateSelectionState();
+
+    contextMenuState = {
+      clientX: e.clientX,
+      clientY: e.clientY,
+      hasSelection: start < end,
+      activeStyles: [...activeFormatStyles],
+    };
+  }
+
+  function handleContextMenuFormat(style, metadata = null) {
+    if (!textareaEl || !savedSelectionRange) return;
+    const { start, end } = savedSelectionRange;
+    if (start >= end) return;
+    composerFormat.toggleStyle(style, start, end, metadata);
+    formatRevision++;
+    textareaEl.focus();
+    textareaEl.setSelectionRange(start, end);
+    updateSelectionState();
+    tick().then(syncScroll);
+  }
+
+  function handleContextMenuClear() {
+    if (!textareaEl || !savedSelectionRange) return;
+    const { start, end } = savedSelectionRange;
+    if (start >= end) return;
+    for (const style of COMPOSER_STYLES) {
+      if (composerFormat.isStyleActive(style, start, end)) {
+        composerFormat.toggleStyle(style, start, end);
+      }
+    }
+    if (composerFormat.isStyleActive(STYLE_KEYS.LINK, start, end)) {
+      composerFormat.toggleStyle(STYLE_KEYS.LINK, start, end);
+    }
+    formatRevision++;
+    textareaEl.focus();
+    textareaEl.setSelectionRange(start, end);
+    updateSelectionState();
+    tick().then(syncScroll);
+  }
+
+  async function handleContextMenuAction(actionName) {
+    if (!textareaEl) return;
+    const start = savedSelectionRange ? savedSelectionRange.start : (textareaEl.selectionStart ?? 0);
+    const end = savedSelectionRange ? savedSelectionRange.end : (textareaEl.selectionEnd ?? 0);
+
+    if (actionName === "cut") {
+      if (start < end) {
+        const selected = newMessage.slice(start, end);
+        await navigator.clipboard.writeText(selected).catch(() => {});
+        newMessage = newMessage.slice(0, start) + newMessage.slice(end);
+        handleComposerInput();
+        await tick();
+        textareaEl.focus();
+        textareaEl.setSelectionRange(start, start);
+      }
+    } else if (actionName === "copy") {
+      if (start < end) {
+        const selected = newMessage.slice(start, end);
+        await navigator.clipboard.writeText(selected).catch(() => {});
+      }
+    } else if (actionName === "paste") {
+      try {
+        const text = await navigator.clipboard.readText();
+        if (text) {
+          newMessage = newMessage.slice(0, start) + text + newMessage.slice(end);
+          handleComposerInput();
+          await tick();
+          textareaEl.focus();
+          const nextPos = start + text.length;
+          textareaEl.setSelectionRange(nextPos, nextPos);
+        }
+      } catch (err) {
+        console.error(err);
+      }
+    } else if (actionName === "delete") {
+      if (start < end) {
+        newMessage = newMessage.slice(0, start) + newMessage.slice(end);
+        handleComposerInput();
+        await tick();
+        textareaEl.focus();
+        textareaEl.setSelectionRange(start, start);
+      }
+    } else if (actionName === "selectAll") {
+      textareaEl.focus();
+      textareaEl.select();
+      updateSelectionState();
+    }
+    contextMenuState = null;
+  }
 
   function handlePluginInsert({ text }) {
     if (!text) return;
@@ -273,8 +479,14 @@
     activeSearchQuery = "";
     stickerSuggestions = [];
     isSending = true;
-    let textToSend = newMessage;
+    const formattedPayload = composerFormat.exportData(newMessage);
+    let textToSend = formattedPayload.text;
+    const elementsToSend = formattedPayload.elements;
     newMessage = "";
+    previousMessageText = "";
+    composerFormat.clear();
+    formatRevision++;
+    showFormatToolbar = false;
 
     if (editingMessage) {
       const targetMsgId = editingMessage.id;
@@ -325,7 +537,7 @@
       }
 
       try {
-        await $API.editMessage(chat.id, targetMsgId, textToSend, _attaches, []);
+        await $API.editMessage(chat.id, targetMsgId, textToSend, _attaches, elementsToSend);
         const textDiff = computeTextDiff(oldText, textToSend);
         const attsDiff = computeAttachesDiff(oldAtts, _attaches);
         const at = Date.now();
@@ -343,6 +555,7 @@
             const updated = {
               ...oldMsg,
               text: textToSend,
+              elements: elementsToSend,
               attaches: _attaches,
               edited: true,
               edited_at: at,
@@ -444,7 +657,7 @@
           textToSend,
           _replyTo,
           _attaches,
-          _elements,
+          elementsToSend,
           false,
           mediaDescriptor,
           decodedMessages
@@ -1331,34 +1544,114 @@
         {/if}
 
         <div class="input-container" class:focused={false}>
-          <textarea
-            bind:this={textareaEl}
-            id="textarea-{chat.id}"
-            rows="1"
-            placeholder="Сообщение"
-            bind:value={newMessage}
-            on:focus={handleTextareaFocus}
-            on:input={autoResize}
-            on:keydown={async (e) => {
-              if (e.key === "Escape") {
-                if (showStickerPanel) {
-                  e.preventDefault();
-                  showStickerPanel = false;
-                  return;
+          {#if showFormatToolbar}
+            <FormattingToolbar
+              {activeStyles}
+              on:toggle={(e) => handleFormatToggle(e.detail.style, e.detail.metadata)}
+            />
+          {/if}
+
+          <div class="textarea-wrapper">
+            {#if hasFormatting}
+              <div class="input-backdrop" bind:this={backdropEl} aria-hidden="true">
+                {#each backdropSpans as span}
+                  <span
+                    class="backdrop-span"
+                    class:bold-text={span.styles.has(STYLE_KEYS.BOLD)}
+                    class:italic-text={span.styles.has(STYLE_KEYS.ITALIC)}
+                    class:underline-text={span.styles.has(STYLE_KEYS.UNDERLINE)}
+                    class:strike-text={span.styles.has(STYLE_KEYS.STRIKE)}
+                    class:code-text={span.styles.has(STYLE_KEYS.CODE)}
+                    class:quote-text={span.styles.has(STYLE_KEYS.QUOTE)}
+                    class:link-text={span.styles.has(STYLE_KEYS.LINK) || Boolean(span.linkUrl)}
+                  >{span.text}</span>
+                {/each}
+                {#if newMessage.endsWith("\n")}
+                  <span class="backdrop-trailing-break">&#8203;</span>
+                {/if}
+              </div>
+            {/if}
+
+            <textarea
+              bind:this={textareaEl}
+              class:has-formatting={hasFormatting}
+              id="textarea-{chat.id}"
+              rows="1"
+              placeholder="Сообщение"
+              bind:value={newMessage}
+              on:focus={handleTextareaFocus}
+              on:input={handleComposerInput}
+              on:scroll={syncScroll}
+              on:select={handleTextareaSelect}
+              on:mouseup={updateSelectionState}
+              on:keyup={updateSelectionState}
+              on:contextmenu|preventDefault={handleTextareaContextMenu}
+              on:keydown={async (e) => {
+                const isMac = typeof navigator !== "undefined" && /Mac|iPod|iPhone|iPad/.test(navigator.platform);
+                const modKey = isMac ? e.metaKey : e.ctrlKey;
+                if (modKey && !e.altKey) {
+                  if (e.key === "b" || e.key === "B") {
+                    e.preventDefault();
+                    handleFormatToggle(STYLE_KEYS.BOLD);
+                    return;
+                  }
+                  if (e.key === "i" || e.key === "I") {
+                    e.preventDefault();
+                    handleFormatToggle(STYLE_KEYS.ITALIC);
+                    return;
+                  }
+                  if (e.key === "u" || e.key === "U") {
+                    e.preventDefault();
+                    handleFormatToggle(STYLE_KEYS.UNDERLINE);
+                    return;
+                  }
+                  if (e.shiftKey && (e.key === "x" || e.key === "X")) {
+                    e.preventDefault();
+                    handleFormatToggle(STYLE_KEYS.STRIKE);
+                    return;
+                  }
+                  if (e.shiftKey && (e.key === "m" || e.key === "M")) {
+                    e.preventDefault();
+                    handleFormatToggle(STYLE_KEYS.CODE);
+                    return;
+                  }
+                  if (e.shiftKey && (e.key === "q" || e.key === "Q")) {
+                    e.preventDefault();
+                    handleFormatToggle(STYLE_KEYS.QUOTE);
+                    return;
+                  }
+                  if (e.key === "k" || e.key === "K") {
+                    e.preventDefault();
+                    showFormatToolbar = true;
+                    return;
+                  }
                 }
-                if (isMenuVisible) {
-                  e.preventDefault();
-                  showCommandsMenu = false;
-                  if (newMessage === "/") newMessage = "";
-                  return;
+
+                if (e.key === "Escape") {
+                  if (showFormatToolbar) {
+                    e.preventDefault();
+                    showFormatToolbar = false;
+                    return;
+                  }
+                  if (showStickerPanel) {
+                    e.preventDefault();
+                    showStickerPanel = false;
+                    return;
+                  }
+                  if (isMenuVisible) {
+                    e.preventDefault();
+                    showCommandsMenu = false;
+                    if (newMessage === "/") newMessage = "";
+                    return;
+                  }
                 }
-              }
-              if (e.key === "Enter" && !e.shiftKey && !isMobile) {
-                e.preventDefault();
-                await onSend();
-              }
-            }}
-          ></textarea>
+                if (e.key === "Enter" && !e.shiftKey && !isMobile) {
+                  e.preventDefault();
+                  await onSend();
+                }
+              }}
+            ></textarea>
+          </div>
 
           {#if botCommands.length > 0}
             <button
@@ -1423,6 +1716,20 @@
     />
   {/if}
 
+  {#if contextMenuState}
+    <InputContextMenu
+      clientX={contextMenuState.clientX}
+      clientY={contextMenuState.clientY}
+      hasSelection={contextMenuState.hasSelection}
+      activeStyles={contextMenuState.activeStyles}
+      {isMobile}
+      on:format={(e) => handleContextMenuFormat(e.detail.style, e.detail.metadata)}
+      on:clearFormat={handleContextMenuClear}
+      on:action={(e) => handleContextMenuAction(e.detail.name)}
+      on:close={() => (contextMenuState = null)}
+    />
+  {/if}
+
   <input
     bind:this={hiddenVoiceInputEl}
     type="file"
@@ -1481,7 +1788,83 @@
     background-color: #23262d;
   }
 
+  .textarea-wrapper {
+    position: relative;
+    flex-grow: 1;
+    min-width: 0;
+    display: flex;
+    align-items: flex-end;
+  }
+
+  .input-backdrop {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    padding: 11px 14px;
+    font-size: 15px;
+    line-height: 22px;
+    font-family: inherit;
+    letter-spacing: normal;
+    white-space: pre-wrap;
+    word-break: break-word;
+    overflow-wrap: break-word;
+    tab-size: 4;
+    overflow-y: hidden;
+    overflow-x: hidden;
+    pointer-events: none;
+    color: var(--text-secondary);
+    user-select: none;
+    box-sizing: border-box;
+  }
+
+  .backdrop-span.bold-text {
+    font-weight: 700;
+    color: #ffffff;
+  }
+
+  .backdrop-span.italic-text {
+    font-style: italic;
+  }
+
+  .backdrop-span.underline-text {
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+
+  .backdrop-span.strike-text {
+    text-decoration: line-through;
+  }
+
+  .backdrop-span.underline-text.strike-text {
+    text-decoration: underline line-through;
+  }
+
+  .backdrop-span.code-text {
+    background: rgba(255, 255, 255, 0.12);
+    color: #f59e0b;
+    border-radius: 3px;
+  }
+
+  .backdrop-span.quote-text {
+    background: rgba(80, 160, 255, 0.15);
+    color: #7cb8ff;
+  }
+
+  .backdrop-span.link-text {
+    color: #50b0f0;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+
+  .backdrop-trailing-break {
+    display: inline;
+    line-height: 22px;
+  }
+
   textarea {
+    position: relative;
     box-sizing: border-box;
     flex-grow: 1;
     background-color: transparent;
@@ -1493,10 +1876,25 @@
     max-height: 120px;
     font-size: 15px;
     line-height: 22px;
+    letter-spacing: normal;
+    white-space: pre-wrap;
+    word-break: break-word;
+    overflow-wrap: break-word;
+    tab-size: 4;
     padding: 11px 14px;
     outline: none;
     font-family: inherit;
     width: 0;
+  }
+
+  textarea.has-formatting {
+    color: transparent !important;
+    caret-color: var(--text-color, #ffffff) !important;
+  }
+
+  textarea.has-formatting::selection {
+    background: rgba(59, 130, 246, 0.4);
+    color: transparent;
   }
 
   textarea::placeholder {

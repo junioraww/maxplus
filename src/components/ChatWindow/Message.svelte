@@ -15,6 +15,7 @@
   import Attachments from "$components/ChatWindow/Attachments.svelte";
   import InlineKeyboard from "$components/ChatWindow/InlineKeyboard.svelte";
   import StickerMedia from "$components/ChatWindow/Stickers/StickerMedia.svelte";
+  import FormattedText from "$components/ChatWindow/FormattedText.svelte";
   import { transcriptions, toggleTranscriptionExpanded } from "$lib/stores/transcription";
 
   const dispatch = createEventDispatcher();
@@ -197,7 +198,7 @@
   let startY = 0;
 
   function handleTouchStart(e) {
-    if (e.target.closest("button, a, input, textarea, .avatar-msg-btn, .reply-block, .forward-block, .inline-keyboard, .sticker-wrapper, .media-grid, .file-attachment, .voice-play-btn, .transcription-card, .reactions-bar, .edited-badge")) return;
+    if (e.target.closest("button, a, .rich-link, .link-dropout-card, .dropout-backdrop, input, textarea, img, video, .avatar-msg-btn, .reply-block, .forward-block, .inline-keyboard, .sticker-wrapper, .media-grid, .file-attachment, .voice-play-btn, .transcription-card, .reactions-bar, .edited-badge")) return;
     const touch = e.touches[0];
     if (!touch) return;
     startX = touch.clientX;
@@ -210,7 +211,7 @@
       if (typeof navigator !== "undefined" && navigator.vibrate) {
         navigator.vibrate(40);
       }
-    }, 350);
+    }, 450);
   }
 
   function handleTouchMove(e) {
@@ -234,40 +235,14 @@
     }
   }
 
-  function handleMouseDown(e) {
-    if (e.button !== 0) return;
-    if (e.target.closest("button, a, input, textarea, .avatar-msg-btn, .reply-block, .forward-block, .inline-keyboard, .sticker-wrapper, .media-grid, .file-attachment, .voice-play-btn, .transcription-card, .reactions-bar, .edited-badge")) return;
-    startX = e.clientX;
-    startY = e.clientY;
-    isLongPress = false;
-    clearTimeout(pressTimer);
-    pressTimer = setTimeout(() => {
-      isLongPress = true;
-      dispatch("longpress", { msg });
-    }, 380);
-  }
+  function handleMouseDown() {}
 
-  function handleMouseMove(e) {
-    if (!pressTimer) return;
-    if (Math.abs(e.clientX - startX) > 8 || Math.abs(e.clientY - startY) > 8) {
-      clearTimeout(pressTimer);
-      pressTimer = null;
-    }
-  }
+  function handleMouseMove() {}
 
-  function handleMouseUp(e) {
-    clearTimeout(pressTimer);
-    pressTimer = null;
-    if (isLongPress) {
-      e?.stopPropagation?.();
-      setTimeout(() => {
-        isLongPress = false;
-      }, 400);
-    }
-  }
+  function handleMouseUp() {}
 
   function handleContextMenu(e) {
-    if (e.target.closest("input, textarea")) return;
+    if (e.target.closest("input, textarea, a, .rich-link, .link-dropout-card, .dropout-backdrop")) return;
     e.preventDefault();
     dispatch("contextmenu", { msg, e });
   }
@@ -454,16 +429,13 @@
             </div>
           {/if}
 
-          {#if lines}
-            {#each lines as line}
-              <p class="line" class:deleted-text={msg.deleted}>
-              {#if decoded}
-                {@html line}
-              {:else}
-                {line}
-              {/if}
-              </p>
-            {/each}
+          {#if rawText}
+            <FormattedText
+              text={rawText}
+              elements={msg.elements || []}
+              deleted={msg.deleted}
+              {isSystem}
+            />
           {/if}
 
           {#if effectiveAttaches?.length}

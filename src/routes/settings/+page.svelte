@@ -135,27 +135,6 @@ import { goto } from "$app/navigation";
         text: "Словарь шифрования",
         action: () => openSettingsPage("dictionary"),
       },
-      {
-        icon: "crypto.svg",
-        text: "Автозагрузка зашифрованных медиа",
-        action: () => autoDownloadEncryptedMedia.toggle(),
-        isToggle: true,
-        toggleValue: $autoDownloadEncryptedMedia,
-      },
-      {
-        icon: "chat.svg",
-        text: "Сохранять чужие удаленные сообщения?",
-        action: () => saveOthersDeletedMessages.toggle(),
-        isToggle: true,
-        toggleValue: $saveOthersDeletedMessages,
-      },
-      {
-        icon: "chat.svg",
-        text: "Скрывать мои удаленные сообщения?",
-        action: () => hideMyDeletedMessages.toggle(),
-        isToggle: true,
-        toggleValue: $hideMyDeletedMessages,
-      },
     ],
     [
       {
@@ -191,6 +170,27 @@ import { goto } from "$app/navigation";
         icon: "phone.svg",
         text: "Плагины",
         action: () => openSettingsPage("plugins"),
+      },
+      {
+        icon: "crypto.svg",
+        text: "Автозагрузка зашифрованных медиа",
+        action: () => autoDownloadEncryptedMedia.toggle(),
+        isToggle: true,
+        toggleValue: $autoDownloadEncryptedMedia,
+      },
+      {
+        icon: "book.svg",
+        text: "Сохранять чужие удаленные сообщения?",
+        action: () => saveOthersDeletedMessages.toggle(),
+        isToggle: true,
+        toggleValue: $saveOthersDeletedMessages,
+      },
+      {
+        icon: "book.svg",
+        text: "Скрывать мои удаленные сообщения?",
+        action: () => hideMyDeletedMessages.toggle(),
+        isToggle: true,
+        toggleValue: $hideMyDeletedMessages,
       },
     ],
     [

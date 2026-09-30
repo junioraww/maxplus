@@ -816,44 +816,6 @@
       return;
     }
     stopDrag();
-
-    const hasTextSelection = typeof window !== "undefined" && window.getSelection && window.getSelection().toString().trim().length > 0;
-    if (hasTextSelection) return;
-
-    if (
-      e.target.closest(".reply-block") ||
-      e.target.closest(".forward-block") ||
-      e.target.closest(".inline-keyboard") ||
-      e.target.closest(".inline-btn") ||
-      e.target.closest(".avatar-msg-btn") ||
-      e.target.closest(".avatar-wrapper") ||
-      e.target.closest(".voice-message-bubble") ||
-      e.target.closest(".video-note-bubble") ||
-      e.target.closest(".transcription-card") ||
-      e.target.closest(".transcription-close-btn") ||
-      e.target.closest(".media-grid") ||
-      e.target.closest(".grid-item") ||
-      e.target.closest(".attaches") ||
-      e.target.closest(".media-download-badge") ||
-      e.target.closest(".file-attachment") ||
-      e.target.closest(".file-attach") ||
-      e.target.closest(".attach") ||
-      e.target.closest(".encrypted-media-placeholder")
-    ) return;
-
-    const dx = Math.abs(e.clientX - clickStartPos.x);
-    const dy = Math.abs(e.clientY - clickStartPos.y);
-    if (dx > 5 || dy > 5) return;
-
-    const messageWrapper = e.target.closest(".message-wrapper");
-    if (messageWrapper) {
-      const id = messageWrapper.id?.replace("m-", "");
-      const msg = $messages.find((x) => String(x.id) === String(id));
-
-      if (!$isSelecting && msg && !dropoutActiveAt) {
-        selectMessage(e, msg);
-      }
-    }
   }
 
   function handleClick(e) {
@@ -876,6 +838,12 @@
 
   function selectMessage(e, msg) {
     if (
+      e.target.closest("a") ||
+      e.target.closest(".rich-link") ||
+      e.target.closest(".link-dropout-card") ||
+      e.target.closest(".dropout-backdrop") ||
+      e.target.closest("img") ||
+      e.target.closest("video") ||
       e.target.closest(".reply-block") ||
       e.target.closest(".forward-block") ||
       e.target.closest(".inline-keyboard") ||
@@ -891,10 +859,6 @@
       e.target.closest(".attach") ||
       e.target.closest(".encrypted-media-placeholder")
     ) return;
-
-    const dx = Math.abs(e.clientX - clickStartPos.x);
-    const dy = Math.abs(e.clientY - clickStartPos.y);
-    if (dx > 5 || dy > 5) return;
 
     if (msg === dropoutActiveAt?.msg) return;
 
@@ -924,7 +888,75 @@
     }
   }
 
+  function getSelectedMessagesText() {
+    if (typeof window === "undefined") return null;
+    const selection = window.getSelection();
+    if (!selection || selection.isCollapsed) return null;
+    const rawSelected = selection.toString();
+    if (!rawSelected || !rawSelected.trim()) return null;
+
+    if (selection.rangeCount > 0) {
+      const range = selection.getRangeAt(0);
+      const rows = document.querySelectorAll(".message-row");
+      const matched = [];
+
+      for (const row of rows) {
+        if (selection.containsNode(row, true)) {
+          const contentEl = row.querySelector(".rich-content");
+          if (contentEl && selection.containsNode(contentEl, true)) {
+            const contentRange = document.createRange();
+            contentRange.selectNodeContents(contentEl);
+
+            const intersectionRange = document.createRange();
+            if (range.compareBoundaryPoints(Range.START_TO_START, contentRange) < 0) {
+              intersectionRange.setStart(contentRange.startContainer, contentRange.startOffset);
+            } else {
+              intersectionRange.setStart(range.startContainer, range.startOffset);
+            }
+
+            if (range.compareBoundaryPoints(Range.END_TO_END, contentRange) > 0) {
+              intersectionRange.setEnd(contentRange.endContainer, contentRange.endOffset);
+            } else {
+              intersectionRange.setEnd(range.endContainer, range.endOffset);
+            }
+
+            const text = intersectionRange.toString().trim();
+            if (text) {
+              matched.push(text);
+            }
+          }
+        }
+      }
+
+      if (matched.length > 1) {
+        return matched.join("\n");
+      } else if (matched.length === 1) {
+        return matched[0];
+      }
+    }
+
+    return rawSelected.trim();
+  }
+
+  function handleWindowCopy(e) {
+    const activeEl = document.activeElement;
+    if (activeEl && (activeEl.tagName === "INPUT" || activeEl.tagName === "TEXTAREA" || activeEl.isContentEditable)) {
+      return;
+    }
+    const multiText = getSelectedMessagesText();
+    if (multiText) {
+      e.preventDefault();
+      e.clipboardData.setData("text/plain", multiText);
+    }
+  }
+
   async function handleCopyText(msg) {
+    const selectedText = getSelectedMessagesText();
+    if (selectedText) {
+      await navigator.clipboard.writeText(selectedText);
+      showAlert("Текст скопирован");
+      return;
+    }
     const decoded = $decodedMessages?.[msg?.id];
     const success = await copyMessageText(msg, decoded);
     if (success) {
@@ -933,11 +965,18 @@
   }
 
   async function handleCopySelected() {
+    const selectedText = getSelectedMessagesText();
+    if (selectedText) {
+      await navigator.clipboard.writeText(selectedText);
+      showAlert("Текст скопирован");
+      clearSelection();
+      return;
+    }
     const selectedMsgs = $messages.filter((m) => $selectionState.selected.has(String(m.id)));
     if (!selectedMsgs.length) return;
     const texts = selectedMsgs.map((m) => m.text).filter(Boolean);
     if (texts.length > 0) {
-      await navigator.clipboard.writeText(texts.join("\n\n"));
+      await navigator.clipboard.writeText(texts.join("\n"));
       showAlert("Текст скопирован");
     } else {
       showAlert("Нет текста для копирования");
@@ -970,6 +1009,7 @@
 
   function handleMessageContextMenu(msg, e) {
     if (!msg) return;
+    if (e.target.closest("a, .rich-link, .link-dropout-card, .dropout-backdrop")) return;
     if ($isSelecting) {
       toggleMessageSelection(msg.id);
     } else {
@@ -1292,6 +1332,8 @@
     }
   }
 </script>
+
+<svelte:window on:copy={handleWindowCopy} />
 
 <div
   class="chat-window"
