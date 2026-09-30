@@ -264,7 +264,12 @@
     }
   });
 
-  function onMediaItemClick(attach) {
+  function getAttachUid(attach) {
+    const fid = attach.fileId || attach.encryptedAttach?.fileId;
+    return String(attach.videoId || attach.photoId || fid || attach.url || attach.baseUrl || attach.localPath || `${messageId}_${attach.name || "media"}`);
+  }
+
+  function onMediaItemClick(attach, e) {
     if (attach.isEncryptedMedia) {
       const fid = attach.fileId || attach.encryptedAttach?.fileId;
       const resolved = attach.localPath
@@ -276,7 +281,7 @@
       }
       attach.baseUrl = resolved;
     }
-    handleMediaClick(attach);
+    handleMediaClick(attach, e?.currentTarget || null);
   }
 
   function isDownloaded(attach) { return Boolean(attach.filePath); }
@@ -477,10 +482,11 @@
   {#each mediaItems as attach, i}
     <div
       class="grid-item"
+      data-media-uid={getAttachUid(attach)}
       style="grid-column: {layout.items[i]?.gridColumn || 'auto'}; grid-row: {layout.items[i]?.gridRow || 'auto'}; {layout.items[i]?.style || ''}"
       on:mousedown|stopPropagation
       on:mouseup|stopPropagation
-      on:click|stopPropagation={() => onMediaItemClick(attach)}
+      on:click|stopPropagation={(e) => onMediaItemClick(attach, e)}
     >
       <button
         class="media-download-badge"

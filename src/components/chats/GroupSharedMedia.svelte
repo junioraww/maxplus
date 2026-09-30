@@ -34,6 +34,7 @@
 
   let viewerOpen = false;
   let viewerIndex = 0;
+  let viewerOriginEl = null;
 
   const decryptedCache = new Map();
 
@@ -46,6 +47,7 @@
   $: viewerMediaList = items
     .filter(i => i.type === "PHOTO" || i.type === "VIDEO")
     .map(item => ({
+      uid: String(item.id),
       _type: item.type,
       type: item.type,
       baseUrl: item.url,
@@ -459,10 +461,11 @@
     return (b / (1024 * 1024)).toFixed(1) + " МБ";
   }
 
-  function openItem(item, idx) {
+  function openItem(item, idx, e = null) {
     if (activeTab === "media") {
-      const mediaIdx = viewerMediaList.findIndex(m => m.baseUrl === item.url || m.fileId === item.fileId || (item.messageId && m.name === item.name));
+      const mediaIdx = viewerMediaList.findIndex(m => m.uid === String(item.id) || m.baseUrl === item.url || m.fileId === item.fileId || (item.messageId && m.name === item.name));
       viewerIndex = mediaIdx >= 0 ? mediaIdx : (idx >= 0 ? idx : 0);
+      viewerOriginEl = e?.currentTarget || null;
       viewerOpen = true;
     } else if (item.link) {
       window.open(item.link, "_blank");
@@ -518,7 +521,11 @@
     {#if activeTab === "media"}
       <div class="media-grid">
         {#each items as item, idx (item.id)}
-          <div class="media-tile" on:click={() => openItem(item, idx)}>
+          <div
+            class="media-tile"
+            data-media-uid={String(item.id)}
+            on:click={(e) => openItem(item, idx, e)}
+          >
             {#if item.url}
               <img use:lazyLoad={item} alt={item.name} />
             {:else}
@@ -612,7 +619,12 @@
     chatId={chat?.id}
     bind:index={viewerIndex}
     allMedia={viewerMediaList}
-    on:close={() => (viewerOpen = false)}
+    originEl={viewerOriginEl}
+    originRadius={8}
+    on:close={() => {
+      viewerOpen = false;
+      viewerOriginEl = null;
+    }}
   />
 {/if}
 

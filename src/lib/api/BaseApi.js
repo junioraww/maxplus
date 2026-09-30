@@ -69,4 +69,8 @@ export default class API {
     uploadAttachment() { throw "uploadAttachment: Unimplemented" }
     requestTranscription() { throw "requestTranscription: Unimplemented" }
     editMessage() { throw "editMessage: Unimplemented" }
+    fetchUserPhotos() { throw "fetchUserPhotos: Unimplemented" }
+    uploadProfilePhoto() { throw "uploadProfilePhoto: Unimplemented" }
+    deleteProfilePhoto() { throw "deleteProfilePhoto: Unimplemented" }
+    uploadChatPhoto() { throw "uploadChatPhoto: Unimplemented" }
 }

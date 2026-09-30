@@ -89,3 +89,11 @@ export function openSettingsPage(pageId) {
 export function closeSettingsPage() {
   data.update(current => ({ ...current, settingsPage: null }));
 }
+
+export function openAvatarGallery(config) {
+  data.update(current => ({ ...current, avatarGallery: config }));
+}
+
+export function closeAvatarGallery() {
+  data.update(current => ({ ...current, avatarGallery: null }));
+}

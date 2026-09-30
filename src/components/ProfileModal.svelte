@@ -27,6 +27,7 @@
   import Session, {
     openChat as _openChat,
     closeChat as _closeChat,
+    openAvatarGallery as _openAvatarGallery,
   } from "$lib/stores/session";
   import API, {
     currentUser,
@@ -237,8 +238,91 @@
   }
 
   $: title = $contact?.names?.[0]?.firstName || chat?.title || ($contact ? "Пользователь" : "");
-  $: avatar = chat?.avatar || $contact?.avatar;
+  $: avatar = chat?.avatar || chat?.baseRawIconUrl || chat?.baseIconUrl || chat?.iconUrl || chat?.baseUrl || $contact?.baseRawUrl || $contact?.avatar || $contact?.baseUrl || null;
   $: chatLink = chat?.link;
+
+  $: isOwnProfile = Boolean(!chat || chat.type === "DIALOG") && userId != null && Number(userId) === Number($currentUser);
+  $: canEditChatPhoto = Boolean(
+    chat &&
+    (chat.type === "CHAT" || chat.type === "CHANNEL") &&
+    (
+      Number(chat.owner) === Number($currentUser) ||
+      (
+        (chat.admins?.includes(Number($currentUser)) || chat.admins?.includes($currentUser)) &&
+        !Boolean(chat.options?.ONLY_OWNER_CAN_CHANGE_ICON_TITLE ?? chat.options?.onlyOwnerCanChangeIconTitle ?? chat.onlyOwnerCanChangeIconTitle)
+      )
+    )
+  );
+  $: canUploadAvatar = isOwnProfile || canEditChatPhoto;
+  $: ownPhotoId = $currentUserDetails?.photoId || $contact?.photoId || null;
+  $: canDeleteOwnAvatar = Boolean(isOwnProfile && (ownPhotoId || avatar));
+
+  let isUploadingAvatar = false;
+  let isDeletingAvatar = false;
+  let avatarWrapEl;
+
+  function openAvatarGallery(e) {
+    if (avatar || (userId && (!chat || chat.type === "DIALOG"))) {
+      const targetEl = avatarWrapEl || e?.currentTarget;
+      const rect = targetEl?.getBoundingClientRect?.();
+      _openAvatarGallery({
+        initialUrl: avatar,
+        initialPhotoId: ownPhotoId,
+        userId: !chat || chat.type === "DIALOG" ? ($contact?.id ?? userId) : null,
+        isOwnProfile,
+        canUpload: canUploadAvatar,
+        originEl: targetEl,
+        originRect: rect ? { left: rect.left, top: rect.top, width: rect.width, height: rect.height } : null,
+        originRadius: 50,
+        onUpload: handleAvatarUpload,
+        onDelete: handleAvatarDelete,
+        onDownloaded: () => showToast("Фото сохранено"),
+        onError: (msg) => showToast(msg || "Ошибка"),
+      });
+    } else if (canUploadAvatar) {
+      handleAvatarUpload();
+    }
+  }
+
+  async function handleAvatarUpload() {
+    if (isUploadingAvatar) return null;
+    isUploadingAvatar = true;
+    try {
+      if (isOwnProfile) {
+        const res = await $API.uploadProfilePhoto();
+        if (res) {
+          showToast("Аватарка обновлена");
+        }
+        return res;
+      } else if (canEditChatPhoto && chat?.id != null) {
+        const res = await $API.uploadChatPhoto(chat.id);
+        if (res) {
+          showToast("Фото чата обновлено");
+        }
+        return res;
+      }
+      return null;
+    } catch (e) {
+      showToast(e?.message || "Не удалось обновить фото");
+      throw e;
+    } finally {
+      isUploadingAvatar = false;
+    }
+  }
+
+  async function handleAvatarDelete(targetPhotoId = null, targetUrl = null) {
+    if (!isOwnProfile || isDeletingAvatar) return;
+    isDeletingAvatar = true;
+    try {
+      await $API.deleteProfilePhoto(targetPhotoId || ownPhotoId, targetUrl || avatar);
+      showToast("Аватарка удалена");
+    } catch (e) {
+      showToast(e?.message || "Не удалось удалить аватарку");
+      throw e;
+    } finally {
+      isDeletingAvatar = false;
+    }
+  }
 
   $: infoFields = [
     info(chat?.description || $contact?.description, "about", "Описание", chat?.description || $contact?.description),
@@ -1161,12 +1245,31 @@
         {/if}
       {:else}
         <div class="tg-hero">
-          <div class="tg-avatar-wrap">
+          <div
+            class="tg-avatar-wrap"
+            bind:this={avatarWrapEl}
+            class:clickable={Boolean(avatar || canUploadAvatar || (userId && (!chat || chat.type === "DIALOG")))}
+            on:click={openAvatarGallery}
+          >
             <Avatar
               chat={chat}
-              contactId={$contact?.id}
+              contactId={$contact?.id ?? userId}
               size={96}
             />
+            {#if canUploadAvatar}
+              <button
+                type="button"
+                class="tg-avatar-edit-badge"
+                title="Обновить фото"
+                disabled={isUploadingAvatar}
+                on:click|stopPropagation={handleAvatarUpload}
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                  <line x1="12" y1="5" x2="12" y2="19"/>
+                  <line x1="5" y1="12" x2="19" y2="12"/>
+                </svg>
+              </button>
+            {/if}
           </div>
 
           <h2 class="tg-hero-name">{title}</h2>
@@ -1831,6 +1934,46 @@
   .tg-avatar-wrap {
     margin-bottom: 12px;
     position: relative;
+  }
+
+  .tg-avatar-wrap.clickable {
+    cursor: pointer;
+    transition: transform 0.14s;
+  }
+
+  .tg-avatar-wrap.clickable:active {
+    transform: scale(0.96);
+  }
+
+  .tg-avatar-edit-badge {
+    position: absolute;
+    right: -2px;
+    bottom: -2px;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    border: 2px solid #212121;
+    background: #3390ec;
+    color: #ffffff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.4);
+    transition: background 0.15s, transform 0.12s, opacity 0.15s;
+  }
+
+  .tg-avatar-edit-badge:hover {
+    background: #4ea4f6;
+  }
+
+  .tg-avatar-edit-badge:active {
+    transform: scale(0.9);
+  }
+
+  .tg-avatar-edit-badge:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
   }
 
   .tg-hero-name {

@@ -1,8 +1,9 @@
 <script>
-  import { fade, fly, scale as scaleTransition } from "svelte/transition";
-  import { invoke as tauriInvoke, convertFileSrc } from "@tauri-apps/api/core";
+  import { fade, scale as scaleTransition } from "svelte/transition";
+  import { invoke as tauriInvoke, Channel } from "@tauri-apps/api/core";
   import { save } from "@tauri-apps/plugin-dialog";
-  import { createEventDispatcher } from "svelte";
+  import { createEventDispatcher, onMount, onDestroy, tick } from "svelte";
+  import { registerBackHandler } from "$lib/utils/backButton.js";
 
   import { getAssetUrl, getProxiedMediaUrl, isProxiedMediaUrl, unwrapProxiedMediaUrl } from "$lib/utils/images";
   import { getCurrentAccount } from "$lib/stores/accounts";
@@ -11,11 +12,14 @@
   export let index = 0;
   export let allMedia;
   export let chatId;
+  export let originEl = null;
+  export let originRadius = 12;
 
   const dispatch = createEventDispatcher();
 
   let videoElement;
   let movable;
+  let mainMediaEl;
   let paused = true;
   let currentTime = 0;
   let duration = 0;
@@ -29,6 +33,7 @@
 
   let showSkipIcon = null;
   let videoCache = {};
+  let resolvedMediaMap = {};
   let isLoading = false;
 
   let scale = 1;
@@ -37,18 +42,277 @@
 
   const MIN_SCALE = 1;
   const MAX_SCALE = 4;
+
+  let slideOffset = 0;
+  let isSlideAnimating = false;
+  let slideAnimFrame = null;
+
+  let heroPhase = "idle";
+  let heroStyle = "";
+  let backdropOpacity = 1;
+  let uiOpacity = 1;
+  let isClosing = false;
+  let hiddenOriginEl = null;
+  const initialIndex = index;
+
   let encryptedVideoSrc = null;
   $: currentMedia = allMedia[index];
+  $: prevMedia = index > 0 ? allMedia[index - 1] : null;
+  $: nextMedia = index < allMedia.length - 1 ? allMedia[index + 1] : null;
   $: effectiveVideoSrc = (currentMedia?.videoId ? videoCache[currentMedia.videoId] : null) || (currentMedia?._type === "VIDEO" ? (getProxiedMediaUrl(currentMedia.localPath || currentMedia.baseUrl) || encryptedVideoSrc) : null);
 
-  $: console.log("[MediaViewer] currentMedia:", {
-    idx: index,
-    type: currentMedia?._type,
-    isEncrypted: currentMedia?.isEncryptedMedia,
-    localPath: currentMedia?.localPath,
-    baseUrl: currentMedia?.baseUrl,
-    effectiveVideoSrc,
+  const unregisterBack = registerBackHandler(() => {
+    requestClose();
+    return false;
   });
+
+  function restoreHiddenOrigin(smooth = false) {
+    if (!hiddenOriginEl || !hiddenOriginEl.style) return;
+    const el = hiddenOriginEl;
+    hiddenOriginEl = null;
+    if (smooth) {
+      el.style.transition = "opacity 220ms ease-out";
+      el.style.opacity = "1";
+      setTimeout(() => {
+        if (el && el.style) {
+          el.style.transition = "";
+        }
+      }, 240);
+    } else {
+      el.style.transition = "";
+      el.style.opacity = "";
+    }
+  }
+
+  onDestroy(() => {
+    restoreHiddenOrigin(false);
+    stopAnim();
+    stopSlideAnim();
+    unregisterBack();
+  });
+
+  function findElementForSlide(targetIndex) {
+    if (targetIndex === initialIndex && originEl && document.body.contains(originEl)) {
+      return originEl;
+    }
+    const item = allMedia?.[targetIndex];
+    if (!item?.uid || typeof document === "undefined") return null;
+    const escaped = typeof CSS !== "undefined" && CSS.escape ? CSS.escape(String(item.uid)) : String(item.uid).replace(/"/g, '\\"');
+    const found = document.querySelector(`[data-media-uid="${escaped}"]`);
+    if (found && document.body.contains(found)) {
+      return found;
+    }
+    return null;
+  }
+
+  let heroOverlayClipStyle = "";
+
+  function getOriginScrollContainer(el) {
+    if (!el || typeof el.closest !== "function") return null;
+    return el.closest(".message-list-container, .tg-scroll-content, .content");
+  }
+
+  function computeOverlayClip(el) {
+    const scroller = getOriginScrollContainer(el);
+    if (!scroller || typeof scroller.getBoundingClientRect !== "function" || !document.body.contains(scroller)) {
+      return "";
+    }
+    const sr = scroller.getBoundingClientRect();
+    let topInset = Math.max(0, Math.round(sr.top));
+    const chatWin = el.closest?.(".chat-window");
+    if (chatWin) {
+      const pinned = chatWin.querySelector?.(".pinned-message");
+      if (pinned) {
+        const pr = pinned.getBoundingClientRect();
+        if (pr.bottom > topInset && pr.bottom < window.innerHeight * 0.5) {
+          topInset = Math.max(topInset, Math.round(pr.bottom));
+        }
+      }
+    }
+    const bottomInset = Math.max(0, Math.round(window.innerHeight - sr.bottom));
+    if (topInset <= 0 && bottomInset <= 0) return "";
+    return `clip-path: inset(${topInset}px 0px ${bottomInset}px 0px);`;
+  }
+
+  function getVisibleRect(el) {
+    if (!el || typeof el.getBoundingClientRect !== "function" || !document.body.contains(el)) return null;
+    const r = el.getBoundingClientRect();
+    if (r.width <= 0 || r.height <= 0) return null;
+    const scroller = getOriginScrollContainer(el);
+    let minTop = 0;
+    let maxBottom = window.innerHeight;
+    if (scroller && document.body.contains(scroller)) {
+      const sr = scroller.getBoundingClientRect();
+      minTop = Math.max(0, sr.top);
+      maxBottom = Math.min(window.innerHeight, sr.bottom);
+    }
+    if (r.bottom > minTop + 8 && r.top < maxBottom - 8 && r.right > 0 && r.left < window.innerWidth) {
+      return { left: r.left, top: r.top, width: r.width, height: r.height };
+    }
+    return null;
+  }
+
+  function getStageCenter() {
+    if (movable && typeof movable.getBoundingClientRect === "function") {
+      const mr = movable.getBoundingClientRect();
+      if (mr.width > 0 && mr.height > 0) {
+        return { cx: mr.left + mr.width / 2, cy: mr.top + mr.height / 2 };
+      }
+    }
+    return { cx: window.innerWidth / 2, cy: window.innerHeight / 2 };
+  }
+
+  function getTargetMediaBox(mediaItem = currentMedia) {
+    const { cx, cy } = getStageCenter();
+    const activeEl = mainMediaEl || videoElement;
+    if (activeEl && activeEl.offsetWidth > 0 && activeEl.offsetHeight > 0) {
+      return { width: activeEl.offsetWidth, height: activeEl.offsetHeight, cx, cy };
+    }
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    const maxW = vw * 0.95;
+    const maxH = vh * 0.80;
+    let natW = activeEl?.naturalWidth || activeEl?.videoWidth || mediaItem?.width || 0;
+    let natH = activeEl?.naturalHeight || activeEl?.videoHeight || mediaItem?.height || 0;
+    if (!natW || !natH) {
+      const size = Math.min(maxW, maxH, 540);
+      return { width: size, height: size, cx, cy };
+    }
+    const ratio = Math.min(maxW / natW, maxH / natH, 1);
+    return { width: natW * ratio, height: natH * ratio, cx, cy };
+  }
+
+  function buildHeroTransform(rect, target, radiusPx) {
+    const scaleX = Math.max(rect.width / Math.max(target.width, 1), 0.04);
+    const scaleY = Math.max(rect.height / Math.max(target.height, 1), 0.04);
+    const dx = (rect.left + rect.width / 2) - target.cx;
+    const dy = (rect.top + rect.height / 2) - target.cy;
+    const rx = Math.round(radiusPx / scaleX);
+    const ry = Math.round(radiusPx / scaleY);
+    return {
+      dx,
+      dy,
+      scaleX,
+      scaleY,
+      borderRadius: `${rx}px / ${ry}px`,
+    };
+  }
+
+  onMount(async () => {
+    const el = findElementForSlide(index);
+    if (el && currentMedia) {
+      const thumbImg = el.querySelector?.("img");
+      const key = getMediaKey(currentMedia);
+      if (thumbImg?.src && !thumbImg.src.startsWith("data:image/svg") && key && !resolvedMediaMap[key]) {
+        resolvedMediaMap = { ...resolvedMediaMap, [key]: thumbImg.src };
+      }
+      if (currentMedia._type === "PHOTO") {
+        await loadMediaUrl(currentMedia);
+      }
+    }
+
+    const rect = getVisibleRect(el);
+    if (rect) {
+      hiddenOriginEl = el;
+      if (hiddenOriginEl && hiddenOriginEl.style) {
+        hiddenOriginEl.style.transition = "none";
+        hiddenOriginEl.style.opacity = "0";
+      }
+      heroPhase = "entering";
+      backdropOpacity = 0;
+      uiOpacity = 0;
+      heroOverlayClipStyle = computeOverlayClip(el);
+      heroStyle = "opacity: 0; transition: none;";
+      await tick();
+
+      if (mainMediaEl && !mainMediaEl.complete) {
+        await new Promise((res) => {
+          const done = () => res();
+          mainMediaEl.addEventListener("load", done, { once: true });
+          mainMediaEl.addEventListener("error", done, { once: true });
+          setTimeout(done, 90);
+        });
+      }
+
+      const target = getTargetMediaBox(currentMedia);
+      const h = buildHeroTransform(rect, target, originRadius || 12);
+
+      heroStyle = `transform: translate3d(calc(-50% + ${h.dx}px), calc(-50% + ${h.dy}px), 0) scale(${h.scaleX}, ${h.scaleY}); border-radius: ${h.borderRadius}; opacity: 1; transition: none;`;
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          backdropOpacity = 1;
+          uiOpacity = 1;
+          if (heroOverlayClipStyle) {
+            heroOverlayClipStyle = "clip-path: inset(0px 0px 0px 0px); transition: clip-path 260ms cubic-bezier(0.22, 1, 0.36, 1);";
+          }
+          heroStyle = `transform: translate3d(-50%, -50%, 0) scale(1, 1); border-radius: 0px; opacity: 1; transition: transform 310ms cubic-bezier(0.22, 1, 0.36, 1), border-radius 310ms cubic-bezier(0.22, 1, 0.36, 1);`;
+          setTimeout(() => {
+            if (heroPhase === "entering") {
+              heroPhase = "idle";
+              heroStyle = "";
+              heroOverlayClipStyle = "";
+            }
+          }, 320);
+        });
+      });
+    }
+  });
+
+  export function requestClose() {
+    if (isClosing) return;
+    isClosing = true;
+    stopAnim();
+    stopSlideAnim();
+
+    const targetEl = findElementForSlide(index);
+    const rect = getVisibleRect(targetEl);
+    if (rect) {
+      if (hiddenOriginEl && hiddenOriginEl !== targetEl) {
+        restoreHiddenOrigin(true);
+      }
+      hiddenOriginEl = targetEl;
+      if (hiddenOriginEl && hiddenOriginEl.style) {
+        hiddenOriginEl.style.transition = "none";
+        hiddenOriginEl.style.opacity = "0";
+      }
+      heroPhase = "leaving";
+      const target = getTargetMediaBox(currentMedia);
+      const h = buildHeroTransform(rect, target, originRadius || 12);
+      const endClip = computeOverlayClip(targetEl);
+      if (endClip) {
+        heroOverlayClipStyle = "clip-path: inset(0px 0px 0px 0px);";
+      }
+
+      heroStyle = `transform: translate3d(calc(-50% + ${x}px), calc(-50% + ${y}px), 0) scale(${scale}, ${scale}); border-radius: 0px; transition: none;`;
+      requestAnimationFrame(() => {
+        backdropOpacity = 0;
+        uiOpacity = 0;
+        if (endClip) {
+          heroOverlayClipStyle = `${endClip} transition: clip-path 260ms cubic-bezier(0.22, 1, 0.36, 1);`;
+        }
+        heroStyle = `transform: translate3d(calc(-50% + ${h.dx}px), calc(-50% + ${h.dy}px), 0) scale(${h.scaleX}, ${h.scaleY}); border-radius: ${h.borderRadius}; transition: transform 270ms cubic-bezier(0.22, 1, 0.36, 1), border-radius 270ms cubic-bezier(0.22, 1, 0.36, 1);`;
+        setTimeout(() => {
+          heroOverlayClipStyle = "";
+          restoreHiddenOrigin(false);
+          dispatch("close");
+        }, 270);
+      });
+    } else {
+      heroPhase = "fading";
+      restoreHiddenOrigin(true);
+      backdropOpacity = 0;
+      uiOpacity = 0;
+      heroStyle = `transform: translate3d(calc(-50% + ${x}px), calc(-50% + ${y}px), 0) scale(${scale}); opacity: 0; border-radius: 0px; transition: opacity 210ms ease-out;`;
+      setTimeout(() => {
+        dispatch("close");
+      }, 215);
+    }
+  }
+
+  function getMediaKey(media) {
+    if (!media) return "";
+    return String(media.uid || media.fileId || media.videoId || media.baseUrl || media.localPath || media.name || "");
+  }
 
   async function ensureEncryptedMediaUrl(media) {
     if (!media || !media.isEncryptedMedia) return media?.baseUrl || null;
@@ -75,11 +339,9 @@
         media.localPath = cached;
         const url = getProxiedMediaUrl(cached);
         media.baseUrl = url;
-        console.log("[MediaViewer] Found encrypted media in cache:", fid, "path:", cached, "url:", url);
         return url;
       }
 
-      console.log("[MediaViewer] Downloading encrypted media:", fid);
       const fileRes = await $API.getFileById(chatId, media.messageId, fid);
       if (fileRes?.url) {
         const cachedPath = await tauriInvoke("cache_encrypted_media", {
@@ -93,7 +355,6 @@
           media.localPath = cachedPath;
           const url = getProxiedMediaUrl(cachedPath);
           media.baseUrl = url;
-          console.log("[MediaViewer] Decrypted and cached media:", fid, "url:", url);
           return url;
         }
       }
@@ -101,6 +362,59 @@
       console.error("[MediaViewer] Failed to ensureEncryptedMediaUrl:", e);
     }
     return null;
+  }
+
+  function ensureSlideResolved(media) {
+    if (!media) return;
+    const key = getMediaKey(media);
+    if (!key || resolvedMediaMap[key]) return;
+    if (media._type === "PHOTO") {
+      loadMediaUrl(media).then((url) => {
+        if (url) {
+          resolvedMediaMap = { ...resolvedMediaMap, [key]: url };
+        }
+      }).catch(() => {});
+    } else if (media._type === "VIDEO") {
+      const thumb = media.thumbnail || media.baseUrl;
+      if (thumb) {
+        if (thumb.startsWith("data:") || thumb.startsWith("blob:") || isProxiedMediaUrl(thumb)) {
+          resolvedMediaMap = { ...resolvedMediaMap, [key]: thumb };
+        } else {
+          getAssetUrl(thumb).then((url) => {
+            resolvedMediaMap = { ...resolvedMediaMap, [key]: url || getProxiedMediaUrl(thumb) };
+          }).catch(() => {
+            resolvedMediaMap = { ...resolvedMediaMap, [key]: getProxiedMediaUrl(thumb) };
+          });
+        }
+      }
+    }
+  }
+
+  $: {
+    if (currentMedia) ensureSlideResolved(currentMedia);
+    if (prevMedia) ensureSlideResolved(prevMedia);
+    if (nextMedia) ensureSlideResolved(nextMedia);
+  }
+
+  $: if (hiddenOriginEl && index !== initialIndex) {
+    restoreHiddenOrigin(true);
+    const nextEl = findElementForSlide(index);
+    if (nextEl && getVisibleRect(nextEl)) {
+      hiddenOriginEl = nextEl;
+      if (hiddenOriginEl.style) {
+        hiddenOriginEl.style.transition = "none";
+        hiddenOriginEl.style.opacity = "0";
+      }
+    }
+  } else if (!hiddenOriginEl && heroPhase === "idle") {
+    const curEl = findElementForSlide(index);
+    if (curEl && getVisibleRect(curEl)) {
+      hiddenOriginEl = curEl;
+      if (hiddenOriginEl.style) {
+        hiddenOriginEl.style.transition = "none";
+        hiddenOriginEl.style.opacity = "0";
+      }
+    }
   }
 
   let resolvingVideo = false;
@@ -131,9 +445,9 @@
   $: {
     const posterSrc = currentMedia?.thumbnail;
     if (posterSrc) {
-      if (posterSrc.startsWith('data:') || posterSrc.startsWith('blob:') || isProxiedMediaUrl(posterSrc)) {
+      if (posterSrc.startsWith("data:") || posterSrc.startsWith("blob:") || isProxiedMediaUrl(posterSrc)) {
         resolvedPoster = posterSrc;
-      } else if (posterSrc.startsWith('http')) {
+      } else if (posterSrc.startsWith("http")) {
         getAssetUrl(posterSrc).then((url) => {
           if (url) resolvedPoster = url;
           else resolvedPoster = getProxiedMediaUrl(posterSrc);
@@ -158,6 +472,9 @@
     playbackRate = 1;
     showControls = true;
     paused = true;
+    scale = 1;
+    x = 0;
+    y = 0;
   }
 
   async function loadVideo(videoId) {
@@ -194,14 +511,13 @@
   async function togglePlay() {
     if (!videoElement) return;
     try {
-      console.log("[MediaViewer] togglePlay:", { paused: videoElement.paused, readyState: videoElement.readyState, src: videoElement.src });
       if (videoElement.paused) {
         await videoElement.play();
       } else {
         videoElement.pause();
       }
     } catch (e) {
-      console.warn("[MediaViewer] Play interrupted:", e, "src:", videoElement?.src, "readyState:", videoElement?.readyState);
+      console.warn("[MediaViewer] Play interrupted:", e);
     }
   }
 
@@ -213,15 +529,13 @@
       duration = currentMedia.duration > 1000 ? currentMedia.duration / 1000 : currentMedia.duration;
     }
     isMetadataLoaded = duration > 0 && !isNaN(duration);
-    console.log("[MediaViewer] handleSync:", { duration, isMetadataLoaded, src: el?.src });
   }
 
-  function handleCanPlay(e) {
+  function handleCanPlay() {
     isVideoReady = true;
     if (videoElement && (!duration || isNaN(duration))) {
       duration = videoElement.duration;
     }
-    console.log("[MediaViewer] handleCanPlay:", { duration, isVideoReady, src: e.target?.src });
   }
 
   function formatTime(seconds) {
@@ -240,6 +554,7 @@
   }
 
   function handleVideoTouch(side) {
+    if (wasGestureMoved) return;
     if (!videoElement || !isMetadataLoaded) return;
     const now = Date.now();
     if (now - lastTap < 300) {
@@ -270,16 +585,12 @@
     }
   }
 
-  /*
-   * UPD: Drag & Drop
-   */
-
   let pressTimer;
   function handlePressStart(e) {
     if (e.target.closest(".video-controls-bar")) return;
     clearTimeout(pressTimer);
     pressTimer = setTimeout(() => {
-      if (!paused) playbackRate = 2;
+      if (!paused && !wasGestureMoved && activePointers.size <= 1) playbackRate = 2;
     }, 500);
   }
 
@@ -289,142 +600,343 @@
   }
 
   function handleWheel(e) {
+    if (isClosing || heroPhase !== "idle") return;
     e.preventDefault();
-
-    const delta = -e.deltaY * 0.001;
-    scale += delta;
-
-    if (scale < SAFE_MIN_SCALE) scale = SAFE_MIN_SCALE;
-    if (scale > MAX_SCALE) scale = MAX_SCALE;
-  }
-
-  $: transformStyle = `
-    translate(calc(-50% + ${x}px), calc(-50% + ${y}px))
-    scale(${scale})
-  `;
-
-  let lastDistance = null;
-
-  function getDistance(touches) {
-    const [a, b] = touches;
-    return Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
-  }
-
-  function handleTouchMove(e) {
-    if (e.touches.length === 2) {
-      const dist = getDistance(e.touches);
-
-      if (lastDistance) {
-        const delta = dist - lastDistance;
-        scale += delta * 0.005;
-      }
-
-      lastDistance = dist;
-
-      scale = Math.max(SAFE_MIN_SCALE, Math.min(scale, MAX_SCALE));
+    const delta = -e.deltaY * 0.0015;
+    const nextScale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, scale + delta));
+    scale = nextScale;
+    if (scale === 1) {
+      animateTo(0, 0, 1);
     }
   }
 
-  function handleTouchEnd() {
-    lastDistance = null;
+  $: dismissProgress = scale <= 1.02 && slideOffset === 0 ? Math.min(Math.abs(y) / (typeof window !== "undefined" ? window.innerHeight * 0.42 : 340), 1) : 0;
+  $: effectiveBackdropOpacity = isClosing ? backdropOpacity : (1 - dismissProgress * 0.58);
+  $: effectiveUiOpacity = isClosing ? uiOpacity : (1 - dismissProgress * 0.85);
+  $: dragDismissScale = scale <= 1.02 && slideOffset === 0 && y !== 0 ? Math.max(0.84, 1 - dismissProgress * 0.16) : scale;
+  $: transformStyle = `translate3d(calc(-50% + ${x + slideOffset}px), calc(-50% + ${y}px), 0) scale(${dragDismissScale})`;
+
+  let activePointers = new Map();
+  let isDragging = false;
+  let dragAxis = null;
+  let wasGestureMoved = false;
+  let dragStartX = 0;
+  let dragStartY = 0;
+  let pointerDownX = 0;
+  let pointerDownY = 0;
+  let pinchStartDist = 0;
+  let pinchStartScale = 1;
+  let pinchStartMidX = 0;
+  let pinchStartMidY = 0;
+  let pinchOriginX = 0;
+  let pinchOriginY = 0;
+  let lastPhotoTapTime = 0;
+  let lastPhotoTapX = 0;
+  let lastPhotoTapY = 0;
+  let animFrameId = null;
+
+  function stopAnim() {
+    if (animFrameId) {
+      cancelAnimationFrame(animFrameId);
+      animFrameId = null;
+    }
   }
 
-  let isDragging = false;
-  let startX, startY;
+  function stopSlideAnim() {
+    if (slideAnimFrame) {
+      cancelAnimationFrame(slideAnimFrame);
+      slideAnimFrame = null;
+    }
+    isSlideAnimating = false;
+  }
+
+  function animateSlideTransition(dir, fromOffset = 0) {
+    if (isSlideAnimating || isClosing) return;
+    const nextIdx = index + dir;
+    if (nextIdx < 0 || nextIdx >= allMedia.length) {
+      animateSlideSnapBack(fromOffset);
+      return;
+    }
+
+    stopSlideAnim();
+    stopAnim();
+    isSlideAnimating = true;
+
+    const vw = window.innerWidth || 400;
+    const gap = 28;
+    const targetOffset = dir > 0 ? -(vw + gap) : (vw + gap);
+    const startOffset = fromOffset;
+    const startY = y;
+    const startTime = performance.now();
+    const animDur = 260;
+
+    function step(now) {
+      const p = Math.min((now - startTime) / animDur, 1);
+      const ease = 1 - Math.pow(1 - p, 3);
+      slideOffset = startOffset + (targetOffset - startOffset) * ease;
+      y = startY * (1 - ease);
+
+      if (p < 1) {
+        slideAnimFrame = requestAnimationFrame(step);
+      } else {
+        slideAnimFrame = null;
+        isSlideAnimating = false;
+        slideOffset = 0;
+        x = 0;
+        y = 0;
+        scale = 1;
+        index = nextIdx;
+      }
+    }
+
+    slideAnimFrame = requestAnimationFrame(step);
+  }
+
+  function animateSlideSnapBack(fromOffset) {
+    stopSlideAnim();
+    const startOffset = fromOffset;
+    const startY = y;
+    const startTime = performance.now();
+    const animDur = 210;
+    isSlideAnimating = true;
+
+    function step(now) {
+      const p = Math.min((now - startTime) / animDur, 1);
+      const ease = 1 - Math.pow(1 - p, 3);
+      slideOffset = startOffset * (1 - ease);
+      y = startY * (1 - ease);
+
+      if (p < 1) {
+        slideAnimFrame = requestAnimationFrame(step);
+      } else {
+        slideOffset = 0;
+        y = 0;
+        slideAnimFrame = null;
+        isSlideAnimating = false;
+      }
+    }
+
+    slideAnimFrame = requestAnimationFrame(step);
+  }
+
+  function getPointerPair() {
+    const pts = Array.from(activePointers.values());
+    if (pts.length < 2) return null;
+    const [a, b] = pts;
+    const dist = Math.hypot(a.x - b.x, a.y - b.y);
+    const midX = (a.x + b.x) / 2;
+    const midY = (a.y + b.y) / 2;
+    return { dist, midX, midY };
+  }
 
   function handlePointerDown(e) {
-    isDragging = true;
-    startX = e.clientX - x;
-    startY = e.clientY - y;
+    if (isClosing || heroPhase !== "idle") return;
+    if (e.target.closest(".video-controls-bar") || e.target.closest(".nav-btn") || e.target.closest(".viewer-header")) {
+      return;
+    }
+    stopAnim();
+    if (isSlideAnimating) {
+      stopSlideAnim();
+    }
+    activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+    if (activePointers.size === 1) {
+      isDragging = true;
+      dragAxis = null;
+      wasGestureMoved = false;
+      pointerDownX = e.clientX;
+      pointerDownY = e.clientY;
+      dragStartX = e.clientX - (scale <= 1.02 ? slideOffset : x);
+      dragStartY = e.clientY - y;
+    } else if (activePointers.size === 2) {
+      wasGestureMoved = true;
+      dragAxis = null;
+      slideOffset = 0;
+      clearTimeout(pressTimer);
+      playbackRate = 1;
+      const pair = getPointerPair();
+      if (pair) {
+        pinchStartDist = Math.max(pair.dist, 1);
+        pinchStartScale = scale;
+        pinchStartMidX = pair.midX;
+        pinchStartMidY = pair.midY;
+        pinchOriginX = x;
+        pinchOriginY = y;
+      }
+    }
   }
 
   function handlePointerMove(e) {
-    if (!isDragging) return;
+    if (!activePointers.has(e.pointerId)) return;
+    activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
 
-    x = e.clientX - startX;
-    y = e.clientY - startY;
+    if (activePointers.size === 2) {
+      const pair = getPointerPair();
+      if (!pair) return;
+      const ratio = pair.dist / pinchStartDist;
+      scale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, pinchStartScale * ratio));
+      x = pinchOriginX + (pair.midX - pinchStartMidX);
+      y = pinchOriginY + (pair.midY - pinchStartMidY);
+      return;
+    }
+
+    if (!isDragging || activePointers.size !== 1) return;
+
+    const dx = e.clientX - pointerDownX;
+    const dy = e.clientY - pointerDownY;
+    const movedDist = Math.hypot(dx, dy);
+    if (movedDist > 6) {
+      wasGestureMoved = true;
+      clearTimeout(pressTimer);
+      playbackRate = 1;
+      if (!dragAxis && scale <= 1.02) {
+        dragAxis = Math.abs(dx) > Math.abs(dy) * 1.1 ? "x" : "y";
+      }
+    }
+
+    if (scale <= 1.02) {
+      if (dragAxis === "x") {
+        let rawOffset = e.clientX - dragStartX;
+        if ((index === 0 && rawOffset > 0) || (index >= allMedia.length - 1 && rawOffset < 0)) {
+          rawOffset *= 0.28;
+        }
+        slideOffset = rawOffset;
+        y = (e.clientY - dragStartY) * 0.15;
+      } else if (dragAxis === "y") {
+        slideOffset = 0;
+        x = (e.clientX - pointerDownX) * 0.25;
+        y = e.clientY - dragStartY;
+      } else {
+        slideOffset = e.clientX - dragStartX;
+        y = e.clientY - dragStartY;
+      }
+    } else {
+      x = e.clientX - dragStartX;
+      y = e.clientY - dragStartY;
+    }
   }
 
-  function handlePointerUp() {
-    isDragging = false;
+  function handlePointerUp(e) {
+    if (!activePointers.has(e.pointerId)) return;
+    activePointers.delete(e.pointerId);
 
-    checkDismiss();
+    if (activePointers.size === 1) {
+      const remaining = Array.from(activePointers.values())[0];
+      dragStartX = remaining.x - (scale <= 1.02 ? slideOffset : x);
+      dragStartY = remaining.y - y;
+      return;
+    }
+
+    if (activePointers.size === 0) {
+      isDragging = false;
+
+      if (!wasGestureMoved && currentMedia?._type === "PHOTO") {
+        const now = Date.now();
+        const tapDist = Math.hypot(e.clientX - lastPhotoTapX, e.clientY - lastPhotoTapY);
+        if (now - lastPhotoTapTime < 300 && tapDist < 40) {
+          if (scale > 1.05) {
+            animateTo(0, 0, 1);
+          } else {
+            animateTo(0, 0, 2.5);
+          }
+          lastPhotoTapTime = 0;
+          return;
+        }
+        lastPhotoTapTime = now;
+        lastPhotoTapX = e.clientX;
+        lastPhotoTapY = e.clientY;
+      }
+
+      if (wasGestureMoved) {
+        checkDismiss();
+      }
+      dragAxis = null;
+    }
   }
 
-  function animateBack() {
+  function animateTo(targetX, targetY, targetScale = scale) {
+    stopAnim();
     const startX = x;
     const startY = y;
     const startScale = scale;
+    const animDuration = 220;
+    const start = performance.now();
 
-    const contentWidth = movable.offsetWidth * startScale;
-    const contentHeight = movable.offsetHeight * startScale;
+    function frame(t) {
+      const p = Math.min((t - start) / animDuration, 1);
+      const ease = 1 - Math.pow(1 - p, 3);
+      x = startX + (targetX - startX) * ease;
+      y = startY + (targetY - startY) * ease;
+      scale = startScale + (targetScale - startScale) * ease;
+
+      if (p < 1) {
+        animFrameId = requestAnimationFrame(frame);
+      } else {
+        animFrameId = null;
+      }
+    }
+
+    animFrameId = requestAnimationFrame(frame);
+  }
+
+  function animateBack() {
+    if (!movable) {
+      animateTo(0, 0, scale);
+      return;
+    }
+    const contentWidth = movable.offsetWidth * scale;
+    const contentHeight = movable.offsetHeight * scale;
 
     const maxX = Math.max((contentWidth - window.innerWidth) / 2, 0);
     const maxY = Math.max((contentHeight - window.innerHeight) / 2, 0);
 
-    const targetX = Math.max(-maxX, Math.min(x, maxX));
-    const targetY = Math.max(-maxY, Math.min(y, maxY));
+    const targetX = scale <= 1 ? 0 : Math.max(-maxX, Math.min(x, maxX));
+    const targetY = scale <= 1 ? 0 : Math.max(-maxY, Math.min(y, maxY));
 
-    const duration = 200;
-    const start = performance.now();
-
-    function frame(t) {
-      const p = Math.min((t - start) / duration, 1);
-
-      x = startX + (targetX - startX) * p;
-      y = startY + (targetY - startY) * p;
-
-      if (p < 1) requestAnimationFrame(frame);
-    }
-
-    requestAnimationFrame(frame);
+    animateTo(targetX, targetY, scale);
   }
 
   function checkDismiss() {
-    const absX = Math.abs(x);
-    const absY = Math.abs(y);
+    if (scale <= 1.02) {
+      if (dragAxis === "x" || Math.abs(slideOffset) > Math.abs(y)) {
+        const threshold = Math.min(window.innerWidth * 0.18, 95);
+        if (slideOffset < -threshold && index < allMedia.length - 1) {
+          animateSlideTransition(1, slideOffset);
+          return;
+        } else if (slideOffset > threshold && index > 0) {
+          animateSlideTransition(-1, slideOffset);
+          return;
+        }
+        animateSlideSnapBack(slideOffset);
+        return;
+      }
 
-    const halfWidth = window.innerWidth / 2;
-    const halfHeight = window.innerHeight / 2;
-
-    const dismissX = halfWidth * 0.5;
-    const dismissY = halfHeight * 0.5;
-
-    if (scale === 1) {
-      if (absX > dismissX || absY > dismissY) {
-        dispatch("close");
+      const dismissY = window.innerHeight * 0.16;
+      if (Math.abs(y) > dismissY) {
+        requestClose();
       } else {
-        animateBack();
+        slideOffset = 0;
+        animateTo(0, 0, 1);
       }
       return;
     }
 
-    const distance = Math.hypot(x, y);
-    const threshold = window.innerWidth * 0.2;
-
-    if (distance > threshold * scale) {
-      animateBack();
-    }
+    animateBack();
   }
 
-  function clampPan() {
-    const contentWidth = content.offsetWidth * scale;
-    const contentHeight = content.offsetHeight * scale;
-
-    const maxX = Math.max((contentWidth - window.innerWidth) / 2, 0);
-    const maxY = Math.max((contentHeight - window.innerHeight) / 2, 0);
-
-    x = Math.max(-maxX, Math.min(maxX, x));
-    y = Math.max(-maxY, Math.min(maxY, y));
-  }
-
-  async function load(url) {
-    let effective = url;
-    if (!effective && currentMedia?.isEncryptedMedia) {
-      effective = await ensureEncryptedMediaUrl(currentMedia);
+  async function loadMediaUrl(media) {
+    if (!media) return null;
+    let effective = media.baseUrl;
+    if (!effective && media.isEncryptedMedia) {
+      effective = await ensureEncryptedMediaUrl(media);
     }
     if (!effective) return null;
-    return await getAssetUrl(effective);
+    const res = await getAssetUrl(effective);
+    const key = getMediaKey(media);
+    if (res && key && !resolvedMediaMap[key]) {
+      resolvedMediaMap = { ...resolvedMediaMap, [key]: res };
+    }
+    return res;
   }
 
   let isDownloadingMedia = false;
@@ -447,7 +959,7 @@
         if (filePath) {
           const target = currentMedia.localPath || currentMedia.baseUrl;
           if (target) {
-            await tauriInvoke("download_to_path", { url: target, path: filePath });
+            await tauriInvoke("download_to_path", { url: target, path: filePath, onProgress: new Channel() });
           }
         }
         return;
@@ -461,7 +973,7 @@
           filters: [{ name: "Images", extensions: ["jpg", "jpeg", "png", "webp"] }],
         });
         if (filePath) {
-          await tauriInvoke("download_to_path", { url, path: filePath });
+          await tauriInvoke("download_to_path", { url, path: filePath, onProgress: new Channel() });
         }
       } else if (currentMedia._type === "VIDEO") {
         let videoUrl = videoCache[currentMedia.videoId] || currentMedia.baseUrl;
@@ -489,7 +1001,7 @@
           filters: [{ name: "Videos", extensions: ["mp4", "webm", "mov"] }],
         });
         if (filePath) {
-          await tauriInvoke("download_to_path", { url: videoUrl, path: filePath });
+          await tauriInvoke("download_to_path", { url: videoUrl, path: filePath, onProgress: new Channel() });
         }
       }
     } catch (e) {
@@ -498,14 +1010,26 @@
       isDownloadingMedia = false;
     }
   }
+
+  function handleKeydown(e) {
+    if (e.key === "Escape") {
+      requestClose();
+    } else if (e.key === "ArrowLeft" && index > 0) {
+      animateSlideTransition(-1, 0);
+    } else if (e.key === "ArrowRight" && index < allMedia.length - 1) {
+      animateSlideTransition(1, 0);
+    }
+  }
 </script>
+
+<svelte:window on:keydown={handleKeydown} />
 
 <div
   class="media-viewer-overlay"
-  transition:fade={{ duration: 100 }}
-  on:click|self={() => dispatch("close")}
+  style="background: rgba(0, 0, 0, {0.96 * effectiveBackdropOpacity}); {heroOverlayClipStyle}"
+  on:click|self={() => requestClose()}
 >
-  <div class="viewer-header">
+  <div class="viewer-header" style="opacity: {effectiveUiOpacity};">
     <div class="counter">{index + 1} из {allMedia.length}</div>
     <div class="header-actions">
       <button
@@ -518,7 +1042,7 @@
           <path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z" />
         </svg>
       </button>
-      <button class="viewer-icon-btn close" on:click={() => dispatch("close")}>
+      <button class="viewer-icon-btn close" on:click={() => requestClose()}>
         <svg viewBox="0 0 24 24"
           ><path
             d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"
@@ -531,8 +1055,9 @@
   <div class="viewer-content" on:mousemove={resetControlsTimeout}>
     <button
       class="nav-btn prev"
-      class:hidden={index === 0}
-      on:click|stopPropagation={() => index--}
+      class:hidden={index === 0 || effectiveUiOpacity < 0.2}
+      style="opacity: {index === 0 ? 0 : effectiveUiOpacity};"
+      on:click|stopPropagation={() => animateSlideTransition(-1, 0)}
     >
       <svg viewBox="0 0 24 24"
         ><path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z" /></svg
@@ -540,40 +1065,62 @@
     </button>
 
     <div
-      on:wheel|passive={handleWheel}
+      on:wheel|nonpassive={handleWheel}
       on:pointerdown={handlePointerDown}
       on:pointermove={handlePointerMove}
       on:pointerup={handlePointerUp}
-      on:pointerleave={handlePointerUp}
-      on:touchmove={handleTouchMove}
-      on:touchend={handleTouchEnd}
+      on:pointercancel={handlePointerUp}
       bind:this={movable}
       class="media-container"
     >
+      {#if prevMedia && (slideOffset > 0 || isSlideAnimating) && heroPhase === "idle"}
+        {@const prevSrc = resolvedMediaMap[getMediaKey(prevMedia)]}
+        {#if prevSrc}
+          <img
+            class="adjacent-slide"
+            style="transform: translate3d(calc(-150% - 28px + {slideOffset}px), -50%, 0) scale(1);"
+            src={prevSrc}
+            alt=""
+            draggable="false"
+          />
+        {/if}
+      {/if}
+
       {#key index}
         {#if currentMedia._type === "PHOTO"}
-          {#await load(currentMedia.baseUrl)}
-            <div class="media-shimmer" style="width: min(80vw, 600px); height: min(70vh, 500px); border-radius: 12px;"></div>
-          {:then url}
-            {#if url}
-              <img
-                style="transform: {transformStyle}"
-                src={url}
-                alt=""
-                in:fly={{ y: 20, duration: 200 }}
-              />
-            {:else}
+          {@const cachedPhoto = resolvedMediaMap[getMediaKey(currentMedia)]}
+          {#if cachedPhoto}
+            <img
+              bind:this={mainMediaEl}
+              style={heroPhase !== "idle" ? heroStyle : `transform: ${transformStyle};`}
+              src={cachedPhoto}
+              alt=""
+              draggable="false"
+            />
+          {:else}
+            {#await loadMediaUrl(currentMedia)}
               <div class="media-shimmer" style="width: min(80vw, 600px); height: min(70vh, 500px); border-radius: 12px;"></div>
-            {/if}
-          {/await}
+            {:then url}
+              {#if url}
+                <img
+                  bind:this={mainMediaEl}
+                  style={heroPhase !== "idle" ? heroStyle : `transform: ${transformStyle};`}
+                  src={url}
+                  alt=""
+                  draggable="false"
+                />
+              {:else}
+                <div class="media-shimmer" style="width: min(80vw, 600px); height: min(70vh, 500px); border-radius: 12px;"></div>
+              {/if}
+            {/await}
+          {/if}
         {:else if currentMedia._type === "VIDEO"}
           {#if effectiveVideoSrc}
             <div
               class="tg-video-wrapper"
-              on:mousedown={handlePressStart}
-              on:touchstart={handlePressStart}
-              on:mouseup={handlePressEnd}
-              on:touchend={handlePressEnd}
+              on:pointerdown={handlePressStart}
+              on:pointerup={handlePressEnd}
+              on:pointercancel={handlePressEnd}
             >
               <video
                 bind:this={videoElement}
@@ -593,10 +1140,10 @@
                 on:canplay={handleCanPlay}
                 on:error={(e) => console.error("[MediaViewer] Video element error:", e.target?.error, "src:", effectiveVideoSrc)}
                 playsinline
-                style="transform: {transformStyle}"
+                style={heroPhase !== "idle" ? heroStyle : `transform: ${transformStyle};`}
               ></video>
 
-              <div class="tap-zones">
+              <div class="tap-zones" style={heroPhase !== "idle" ? heroStyle : `transform: ${transformStyle};`}>
                 <div
                   class="tap-zone left"
                   on:click|stopPropagation={() => handleVideoTouch("left")}
@@ -631,7 +1178,8 @@
 
               <div
                 class="video-controls-bar"
-                class:hidden={!showControls}
+                class:hidden={!showControls || heroPhase !== "idle"}
+                style="opacity: {!showControls || heroPhase !== 'idle' ? 0 : effectiveUiOpacity};"
                 on:click|stopPropagation
                 on:pointerdown|stopPropagation
                 on:pointermove|stopPropagation
@@ -724,11 +1272,14 @@
               on:click={() => loadVideo(currentMedia.videoId)}
             >
               <img
+                bind:this={mainMediaEl}
                 src={currentMedia.thumbnail}
                 alt=""
+                draggable="false"
                 class="video-preview"
+                style={heroPhase !== "idle" ? heroStyle : `transform: ${transformStyle};`}
               />
-              <div class="play-overlay">
+              <div class="play-overlay" style="opacity: {effectiveUiOpacity};">
                 {#if isLoading}
                   <div class="loader"></div>
                 {:else}
@@ -745,12 +1296,26 @@
           {/if}
         {/if}
       {/key}
+
+      {#if nextMedia && (slideOffset < 0 || isSlideAnimating) && heroPhase === "idle"}
+        {@const nextSrc = resolvedMediaMap[getMediaKey(nextMedia)]}
+        {#if nextSrc}
+          <img
+            class="adjacent-slide"
+            style="transform: translate3d(calc(50% + 28px + {slideOffset}px), -50%, 0) scale(1);"
+            src={nextSrc}
+            alt=""
+            draggable="false"
+          />
+        {/if}
+      {/if}
     </div>
 
     <button
       class="nav-btn next"
-      class:hidden={index === allMedia.length - 1}
-      on:click|stopPropagation={() => index++}
+      class:hidden={index === allMedia.length - 1 || effectiveUiOpacity < 0.2}
+      style="opacity: {index === allMedia.length - 1 ? 0 : effectiveUiOpacity};"
+      on:click|stopPropagation={() => animateSlideTransition(1, 0)}
     >
       <svg viewBox="0 0 24 24"
         ><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z" /></svg
@@ -763,26 +1328,33 @@
   .media-viewer-overlay {
     position: fixed;
     inset: 0;
+    width: 100vw;
+    height: 100dvh;
     background: rgba(0, 0, 0, 0.96);
-    z-index: 9999;
+    z-index: 20000;
     display: flex;
     flex-direction: column;
     user-select: none;
+    -webkit-user-select: none;
+    touch-action: none;
+    overscroll-behavior: none;
+    transition: background-color 220ms ease;
   }
 
   .viewer-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 15px 20px;
+    padding: calc(env(safe-area-inset-top, 12px) + 6px) 20px 15px 20px;
     color: white;
     z-index: 10;
+    transition: opacity 200ms ease;
   }
 
   .counter {
     font-size: 15px;
     font-weight: 500;
-    opacity: 0.8;
+    opacity: 0.85;
   }
 
   .viewer-content {
@@ -792,16 +1364,19 @@
     justify-content: space-between;
     padding: 0 10px 40px 10px;
     position: relative;
+    touch-action: none;
+    overflow: visible;
   }
 
   .media-container {
     flex: 1;
     height: 100%;
+    box-sizing: border-box;
     display: flex;
     align-items: center;
     justify-content: center;
-    padding-top: env(safe-area-inset-top, 10px);
-    padding-bottom: env(safe-area-inset-bottom, 20px);
+    touch-action: none;
+    position: relative;
   }
 
   .media-container :global(img),
@@ -810,38 +1385,52 @@
     position: absolute;
     top: 50%;
     left: 50%;
-    transform: translate(-50%, -50%) scale(1);
+    transform: translate3d(-50%, -50%, 0) scale(1);
     object-fit: contain;
     max-width: 95vw;
     max-height: 80vh;
+    will-change: transform, border-radius, opacity;
+    touch-action: none;
+    -webkit-user-drag: none;
+    user-select: none;
+  }
+
+  .adjacent-slide {
+    pointer-events: none;
+    opacity: 0.92;
   }
 
   .nav-btn {
-    width: 56px;
-    height: 56px;
+    width: 52px;
+    height: 52px;
     border-radius: 50%;
-    background: rgba(255, 255, 255, 0.1);
-    border: none;
+    background: rgba(255, 255, 255, 0.12);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
     color: white;
     cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: all 0.2s;
+    transition: background 0.2s, opacity 0.2s, transform 0.15s;
     flex-shrink: 0;
     margin: 0 15px;
     z-index: 100;
   }
   .nav-btn:hover {
-    background: rgba(255, 255, 255, 0.2);
+    background: rgba(255, 255, 255, 0.22);
+  }
+  .nav-btn:active {
+    transform: scale(0.93);
   }
   .nav-btn svg {
-    width: 36px;
-    height: 36px;
+    width: 32px;
+    height: 32px;
     fill: currentColor;
   }
   .nav-btn.hidden {
-    opacity: 0;
+    opacity: 0 !important;
     pointer-events: none;
   }
 
@@ -856,7 +1445,7 @@
     border: none;
     color: white;
     cursor: pointer;
-    padding: 5px;
+    padding: 6px;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -961,7 +1550,7 @@
     z-index: 2;
     display: block;
     opacity: 0;
-    transition: opacity 0.5s;
+    transition: opacity 0.3s;
   }
   .video-player.ready {
     opacity: 1;
@@ -986,7 +1575,7 @@
     cursor: default;
   }
   .video-controls-bar.hidden {
-    opacity: 0;
+    opacity: 0 !important;
     transform: translateY(10px);
     pointer-events: none;
   }
@@ -1140,9 +1729,12 @@
       width: 44px;
       height: 44px;
       margin: 0;
-      background: rgba(0, 0, 0, 0.3);
+      background: rgba(0, 0, 0, 0.35);
       top: 50%;
       transform: translateY(-50%);
+    }
+    .nav-btn:active {
+      transform: translateY(-50%) scale(0.93);
     }
     .nav-btn.prev {
       left: 10px;

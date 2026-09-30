@@ -1,4 +1,4 @@
-import { invoke as tauriInvoke } from "@tauri-apps/api/core";
+import { invoke as tauriInvoke, Channel } from "@tauri-apps/api/core";
 import { get } from "svelte/store";
 import { goto } from "$app/navigation";
 
@@ -17,6 +17,9 @@ import { get as sessionGet } from "$lib/stores/session";
 const inflightRetries = new Map();
 
 export const invoke = async (command, args) => {
+  if (command === "download_to_path" && args && !args.onProgress) {
+    args = { ...args, onProgress: new Channel() };
+  }
   const reqStart = Date.now();
   recordApiRequest(command, args);
   try {

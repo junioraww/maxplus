@@ -347,6 +347,45 @@ export default class MobileApi extends BaseAPI {
             chat.markMessageDeleted?.(mId);
           }
         }
+      } else if (opc === 131) {
+        const contact = response.payload?.contact;
+        if (contact && contact.id != null) {
+          updateContact(contact);
+          if (Number(contact.id) === Number(get(currentUser))) {
+            currentUserDetails.set(contact);
+            const acc = await getCurrentAccount().catch(() => null);
+            if (acc?.id) {
+              await setAccountContact(acc.id, contact).catch(() => {});
+            }
+          }
+        }
+      } else if (opc === 135) {
+        const chatPayload = response.payload?.chat;
+        if (chatPayload && chatPayload.id != null) {
+          let mergedChat = null;
+          currentSessionChats.update((chats) => {
+            if (!chats) return chats;
+            const idx = chats.findIndex((c) => String(c.id) === String(chatPayload.id));
+            if (idx === -1) return chats;
+            mergedChat = { ...chats[idx], ...chatPayload };
+            const next = [...chats];
+            next[idx] = mergedChat;
+            return next;
+          });
+          if (mergedChat) {
+            await saveChats([mergedChat]).catch(() => {});
+          }
+        }
+      } else if (opc === 159) {
+        const contact = response.payload?.profile?.contact || response.payload?.contact;
+        if (contact && contact.id != null) {
+          currentUserDetails.set(contact);
+          updateContact(contact);
+          const acc = await getCurrentAccount().catch(() => null);
+          if (acc?.id) {
+            await setAccountContact(acc.id, contact).catch(() => {});
+          }
+        }
       }
     });
   }
@@ -1275,16 +1314,218 @@ export default class MobileApi extends BaseAPI {
     const details = get(currentUserDetails);
     if (!details) return null;
 
-    details.names[0].firstName = firstName;
-    details.names[0].lastName = lastName;
+    if (details.names?.[0]) {
+      details.names[0].firstName = firstName;
+      details.names[0].lastName = lastName;
+    }
     if (description !== undefined) {
       details.description = description;
     }
 
-    currentUserDetails.set(details);
-    await setAccountContact(account.id, details);
+    currentUserDetails.set({ ...details });
+    const account = await getCurrentAccount().catch(() => null);
+    if (account?.id) {
+      await setAccountContact(account.id, details);
+    }
 
     return result;
+  }
+
+  extractPhotoIdFromUrl(url) {
+    if (typeof url !== "string" || !url) return null;
+    try {
+      const parsed = new URL(url);
+      for (const key of ["photoId", "id", "i"]) {
+        const val = parsed.searchParams.get(key);
+        if (val && /^\d{5,20}$/.test(val)) {
+          return Number(val);
+        }
+      }
+      const segments = parsed.pathname.split("/").filter(Boolean);
+      for (let i = segments.length - 1; i >= 0; i--) {
+        const clean = segments[i].replace(/\.(jpg|jpeg|png|webp)$/i, "");
+        if (/^\d{6,20}$/.test(clean)) {
+          return Number(clean);
+        }
+      }
+    } catch {}
+    const match = url.match(/(?:photoId=|id=|\/)(\d{6,20})(?:[/?&.]|$)/);
+    return match ? Number(match[1]) : null;
+  }
+
+  async fetchUserPhotos(userId, from = 0, count = 50) {
+    await this.waitSync();
+    const res = await invoke("get_contact_photos", {
+      contactId: Number(userId),
+      from: Number(from),
+      count: Number(count),
+    });
+    const rawList = res?.photos || res?.urls || [];
+    const rawIds = Array.isArray(res?.photoIds || res?.ids) ? (res.photoIds || res.ids) : [];
+    const urls = [];
+    const items = [];
+    for (let idx = 0; idx < rawList.length; idx++) {
+      const item = rawList[idx];
+      if (typeof item === "string") {
+        const clean = item.trim();
+        if (clean && !urls.includes(clean)) {
+          urls.push(clean);
+          const pid = rawIds[idx] != null ? Number(rawIds[idx]) : this.extractPhotoIdFromUrl(clean);
+          items.push({ url: clean, photoId: pid || null });
+        }
+      } else if (item && typeof item === "object") {
+        const candidate = item.baseRawUrl || item.rawUrl || item.baseUrl || item.url;
+        if (typeof candidate === "string") {
+          const clean = candidate.trim();
+          if (clean && !urls.includes(clean)) {
+            urls.push(clean);
+            const pid = item.photoId ?? item.id ?? rawIds[idx] ?? this.extractPhotoIdFromUrl(clean);
+            items.push({ url: clean, photoId: pid != null ? Number(pid) : null });
+          }
+        }
+      }
+    }
+    const total = res?.total != null ? Number(res.total) : urls.length;
+    return { urls, items, total };
+  }
+
+  async pickAndUploadPhoto(isProfile = false) {
+    await this.waitSync();
+    const picked = await invoke("pick", { type: "PHOTO" }).catch(() => null);
+    if (!picked || picked === "CANCEL") return null;
+
+    const path = decodeURIComponent(picked.uri);
+    const mime = picked.mime_type || "image/jpeg";
+
+    const uploadReq = await invoke("get_photo_upload", {
+      count: 1,
+      profile: Boolean(isProfile),
+    });
+
+    const uploadUrl = uploadReq?.url || uploadReq?.info?.[0]?.url;
+    if (!uploadUrl) {
+      throw new Error("Не удалось получить ссылку для загрузки фото");
+    }
+
+    const uploaded = await invoke("upload", {
+      uploadUrl,
+      path,
+      attachType: "PHOTO",
+      mime,
+    });
+
+    if (uploaded?.error) {
+      throw new Error(String(uploaded.error));
+    }
+
+    let photoToken = uploaded?.photoToken || uploaded?.token || null;
+    if (!photoToken && uploaded?.photos && typeof uploaded.photos === "object") {
+      for (const entry of Object.values(uploaded.photos)) {
+        if (entry && typeof entry === "object" && entry.token) {
+          photoToken = String(entry.token);
+          break;
+        }
+      }
+    }
+
+    if (!photoToken) {
+      throw new Error("Сервер не вернул токен загруженного фото");
+    }
+
+    return { photoToken, localPath: path };
+  }
+
+  async uploadProfilePhoto() {
+    const picked = await this.pickAndUploadPhoto(true);
+    if (!picked) return null;
+
+    const res = await invoke("set_profile_photo", {
+      photoToken: picked.photoToken,
+    });
+
+    const contact = res?.profile?.contact || res?.contact;
+    if (contact) {
+      currentUserDetails.set(contact);
+      await updateContact(contact);
+      const account = await getCurrentAccount().catch(() => null);
+      if (account?.id) {
+        await setAccountContact(account.id, contact);
+      }
+    }
+
+    return contact || res;
+  }
+
+  async deleteProfilePhoto(photoId = null, photoUrl = null) {
+    await this.waitSync();
+    const details = get(currentUserDetails);
+    let targetPhotoId = photoId != null ? Number(photoId) : 0;
+    if (!targetPhotoId && photoUrl) {
+      targetPhotoId = Number(this.extractPhotoIdFromUrl(photoUrl) || 0);
+    }
+    if (!targetPhotoId) {
+      targetPhotoId = Number(details?.photoId || this.extractPhotoIdFromUrl(details?.baseRawUrl || details?.baseUrl || details?.avatar) || 0);
+    }
+    if (!targetPhotoId) {
+      throw new Error("Не удалось определить ID фотографии для удаления");
+    }
+
+    const res = await invoke("remove_contact_photo", {
+      photoId: targetPhotoId,
+    });
+
+    const contact = res?.profile?.contact || res?.contact;
+    if (contact) {
+      currentUserDetails.set(contact);
+      await updateContact(contact);
+      const account = await getCurrentAccount().catch(() => null);
+      if (account?.id) {
+        await setAccountContact(account.id, contact);
+      }
+    } else if (details && Number(details.photoId) === targetPhotoId) {
+      const updated = { ...details };
+      delete updated.baseUrl;
+      delete updated.baseRawUrl;
+      delete updated.photoId;
+      delete updated.avatar;
+      currentUserDetails.set(updated);
+      await updateContact(updated);
+      const account = await getCurrentAccount().catch(() => null);
+      if (account?.id) {
+        await setAccountContact(account.id, updated);
+      }
+    }
+
+    return contact || res;
+  }
+
+  async uploadChatPhoto(chatId) {
+    const picked = await this.pickAndUploadPhoto(false);
+    if (!picked) return null;
+
+    const res = await invoke("set_chat_photo", {
+      chatId: Number(chatId),
+      photoToken: picked.photoToken,
+    });
+
+    const updatedChat = res?.chat;
+    if (updatedChat) {
+      let merged = null;
+      currentSessionChats.update((chats) => {
+        if (!chats) return chats;
+        const idx = chats.findIndex((c) => String(c.id) === String(chatId));
+        if (idx === -1) return chats;
+        merged = { ...chats[idx], ...updatedChat };
+        const next = [...chats];
+        next[idx] = merged;
+        return next;
+      });
+      if (merged) {
+        await saveChats([merged]).catch(() => {});
+      }
+    }
+
+    return updatedChat || res;
   }
 
   async createGroup(title) {

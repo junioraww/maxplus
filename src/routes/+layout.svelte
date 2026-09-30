@@ -14,6 +14,7 @@
   import Alerts from '$components/main/Alerts.svelte';
   import Loading from "$components/effects/Loading.svelte";
   import ProfileModal from "$components/ProfileModal.svelte";
+  import AvatarGalleryModal from "$components/main/AvatarGalleryModal.svelte";
   import DevSettings from "$components/main/dev/Settings.svelte";
   import AddContactModal from "$components/main/AddContactModal.svelte";
   import DevicesSettings from "$components/main/devices/Settings.svelte";
@@ -23,7 +24,7 @@
   import TraceOverlay from "$components/main/dev/TraceOverlay.svelte";
   import { videoCropState, closeVideoCropModal } from "$lib/stores/videoCrop.js";
 
-  import Session from "$lib/stores/session";
+  import Session, { closeAvatarGallery } from "$lib/stores/session";
   import { initDeepLink } from "$lib/utils/deepLink.js";
   import { initProxyConfig } from "$lib/utils/proxyConfig.js";
   import { handleBackButton, registerBackHandler } from "$lib/utils/backButton.js";
@@ -125,6 +126,13 @@
 
 {#if $Session.contactModal}
   <AddContactModal on:close={() => ($Session.contactModal = false)} />
+{/if}
+
+{#if $Session.avatarGallery}
+  <AvatarGalleryModal
+    {...$Session.avatarGallery}
+    on:close={() => closeAvatarGallery()}
+  />
 {/if}
 
 {#if $Session.loaded}

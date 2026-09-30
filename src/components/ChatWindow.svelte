@@ -1266,11 +1266,13 @@
     });
   }
 
+  let viewerOriginEl = null;
+
   $: if (viewerOpen) {
     allMedia = computeAllMedia();
   }
 
-  function openMedia(attach) {
+  function openMedia(attach, originEl = null) {
     allMedia = computeAllMedia();
     const fid = attach.fileId || attach.encryptedAttach?.fileId;
     const targetUid = String(attach.videoId || attach.photoId || fid || attach.url || attach.baseUrl || attach.localPath || "");
@@ -1284,6 +1286,7 @@
     if (index !== -1) {
       if (attach.baseUrl) allMedia[index].baseUrl = attach.baseUrl;
       if (attach.localPath) allMedia[index].localPath = attach.localPath;
+      viewerOriginEl = originEl || null;
       viewerIndex = index;
       viewerOpen = true;
     }
@@ -1314,7 +1317,12 @@
       chatId={chat.id}
       bind:index={viewerIndex}
       {allMedia}
-      on:close={() => (viewerOpen = false)}
+      originEl={viewerOriginEl}
+      originRadius={12}
+      on:close={() => {
+        viewerOpen = false;
+        viewerOriginEl = null;
+      }}
     />
   {/if}
 
@@ -1431,7 +1439,7 @@
                 decoded={$decodedMessages[msg.id]}
                 selected={$selectionState.selected.has(String(msg.id))}
                 selectionMode={$isSelecting}
-                on:openMedia={(e) => openMedia(e.detail.attach)}
+                on:openMedia={(e) => openMedia(e.detail.attach, e.detail.originEl)}
                 on:openChat={() => openChat(chat.id, msg.id)}
                 on:openStickerPack={(e) => handleOpenStickerPack(e.detail.sticker)}
                 on:openHistory={(e) => (historyModalMessage = e.detail.msg)}

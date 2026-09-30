@@ -16,11 +16,12 @@
   export let title = null;
   export let style = "";
   export let seed = null;
+  export let isSelf = false;
 
   $: resolvedContactId = contactId ?? userId;
   $: contact = getContact(resolvedContactId);
   $: effectiveContactId = resolvedContactId || $contact?.id;
-  $: isMe = effectiveContactId && Number(effectiveContactId) === Number($currentUser);
+  $: isMe = isSelf || Boolean(effectiveContactId && Number(effectiveContactId) === Number($currentUser));
   $: selfDetails = isMe ? $currentUserDetails : null;
 
   $: isOnline = Boolean(
@@ -40,12 +41,14 @@
   $: avatarUrl =
     src ||
     chat?.avatar ||
+    chat?.baseRawIconUrl ||
     chat?.baseIconUrl ||
     chat?.iconUrl ||
-    chat?.baseRawIconUrl ||
     chat?.baseUrl ||
+    selfDetails?.baseRawUrl ||
     selfDetails?.avatar ||
     selfDetails?.baseUrl ||
+    $contact?.baseRawUrl ||
     $contact?.avatar ||
     $contact?.baseUrl;
 

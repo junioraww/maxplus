@@ -68,8 +68,8 @@
   })();
   $: transcription = $transcriptions[String(msg?.id)];
 
-  function handleMediaClick(attach) {
-    dispatch("openMedia", { attach });
+  function handleMediaClick(attach, originEl = null) {
+    dispatch("openMedia", { attach, originEl });
   }
 
   function handleForwardHeaderClick() {

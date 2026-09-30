@@ -1,7 +1,9 @@
 <script>
-  import { fly, slide } from "svelte/transition";
+  import { fly, slide, fade } from "svelte/transition";
   import { page } from "$app/stores";
   import SettingsPageWrapper from "$components/settings/SettingsPageWrapper.svelte";
+  import Avatar from "$components/main/Avatar.svelte";
+  import { openAvatarGallery } from "$lib/stores/session";
   import API, { currentUserDetails } from "$lib/stores/api";
   import { formatTimeAgo } from "$lib/utils/time.js";
 
@@ -9,31 +11,108 @@
   let lastName = "";
   let description = "";
   let updated = "";
+  let initialized = false;
+
+  const original = {
+    firstName: "",
+    lastName: "",
+    description: "",
+  };
 
   currentUserDetails.subscribe((details) => {
     if (!details?.names) return;
 
-    firstName = details.names[0].firstName;
-    lastName = details.names[0].lastName;
-    description = details.description;
-    updated = "Обновлено " + formatTimeAgo(details.updateTime);
+    if (!initialized) {
+      firstName = details.names[0].firstName || "";
+      lastName = details.names[0].lastName || "";
+      description = details.description || "";
+      original.firstName = firstName;
+      original.lastName = lastName;
+      original.description = description;
+      initialized = true;
+    }
+    updated = details.updateTime ? "Обновлено " + formatTimeAgo(details.updateTime) : "";
   });
 
   export let onClose = null;
   $: from = $page.url.searchParams.get("from") || "/?card=settings";
 
   let loading = false;
+  let avatarBusy = false;
+  let avatarPreviewEl;
+  let statusNotice = "";
+  let noticeTimer;
 
-  const original = {
-    firstName,
-    lastName,
-    description,
-  };
+  function notify(text) {
+    statusNotice = text;
+    clearTimeout(noticeTimer);
+    noticeTimer = setTimeout(() => {
+      statusNotice = "";
+    }, 2200);
+  }
+
+  $: selfAvatarUrl = $currentUserDetails?.baseRawUrl || $currentUserDetails?.avatar || $currentUserDetails?.baseUrl || null;
+  $: selfPhotoId = $currentUserDetails?.photoId || null;
+  $: canDeleteSelfAvatar = Boolean(selfPhotoId || selfAvatarUrl);
 
   $: changed =
     firstName !== original.firstName ||
     lastName !== original.lastName ||
     description !== original.description;
+
+  function openSelfGallery(e) {
+    if (selfAvatarUrl || $currentUserDetails?.id) {
+      const targetEl = avatarPreviewEl || e?.currentTarget;
+      const rect = targetEl?.getBoundingClientRect?.();
+      openAvatarGallery({
+        initialUrl: selfAvatarUrl,
+        initialPhotoId: selfPhotoId,
+        userId: $currentUserDetails?.id,
+        isOwnProfile: true,
+        canUpload: true,
+        originEl: targetEl,
+        originRect: rect ? { left: rect.left, top: rect.top, width: rect.width, height: rect.height } : null,
+        originRadius: 50,
+        onUpload: handleUploadAvatar,
+        onDelete: handleDeleteAvatar,
+        onDownloaded: () => notify("Фото сохранено"),
+        onError: (msg) => notify(msg || "Ошибка"),
+      });
+    } else {
+      handleUploadAvatar();
+    }
+  }
+
+  async function handleUploadAvatar() {
+    if (avatarBusy) return null;
+    avatarBusy = true;
+    try {
+      const res = await $API.uploadProfilePhoto();
+      if (res) {
+        notify("Фото профиля обновлено");
+      }
+      return res;
+    } catch (e) {
+      notify(e?.message || "Не удалось загрузить фото");
+      throw e;
+    } finally {
+      avatarBusy = false;
+    }
+  }
+
+  async function handleDeleteAvatar(targetPhotoId = null, targetUrl = null) {
+    if (avatarBusy || !canDeleteSelfAvatar) return;
+    avatarBusy = true;
+    try {
+      await $API.deleteProfilePhoto(targetPhotoId || selfPhotoId, targetUrl || selfAvatarUrl);
+      notify("Фото профиля удалено");
+    } catch (e) {
+      notify(e?.message || "Не удалось удалить фото");
+      throw e;
+    } finally {
+      avatarBusy = false;
+    }
+  }
 
   async function save() {
     if (!changed || loading) return;
@@ -56,9 +135,10 @@
       original.firstName = firstName;
       original.lastName = lastName;
       original.description = description;
+      notify("Изменения сохранены");
     } catch (e) {
       console.error(e);
-      alert("Не удалось обновить профиль");
+      notify("Не удалось обновить профиль");
     } finally {
       loading = false;
     }
@@ -71,6 +151,49 @@
   </span>
 
   <div class="content">
+    <div class="avatar-section" in:fly={{ y: 12, duration: 300, opacity: 0 }}>
+      <div
+        class="avatar-preview-wrap"
+        bind:this={avatarPreviewEl}
+        on:click={openSelfGallery}
+      >
+        <Avatar size={92} isSelf={true} contactId={$currentUserDetails?.id} />
+        <button
+          type="button"
+          class="avatar-camera-badge"
+          title="Изменить фото"
+          disabled={avatarBusy}
+          on:click|stopPropagation={handleUploadAvatar}
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="12" y1="5" x2="12" y2="19"/>
+            <line x1="5" y1="12" x2="19" y2="12"/>
+          </svg>
+        </button>
+      </div>
+
+      <div class="avatar-buttons">
+        <button
+          type="button"
+          class="avatar-action-btn primary"
+          disabled={avatarBusy}
+          on:click={handleUploadAvatar}
+        >
+          {avatarBusy ? "Загрузка..." : "Загрузить фото"}
+        </button>
+        {#if canDeleteSelfAvatar}
+          <button
+            type="button"
+            class="avatar-action-btn danger"
+            disabled={avatarBusy}
+            on:click={() => handleDeleteAvatar()}
+          >
+            Удалить
+          </button>
+        {/if}
+      </div>
+    </div>
+
     <div class="profile-card" in:fly={{ y: 15, duration: 350, opacity: 0 }}>
       <div class="field">
         <label>Имя</label>
@@ -101,6 +224,12 @@
         ></textarea>
       </div>
     </div>
+
+    {#if statusNotice}
+      <div class="notice-pill" transition:fade={{ duration: 150 }}>
+        {statusNotice}
+      </div>
+    {/if}
   </div>
 
   <svelte:fragment slot="footer">
@@ -137,6 +266,9 @@
     overflow-y: auto;
     padding: 16px;
     box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
   }
 
   .content::-webkit-scrollbar {
@@ -146,6 +278,98 @@
   .content::-webkit-scrollbar-thumb {
     background: #333;
     border-radius: 999px;
+  }
+
+  .avatar-section {
+    background: #26262e;
+    border-radius: 16px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    padding: 18px 16px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 14px;
+  }
+
+  .avatar-preview-wrap {
+    position: relative;
+    cursor: pointer;
+    transition: transform 0.14s;
+  }
+
+  .avatar-preview-wrap:active {
+    transform: scale(0.96);
+  }
+
+  .avatar-camera-badge {
+    position: absolute;
+    right: -2px;
+    bottom: -2px;
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    border: 2px solid #26262e;
+    background: #3390ec;
+    color: #ffffff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    box-shadow: 0 3px 8px rgba(0, 0, 0, 0.35);
+    transition: background 0.15s, transform 0.12s, opacity 0.15s;
+  }
+
+  .avatar-camera-badge:hover {
+    background: #4ea4f6;
+  }
+
+  .avatar-camera-badge:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .avatar-buttons {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .avatar-action-btn {
+    height: 36px;
+    padding: 0 14px;
+    border-radius: 10px;
+    border: none;
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.15s, opacity 0.15s, transform 0.12s;
+  }
+
+  .avatar-action-btn:active {
+    transform: scale(0.96);
+  }
+
+  .avatar-action-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .avatar-action-btn.primary {
+    background: rgba(51, 144, 236, 0.18);
+    color: #4ea4f6;
+  }
+
+  .avatar-action-btn.primary:hover {
+    background: rgba(51, 144, 236, 0.28);
+  }
+
+  .avatar-action-btn.danger {
+    background: rgba(255, 89, 90, 0.15);
+    color: #ff595a;
+  }
+
+  .avatar-action-btn.danger:hover {
+    background: rgba(255, 89, 90, 0.25);
   }
 
   .profile-card {
@@ -197,6 +421,16 @@
     min-height: 120px;
     resize: vertical;
     font-family: inherit;
+  }
+
+  .notice-pill {
+    align-self: center;
+    background: rgba(30, 30, 38, 0.95);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: #ffffff;
+    font-size: 0.85rem;
+    padding: 8px 16px;
+    border-radius: 999px;
   }
 
   .actions-panel {

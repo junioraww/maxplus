@@ -756,6 +756,20 @@ pub async fn download_to_path(
     let _ = &app;
     let (local_src, remote_url) = unwrap_media_source(&url);
     if let Some(src) = local_src {
+        #[cfg(target_os = "android")]
+        if path.starts_with("content://") {
+            use tauri_plugin_android_fs::AndroidFsExt;
+            use std::io::Write;
+            let bytes = tokio::fs::read(&src).await.map_err(|e| e.to_string())?;
+            let api = app.android_fs_async();
+            let uri = tauri_plugin_android_fs::FsUri::from_uri(&path);
+            let mut file = api.open_file_writable(&uri).await.map_err(|e| e.to_string())?;
+            file.write_all(&bytes).map_err(|e| e.to_string())?;
+            let len = bytes.len();
+            let _ = on_progress.send(DownloadProgress { progress: len, total: len });
+            return Ok(());
+        }
+
         tokio::fs::copy(&src, &path)
             .await
             .map_err(|e| e.to_string())?;

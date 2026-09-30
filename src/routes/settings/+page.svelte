@@ -22,7 +22,7 @@ import { goto } from "$app/navigation";
     openAppSettings,
   } from "@tauri-apps/plugin-barcode-scanner";
 
-  import { set as sessionSet, openSettingsPage } from "$lib/stores/session";
+  import { set as sessionSet, openSettingsPage, openAvatarGallery } from "$lib/stores/session";
   import { currentUserDetails } from "$lib/stores/api";
   import Avatar from "$components/main/Avatar.svelte";
   import API, { currentUser } from "$lib/stores/api";
@@ -36,6 +36,59 @@ import { goto } from "$app/navigation";
   let contact;
   let phone;
   let name;
+  let selfAvatarBusy = false;
+  let selfAvatarWrapEl;
+
+  $: selfAvatarUrl = $currentUserDetails?.baseRawUrl || $currentUserDetails?.avatar || $currentUserDetails?.baseUrl || null;
+  $: selfPhotoId = $currentUserDetails?.photoId || null;
+  $: canDeleteSelfAvatar = Boolean(selfPhotoId || selfAvatarUrl);
+
+  function openSelfAvatar(e) {
+    if (selfAvatarUrl || contact?.id) {
+      const targetEl = selfAvatarWrapEl || e?.currentTarget;
+      const rect = targetEl?.getBoundingClientRect?.();
+      openAvatarGallery({
+        initialUrl: selfAvatarUrl,
+        initialPhotoId: selfPhotoId,
+        userId: contact?.id ?? $currentUser,
+        isOwnProfile: true,
+        canUpload: true,
+        originEl: targetEl,
+        originRect: rect ? { left: rect.left, top: rect.top, width: rect.width, height: rect.height } : null,
+        originRadius: 50,
+        onUpload: handleSelfAvatarUpload,
+        onDelete: handleSelfAvatarDelete,
+      });
+    } else {
+      handleSelfAvatarUpload();
+    }
+  }
+
+  async function handleSelfAvatarUpload() {
+    if (selfAvatarBusy) return null;
+    selfAvatarBusy = true;
+    try {
+      return await $API.uploadProfilePhoto();
+    } catch (e) {
+      console.error(e);
+      throw e;
+    } finally {
+      selfAvatarBusy = false;
+    }
+  }
+
+  async function handleSelfAvatarDelete(targetPhotoId = null, targetUrl = null) {
+    if (selfAvatarBusy || !canDeleteSelfAvatar) return;
+    selfAvatarBusy = true;
+    try {
+      await $API.deleteProfilePhoto(targetPhotoId || selfPhotoId, targetUrl || selfAvatarUrl);
+    } catch (e) {
+      console.error(e);
+      throw e;
+    } finally {
+      selfAvatarBusy = false;
+    }
+  }
 
   let closeScanner = null;
   let unregisterScanner = null;
@@ -280,7 +333,13 @@ import { goto } from "$app/navigation";
   <img on:click={scanner} src={"icons/qr.svg"} class="scanner-icon icon" />
 
   <div class="info">
-    <Avatar size={85} contactId={contact?.id}/>
+    <div
+      class="self-avatar-wrap"
+      bind:this={selfAvatarWrapEl}
+      on:click={openSelfAvatar}
+    >
+      <Avatar size={85} isSelf={true} contactId={contact?.id}/>
+    </div>
     <a class="name">{name}</a>
     <a class="phone">{phone}</a>
   </div>
@@ -335,6 +394,15 @@ import { goto } from "$app/navigation";
     display: flex;
     flex-direction: column;
     align-items: center;
+  }
+
+  .self-avatar-wrap {
+    cursor: pointer;
+    transition: transform 0.14s;
+  }
+
+  .self-avatar-wrap:active {
+    transform: scale(0.96);
   }
 
   .info .name {
