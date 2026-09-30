@@ -19,7 +19,7 @@
     "@tauri-apps/api": "^2.12.0",
     "@tauri-apps/plugin-barcode-scanner": "^2.5.0",
     "@tauri-apps/plugin-dialog": "^2.8.0",
-    "@tauri-apps/plugin-opener": "^2.6.0",
+    "@tauri-apps/plugin-opener": "^2.7.0",
     "@tauri-apps/plugin-os": "^2.4.0",
     "jsqr": "^1.4.0",
     "lottie-web": "^5.13.0",
