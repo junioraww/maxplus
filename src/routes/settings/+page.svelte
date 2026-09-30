@@ -26,10 +26,7 @@ import { goto } from "$app/navigation";
   import { currentUserDetails } from "$lib/stores/api";
   import Avatar from "$components/main/Avatar.svelte";
   import API, { currentUser } from "$lib/stores/api";
-  import { clientNotificationsEnabled, toggleClientNotifications } from "$lib/utils/notifications";
   import { openDigitalIdApp, openSferumApp } from "$lib/stores/webapp.js";
-  import { autoDownloadEncryptedMedia } from "$lib/stores/e2eSettings.js";
-  import { saveOthersDeletedMessages, hideMyDeletedMessages } from "$lib/stores/deletionSettings.js";
 
   let platform;
 
@@ -172,25 +169,9 @@ import { goto } from "$app/navigation";
         action: () => openSettingsPage("plugins"),
       },
       {
-        icon: "crypto.svg",
-        text: "Автозагрузка зашифрованных медиа",
-        action: () => autoDownloadEncryptedMedia.toggle(),
-        isToggle: true,
-        toggleValue: $autoDownloadEncryptedMedia,
-      },
-      {
-        icon: "book.svg",
-        text: "Сохранять чужие удаленные сообщения?",
-        action: () => saveOthersDeletedMessages.toggle(),
-        isToggle: true,
-        toggleValue: $saveOthersDeletedMessages,
-      },
-      {
-        icon: "book.svg",
-        text: "Скрывать мои удаленные сообщения?",
-        action: () => hideMyDeletedMessages.toggle(),
-        isToggle: true,
-        toggleValue: $hideMyDeletedMessages,
+        icon: "params.svg",
+        text: "Расширенные настройки",
+        action: () => openSettingsPage("advanced"),
       },
     ],
     [
@@ -352,8 +333,8 @@ import { goto } from "$app/navigation";
             <img src={"icons/" + btn.icon} class="icon" />
             <a>{btn.text}</a>
             {#if btn.isToggle}
-              <div class="toggle-track" class:active={btn.toggleValue !== undefined ? btn.toggleValue : $clientNotificationsEnabled}>
-                <div class="toggle-thumb" class:active={btn.toggleValue !== undefined ? btn.toggleValue : $clientNotificationsEnabled}></div>
+              <div class="toggle-track" class:active={btn.toggleValue}>
+                <div class="toggle-thumb" class:active={btn.toggleValue}></div>
               </div>
             {:else}
               <svg

@@ -16,6 +16,7 @@
   import AboutSettings from "./settings/about/+page.svelte";
   import SessionsSettings from "./settings/sessions/+page.svelte";
   import PluginsSettings from "./settings/plugins/+page.svelte";
+  import AdvancedSettings from "./settings/advanced/+page.svelte";
   import Panel from "$components/Panel.svelte";
   import Card from "$components/main/Card.svelte";
   import ChatWindow from "$components/ChatWindow.svelte";
@@ -48,6 +49,7 @@
     about: AboutSettings,
     sessions: SessionsSettings,
     plugins: PluginsSettings,
+    advanced: AdvancedSettings,
   };
 
   $: pages = ($panelConfig.items || [])
