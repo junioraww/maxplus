@@ -40,12 +40,12 @@ class NotificationHelper(private val ctx: Context) {
 
     @JvmStatic
     fun showNotificationDirect(chatId: Long, title: String, text: String, senderId: String, account: Long) {
-      showNotificationDirect(chatId, title, text, senderId, account, "", chatId < 0)
+      showNotificationDirect(chatId, title, text, senderId, account, "", false)
     }
 
     @JvmStatic
     fun showNotificationDirect(chatId: Long, title: String, text: String, senderId: String, account: Long, senderName: String) {
-      showNotificationDirect(chatId, title, text, senderId, account, senderName, chatId < 0)
+      showNotificationDirect(chatId, title, text, senderId, account, senderName, false)
     }
 
     @JvmStatic
@@ -151,15 +151,15 @@ class NotificationHelper(private val ctx: Context) {
     val chatTitle = data["title"] ?: senderName
     val ts = data["ctime"]?.toLongOrNull() ?: System.currentTimeMillis()
     
-    val isGroup = if (data.containsKey("isGroup")) {
+    val isGroup = (if (data.containsKey("isGroup")) {
       data["isGroup"] == "true"
     } else {
       try {
         isChatGroupNative(account, chatId, ctx.applicationInfo.dataDir)
       } catch (e: Throwable) {
-        chatId < 0
+        false
       }
-    }
+    }) && (chatTitle != senderName)
 
     ensureChannel()
     
@@ -226,11 +226,13 @@ class NotificationHelper(private val ctx: Context) {
     Log.d("MaxPlus", "render: chatId=$chatId, notifId=$notifId, account=$account, isGroup=$isGroup, count=${history.size}")
     val newest = history.last()
     
+    val isActuallyGroup = isGroup && (title != newest.senderName) && newest.senderName.isNotEmpty()
+
     val userPerson = Person.Builder().setName("Вы").build()
     
     val style = NotificationCompat.MessagingStyle(userPerson)
-      .setGroupConversation(isGroup)
-    if (isGroup) {
+      .setGroupConversation(isActuallyGroup)
+    if (isActuallyGroup) {
       style.conversationTitle = title
     }
     
@@ -241,8 +243,13 @@ class NotificationHelper(private val ctx: Context) {
       } else {
         val senderIdLong = h.senderId.toLongOrNull() ?: chatId
         val avatarBitmap = AvatarHelper.getAvatar(ctx, senderIdLong, h.senderName, null, account)
+        val displayName = if (isActuallyGroup) {
+          if (h.senderName.isNotEmpty() && h.senderName != title) h.senderName else null
+        } else {
+          title
+        }
         Person.Builder()
-          .setName(if (isGroup) h.senderName else title)
+          .setName(displayName)
           .setKey(h.senderId)
           .setIcon(IconCompat.createWithBitmap(avatarBitmap))
           .build()
@@ -369,12 +376,12 @@ class NotificationHelper(private val ctx: Context) {
   }
   
   private fun loadMeta(chatId: Long): Triple<String, Long, Boolean> {
-    val raw = prefs().getString("meta_$chatId", null) ?: return Triple("Чат", 0L, chatId < 0)
+    val raw = prefs().getString("meta_$chatId", null) ?: return Triple("Чат", 0L, false)
     val obj = JSONObject(raw)
     return Triple(
       obj.optString("title", "Чат"),
       obj.optLong("account", 0L),
-      obj.optBoolean("isGroup", chatId < 0)
+      obj.optBoolean("isGroup", false)
     )
   }
 }

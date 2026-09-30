@@ -54,15 +54,6 @@
     }
 
     menuPosition = { top: y, left: x };
-    cleanupBack();
-    unregisterBack = registerBackHandler(() => {
-      if (reactionsExpanded) {
-        reactionsExpanded = false;
-        return true;
-      }
-      dispatch("close", { update: false });
-      return true;
-    });
   }
 
   onDestroy(() => {
@@ -72,7 +63,19 @@
   $: if (activeAt) {
     reactionsExpanded = false;
     ensureReactionsLoaded().catch(() => {});
-    updatePosition(activeAt.e.clientX, activeAt.e.clientY);
+    if (!unregisterBack) {
+      unregisterBack = registerBackHandler(() => {
+        if (reactionsExpanded) {
+          reactionsExpanded = false;
+          return false;
+        }
+        dispatch("close", { update: false });
+        return true;
+      });
+    }
+    const clientX = activeAt?.e?.clientX ?? (typeof window !== "undefined" ? window.innerWidth / 2 : 0);
+    const clientY = activeAt?.e?.clientY ?? (typeof window !== "undefined" ? window.innerHeight / 2 : 0);
+    updatePosition(clientX, clientY);
   } else {
     cleanupBack();
   }
@@ -109,9 +112,7 @@
     cleanupBack();
   };
 
-  onDestroy(() => {
-    cleanupBack();
-  });
+
 
   function handleSetReply() {
     const targetMsg = activeAt?.msg;

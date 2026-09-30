@@ -57,6 +57,9 @@
 
   onDestroy(() => {
     unregisterBack();
+    if (scrollRafId) cancelAnimationFrame(scrollRafId);
+    if (scrollEndTimer) clearTimeout(scrollEndTimer);
+    if (scrollTimeout) clearTimeout(scrollTimeout);
   });
 
   $: chatId = (() => {
@@ -122,6 +125,179 @@
     activeTab = "settings";
   } else if ($Session.profile && $Session.profile.view !== "settings") {
     activeTab = "info";
+  }
+
+  $: availableTabs = chat
+    ? (hasSettings ? ["info", "media", "settings"] : ["info", "media"])
+    : ["info"];
+
+  const tabLabels = {
+    info: "Информация",
+    media: "Медиа",
+    settings: "Настройки",
+  };
+
+  $: activeTabIndex = Math.max(0, availableTabs.indexOf(activeTab));
+
+  let swipeContainer;
+  let isProgrammaticScroll = false;
+  let scrollTimeout = null;
+  let scrollRafId = null;
+  let scrollEndTimer = null;
+  let indicatorProgress = 0;
+
+  $: if (!swipeContainer || isProgrammaticScroll) {
+    indicatorProgress = activeTabIndex;
+  }
+
+  let isMouseDragging = false;
+  let mouseStartX = 0;
+  let mouseStartY = 0;
+  let mouseStartScrollLeft = 0;
+  let mouseHasMoved = false;
+
+  function scrollToTabIndex(index) {
+    const tabId = availableTabs[index];
+    if (!tabId) return;
+    activeTab = tabId;
+    indicatorProgress = index;
+    if (!swipeContainer) return;
+
+    isProgrammaticScroll = true;
+    swipeContainer.scrollTo({
+      left: index * swipeContainer.clientWidth,
+      behavior: "smooth",
+    });
+
+    clearTimeout(scrollTimeout);
+    scrollTimeout = setTimeout(() => {
+      isProgrammaticScroll = false;
+    }, 350);
+  }
+
+  function selectTab(tabId) {
+    const idx = availableTabs.indexOf(tabId);
+    if (idx !== -1) {
+      scrollToTabIndex(idx);
+    }
+  }
+
+  function handlePagerScroll() {
+    if (!swipeContainer) return;
+    const width = swipeContainer.clientWidth;
+    if (width === 0) return;
+
+    if (!isProgrammaticScroll) {
+      indicatorProgress = swipeContainer.scrollLeft / width;
+    }
+
+    if (isProgrammaticScroll) return;
+
+    if (scrollRafId) cancelAnimationFrame(scrollRafId);
+    scrollRafId = requestAnimationFrame(() => {
+      const rawIndex = swipeContainer.scrollLeft / width;
+      const newIndex = Math.round(rawIndex);
+      if (Math.abs(rawIndex - newIndex) < 0.15 && newIndex !== activeTabIndex && availableTabs[newIndex]) {
+        activeTab = availableTabs[newIndex];
+      }
+    });
+
+    clearTimeout(scrollEndTimer);
+    scrollEndTimer = setTimeout(() => {
+      if (!swipeContainer || isProgrammaticScroll) return;
+      const width = swipeContainer.clientWidth;
+      if (width === 0) return;
+      const finalIndex = Math.max(0, Math.min(availableTabs.length - 1, Math.round(swipeContainer.scrollLeft / width)));
+      if (availableTabs[finalIndex] && activeTab !== availableTabs[finalIndex]) {
+        activeTab = availableTabs[finalIndex];
+      }
+    }, 60);
+  }
+
+  function isInteractiveTarget(target) {
+    return Boolean(
+      target.closest(
+        "button, a, input, textarea, select, .tg-card, .clickable, .tg-btn, .tg-btn-action, .tg-row-clickable, .tg-switch, .tg-seg-btn, .tg-eye-btn, .tg-copy-btn, .tg-icon-btn, .tg-menu-item, .media-grid-item, .media-list-row, .btn-more, .tg-topbar, .tg-tabs, [role='button']"
+      )
+    );
+  }
+
+  function handleSwipeMouseDown(e) {
+    if (e.button !== 0) return;
+    if (isInteractiveTarget(e.target)) return;
+    if (!swipeContainer) return;
+
+    isMouseDragging = true;
+    mouseStartX = e.clientX;
+    mouseStartY = e.clientY;
+    mouseStartScrollLeft = swipeContainer.scrollLeft;
+    mouseHasMoved = false;
+  }
+
+  function handleWindowMouseMove(e) {
+    if (!isMouseDragging || !swipeContainer) return;
+    const dx = e.clientX - mouseStartX;
+    const dy = e.clientY - mouseStartY;
+
+    if (!mouseHasMoved && Math.abs(dy) > Math.abs(dx) && Math.abs(dy) > 6) {
+      isMouseDragging = false;
+      return;
+    }
+
+    if (Math.abs(dx) > 4) {
+      mouseHasMoved = true;
+    }
+
+    if (mouseHasMoved) {
+      e.preventDefault();
+      swipeContainer.scrollLeft = mouseStartScrollLeft - dx;
+      indicatorProgress = swipeContainer.scrollLeft / swipeContainer.clientWidth;
+    }
+  }
+
+  function handleWindowMouseUp(e) {
+    if (!isMouseDragging) return;
+    isMouseDragging = false;
+    if (!swipeContainer || !mouseHasMoved) return;
+
+    const width = swipeContainer.clientWidth;
+    if (width === 0) return;
+
+    const dx = e.clientX - mouseStartX;
+    let targetIndex = activeTabIndex;
+
+    if (Math.abs(dx) > width * 0.15 || Math.abs(dx) > 50) {
+      targetIndex = dx > 0 ? activeTabIndex - 1 : activeTabIndex + 1;
+    } else {
+      targetIndex = Math.round(swipeContainer.scrollLeft / width);
+    }
+
+    targetIndex = Math.max(0, Math.min(availableTabs.length - 1, targetIndex));
+    scrollToTabIndex(targetIndex);
+  }
+
+  function handleResize() {
+    if (!swipeContainer) return;
+    const idx = availableTabs.indexOf(activeTab);
+    if (idx !== -1) {
+      swipeContainer.scrollLeft = idx * swipeContainer.clientWidth;
+      indicatorProgress = idx;
+    }
+  }
+
+  $: {
+    if (swipeContainer && !isMouseDragging && !isProgrammaticScroll && availableTabs.length > 0) {
+      const idx = availableTabs.indexOf(activeTab);
+      if (idx !== -1) {
+        const targetLeft = idx * swipeContainer.clientWidth;
+        if (Math.abs(swipeContainer.scrollLeft - targetLeft) > 10) {
+          swipeContainer.scrollTo({
+            left: targetLeft,
+            behavior: "smooth"
+          });
+        }
+      }
+    }
   }
 
   let showMenu = false;
@@ -754,7 +930,12 @@
   }
 </script>
 
-<svelte:window on:click={handleWindowClick} />
+<svelte:window
+  on:click={handleWindowClick}
+  on:mousemove={handleWindowMouseMove}
+  on:mouseup={handleWindowMouseUp}
+  on:resize={handleResize}
+/>
 
 <div
   class="tg-profile-backdrop"
@@ -907,344 +1088,35 @@
 
     {#if chat}
       <div class="tg-tabs">
-        <button
-          type="button"
-          class="tg-tab"
-          class:active={activeTab === "info"}
-          on:click={() => (activeTab = "info")}
-        >
-          Информация
-        </button>
-        <button
-          type="button"
-          class="tg-tab"
-          class:active={activeTab === "media"}
-          on:click={() => (activeTab = "media")}
-        >
-          Медиа
-        </button>
-        {#if hasSettings}
+        {#each availableTabs as tabId}
           <button
             type="button"
             class="tg-tab"
-            class:active={activeTab === "settings"}
-            on:click={() => (activeTab = "settings")}
+            class:active={activeTab === tabId}
+            on:click={() => selectTab(tabId)}
           >
-            Настройки
+            <span>{tabLabels[tabId] || tabId}</span>
           </button>
-        {/if}
+        {/each}
+        <div
+          class="tg-tab-indicator"
+          class:animating={isProgrammaticScroll}
+          style="width: {100 / availableTabs.length}%; transform: translateX({indicatorProgress * 100}%);"
+        />
       </div>
     {/if}
 
-    <div class="tg-scroll-content">
-      {#key (userId || chatId)}
-        <div class="tg-content-transition" in:fade={{ duration: 180, easing: cubicOut }}>
-          {#if activeTab === "media" && chat}
-            <GroupSharedMedia {chat} />
-          {:else if activeTab === "settings" && hasSettings}
-        {#if chat?.type !== "CHAT"}
-          <div class="tg-section-header">Шифрование и безопасность</div>
-          <div class="tg-card">
-            <div class="tg-row">
-              <div class="tg-row-icon tg-icon-shield">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
-                </svg>
-              </div>
-              <div class="tg-row-main">
-                <div class="tg-row-title">Сквозное шифрование</div>
-                <div class="tg-row-subtitle">
-                  {#if $chatSettings?.keys?.current || $chatSettings?.session}
-                    <span class="tg-badge tg-badge-success">Активно</span>
-                  {:else if $chatSettings?.pending}
-                    <span class="tg-badge tg-badge-warning">Запрос отправлен</span>
-                  {:else}
-                    <span class="tg-badge tg-badge-muted">Отключено</span>
-                  {/if}
-                </div>
-              </div>
-              <button
-                type="button"
-                class="tg-btn-action"
-                class:danger={$chatSettings?.keys?.current || $chatSettings?.session}
-                on:click={triggerSwitchEnc}
-              >
-                { !($chatSettings?.keys?.current || $chatSettings?.session) ? "Новая сессия" : "Отключить" }
-              </button>
-            </div>
-
-            {#if $chatSettings?.session?.fingerprint}
-              <div class="tg-row tg-row-clickable" on:click={copyFingerprint}>
-                <div class="tg-row-icon tg-icon-key">
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <circle cx="7.5" cy="15.5" r="4.5"/>
-                    <path d="M21 2l-9.6 9.6M15.5 7.5l3 3M18.5 4.5l3 3"/>
-                  </svg>
-                </div>
-                <div class="tg-row-main">
-                  <div class="tg-row-title">Ключ сессии</div>
-                  <div class="tg-fingerprint-emojis">
-                    {$chatSettings.session.fingerprint}
-                  </div>
-                </div>
-                <button type="button" class="tg-copy-btn" title="Скопировать ключ">
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
-                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
-                  </svg>
-                </button>
-              </div>
-            {/if}
-          </div>
-
-          <div class="tg-caption">
-            {#if $chatSettings?.session?.fingerprint}
-              Сравните эти 4 эмодзи с собеседником для проверки безопасности соединения.
-            {:else}
-              При включении переписка шифруется на устройстве, прочитать её можете только вы и собеседник.
-            {/if}
-            <div class="tg-caption-tag">Шифрование доступно между пользователями Max+</div>
-          </div>
-        {/if}
-
-        <div class="tg-section-header">Симметричный ключ (XOR)</div>
-        <div class="tg-card">
-          <div class="tg-row tg-input-row">
-            <div class="tg-row-icon tg-icon-lock">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
-                <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
-              </svg>
-            </div>
-            <div class="tg-row-main">
-              <input
-                type={showPassword ? "text" : "password"}
-                value={$chatSettings?.password || ""}
-                on:input={onPasswordInput}
-                class="tg-input"
-                placeholder="Введите общий секрет чата"
-              />
-            </div>
-            <button
-              type="button"
-              class="tg-eye-btn"
-              on:click={() => (showPassword = !showPassword)}
-              aria-label="Показать пароль"
-            >
-              {#if showPassword}
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/>
-                  <line x1="1" y1="1" x2="23" y2="23"/>
-                </svg>
-              {:else}
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
-                  <circle cx="12" cy="12" r="3"/>
-                </svg>
-              {/if}
-            </button>
-          </div>
-        </div>
-        <div class="tg-caption">Дополнительный общий пароль для симметричного шифрования.</div>
-
-        <div class="tg-section-header">Обфускация трафика</div>
-        <div class="tg-segmented">
-          <button
-            type="button"
-            class="tg-seg-btn"
-            class:active={!$chatSettings?.obfuscation}
-            on:click={() => setObfuscation(null)}
-          >
-            <span class="tg-seg-title">Без маскировки</span>
-            <span class="tg-seg-sub">OFF</span>
-          </button>
-
-          <button
-            type="button"
-            class="tg-seg-btn"
-            class:active={$chatSettings?.obfuscation === "zh"}
-            on:click={() => setObfuscation("zh")}
-          >
-            <span class="tg-seg-title">Китайский</span>
-            <span class="tg-seg-sub">Zh</span>
-          </button>
-
-          <button
-            type="button"
-            class="tg-seg-btn"
-            class:active={$chatSettings?.obfuscation === "words"}
-            on:click={() => setObfuscation("words")}
-          >
-            <span class="tg-seg-title">Книжные слова</span>
-            <span class="tg-seg-sub">Tol</span>
-          </button>
-        </div>
-
-        <div class="tg-caption">
-          {#if $chatSettings?.obfuscation === "zh"}
-            Зашифрованный текст визуально маскируется иероглифами.
-          {:else if $chatSettings?.obfuscation === "words"}
-            {#await hasDictionary}
-              Проверка словаря...
-            {:then has}
-              {#if has}
-                Зашифрованный текст превращается в поток литературных слов.
-              {:else}
-                <span class="tg-warn-text">Словарь не найден. Загрузите список слов в настройках приложения.</span>
-              {/if}
-            {/await}
-          {:else}
-            Символы передаются в стандартном зашифрованном виде.
-          {/if}
-        </div>
-
-        <div class="tg-section-header">Параметры чата</div>
-        <div class="tg-card">
-          <div class="tg-row tg-row-clickable" on:click={toggleMute}>
-            <div class="tg-row-icon tg-icon-bell">
-              {#if muted}
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
-                  <path d="M18.63 13A17.89 17.89 0 0 1 18 8"/>
-                  <path d="M6.26 6.26A5.86 5.86 0 0 0 6 8c0 7-3 9-3 9h14"/>
-                  <path d="M18 8a6 6 0 0 0-9.33-5"/>
-                  <line x1="1" y1="1" x2="23" y2="23"/>
-                </svg>
-              {:else}
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
-                  <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
-                </svg>
-              {/if}
-            </div>
-            <div class="tg-row-main">
-              <div class="tg-row-title">Уведомления</div>
-              <div class="tg-row-subtitle">{muted ? "Отключены" : "Включены"}</div>
-            </div>
-            <div class="tg-switch" class:active={!muted}>
-              <div class="tg-switch-thumb"></div>
-            </div>
-          </div>
-
-          <div class="tg-row tg-row-clickable" on:click={swapReader}>
-            <div class="tg-row-icon tg-icon-check">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M20 6L9 17l-5-5"/>
-              </svg>
-            </div>
-            <div class="tg-row-main">
-              <div class="tg-row-title">Помечать прочитанным</div>
-              <div class="tg-row-subtitle">{$chatSettings?.reader ? "Автоматически" : "Вручную"}</div>
-            </div>
-            <div class="tg-switch" class:active={$chatSettings?.reader}>
-              <div class="tg-switch-thumb"></div>
-            </div>
-          </div>
-
-          <div class="tg-row tg-row-clickable" on:click={toggleAutoDownload}>
-            <div class="tg-row-icon tg-icon-download">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                <polyline points="7 10 12 15 17 10"/>
-                <line x1="12" y1="15" x2="12" y2="3"/>
-              </svg>
-            </div>
-            <div class="tg-row-main">
-              <div class="tg-row-title">Автозагрузка зашифрованных медиа</div>
-              <div class="tg-row-subtitle">{$autoDownloadEncryptedMedia ? "Разрешена" : "Выключена"}</div>
-            </div>
-            <div class="tg-switch" class:active={$autoDownloadEncryptedMedia}>
-              <div class="tg-switch-thumb"></div>
-            </div>
-          </div>
-
-          <div class="tg-row tg-disabled-row">
-            <div class="tg-row-icon tg-icon-save">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
-                <polyline points="17 21 17 13 7 13 7 21"/>
-                <polyline points="7 3 7 8 15 8"/>
-              </svg>
-            </div>
-            <div class="tg-row-main">
-              <div class="tg-row-title">Сохранить переписку</div>
-              <div class="tg-row-subtitle">Экспорт сообщений и файлов</div>
-            </div>
-            <span class="tg-badge tg-badge-soon">Скоро</span>
-          </div>
-        </div>
-
-        {#if chat?.type === "CHAT" && isGroupAdmin}
-          <div class="tg-section-header">Разрешения группы</div>
-          <div class="tg-card">
-            <div class="tg-row tg-row-clickable" on:click={() => toggleGroupOption("allCanPinMessage")}>
-              <div class="tg-row-icon tg-icon-pin">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <line x1="12" y1="17" x2="12" y2="22"/>
-                  <path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z"/>
-                </svg>
-              </div>
-              <div class="tg-row-main">
-                <div class="tg-row-title">Закреплять сообщения</div>
-                <div class="tg-row-subtitle">Все участники могут закреплять</div>
-              </div>
-              <div class="tg-switch" class:active={getGroupOption("allCanPinMessage")}>
-                <div class="tg-switch-thumb"></div>
-              </div>
-            </div>
-
-            <div class="tg-row tg-row-clickable" on:click={() => toggleGroupOption("onlyAdminCanAddMember")}>
-              <div class="tg-row-icon tg-icon-invite">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
-                  <circle cx="8.5" cy="7.5" r="4"/>
-                  <line x1="20" y1="8" x2="20" y2="14"/>
-                  <line x1="23" y1="11" x2="17" y2="11"/>
-                </svg>
-              </div>
-              <div class="tg-row-main">
-                <div class="tg-row-title">Добавление участников</div>
-                <div class="tg-row-subtitle">Только администраторы</div>
-              </div>
-              <div class="tg-switch" class:active={getGroupOption("onlyAdminCanAddMember")}>
-                <div class="tg-switch-thumb"></div>
-              </div>
-            </div>
-
-            <div class="tg-row tg-row-clickable" on:click={() => toggleGroupOption("onlyAdminCanCall")}>
-              <div class="tg-row-icon tg-icon-phone">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/>
-                </svg>
-              </div>
-              <div class="tg-row-main">
-                <div class="tg-row-title">Звонки в группе</div>
-                <div class="tg-row-subtitle">Только администраторы могут звонить</div>
-              </div>
-              <div class="tg-switch" class:active={getGroupOption("onlyAdminCanCall")}>
-                <div class="tg-switch-thumb"></div>
-              </div>
-            </div>
-
-            <div class="tg-row tg-row-clickable" on:click={() => toggleGroupOption("membersCanSeePrivateLink")}>
-              <div class="tg-row-icon tg-icon-link">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
-                  <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
-                </svg>
-              </div>
-              <div class="tg-row-main">
-                <div class="tg-row-title">Видимость ссылки приглашения</div>
-                <div class="tg-row-subtitle">Участники видят ссылку</div>
-              </div>
-              <div class="tg-switch" class:active={getGroupOption("membersCanSeePrivateLink")}>
-                <div class="tg-switch-thumb"></div>
-              </div>
-            </div>
-          </div>
-        {/if}
-      {:else}
-        <div class="tg-hero">
+    {#key (userId || chatId)}
+      <div
+        class="tg-swipe-container"
+        class:dragging={isMouseDragging}
+        bind:this={swipeContainer}
+        on:scroll={handlePagerScroll}
+        on:mousedown={handleSwipeMouseDown}
+      >
+        <div class="tg-tab-page">
+          <div class="tg-tab-page-content">
+                    <div class="tg-hero">
           <div
             class="tg-avatar-wrap"
             bind:this={avatarWrapEl}
@@ -1654,10 +1526,326 @@
             </div>
           {/if}
         </div>
-      {/if}
-    </div>
-  {/key}
-</div>
+          </div>
+        </div>
+
+        {#if chat}
+          <div class="tg-tab-page">
+            <div class="tg-tab-page-content">
+              <GroupSharedMedia {chat} />
+            </div>
+          </div>
+        {/if}
+
+        {#if hasSettings}
+          <div class="tg-tab-page">
+            <div class="tg-tab-page-content">
+                      {#if chat?.type !== "CHAT"}
+          <div class="tg-section-header">Шифрование и безопасность</div>
+          <div class="tg-card">
+            <div class="tg-row">
+              <div class="tg-row-icon tg-icon-shield">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                </svg>
+              </div>
+              <div class="tg-row-main">
+                <div class="tg-row-title">Сквозное шифрование</div>
+                <div class="tg-row-subtitle">
+                  {#if $chatSettings?.keys?.current || $chatSettings?.session}
+                    <span class="tg-badge tg-badge-success">Активно</span>
+                  {:else if $chatSettings?.pending}
+                    <span class="tg-badge tg-badge-warning">Запрос отправлен</span>
+                  {:else}
+                    <span class="tg-badge tg-badge-muted">Отключено</span>
+                  {/if}
+                </div>
+              </div>
+              <button
+                type="button"
+                class="tg-btn-action"
+                class:danger={$chatSettings?.keys?.current || $chatSettings?.session}
+                on:click={triggerSwitchEnc}
+              >
+                { !($chatSettings?.keys?.current || $chatSettings?.session) ? "Новая сессия" : "Отключить" }
+              </button>
+            </div>
+
+            {#if $chatSettings?.session?.fingerprint}
+              <div class="tg-row tg-row-clickable" on:click={copyFingerprint}>
+                <div class="tg-row-icon tg-icon-key">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="7.5" cy="15.5" r="4.5"/>
+                    <path d="M21 2l-9.6 9.6M15.5 7.5l3 3M18.5 4.5l3 3"/>
+                  </svg>
+                </div>
+                <div class="tg-row-main">
+                  <div class="tg-row-title">Ключ сессии</div>
+                  <div class="tg-fingerprint-emojis">
+                    {$chatSettings.session.fingerprint}
+                  </div>
+                </div>
+                <button type="button" class="tg-copy-btn" title="Скопировать ключ">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                  </svg>
+                </button>
+              </div>
+            {/if}
+          </div>
+
+          <div class="tg-caption">
+            {#if $chatSettings?.session?.fingerprint}
+              Сравните эти 4 эмодзи с собеседником для проверки безопасности соединения.
+            {:else}
+              При включении переписка шифруется на устройстве, прочитать её можете только вы и собеседник.
+            {/if}
+            <div class="tg-caption-tag">Шифрование доступно между пользователями Max+</div>
+          </div>
+        {/if}
+
+        <div class="tg-section-header">Симметричный ключ (XOR)</div>
+        <div class="tg-card">
+          <div class="tg-row tg-input-row">
+            <div class="tg-row-icon tg-icon-lock">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+                <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+              </svg>
+            </div>
+            <div class="tg-row-main">
+              <input
+                type={showPassword ? "text" : "password"}
+                value={$chatSettings?.password || ""}
+                on:input={onPasswordInput}
+                class="tg-input"
+                placeholder="Введите общий секрет чата"
+              />
+            </div>
+            <button
+              type="button"
+              class="tg-eye-btn"
+              on:click={() => (showPassword = !showPassword)}
+              aria-label="Показать пароль"
+            >
+              {#if showPassword}
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/>
+                  <line x1="1" y1="1" x2="23" y2="23"/>
+                </svg>
+              {:else}
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                  <circle cx="12" cy="12" r="3"/>
+                </svg>
+              {/if}
+            </button>
+          </div>
+        </div>
+        <div class="tg-caption">Дополнительный общий пароль для симметричного шифрования.</div>
+
+        <div class="tg-section-header">Обфускация трафика</div>
+        <div class="tg-segmented">
+          <button
+            type="button"
+            class="tg-seg-btn"
+            class:active={!$chatSettings?.obfuscation}
+            on:click={() => setObfuscation(null)}
+          >
+            <span class="tg-seg-title">Без маскировки</span>
+            <span class="tg-seg-sub">OFF</span>
+          </button>
+
+          <button
+            type="button"
+            class="tg-seg-btn"
+            class:active={$chatSettings?.obfuscation === "zh"}
+            on:click={() => setObfuscation("zh")}
+          >
+            <span class="tg-seg-title">Китайский</span>
+            <span class="tg-seg-sub">Zh</span>
+          </button>
+
+          <button
+            type="button"
+            class="tg-seg-btn"
+            class:active={$chatSettings?.obfuscation === "words"}
+            on:click={() => setObfuscation("words")}
+          >
+            <span class="tg-seg-title">Книжные слова</span>
+            <span class="tg-seg-sub">Tol</span>
+          </button>
+        </div>
+
+        <div class="tg-caption">
+          {#if $chatSettings?.obfuscation === "zh"}
+            Зашифрованный текст визуально маскируется иероглифами.
+          {:else if $chatSettings?.obfuscation === "words"}
+            {#await hasDictionary}
+              Проверка словаря...
+            {:then has}
+              {#if has}
+                Зашифрованный текст превращается в поток литературных слов.
+              {:else}
+                <span class="tg-warn-text">Словарь не найден. Загрузите список слов в настройках приложения.</span>
+              {/if}
+            {/await}
+          {:else}
+            Символы передаются в стандартном зашифрованном виде.
+          {/if}
+        </div>
+
+        <div class="tg-section-header">Параметры чата</div>
+        <div class="tg-card">
+          <div class="tg-row tg-row-clickable" on:click={toggleMute}>
+            <div class="tg-row-icon tg-icon-bell">
+              {#if muted}
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+                  <path d="M18.63 13A17.89 17.89 0 0 1 18 8"/>
+                  <path d="M6.26 6.26A5.86 5.86 0 0 0 6 8c0 7-3 9-3 9h14"/>
+                  <path d="M18 8a6 6 0 0 0-9.33-5"/>
+                  <line x1="1" y1="1" x2="23" y2="23"/>
+                </svg>
+              {:else}
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+                  <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+                </svg>
+              {/if}
+            </div>
+            <div class="tg-row-main">
+              <div class="tg-row-title">Уведомления</div>
+              <div class="tg-row-subtitle">{muted ? "Отключены" : "Включены"}</div>
+            </div>
+            <div class="tg-switch" class:active={!muted}>
+              <div class="tg-switch-thumb"></div>
+            </div>
+          </div>
+
+          <div class="tg-row tg-row-clickable" on:click={swapReader}>
+            <div class="tg-row-icon tg-icon-check">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M20 6L9 17l-5-5"/>
+              </svg>
+            </div>
+            <div class="tg-row-main">
+              <div class="tg-row-title">Помечать прочитанным</div>
+              <div class="tg-row-subtitle">{$chatSettings?.reader ? "Автоматически" : "Вручную"}</div>
+            </div>
+            <div class="tg-switch" class:active={$chatSettings?.reader}>
+              <div class="tg-switch-thumb"></div>
+            </div>
+          </div>
+
+          <div class="tg-row tg-row-clickable" on:click={toggleAutoDownload}>
+            <div class="tg-row-icon tg-icon-download">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                <polyline points="7 10 12 15 17 10"/>
+                <line x1="12" y1="15" x2="12" y2="3"/>
+              </svg>
+            </div>
+            <div class="tg-row-main">
+              <div class="tg-row-title">Автозагрузка зашифрованных медиа</div>
+              <div class="tg-row-subtitle">{$autoDownloadEncryptedMedia ? "Разрешена" : "Выключена"}</div>
+            </div>
+            <div class="tg-switch" class:active={$autoDownloadEncryptedMedia}>
+              <div class="tg-switch-thumb"></div>
+            </div>
+          </div>
+
+          <div class="tg-row tg-disabled-row">
+            <div class="tg-row-icon tg-icon-save">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
+                <polyline points="17 21 17 13 7 13 7 21"/>
+                <polyline points="7 3 7 8 15 8"/>
+              </svg>
+            </div>
+            <div class="tg-row-main">
+              <div class="tg-row-title">Сохранить переписку</div>
+              <div class="tg-row-subtitle">Экспорт сообщений и файлов</div>
+            </div>
+            <span class="tg-badge tg-badge-soon">Скоро</span>
+          </div>
+        </div>
+
+        {#if chat?.type === "CHAT" && isGroupAdmin}
+          <div class="tg-section-header">Разрешения группы</div>
+          <div class="tg-card">
+            <div class="tg-row tg-row-clickable" on:click={() => toggleGroupOption("allCanPinMessage")}>
+              <div class="tg-row-icon tg-icon-pin">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <line x1="12" y1="17" x2="12" y2="22"/>
+                  <path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z"/>
+                </svg>
+              </div>
+              <div class="tg-row-main">
+                <div class="tg-row-title">Закреплять сообщения</div>
+                <div class="tg-row-subtitle">Все участники могут закреплять</div>
+              </div>
+              <div class="tg-switch" class:active={getGroupOption("allCanPinMessage")}>
+                <div class="tg-switch-thumb"></div>
+              </div>
+            </div>
+
+            <div class="tg-row tg-row-clickable" on:click={() => toggleGroupOption("onlyAdminCanAddMember")}>
+              <div class="tg-row-icon tg-icon-invite">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+                  <circle cx="8.5" cy="7.5" r="4"/>
+                  <line x1="20" y1="8" x2="20" y2="14"/>
+                  <line x1="23" y1="11" x2="17" y2="11"/>
+                </svg>
+              </div>
+              <div class="tg-row-main">
+                <div class="tg-row-title">Добавление участников</div>
+                <div class="tg-row-subtitle">Только администраторы</div>
+              </div>
+              <div class="tg-switch" class:active={getGroupOption("onlyAdminCanAddMember")}>
+                <div class="tg-switch-thumb"></div>
+              </div>
+            </div>
+
+            <div class="tg-row tg-row-clickable" on:click={() => toggleGroupOption("onlyAdminCanCall")}>
+              <div class="tg-row-icon tg-icon-phone">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/>
+                </svg>
+              </div>
+              <div class="tg-row-main">
+                <div class="tg-row-title">Звонки в группе</div>
+                <div class="tg-row-subtitle">Только администраторы могут звонить</div>
+              </div>
+              <div class="tg-switch" class:active={getGroupOption("onlyAdminCanCall")}>
+                <div class="tg-switch-thumb"></div>
+              </div>
+            </div>
+
+            <div class="tg-row tg-row-clickable" on:click={() => toggleGroupOption("membersCanSeePrivateLink")}>
+              <div class="tg-row-icon tg-icon-link">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
+                  <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
+                </svg>
+              </div>
+              <div class="tg-row-main">
+                <div class="tg-row-title">Видимость ссылки приглашения</div>
+                <div class="tg-row-subtitle">Участники видят ссылку</div>
+              </div>
+              <div class="tg-switch" class:active={getGroupOption("membersCanSeePrivateLink")}>
+                <div class="tg-switch-thumb"></div>
+              </div>
+            </div>
+          </div>
+        {/if}
+            </div>
+          </div>
+        {/if}
+      </div>
+    {/key}
 
     {#if toastMessage}
       <div class="tg-toast" in:fly={{ y: 20, duration: 180 }} out:fade={{ duration: 150 }}>
@@ -1799,6 +1987,8 @@
     background: #212121;
     border-bottom: 1px solid rgba(255, 255, 255, 0.08);
     flex-shrink: 0;
+    position: relative;
+    user-select: none;
   }
 
   .tg-tab {
@@ -1806,15 +1996,16 @@
     height: 44px;
     background: transparent;
     border: none;
-    border-bottom: 2px solid transparent;
     color: #707579;
     font-size: 14px;
     font-weight: 500;
     cursor: pointer;
-    transition: color 0.15s, border-color 0.15s;
+    transition: color 0.15s;
     display: flex;
     align-items: center;
     justify-content: center;
+    position: relative;
+    z-index: 1;
   }
 
   .tg-tab:hover {
@@ -1823,8 +2014,23 @@
 
   .tg-tab.active {
     color: #3390ec;
-    border-bottom-color: #3390ec;
     font-weight: 600;
+  }
+
+  .tg-tab-indicator {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    height: 2px;
+    background: #3390ec;
+    border-radius: 2px 2px 0 0;
+    pointer-events: none;
+    will-change: transform;
+    z-index: 2;
+  }
+
+  .tg-tab-indicator.animating {
+    transition: transform 0.25s cubic-bezier(0.25, 1, 0.5, 1);
   }
 
   .tg-topbar-title {
@@ -1913,11 +2119,48 @@
     margin: 4px 6px;
   }
 
-  .tg-scroll-content {
+  .tg-swipe-container {
     flex: 1;
     min-height: 0;
-    overflow-y: auto;
+    display: flex;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scroll-snap-type: x mandatory;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+    cursor: grab;
+    will-change: scroll-position;
     -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: contain;
+  }
+
+  .tg-swipe-container.dragging {
+    cursor: grabbing;
+    scroll-snap-type: none;
+    user-select: none;
+  }
+
+  .tg-swipe-container::-webkit-scrollbar {
+    display: none;
+  }
+
+  .tg-tab-page {
+    flex: 0 0 100%;
+    width: 100%;
+    height: 100%;
+    min-height: 0;
+    scroll-snap-align: start;
+    scroll-snap-stop: always;
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+    overflow-x: hidden;
+    -webkit-overflow-scrolling: touch;
+    box-sizing: border-box;
+    cursor: default;
+  }
+
+  .tg-tab-page-content {
     padding: 14px 14px calc(24px + env(safe-area-inset-bottom));
   }
 

@@ -329,7 +329,7 @@ export async function newMessage(chatId, chat, contact, message) {
         const acc = await getCurrentAccount();
         if (acc?.id) account = Number(acc.id);
       } catch (_) {}
-      const isGroup = chatInfo.type ? chatInfo.type !== "DIALOG" : (Number(chatId) < 0);
+      const isGroup = (chatInfo.type === "CHAT" || chatInfo.type === "GROUP") && (title !== senderName);
       await invoke("show_notification", {
         chatId: Number(chatId),
         title,

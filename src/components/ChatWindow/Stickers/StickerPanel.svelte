@@ -1,5 +1,6 @@
 <script>
-  import { onMount, tick, createEventDispatcher } from "svelte";
+  import { onMount, onDestroy, tick, createEventDispatcher } from "svelte";
+  import { registerBackHandler } from "$lib/utils/backButton.js";
   import {
     orderedSetIds,
     favoriteSetIds,
@@ -37,6 +38,59 @@
 
   let peekSticker = null;
   let peekTimer = null;
+
+  let unregPeek = null;
+  let unregPack = null;
+  let unregCatalog = null;
+
+  $: if (peekSticker) {
+    if (!unregPeek) {
+      unregPeek = registerBackHandler(() => {
+        endPeek();
+        return true;
+      });
+    }
+  } else {
+    if (unregPeek) {
+      unregPeek();
+      unregPeek = null;
+    }
+  }
+
+  $: if (showPackModal) {
+    if (!unregPack) {
+      unregPack = registerBackHandler(() => {
+        showPackModal = false;
+        openedSetId = null;
+        return true;
+      });
+    }
+  } else {
+    if (unregPack) {
+      unregPack();
+      unregPack = null;
+    }
+  }
+
+  $: if (showCatalogModal) {
+    if (!unregCatalog) {
+      unregCatalog = registerBackHandler(() => {
+        showCatalogModal = false;
+        return true;
+      });
+    }
+  } else {
+    if (unregCatalog) {
+      unregCatalog();
+      unregCatalog = null;
+    }
+  }
+
+  onDestroy(() => {
+    if (unregPeek) unregPeek();
+    if (unregPack) unregPack();
+    if (unregCatalog) unregCatalog();
+  });
 
   const pluginTabs = getMountStore("sticker-panel:tab");
   const pluginContents = getMountStore("sticker-panel:tab-content");
