@@ -283,7 +283,7 @@ async function collectSystemInfo() {
 
   let currentDevice = {};
   try {
-    currentDevice = sanitizeData(await invoke("get_device"));
+    currentDevice = sanitizeData(await invoke("common_store_load", { store: "device" }));
   } catch {}
 
   return {

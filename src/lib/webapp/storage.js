@@ -163,7 +163,7 @@ export async function fetchBiometryStatus(userId, botId, deviceId) {
   let devId = deviceId || "";
   if (!devId) {
     try {
-      const dev = await callInvoke("get_device");
+      const dev = await callInvoke("common_store_load", { store: "device" });
       if (dev && typeof dev === "object" && dev.deviceId) {
         devId = dev.deviceId;
       }
@@ -172,7 +172,7 @@ export async function fetchBiometryStatus(userId, botId, deviceId) {
   if (!devId) {
     devId = crypto.randomUUID().replace(/-/g, "");
     try {
-      await callInvoke("save_device", { device: { deviceId: devId } });
+      await callInvoke("common_store_save", { store: "device", data: { deviceId: devId } });
     } catch {}
   }
   return {

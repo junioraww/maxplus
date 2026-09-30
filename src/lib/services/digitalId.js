@@ -107,7 +107,7 @@ export async function requestExtApi(method, path, options = {}) {
 
 export async function resolveSessionDeviceId() {
   try {
-    const dev = await invokeHandler("get_device");
+    const dev = await invokeHandler("common_store_load", { store: "device" });
     if (dev?.deviceId) return dev.deviceId;
   } catch {}
   try {

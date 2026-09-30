@@ -34,7 +34,7 @@ function createPluginStore() {
       })),
     };
     try {
-      await invoke('plugin_meta_save', { data: serializable });
+      await invoke('common_store_save', { store: 'plugin_meta', data: serializable });
     } catch (e) {
       console.error('[plugins] persist error:', e);
     }
@@ -42,7 +42,7 @@ function createPluginStore() {
 
   async function load() {
     try {
-      const raw = await invoke('plugin_meta_load');
+      const raw = await invoke('common_store_load', { store: 'plugin_meta' });
       if (!raw || !Array.isArray(raw.plugins)) {
         update(s => ({ ...s, loaded: true }));
         return;

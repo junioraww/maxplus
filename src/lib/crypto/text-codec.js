@@ -4,13 +4,20 @@ import { writable, get } from "svelte/store";
 const dictionaryStore = writable(undefined);
 
 export const dict = {
-  getUrl: () => invoke("get_dictionary_url"),
-  setUrl: (url) => invoke("set_dictionary_url", { url }),
+  getUrl: async () => {
+    const loaded = await invoke("common_store_load", { store: "dictionary" });
+    return loaded?.url || null;
+  },
+  setUrl: async (url) => {
+    const loaded = (await invoke("common_store_load", { store: "dictionary" })) || { url: null, data: null };
+    loaded.url = url;
+    return invoke("common_store_save", { store: "dictionary", data: loaded });
+  },
   getDictionary: async () => {
     const cached = get(dictionaryStore);
     if (cached) return cached;
 
-    const loaded = await invoke("load_dictionary");
+    const loaded = await invoke("common_store_load", { store: "dictionary" });
     const data = loaded?.data || loaded;
     if (data?.dict8 && data?.dict16) {
       dictionaryStore.set(data);

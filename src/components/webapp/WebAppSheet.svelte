@@ -259,7 +259,7 @@
     }
     if (!deviceId) {
       try {
-        const dev = await invoke("get_device");
+        const dev = await invoke("common_store_load", { store: "device" });
         if (dev && typeof dev === "object" && dev.deviceId) {
           deviceId = dev.deviceId;
         }

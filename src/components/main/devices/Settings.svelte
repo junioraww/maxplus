@@ -21,8 +21,8 @@
     }, 2000);
   });
 
-  const getDevice = () => invoke("get_device");
-  const saveDevice = device => invoke("save_device", { device });
+  const getDevice = () => invoke("common_store_load", { store: "device" });
+  const saveDevice = device => invoke("common_store_save", { store: "device", data: device });
   const readFile = path => invoke("read_file", { path });
   const writeFile = (path, content) => invoke("write_file_string", { path, content });
 

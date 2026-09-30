@@ -15,7 +15,7 @@ async function loadFromDisk() {
   diskLoadPromise = (async () => {
     try {
       if (typeof window !== "undefined" && (window.__TAURI_INTERNALS__ || window.__TAURI__)) {
-        const disk = await invoke("load_cached_credits");
+        const disk = await invoke("common_store_load", { store: "credits_cache" });
         if (Array.isArray(disk) && disk.length > 0) {
           if (!cachedCredits) cachedCredits = disk;
           return disk;
@@ -71,7 +71,7 @@ async function fetchRemoteCredits() {
         const parsed = JSON.parse(rawText);
         if (Array.isArray(parsed) && parsed.length > 0) {
           cachedCredits = parsed;
-          await invoke("save_cached_credits", { credits: parsed }).catch(() => {});
+          await invoke("common_store_save", { store: "credits_cache", data: parsed }).catch(() => {});
           return parsed;
         }
       }
@@ -90,7 +90,7 @@ async function fetchRemoteCredits() {
       if (Array.isArray(data) && data.length > 0) {
         cachedCredits = data;
         if (typeof window !== "undefined" && (window.__TAURI_INTERNALS__ || window.__TAURI__)) {
-          await invoke("save_cached_credits", { credits: data }).catch(() => {});
+          await invoke("common_store_save", { store: "credits_cache", data }).catch(() => {});
         }
         return data;
       }
