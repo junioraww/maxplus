@@ -250,6 +250,8 @@ pub fn run() {
             stores::plugin_storage_get,
             stores::plugin_storage_get_all,
             stores::plugin_storage_clear,
+            stores::save_cached_credits,
+            stores::load_cached_credits,
             stores::plugin_meta_save,
             stores::plugin_meta_load,
             notifications::show_notification,

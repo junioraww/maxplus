@@ -5,11 +5,13 @@
   import { app } from "@tauri-apps/api";
   import { page } from "$app/stores";
   import SettingsPageWrapper from "$components/settings/SettingsPageWrapper.svelte";
+  import CreditsModal from "$components/main/CreditsModal.svelte";
 
   let version = "...";
   let environment = "...";
   let doingStuff = "";
   let checking = false;
+  let showCredits = false;
 
   export let onClose = null;
   $: from = $page.url.searchParams.get("from") || "/?card=settings";
@@ -138,6 +140,18 @@
         <strong>{__BUILD_DATE__}</strong>
       </div>
     </div>
+
+    <div class="card credits-card" on:click={() => (showCredits = true)}>
+      <div class="source-item">
+        <svg class="source-icon star-icon" viewBox="0 0 24 24" fill="none" stroke="#eab308" stroke-width="2">
+          <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
+        </svg>
+        <span class="source-name">Благодарности</span>
+        <svg class="chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polyline points="9 18 15 12 9 6"></polyline>
+        </svg>
+      </div>
+    </div>
   </div>
 
   <div class="actions-panel" slot="footer">
@@ -147,10 +161,16 @@
   </div>
 </SettingsPageWrapper>
 
+{#if showCredits}
+  <CreditsModal on:close={() => (showCredits = false)} />
+{/if}
+
 <style>
   .content {
-    flex: 1;
+    flex: 1 1 auto;
+    min-height: 0;
     overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
     padding: 20px 16px;
     display: flex;
     flex-direction: column;
@@ -164,6 +184,7 @@
     align-items: center;
     padding: 10px 0 8px;
     text-align: center;
+    flex-shrink: 0;
   }
 
   .app-icon-wrap {
@@ -200,6 +221,7 @@
     border: 1px solid rgba(255, 255, 255, 0.08);
     border-radius: 14px;
     overflow: hidden;
+    flex-shrink: 0;
   }
 
   .card-title {
@@ -221,17 +243,27 @@
     align-items: center;
     gap: 12px;
     padding: 12px 16px;
+    min-height: 48px;
+    box-sizing: border-box;
     cursor: pointer;
     transition: background 0.12s;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
   }
 
   .source-item:hover {
     background: rgba(255, 255, 255, 0.05);
   }
 
+  .source-item:active {
+    background: rgba(255, 255, 255, 0.08);
+  }
+
   .source-icon {
     width: 24px;
     height: 24px;
+    flex-shrink: 0;
   }
 
   .github-icon {
@@ -248,12 +280,14 @@
 
   .chevron {
     color: #555;
+    flex-shrink: 0;
   }
 
   .divider {
     height: 1px;
     background: rgba(255, 255, 255, 0.06);
     margin: 0 16px;
+    flex-shrink: 0;
   }
 
   .info-card {
@@ -266,7 +300,10 @@
     justify-content: space-between;
     align-items: center;
     padding: 13px 16px;
+    min-height: 44px;
+    box-sizing: border-box;
     font-size: 0.92rem;
+    flex-shrink: 0;
   }
 
   .info-row span {
@@ -281,6 +318,7 @@
   .actions-panel {
     flex-shrink: 0;
     padding: 14px 16px;
+    padding-bottom: max(14px, env(safe-area-inset-bottom, 14px));
     background: #212126;
     border-top: 1px solid rgba(255, 255, 255, 0.08);
   }
@@ -288,6 +326,9 @@
   .check-btn {
     width: 100%;
     height: 44px;
+    min-height: 44px;
+    flex-shrink: 0;
+    box-sizing: border-box;
     background: #3390ec;
     color: white;
     border: none;
@@ -299,6 +340,9 @@
     align-items: center;
     justify-content: center;
     transition: transform 0.12s, opacity 0.15s, background 0.15s;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
   }
 
   .check-btn:hover {

@@ -12,8 +12,7 @@
   import { add as addLog } from '$lib/stores/logs';
   import { showAlert } from '$lib/utils/alert';
   import Alerts from '$components/main/Alerts.svelte';
-  import Loading from "$components/effects/Loading.svelte";
-  import ProfileModal from "$components/ProfileModal.svelte";
+    import ProfileModal from "$components/ProfileModal.svelte";
   import AvatarGalleryModal from "$components/main/AvatarGalleryModal.svelte";
   import DevSettings from "$components/main/dev/Settings.svelte";
   import AddContactModal from "$components/main/AddContactModal.svelte";
@@ -110,6 +109,14 @@
   });
 
   if (browser) window.alert = showAlert;
+
+  $: if (browser && $Session?.loaded) {
+    const el = document.getElementById("initial-loader");
+    if (el) {
+      el.classList.add("loaded");
+      setTimeout(() => el.remove(), 300);
+    }
+  }
 </script>
 
 {#if $Session.devSettings}
@@ -141,8 +148,6 @@
       <slot />
     </main>
   {/key}
-{:else}
-  <Loading/>
 {/if}
 
 <Alerts />

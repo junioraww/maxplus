@@ -11,12 +11,79 @@
     %sveltekit.head%
   </head>
   <body data-sveltekit-preload-data="hover">
+    <div id="initial-loader" class="initial-loader">
+      <div class="loader-content">
+        <div class="loader-icon-wrapper">
+          <svg class="loader-icon" viewBox="0 0 108 108" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <g transform="translate(54 54) scale(0.68) translate(-54 -54)">
+              <path
+                d="M54,28.7733C68.1126,28.7733 79.5,40.1581 79.5,54.1365C79.5,68.115 68.1126,79.4998 54,79.4998C39.8874,79.4998 28.5,68.115 28.5,54.1365C28.5,40.1581 39.8874,28.7733 54,28.7733Z"
+                fill="none"
+                stroke="#FFFFFF"
+                stroke-width="15"
+                stroke-linecap="butt"
+                stroke-linejoin="miter"
+              />
+              <path
+                d="M22.3915,55.3724C22.3915,55.3724 22.2564,47.3297 25.3431,39.0233C28.4297,30.717 27.7587,23.2017 29.3691,21.6194C30.9795,20.0372 38.9522,21.5956 42.7906,25.0474L22.3915,55.3724Z"
+                fill="#FFFFFF"
+                stroke="#FFFFFF"
+                stroke-width="1"
+              />
+              <path
+                d="M85.691,56.0431C85.691,56.0431 85.825,47.8434 82.7643,39.375C79.7036,30.9066 80.369,23.2446 78.7721,21.6315C77.1752,20.0184 69.2695,21.6072 65.4633,25.1264L85.691,56.0431Z"
+                fill="#FFFFFF"
+                stroke="#FFFFFF"
+                stroke-width="1"
+              />
+            </g>
+          </svg>
+        </div>
+        <div class="loader-title">Max+</div>
+        <div class="loader-dots">
+          <span></span>
+          <span></span>
+          <span></span>
+        </div>
+      </div>
+      <div class="loader-credits">
+        <span id="initial-credits-text" class="credits-text"></span>
+      </div>
+    </div>
     <div id="app">%sveltekit.body%</div>
-    <div class="debug-a"></div>
-    <div class="debug-b"></div>
-    <div class="debug-c"></div>
-    <div class="debug-d"></div>
-    <div class="debug-e"></div>
+    <script>
+      (function() {
+        try {
+          const list = [
+            ["contributor", "JuniorAww", "Разработал", 5],
+            ["contributor", "hu553in", "Адаптировал", 5],
+            ["contributor", "megazoll", "Улучшил", 1]
+          ];
+          var totalWeight = 0;
+          for (var i = 0; i < list.length; i++) {
+            var item = list[i];
+            var p = Math.max(1, Number(item[3]) || 1);
+            totalWeight += p;
+          }
+          var random = Math.random() * totalWeight;
+          var chosen = list[list.length - 1];
+          for (var j = 0; j < list.length; j++) {
+            var it = list[j];
+            var weight = Math.max(1, Number(it[3]) || 1);
+            if (random < weight) {
+              chosen = it;
+              break;
+            }
+            random -= weight;
+          }
+          const name = chosen[1] || "";
+          const text = chosen[2] || "";
+          const str = text && name ? text + " " + name : (name || text || "");
+          const el = document.getElementById("initial-credits-text");
+          if (el && str) el.textContent = str;
+        } catch (e) {}
+      })();
+    </script>
   </body>
   <style>
     @font-face {
@@ -24,64 +91,6 @@
       src: url("/fonts/Inter_18pt-Medium.ttf") format("truetype");
       font-weight: 500;
       font-style: normal;
-    }
-
-    .debug-a {
-      background-color: #f00;
-      width: 32px;
-      height: 32px;
-      position: absolute;
-      bottom: 0;
-      left: 0;
-      z-index: 1000;
-      display: none;
-    }
-
-    .debug-b {
-      background-color: #0f0;
-      width: 32px;
-      height: 32px;
-      position: absolute;
-      bottom: 0;
-      right: 130px;
-      padding-bottom: calc(16px + env(--safe-area-inset-bottom));
-      z-index: 1000;
-      display: none;
-    }
-
-    .debug-c {
-      background-color: #00f;
-      width: 32px;
-      height: 32px;
-      position: absolute;
-      bottom: 0;
-      right: 0;
-      padding-bottom: env(safe-area-inset-bottom, 20px);
-      z-index: 1000;
-      display: none;
-    }
-
-    .debug-d {
-      background-color: #0ff;
-      width: 32px;
-      height: 32px;
-      position: absolute;
-      top: 0;
-      right: 0;
-      z-index: 1000;
-      display: none;
-    }
-
-    .debug-e {
-      background-color: #ff0;
-      width: 32px;
-      height: 32px;
-      position: absolute;
-      top: 0;
-      left: 0;
-      z-index: 1000;
-      padding-top: calc(12px + env(safe-area-inset-top, 0px));
-      display: none;
     }
 
     *, *::before, *::after {
@@ -112,6 +121,109 @@
 
     #app {
       display: contents;
+    }
+
+    .initial-loader {
+      position: fixed;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      background: #131417;
+      z-index: 99999;
+      user-select: none;
+      -webkit-user-select: none;
+      transition: opacity 0.25s ease-out;
+    }
+
+    .initial-loader.loaded {
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .loader-content {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .loader-icon-wrapper {
+      width: 76px;
+      height: 76px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .loader-icon {
+      width: 100%;
+      height: 100%;
+      filter: drop-shadow(0 4px 16px rgba(255, 255, 255, 0.15));
+    }
+
+    .loader-title {
+      color: #ffffff;
+      font-size: 22px;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+    }
+
+    .loader-dots {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-top: 4px;
+    }
+
+    .loader-dots span {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: #ffffff;
+      animation: pulse-dot 1.2s infinite ease-in-out;
+    }
+
+    .loader-dots span:nth-child(2) {
+      animation-delay: 0.2s;
+    }
+
+    .loader-dots span:nth-child(3) {
+      animation-delay: 0.4s;
+    }
+
+    .loader-credits {
+      position: absolute;
+      bottom: max(24px, env(safe-area-inset-bottom, 24px));
+      left: 20px;
+      right: 20px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      text-align: center;
+    }
+
+    .credits-text {
+      font-size: 13px;
+      color: rgba(255, 255, 255, 0.45);
+      font-weight: 400;
+      letter-spacing: 0.2px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 90%;
+    }
+
+    @keyframes pulse-dot {
+      0%, 80%, 100% {
+        opacity: 0.2;
+        transform: scale(0.8);
+      }
+      40% {
+        opacity: 1;
+        transform: scale(1.2);
+      }
     }
 
     html.ios-safe-area #app {

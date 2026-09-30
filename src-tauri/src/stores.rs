@@ -2536,6 +2536,33 @@ pub async fn plugin_storage_clear(
 }
 
 #[tauri::command]
+pub async fn save_cached_credits(
+    app: AppHandle,
+    credits: serde_json::Value,
+) -> Result<(), String> {
+    tokio::task::spawn_blocking(move || {
+        let path = app.path().app_data_dir().unwrap().join("data").join("common").join("credits_cache");
+        let storage = Storage::new(None);
+        storage.save(&path, &credits)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn load_cached_credits(
+    app: AppHandle,
+) -> Result<Option<serde_json::Value>, String> {
+    tokio::task::spawn_blocking(move || {
+        let path = app.path().app_data_dir().unwrap().join("data").join("common").join("credits_cache");
+        let storage = Storage::new(None);
+        Ok(storage.load(&path))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
 pub async fn plugin_meta_save(
     app: AppHandle,
     data: serde_json::Value,
