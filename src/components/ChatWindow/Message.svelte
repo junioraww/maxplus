@@ -429,7 +429,15 @@
             </div>
           {/if}
 
-          {#if rawText}
+          {#if decoded?.error || rawText.includes('<b style="color:#f66">')}
+            {#each lines as line}
+              <p class="line crypto-error">{@html line}</p>
+            {/each}
+          {:else if decoded?.is_handshake_request || decoded?.is_handshake_accept || (typeof rawText === "string" && /<\/?(b|i|u|s|span|div|p|a|code|strong|em)(\s+[^>]*)?>/i.test(rawText))}
+            {#each lines as line}
+              <p class="line">{@html line}</p>
+            {/each}
+          {:else if rawText}
             <FormattedText
               text={rawText}
               elements={msg.elements || []}

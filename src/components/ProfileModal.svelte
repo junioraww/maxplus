@@ -49,7 +49,7 @@
     if (showMenu) { showMenu = false; return false; }
     if (selectedMemberMenuId) { selectedMemberMenuId = null; return false; }
     if ((activeTab === "settings" || activeTab === "media") && $Session.profile?.view !== "settings") {
-      activeTab = "info";
+      selectTab("info");
       return false;
     }
     closeModal();
@@ -62,6 +62,9 @@
     if (scrollTimeout) clearTimeout(scrollTimeout);
   });
 
+  let fetchedChat = null;
+  let fetchingChatId = null;
+
   $: chatId = (() => {
     const cid = $Session.profile?.chatId;
     if (cid != null) return cid;
@@ -69,8 +72,8 @@
     if (uid != null && $currentUser != null) {
       const match = $currentSessionChats?.find(x =>
         x.type === "DIALOG" && (
-          (x.participants && Object.keys(x.participants).some(p => Number(p) === Number(uid))) ||
-          Number(x.owner) === Number(uid)
+          (x.participants && Object.keys(x.participants).some(p => String(p) === String(uid))) ||
+          String(x.owner) === String(uid)
         )
       );
       if (match?.id != null) return match.id;
@@ -81,22 +84,34 @@
     return undefined;
   })();
 
+  $: if (chatId != null && fetchingChatId !== chatId) {
+    const existing = $currentSessionChats?.find(x => String(x.id) === String(chatId));
+    if (!existing) {
+      fetchingChatId = chatId;
+      $API.getChat(chatId).then(res => {
+        if (res?.chats?.length) {
+          fetchedChat = res.chats[0];
+        }
+      }).catch(() => {});
+    }
+  }
+
   $: chat = (() => {
     if (chatId != null) {
-      const byId = $currentSessionChats?.find(x => x.id === chatId);
+      const byId = $currentSessionChats?.find(x => String(x.id) === String(chatId));
       if (byId) return byId;
     }
     const uid = $Session.profile?.userId;
     if (uid != null) {
       const byParticipant = $currentSessionChats?.find(x =>
         x.type === "DIALOG" && (
-          (x.participants && Object.keys(x.participants).some(p => Number(p) === Number(uid))) ||
-          Number(x.owner) === Number(uid)
+          (x.participants && Object.keys(x.participants).some(p => String(p) === String(uid))) ||
+          String(x.owner) === String(uid)
         )
       );
       if (byParticipant) return byParticipant;
     }
-    return undefined;
+    return fetchedChat;
   })();
 
   $: userId = (() => {
@@ -121,10 +136,22 @@
   $: hasSettings = Boolean(chat && !isChannel);
 
   let activeTab = "info";
-  $: if ($Session.profile?.view === "settings" && hasSettings) {
-    activeTab = "settings";
-  } else if ($Session.profile && $Session.profile.view !== "settings") {
-    activeTab = "info";
+  let previousProfile = null;
+  let didInitialSelect = false;
+
+  $: if ($Session.profile !== previousProfile) {
+    previousProfile = $Session.profile;
+    didInitialSelect = false;
+  }
+
+  $: if (!didInitialSelect && previousProfile) {
+    if ($Session.profile?.view === "settings" && hasSettings) {
+      activeTab = "settings";
+      didInitialSelect = true;
+    } else if ($Session.profile?.view !== "settings") {
+      activeTab = "info";
+      didInitialSelect = true;
+    }
   }
 
   $: availableTabs = chat
@@ -291,10 +318,15 @@
       if (idx !== -1) {
         const targetLeft = idx * swipeContainer.clientWidth;
         if (Math.abs(swipeContainer.scrollLeft - targetLeft) > 10) {
+          isProgrammaticScroll = true;
           swipeContainer.scrollTo({
             left: targetLeft,
             behavior: "smooth"
           });
+          clearTimeout(scrollTimeout);
+          scrollTimeout = setTimeout(() => {
+            isProgrammaticScroll = false;
+          }, 350);
         }
       }
     }
@@ -914,7 +946,7 @@
 
   function goBack() {
     if ((activeTab === "settings" || activeTab === "media") && $Session.profile?.view !== "settings") {
-      activeTab = "info";
+      selectTab("info");
       return;
     }
     if ($Session.profile?.history?.length) {

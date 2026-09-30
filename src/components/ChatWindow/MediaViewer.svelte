@@ -5,8 +5,11 @@
   import { createEventDispatcher, onMount, onDestroy, tick } from "svelte";
   import { registerBackHandler } from "$lib/utils/backButton.js";
 
+  import { get } from "svelte/store";
   import { getAssetUrl, getProxiedMediaUrl, isProxiedMediaUrl, unwrapProxiedMediaUrl } from "$lib/utils/images";
   import { getCurrentAccount } from "$lib/stores/accounts";
+  import { getChatSettings } from "$lib/stores/messages";
+  import { resolveSenderDisplayName, fetchSenderDisplayName } from "$lib/stores/mediaPlayback";
   import API from "$lib/stores/api";
 
   export let index = 0;
@@ -30,6 +33,11 @@
   let isMetadataLoaded = false;
   let isVideoReady = false;
   let loop = false;
+
+  let windowWidth = typeof window !== "undefined" ? window.innerWidth : 1000;
+  let isSeeking = false;
+  let seekValue = 0;
+  let currentSenderName = "";
 
   let showSkipIcon = null;
   let videoCache = {};
@@ -162,46 +170,67 @@
     return { cx: window.innerWidth / 2, cy: window.innerHeight / 2 };
   }
 
+  let videoMetaVersion = 0;
+
   function getTargetMediaBox(mediaItem = currentMedia) {
     const { cx, cy } = getStageCenter();
     const activeEl = mainMediaEl || videoElement;
-    if (activeEl && activeEl.offsetWidth > 0 && activeEl.offsetHeight > 0) {
-      return { width: activeEl.offsetWidth, height: activeEl.offsetHeight, cx, cy };
-    }
+    let natW = activeEl?.naturalWidth || activeEl?.videoWidth || mediaItem?.width || 0;
+    let natH = activeEl?.naturalHeight || activeEl?.videoHeight || mediaItem?.height || 0;
     const vw = window.innerWidth;
     const vh = window.innerHeight;
     const maxW = vw * 0.95;
     const maxH = vh * 0.80;
-    let natW = activeEl?.naturalWidth || activeEl?.videoWidth || mediaItem?.width || 0;
-    let natH = activeEl?.naturalHeight || activeEl?.videoHeight || mediaItem?.height || 0;
-    if (!natW || !natH) {
-      const size = Math.min(maxW, maxH, 540);
-      return { width: size, height: size, cx, cy };
+    if (natW > 0 && natH > 0) {
+      const ratio = Math.min(maxW / natW, maxH / natH, 1);
+      return { width: Math.round(natW * ratio), height: Math.round(natH * ratio), cx, cy };
     }
-    const ratio = Math.min(maxW / natW, maxH / natH, 1);
-    return { width: natW * ratio, height: natH * ratio, cx, cy };
+    if (activeEl && activeEl.offsetWidth > 0 && activeEl.offsetHeight > 0) {
+      return { width: activeEl.offsetWidth, height: activeEl.offsetHeight, cx, cy };
+    }
+    const size = Math.min(maxW, maxH, 540);
+    return { width: size, height: size, cx, cy };
   }
 
+  $: videoDimensions = (() => {
+    const _v = videoMetaVersion;
+    let w = videoElement?.videoWidth || currentMedia?.width || 0;
+    let h = videoElement?.videoHeight || currentMedia?.height || 0;
+    if (!w || !h || !windowWidth) return null;
+    const maxW = windowWidth * 0.95;
+    const maxH = (typeof window !== "undefined" ? window.innerHeight : 800) * 0.80;
+    const ratio = Math.min(maxW / w, maxH / h, 1);
+    return {
+      width: Math.round(w * ratio),
+      height: Math.round(h * ratio)
+    };
+  })();
+
   function buildHeroTransform(rect, target, radiusPx) {
-    const scaleX = Math.max(rect.width / Math.max(target.width, 1), 0.04);
-    const scaleY = Math.max(rect.height / Math.max(target.height, 1), 0.04);
+    const scale = Math.max(
+      rect.width / Math.max(target.width, 1),
+      rect.height / Math.max(target.height, 1),
+      0.04
+    );
     const dx = (rect.left + rect.width / 2) - target.cx;
     const dy = (rect.top + rect.height / 2) - target.cy;
-    const rx = Math.round(radiusPx / scaleX);
-    const ry = Math.round(radiusPx / scaleY);
+    const clipX = Math.max(0, Math.round((target.width - rect.width / scale) / 2));
+    const clipY = Math.max(0, Math.round((target.height - rect.height / scale) / 2));
+    const rad = Math.round(radiusPx / scale);
     return {
       dx,
       dy,
-      scaleX,
-      scaleY,
-      borderRadius: `${rx}px / ${ry}px`,
+      scale,
+      clipX,
+      clipY,
+      rad,
     };
   }
 
   onMount(async () => {
     const el = findElementForSlide(index);
     if (el && currentMedia) {
-      const thumbImg = el.querySelector?.("img");
+      const thumbImg = el.querySelector?.("img, video");
       const key = getMediaKey(currentMedia);
       if (thumbImg?.src && !thumbImg.src.startsWith("data:image/svg") && key && !resolvedMediaMap[key]) {
         resolvedMediaMap = { ...resolvedMediaMap, [key]: thumbImg.src };
@@ -237,7 +266,7 @@
       const target = getTargetMediaBox(currentMedia);
       const h = buildHeroTransform(rect, target, originRadius || 12);
 
-      heroStyle = `transform: translate3d(calc(-50% + ${h.dx}px), calc(-50% + ${h.dy}px), 0) scale(${h.scaleX}, ${h.scaleY}); border-radius: ${h.borderRadius}; opacity: 1; transition: none;`;
+      heroStyle = `transform: translate3d(calc(-50% + ${h.dx}px), calc(-50% + ${h.dy}px), 0) scale(${h.scale}); clip-path: inset(${h.clipY}px ${h.clipX}px ${h.clipY}px ${h.clipX}px round ${h.rad}px); border-radius: 0px; opacity: 1; transition: none;`;
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
           backdropOpacity = 1;
@@ -245,7 +274,7 @@
           if (heroOverlayClipStyle) {
             heroOverlayClipStyle = "clip-path: inset(0px 0px 0px 0px); transition: clip-path 260ms cubic-bezier(0.22, 1, 0.36, 1);";
           }
-          heroStyle = `transform: translate3d(-50%, -50%, 0) scale(1, 1); border-radius: 0px; opacity: 1; transition: transform 310ms cubic-bezier(0.22, 1, 0.36, 1), border-radius 310ms cubic-bezier(0.22, 1, 0.36, 1);`;
+          heroStyle = `transform: translate3d(-50%, -50%, 0) scale(1, 1); clip-path: inset(0px 0px 0px 0px round 0px); border-radius: 0px; opacity: 1; transition: transform 310ms cubic-bezier(0.22, 1, 0.36, 1), clip-path 310ms cubic-bezier(0.22, 1, 0.36, 1);`;
           setTimeout(() => {
             if (heroPhase === "entering") {
               heroPhase = "idle";
@@ -283,14 +312,14 @@
         heroOverlayClipStyle = "clip-path: inset(0px 0px 0px 0px);";
       }
 
-      heroStyle = `transform: translate3d(calc(-50% + ${x}px), calc(-50% + ${y}px), 0) scale(${scale}, ${scale}); border-radius: 0px; transition: none;`;
+      heroStyle = `transform: translate3d(calc(-50% + ${x}px), calc(-50% + ${y}px), 0) scale(${scale}); clip-path: inset(0px 0px 0px 0px round 0px); border-radius: 0px; transition: none;`;
       requestAnimationFrame(() => {
         backdropOpacity = 0;
         uiOpacity = 0;
         if (endClip) {
           heroOverlayClipStyle = `${endClip} transition: clip-path 260ms cubic-bezier(0.22, 1, 0.36, 1);`;
         }
-        heroStyle = `transform: translate3d(calc(-50% + ${h.dx}px), calc(-50% + ${h.dy}px), 0) scale(${h.scaleX}, ${h.scaleY}); border-radius: ${h.borderRadius}; transition: transform 270ms cubic-bezier(0.22, 1, 0.36, 1), border-radius 270ms cubic-bezier(0.22, 1, 0.36, 1);`;
+        heroStyle = `transform: translate3d(calc(-50% + ${h.dx}px), calc(-50% + ${h.dy}px), 0) scale(${h.scale}); clip-path: inset(${h.clipY}px ${h.clipX}px ${h.clipY}px ${h.clipX}px round ${h.rad}px); border-radius: 0px; transition: transform 270ms cubic-bezier(0.22, 1, 0.36, 1), clip-path 270ms cubic-bezier(0.22, 1, 0.36, 1);`;
         setTimeout(() => {
           heroOverlayClipStyle = "";
           restoreHiddenOrigin(false);
@@ -344,12 +373,14 @@
 
       const fileRes = await $API.getFileById(chatId, media.messageId, fid);
       if (fileRes?.url) {
+        const settingsStore = chatId ? getChatSettings(chatId) : null;
+        const settings = settingsStore ? get(settingsStore) : null;
         const cachedPath = await tauriInvoke("cache_encrypted_media", {
           account: accountId,
           chatId: Number(chatId || 0),
           fileId: Number(fid),
           src: fileRes.url,
-          password: null,
+          password: settings?.password || null,
         });
         if (cachedPath) {
           media.localPath = cachedPath;
@@ -477,15 +508,63 @@
     y = 0;
   }
 
+  $: {
+    const sId = currentMedia?.senderId || currentMedia?.sender;
+    const initial = resolveSenderDisplayName(sId, currentMedia?.senderName);
+    if (initial) {
+      currentSenderName = initial;
+    } else if (sId) {
+      fetchSenderDisplayName(sId, currentMedia?.senderName).then((name) => {
+        if (name) currentSenderName = name;
+      });
+    } else {
+      currentSenderName = currentMedia?.senderName || "";
+    }
+  }
+
+  function formatMediaDate(timestamp) {
+    if (!timestamp) return "";
+    const d = new Date(Number(timestamp) < 1e12 ? Number(timestamp) * 1000 : Number(timestamp));
+    const now = new Date();
+    const timeStr = `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+    if (d.toDateString() === now.toDateString()) {
+      return `сегодня в ${timeStr}`;
+    }
+    const yesterday = new Date(now);
+    yesterday.setDate(yesterday.getDate() - 1);
+    if (d.toDateString() === yesterday.toDateString()) {
+      return `вчера в ${timeStr}`;
+    }
+    const day = String(d.getDate()).padStart(2, "0");
+    const month = String(d.getMonth() + 1).padStart(2, "0");
+    const year = d.getFullYear();
+    return `${day}.${month}.${year} в ${timeStr}`;
+  }
+
+  function getMediaTypeName(media) {
+    if (!media) return "";
+    const vType = Number(media.videoType ?? media.video_type);
+    if (media._type === "PHOTO" || media.type === "PHOTO") {
+      return "Фото";
+    }
+    if (vType === 1 || media.isNote) {
+      return "Видеосообщение";
+    }
+    return "Видео";
+  }
+
   async function loadVideo(videoId) {
     if (!videoId) return;
     if (videoCache[videoId] || isLoading) return;
     isLoading = true;
     try {
+      const targetChatId = currentMedia?.chatId || chatId;
+      const targetToken = currentMedia?.videoToken || currentMedia?.token || null;
       const response = await $API.getVideoById(
-        chatId,
+        targetChatId,
         currentMedia.messageId,
         videoId,
+        targetToken,
       );
       const qualityPriority = ["MP4_1080", "MP4_720", "MP4_480", "MP4_360"];
       let videoUrl = null;
@@ -506,6 +585,50 @@
     } finally {
       isLoading = false;
     }
+  }
+
+  $: if (currentMedia?._type === "VIDEO" && currentMedia?.videoId && !videoCache[currentMedia.videoId] && !isLoading) {
+    loadVideo(currentMedia.videoId);
+  }
+
+  function toggleLoop() {
+    loop = !loop;
+    if (videoElement) {
+      videoElement.loop = loop;
+    }
+  }
+
+  function handleVideoEnded() {
+    if (loop && videoElement) {
+      videoElement.currentTime = 0;
+      videoElement.play().catch(() => {});
+    } else {
+      paused = true;
+    }
+  }
+
+  function handleSeekStart() {
+    isSeeking = true;
+    if (videoElement) {
+      seekValue = videoElement.currentTime;
+    }
+  }
+
+  function handleSeekInput(e) {
+    seekValue = parseFloat(e.target.value);
+    if (!isNaN(seekValue) && videoElement) {
+      videoElement.currentTime = seekValue;
+      currentTime = seekValue;
+    }
+  }
+
+  function handleSeekChange(e) {
+    const newTime = parseFloat(e.target.value);
+    if (!isNaN(newTime) && videoElement) {
+      videoElement.currentTime = newTime;
+      currentTime = newTime;
+    }
+    isSeeking = false;
   }
 
   async function togglePlay() {
@@ -529,6 +652,7 @@
       duration = currentMedia.duration > 1000 ? currentMedia.duration / 1000 : currentMedia.duration;
     }
     isMetadataLoaded = duration > 0 && !isNaN(duration);
+    videoMetaVersion++;
   }
 
   function handleCanPlay() {
@@ -536,6 +660,7 @@
     if (videoElement && (!duration || isNaN(duration))) {
       duration = videoElement.duration;
     }
+    videoMetaVersion++;
   }
 
   function formatTime(seconds) {
@@ -577,13 +702,7 @@
   }
   let lastTap = 0;
 
-  function handleSeek(e) {
-    const newTime = parseFloat(e.target.value);
-    if (!isNaN(newTime) && videoElement) {
-      videoElement.currentTime = newTime;
-      currentTime = newTime;
-    }
-  }
+
 
   let pressTimer;
   function handlePressStart(e) {
@@ -978,10 +1097,13 @@
       } else if (currentMedia._type === "VIDEO") {
         let videoUrl = videoCache[currentMedia.videoId] || currentMedia.baseUrl;
         if (!videoUrl && currentMedia.videoId) {
+          const targetChatId = currentMedia?.chatId || chatId;
+          const targetToken = currentMedia?.videoToken || currentMedia?.token || null;
           const response = await $API.getVideoById(
-            chatId,
+            targetChatId,
             currentMedia.messageId,
             currentMedia.videoId,
+            targetToken,
           );
           const qualityPriority = ["MP4_1080", "MP4_720", "MP4_480", "MP4_360"];
           for (const quality of qualityPriority) {
@@ -1022,7 +1144,7 @@
   }
 </script>
 
-<svelte:window on:keydown={handleKeydown} />
+<svelte:window on:keydown={handleKeydown} bind:innerWidth={windowWidth} />
 
 <div
   class="media-viewer-overlay"
@@ -1030,7 +1152,23 @@
   on:click|self={() => requestClose()}
 >
   <div class="viewer-header" style="opacity: {effectiveUiOpacity};">
-    <div class="counter">{index + 1} из {allMedia.length}</div>
+    <div class="header-left">
+      <div class="header-titles">
+        <div class="header-title-line">
+          <span class="media-type-badge">{getMediaTypeName(currentMedia)}</span>
+          {#if currentSenderName}
+            <span class="sender-name">{currentSenderName === 'Вы' ? 'от вас' : `от ${currentSenderName}`}</span>
+          {/if}
+        </div>
+        <div class="header-subtitle-line">
+          {#if currentMedia?.time}
+            <span class="media-date">{formatMediaDate(currentMedia.time)}</span>
+            <span class="header-dot">·</span>
+          {/if}
+          <span class="counter">{index + 1} из {allMedia.length}</span>
+        </div>
+      </div>
+    </div>
     <div class="header-actions">
       <button
         class="viewer-icon-btn download"
@@ -1078,7 +1216,7 @@
         {#if prevSrc}
           <img
             class="adjacent-slide"
-            style="transform: translate3d(calc(-150% - 28px + {slideOffset}px), -50%, 0) scale(1);"
+            style="transform: translate3d(calc(-50% - {windowWidth + 28}px + {slideOffset}px), -50%, 0) scale(1);"
             src={prevSrc}
             alt=""
             draggable="false"
@@ -1138,12 +1276,13 @@
                 on:loadedmetadata={handleSync}
                 on:durationchange={handleSync}
                 on:canplay={handleCanPlay}
+                on:ended={handleVideoEnded}
                 on:error={(e) => console.error("[MediaViewer] Video element error:", e.target?.error, "src:", effectiveVideoSrc)}
                 playsinline
-                style={heroPhase !== "idle" ? heroStyle : `transform: ${transformStyle};`}
+                style="{(videoDimensions ? `width: ${videoDimensions.width}px; height: ${videoDimensions.height}px; ` : '') + (heroPhase !== 'idle' ? heroStyle : `transform: ${transformStyle};`)}"
               ></video>
 
-              <div class="tap-zones" style={heroPhase !== "idle" ? heroStyle : `transform: ${transformStyle};`}>
+              <div class="tap-zones" style={heroPhase !== "idle" ? "display: none;" : `transform: ${transformStyle};`}>
                 <div
                   class="tap-zone left"
                   on:click|stopPropagation={() => handleVideoTouch("left")}
@@ -1204,8 +1343,10 @@
                     min="0"
                     max={duration > 0 ? duration : 0.1}
                     step="any"
-                    value={currentTime}
-                    on:input={handleSeek}
+                    value={isSeeking ? seekValue : currentTime}
+                    on:pointerdown={handleSeekStart}
+                    on:input={handleSeekInput}
+                    on:change={handleSeekChange}
                     class="seek-bar"
                   />
                 </div>
@@ -1234,7 +1375,7 @@
                     <button
                       class="icon-btn loop-btn"
                       class:active={loop}
-                      on:click={() => (loop = !loop)}
+                      on:click={toggleLoop}
                       title="Повтор"
                     >
                       <svg viewBox="0 0 24 24"
@@ -1302,7 +1443,7 @@
         {#if nextSrc}
           <img
             class="adjacent-slide"
-            style="transform: translate3d(calc(50% + 28px + {slideOffset}px), -50%, 0) scale(1);"
+            style="transform: translate3d(calc(-50% + {windowWidth + 28}px + {slideOffset}px), -50%, 0) scale(1);"
             src={nextSrc}
             alt=""
             draggable="false"
@@ -1349,10 +1490,63 @@
     color: white;
     z-index: 10;
     transition: opacity 200ms ease;
+    gap: 16px;
+  }
+
+  .header-left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-width: 0;
+  }
+
+  .header-titles {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    min-width: 0;
+  }
+
+  .header-title-line {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    min-width: 0;
+  }
+
+  .media-type-badge {
+    background: rgba(255, 255, 255, 0.16);
+    padding: 2px 7px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.2px;
+    flex-shrink: 0;
+  }
+
+  .sender-name {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    opacity: 0.95;
+  }
+
+  .header-subtitle-line {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    opacity: 0.72;
+  }
+
+  .header-dot {
+    opacity: 0.5;
   }
 
   .counter {
-    font-size: 15px;
+    font-size: 12px;
     font-weight: 500;
     opacity: 0.85;
   }
@@ -1389,7 +1583,7 @@
     object-fit: contain;
     max-width: 95vw;
     max-height: 80vh;
-    will-change: transform, border-radius, opacity;
+    will-change: transform, clip-path, border-radius, opacity;
     touch-action: none;
     -webkit-user-drag: none;
     user-select: none;
@@ -1545,8 +1739,6 @@
   }
 
   .video-player {
-    width: 100%;
-    height: 100%;
     z-index: 2;
     display: block;
     opacity: 0;

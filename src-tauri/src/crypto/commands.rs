@@ -590,7 +590,11 @@ pub async fn decrypt_media_file(
         .ok_or_else(|| "Failed to derive decryption key for media".to_string())?;
 
     let encrypted_bytes = fs::read(&file_path).map_err(|e| e.to_string())?;
-    let decrypted = decrypt_media_bytes(&encrypted_bytes, &key)?;
+    let decrypted = tokio::task::spawn_blocking(move || {
+        decrypt_media_bytes(&encrypted_bytes, &key)
+    })
+    .await
+    .map_err(|e| e.to_string())??;
 
     if let Some(parent) = Path::new(&effective_out).parent() {
         fs::create_dir_all(parent).map_err(|e| e.to_string())?;
@@ -612,6 +616,7 @@ pub async fn cache_encrypted_media(
     file_id: u64,
     src: String,
     password: Option<String>,
+    media_type: Option<String>,
 ) -> Result<String, String> {
     let cache_key = format!("enc_media_{}", file_id);
 
@@ -639,16 +644,23 @@ pub async fn cache_encrypted_media(
     let key = get_media_crypto_key(&settings, password.as_deref())
         .ok_or_else(|| "Failed to derive decryption key for media".to_string())?;
 
-    let decrypted = decrypt_media_bytes(&encrypted_bytes, &key)?;
+    let decrypted = tokio::task::spawn_blocking(move || {
+        decrypt_media_bytes(&encrypted_bytes, &key)
+    })
+    .await
+    .map_err(|e| e.to_string())??;
 
     let path = crate::stores::set_cached_file_with_meta(
-        app,
+        app.clone(),
         account,
-        cache_key,
-        decrypted,
+        cache_key.clone(),
+        decrypted.clone(),
         Some(chat_id),
-        None,
+        media_type.clone(),
     )?;
+
+    let size_kb = (decrypted.len() + 1023) / 1024;
+    let _ = crate::stores::add_cache_index_alias(app, account, src, path.clone(), size_kb, Some(chat_id), media_type);
 
     Ok(path)
 }
@@ -660,6 +672,7 @@ pub async fn register_media_cache(
     chat_id: i64,
     file_id: u64,
     local_path: String,
+    media_type: Option<String>,
 ) -> Result<String, String> {
     let cache_key = format!("enc_media_{}", file_id);
     let bytes = fs::read(&local_path).map_err(|e| e.to_string())?;
@@ -669,6 +682,6 @@ pub async fn register_media_cache(
         cache_key,
         bytes,
         Some(chat_id),
-        None,
+        media_type,
     )
 }

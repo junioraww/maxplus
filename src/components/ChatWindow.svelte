@@ -1251,7 +1251,8 @@
     const decodedMap = $decodedMessages || {};
     const myId = Number($currentUser);
 
-    function extractMediaFromAttaches(attaches, messageId, decoded) {
+    function extractMediaFromAttaches(attaches, msgObj, decoded) {
+      const messageId = msgObj?.id;
       const media = decoded?.media;
       const isMe = Number(decoded?.sender ?? 0) === myId;
       const resolved = (attaches || []).map((att, idx) => {
@@ -1286,20 +1287,30 @@
         .map((a) => {
           const fid = a.fileId || a.encryptedAttach?.fileId;
           const uid = a.videoId || a.photoId || fid || a.url || a.baseUrl || a.localPath || `${messageId}_${a.name || 'media'}`;
-          return { ...a, messageId, uid: String(uid) };
+          return {
+            ...a,
+            messageId,
+            uid: String(uid),
+            time: msgObj?.time || msgObj?.created || Date.now(),
+            senderId: msgObj?.sender,
+            senderName: msgObj?.senderName || msgObj?.sender_name || "",
+            chatId: chat?.id,
+            token: a.videoToken || a.token,
+            videoToken: a.videoToken || a.token,
+          };
         });
     }
 
     return list.flatMap((m) => {
       const decoded = decodedMap[String(m.id)];
-      const direct = extractMediaFromAttaches(m.attaches, m.id, decoded);
+      const direct = extractMediaFromAttaches(m.attaches, m, decoded);
 
       const forwarded = (() => {
         const link = m.link;
         if (!link || link.type !== "FORWARD") return [];
         const fwdMsg = link.message;
         if (!fwdMsg?.attaches?.length) return [];
-        return extractMediaFromAttaches(fwdMsg.attaches, m.id, null);
+        return extractMediaFromAttaches(fwdMsg.attaches, fwdMsg, null);
       })();
 
       return [...direct, ...forwarded];
