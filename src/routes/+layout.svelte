@@ -1,4 +1,6 @@
 <script>
+  import '../app.css';
+
   import { onBackButtonPress } from "@tauri-apps/api/app";
   import { listen } from "@tauri-apps/api/event";
   import { invoke } from "@tauri-apps/api/core";
@@ -59,6 +61,8 @@
   setContext("onBack", onBack);
 
   onMount(async () => {
+    unmountLoader();
+
     await initProxyConfig();
     cleanupDeepLink = await initDeepLink();
 
@@ -92,14 +96,26 @@
 
     if (system === "android" || system === "ios") {
       try {
-        unlistenBackButton = await onBackButtonPress(() => {
-          handleBackButton();
-        });
+        unlistenBackButton = await onBackButtonPress(handleBackButton);
       } catch (e) {
         console.warn("BackButton listener unavailable", e);
       }
     }
   });
+
+  function unmountLoader() {
+    const loader = document.getElementById('initial-loader');
+
+    if (loader) {
+      loader.classList.add('loaded');
+
+      loader.addEventListener('transitionend', loader.remove, { once: true });
+
+      setTimeout(() => {
+        if (loader.isConnected) loader.remove();
+      }, 400);
+    }
+  }
 
   onDestroy(() => {
     if (handleKeydown) window.removeEventListener("keydown", handleKeydown);

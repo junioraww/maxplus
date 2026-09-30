@@ -1,0 +1,120 @@
+@font-face {
+  font-family: "Inter Medium";
+  src: url("/fonts/Inter_18pt-Medium.ttf") format("truetype");
+  font-weight: 500;
+  font-style: normal;
+}
+
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background-color: #17181c;
+  overflow: hidden;
+  padding-top: env(safe-area-inset-top, 10px);
+  padding-bottom: env(safe-area-inset-bottom, 20px);
+  font-family: "Inter Medium", system-ui, sans-serif;
+  box-sizing: border-box;
+}
+
+html,
+body {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+html {
+  scroll-behavior: auto !important;
+}
+
+html.ios-safe-area #app {
+  display: block;
+  position: fixed;
+  top: var(--safe-area-top, env(safe-area-inset-top, 0px));
+  right: 0;
+  bottom: var(--safe-area-bottom, env(safe-area-inset-bottom, 0px));
+  left: 0;
+  overflow: hidden;
+  transform: translateZ(0);
+}
+
+html.ios-safe-area #app > main,
+html.ios-safe-area #app > main > .container,
+html.ios-safe-area #app .chat-window {
+  width: 100%;
+  height: 100%;
+}
+
+html.ios-safe-area #app .page-card {
+  width: 100%;
+  height: calc(100% - 60px);
+}
+
+html.ios-safe-area #app .chat-window,
+html.ios-safe-area #app .panel {
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
+button,
+input,
+select,
+textarea {
+  font-family: inherit;
+}
+
+* {
+  -webkit-tap-highlight-color: transparent;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+img {
+  user-drag: none;
+  -webkit-user-drag: none;
+}
+
+.allow-selection {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+:root {
+  --safe-top: 24px;
+  --safe-bottom: 0px;
+
+  --bg-app: #17181c;
+  --bg-chat: #161621;
+  --bg-surface: #1e2025;
+  --bg-surface-2: #26262e;
+  --bg-sheet: #1e1f24;
+  --bg-panel: #1c1d1f;
+  --bg-topbar: #212126;
+
+  --accent-primary: #248bfe;
+  --accent-primary-hover: #1b74d9;
+  --accent-subtle: rgba(36, 139, 254, 0.12);
+  --accent-subtle-hover: rgba(36, 139, 254, 0.2);
+
+  --bubble-outgoing: #7b4cd6;
+  --bubble-incoming: #3a3c55;
+
+  --text-primary: #ffffff;
+  --text-secondary: #edf0f5;
+  --text-muted: #8b929e;
+  --text-subtle: #697282;
+
+  --border-subtle: rgba(255, 255, 255, 0.08);
+  --border-card: rgba(255, 255, 255, 0.06);
+
+  --status-success: #4ade80;
+  --status-danger: #ef4444;
+  --status-warning: #fbbf24;
+  --badge-unread: #3b82f6;
+  --read-tick: #34b7f1;
+  --online: #4fc3f7;
+}

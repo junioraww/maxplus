@@ -16,7 +16,7 @@ class EmojiIndex {
 
   async load() {
     try {
-      const res = await fetch("/data/emoji_keywords.json");
+      const res = await fetch("/data/emoji.json");
       if (!res.ok) return;
       const data = await res.json();
       for (const [emoji, words] of Object.entries(data)) {
