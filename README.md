@@ -49,15 +49,20 @@
 
 ## Использование
 
-Скачать клиент можно из раздела [Releases](https://github.com/junioraww/maxplus/releases) или [на сайте.](https://maxplus.dev/)
+Скачать клиент можно из раздела [Releases](https://github.com/junioraww/maxplus/releases) и [на сайте.](https://maxplus.dev/)
 
 - **Чтобы приложение запустилось, архитектура процессора должна совпасть**.  
   Например: ваш смартфон современный и имеет процессор arm64, тогда устанавливаете maxplus-arm64-x.y.z.apk
 
 ### Про обновления
 
-Проверять обновления можно в настройках. **Если GitHub ограничен:**
-- **[Зеркало Codeberg](https://codeberg.org/meowkie/maxplus)**
+Проверять обновления можно в настройках.
+
+**Зеркала проекта:**
+
+[![GitHub](https://img.shields.io/badge/GitHub-main-181717?style=for-the-badge&logo=github&logoColor=white)](https://github.com/junioraww/maxplus)
+[![GitLab](https://img.shields.io/badge/GitLab-mirror-FC6D26?style=for-the-badge&logo=gitlab&logoColor=white)](https://gitlab.com/junioraww/maxplus)
+[![Codeberg](https://img.shields.io/badge/Codeberg-mirror-2185D0?style=for-the-badge&logo=codeberg&logoColor=white)](https://codeberg.org/junioraww/maxplus)
 
 ## Разработка
 
