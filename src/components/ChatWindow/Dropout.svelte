@@ -34,21 +34,26 @@
     const cardNode = menuNode.querySelector(".telegram-dropout-card");
     const cardWidth = cardNode?.offsetWidth || 196;
     const cardHeight = cardNode?.offsetHeight || 260;
-    const { innerWidth, innerHeight } = window;
+    const vv = typeof window !== "undefined" && window.visualViewport ? window.visualViewport : null;
+    const innerWidth = vv ? vv.width : (typeof window !== "undefined" ? window.innerWidth : 360);
+    const innerHeight = vv ? vv.height : (typeof window !== "undefined" ? window.innerHeight : 640);
+    const offsetTop = vv ? vv.offsetTop : 0;
+    const offsetLeft = vv ? vv.offsetLeft : 0;
+
     let x = clientX;
     let y = clientY;
 
-    if (x + cardWidth > innerWidth - 12) {
-      x = innerWidth - cardWidth - 12;
+    if (x + cardWidth > offsetLeft + innerWidth - 12) {
+      x = offsetLeft + innerWidth - cardWidth - 12;
     }
-    if (x < 12) x = 12;
+    if (x < offsetLeft + 12) x = offsetLeft + 12;
 
-    if (y + cardHeight > innerHeight - 16) {
-      y = innerHeight - cardHeight - 16;
+    if (y + cardHeight > offsetTop + innerHeight - 16) {
+      y = offsetTop + innerHeight - cardHeight - 16;
     }
-    if (y < 60) {
+    if (y < offsetTop + 60) {
       reactionsBelow = true;
-      if (y < 12) y = 12;
+      if (y < offsetTop + 12) y = offsetTop + 12;
     } else {
       reactionsBelow = false;
     }
@@ -60,9 +65,15 @@
     cleanupBack();
   });
 
+  let lastActiveMsgId = null;
+
   $: if (activeAt) {
-    reactionsExpanded = false;
-    ensureReactionsLoaded().catch(() => {});
+    const currentMsgId = activeAt?.msg?.id ?? null;
+    if (currentMsgId !== lastActiveMsgId) {
+      lastActiveMsgId = currentMsgId;
+      reactionsExpanded = false;
+      ensureReactionsLoaded().catch(() => {});
+    }
     if (!unregisterBack) {
       unregisterBack = registerBackHandler(() => {
         if (reactionsExpanded) {
@@ -73,10 +84,14 @@
         return true;
       });
     }
-    const clientX = activeAt?.e?.clientX ?? (typeof window !== "undefined" ? window.innerWidth / 2 : 0);
-    const clientY = activeAt?.e?.clientY ?? (typeof window !== "undefined" ? window.innerHeight / 2 : 0);
+    const vv = typeof window !== "undefined" && window.visualViewport ? window.visualViewport : null;
+    const defaultX = vv ? vv.offsetLeft + vv.width / 2 : (typeof window !== "undefined" ? window.innerWidth / 2 : 0);
+    const defaultY = vv ? vv.offsetTop + vv.height / 2 : (typeof window !== "undefined" ? window.innerHeight / 2 : 0);
+    const clientX = activeAt?.e?.clientX ?? defaultX;
+    const clientY = activeAt?.e?.clientY ?? defaultY;
     updatePosition(clientX, clientY);
   } else {
+    lastActiveMsgId = null;
     cleanupBack();
   }
 
@@ -85,19 +100,25 @@
       const card = menuNode?.querySelector(".telegram-dropout-card");
       if (card) {
         const rect = card.getBoundingClientRect();
-        if (rect.bottom > window.innerHeight - 16) {
-          const shift = rect.bottom - (window.innerHeight - 16);
-          menuPosition.top = Math.max(16, menuPosition.top - shift);
+        const vv = typeof window !== "undefined" && window.visualViewport ? window.visualViewport : null;
+        const maxBottom = (vv ? vv.offsetTop + vv.height : window.innerHeight) - 16;
+        const minTop = (vv ? vv.offsetTop : 0) + 16;
+        const maxRight = (vv ? vv.offsetLeft + vv.width : window.innerWidth) - 12;
+        const minLeft = (vv ? vv.offsetLeft : 0) + 12;
+
+        if (rect.bottom > maxBottom) {
+          const shift = rect.bottom - maxBottom;
+          menuPosition.top = Math.max(minTop, menuPosition.top - shift);
         }
-        if (rect.top < 16) {
-          menuPosition.top = 16;
+        if (rect.top < minTop) {
+          menuPosition.top = minTop;
         }
-        if (rect.right > window.innerWidth - 12) {
-          const shiftX = rect.right - (window.innerWidth - 12);
-          menuPosition.left = Math.max(12, menuPosition.left - shiftX);
+        if (rect.right > maxRight) {
+          const shiftX = rect.right - maxRight;
+          menuPosition.left = Math.max(minLeft, menuPosition.left - shiftX);
         }
-        if (rect.left < 12) {
-          menuPosition.left = 12;
+        if (rect.left < minLeft) {
+          menuPosition.left = minLeft;
         }
       }
     });
@@ -106,9 +127,9 @@
   const clickReaction = async (emoji) => {
     const targetMsg = activeAt?.msg;
     if (targetMsg) {
-      handleReaction(chat, targetMsg, emoji);
+      await handleReaction(chat, targetMsg, emoji);
     }
-    dispatch("close", { action: "reaction" });
+    dispatch("close", { action: "reaction", msg: targetMsg });
     cleanupBack();
   };
 
@@ -237,9 +258,10 @@
 
   <div
     class="dropout-backdrop"
-    on:click={handleBackdropClick}
-    on:pointerdown|stopPropagation={handleBackdropClick}
-    on:touchstart|stopPropagation={handleBackdropClick}
+    on:click|preventDefault|stopPropagation={handleBackdropClick}
+    on:pointerdown|preventDefault|stopPropagation={handleBackdropClick}
+    on:touchstart|preventDefault|stopPropagation={handleBackdropClick}
+    on:touchend|preventDefault|stopPropagation={handleBackdropClick}
     transition:fade={{ duration: 150 }}
   />
 
@@ -407,8 +429,6 @@
     bottom: 0;
     z-index: 45;
     background: rgba(0, 0, 0, 0.45);
-    backdrop-filter: blur(4px);
-    -webkit-backdrop-filter: blur(4px);
   }
 
   .dropout-container {
@@ -425,9 +445,7 @@
     bottom: calc(100% + 8px);
     left: 0;
     width: 196px;
-    background: rgba(28, 30, 42, 0.96);
-    backdrop-filter: blur(20px);
-    -webkit-backdrop-filter: blur(20px);
+    background: #1c1e2a;
     border: 1px solid rgba(255, 255, 255, 0.12);
     border-radius: 20px;
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
@@ -505,9 +523,7 @@
     display: flex;
     flex-direction: column;
     width: 196px;
-    background: rgba(28, 30, 42, 0.94);
-    backdrop-filter: blur(20px);
-    -webkit-backdrop-filter: blur(20px);
+    background: #1c1e2a;
     border: 1px solid rgba(255, 255, 255, 0.12);
     border-radius: 14px;
     box-shadow: 0 12px 36px rgba(0, 0, 0, 0.55), 0 2px 10px rgba(0, 0, 0, 0.3);

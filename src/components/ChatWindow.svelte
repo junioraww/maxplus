@@ -827,6 +827,7 @@
 
     if (!justOpenedDropout && dropoutActiveAt && !e.target.closest(".dropout-container, .dropout-backdrop, .message-actions-dropout")) {
       dropoutActiveAt = null;
+      lastDropoutClosedAt = Date.now();
     }
 
     if (attachesDropout && !e.target.closest(".attaches-dropout") && !e.target.closest(".input-button") && !e.target.closest(".attach-toggle-btn")) {
@@ -835,8 +836,10 @@
   }
 
   let justOpenedDropout = false;
+  let lastDropoutClosedAt = 0;
 
   function selectMessage(e, msg) {
+    if (Date.now() - lastDropoutClosedAt < 400) return;
     if (
       e?.target?.closest?.("a") ||
       e?.target?.closest?.(".rich-link") ||
@@ -871,10 +874,22 @@
     const msgId = dropoutActiveAt?.msg?.id;
     const currentMsg = dropoutActiveAt?.msg;
     dropoutActiveAt = null;
+    lastDropoutClosedAt = Date.now();
 
     const action = e.detail?.action;
     if (action === "reaction") {
-      messages.update((x) => [...x]);
+      const target = e.detail?.msg || currentMsg;
+      if (target?.id && target.reactionInfo) {
+        messages.update((items) => {
+          const item = items.find((x) => String(x.id) === String(target.id));
+          if (item) {
+            item.reactionInfo = target.reactionInfo;
+          }
+          return [...items];
+        });
+      } else {
+        messages.update((x) => [...x]);
+      }
     }
   }
 
@@ -998,6 +1013,7 @@
 
   function handleMessageClick(msg, e) {
     if (!msg) return;
+    if (Date.now() - lastDropoutClosedAt < 400) return;
     if ($isSelecting) {
       toggleMessageSelection(msg.id);
       return;

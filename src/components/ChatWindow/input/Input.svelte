@@ -59,10 +59,10 @@
   let formatRevision = 0;
   let backdropEl;
 
-  $: hasFormatting = formatRevision >= 0 && composerFormat.hasAnyFormatting();
-  $: backdropSpans = (formatRevision >= 0 && hasFormatting)
+  $: backdropSpans = (formatRevision >= 0 && composerFormat.hasAnyFormatting())
     ? compileBackdropSpans(newMessage, composerFormat.getRawElements(newMessage))
     : [];
+  $: hasFormatting = backdropSpans.length > 0;
 
   function syncScroll() {
     if (backdropEl && textareaEl) {
@@ -144,15 +144,17 @@
       const end = textareaEl.selectionEnd ?? 0;
       if (start < end) {
         savedSelectionRange = { start, end };
-        showFormatToolbar = true;
         if (currentPlatform === "android") {
+          showFormatToolbar = false;
           const rect = textareaEl.getBoundingClientRect();
           contextMenuState = {
-            clientX: Math.max(16, rect.left + (rect.width - 220) / 2),
+            clientX: Math.max(16, rect.left + (rect.width - 216) / 2),
             clientY: Math.max(16, rect.top - 240),
             hasSelection: true,
             activeStyles: [...activeFormatStyles],
           };
+        } else {
+          showFormatToolbar = true;
         }
       }
     }
@@ -167,10 +169,10 @@
         if (!savedSelectionRange || savedSelectionRange.start !== start || savedSelectionRange.end !== end) {
           savedSelectionRange = { start, end };
           updateSelectionState();
-          showFormatToolbar = true;
+          showFormatToolbar = false;
           const rect = textareaEl.getBoundingClientRect();
           contextMenuState = {
-            clientX: Math.max(16, rect.left + (rect.width - 220) / 2),
+            clientX: Math.max(16, rect.left + (rect.width - 216) / 2),
             clientY: Math.max(16, rect.top - 240),
             hasSelection: true,
             activeStyles: [...activeFormatStyles],
@@ -193,6 +195,15 @@
 
   let contextMenuState = null;
   let savedSelectionRange = null;
+
+  function restoreSavedSelection() {
+    if (!textareaEl || !savedSelectionRange) return;
+    try {
+      textareaEl.focus();
+      textareaEl.setSelectionRange(savedSelectionRange.start, savedSelectionRange.end);
+      updateSelectionState();
+    } catch (e) {}
+  }
 
   function handleTextareaContextMenu(e) {
     if (!textareaEl) return;
@@ -255,6 +266,30 @@
     tick().then(syncScroll);
   }
 
+  async function copyTextToClipboard(text) {
+    if (!text) return false;
+    try {
+      if (navigator?.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+        return true;
+      }
+    } catch (e) {}
+    try {
+      const el = document.createElement("textarea");
+      el.value = text;
+      el.style.position = "fixed";
+      el.style.opacity = "0";
+      document.body.appendChild(el);
+      el.focus();
+      el.select();
+      const ok = document.execCommand("copy");
+      document.body.removeChild(el);
+      return ok;
+    } catch (e) {
+      return false;
+    }
+  }
+
   async function handleContextMenuAction(actionName) {
     if (!textareaEl) return;
     const start = savedSelectionRange ? savedSelectionRange.start : (textareaEl.selectionStart ?? 0);
@@ -263,28 +298,36 @@
     if (actionName === "cut") {
       if (start < end) {
         const selected = newMessage.slice(start, end);
-        await navigator.clipboard.writeText(selected).catch(() => {});
+        await copyTextToClipboard(selected);
         newMessage = newMessage.slice(0, start) + newMessage.slice(end);
+        savedSelectionRange = null;
         handleComposerInput();
         await tick();
-        textareaEl.focus();
-        textareaEl.setSelectionRange(start, start);
+        if (textareaEl) {
+          textareaEl.focus();
+          textareaEl.setSelectionRange(start, start);
+        }
       }
     } else if (actionName === "copy") {
       if (start < end) {
         const selected = newMessage.slice(start, end);
-        await navigator.clipboard.writeText(selected).catch(() => {});
+        await copyTextToClipboard(selected);
       }
     } else if (actionName === "paste") {
       try {
-        const text = await navigator.clipboard.readText();
+        let text = "";
+        try {
+          text = await navigator.clipboard.readText();
+        } catch (e) {}
         if (text) {
           newMessage = newMessage.slice(0, start) + text + newMessage.slice(end);
           handleComposerInput();
           await tick();
-          textareaEl.focus();
-          const nextPos = start + text.length;
-          textareaEl.setSelectionRange(nextPos, nextPos);
+          if (textareaEl) {
+            textareaEl.focus();
+            const nextPos = start + text.length;
+            textareaEl.setSelectionRange(nextPos, nextPos);
+          }
         }
       } catch (err) {
         console.error(err);
@@ -292,10 +335,13 @@
     } else if (actionName === "delete") {
       if (start < end) {
         newMessage = newMessage.slice(0, start) + newMessage.slice(end);
+        savedSelectionRange = null;
         handleComposerInput();
         await tick();
-        textareaEl.focus();
-        textareaEl.setSelectionRange(start, start);
+        if (textareaEl) {
+          textareaEl.focus();
+          textareaEl.setSelectionRange(start, start);
+        }
       }
     } else if (actionName === "selectAll") {
       textareaEl.focus();
@@ -325,9 +371,19 @@
   onMount(() => {
     pluginOn("input:insert", handlePluginInsert);
     document.addEventListener("selectionchange", handleDocSelectionChange);
+    const handleViewportResize = () => {
+      autoResize();
+      syncScroll();
+    };
+    window.addEventListener("resize", handleViewportResize);
+    window.visualViewport?.addEventListener("resize", handleViewportResize);
+    window.visualViewport?.addEventListener("scroll", handleViewportResize);
     return () => {
       pluginOff("input:insert", handlePluginInsert);
       document.removeEventListener("selectionchange", handleDocSelectionChange);
+      window.removeEventListener("resize", handleViewportResize);
+      window.visualViewport?.removeEventListener("resize", handleViewportResize);
+      window.visualViewport?.removeEventListener("scroll", handleViewportResize);
     };
   });
 
@@ -1600,7 +1656,7 @@
         <div class="input-container" class:focused={false}>
           {#if showFormatToolbar}
             <FormattingToolbar
-              {activeStyles}
+              activeStyles={activeFormatStyles}
               on:toggle={(e) => handleFormatToggle(e.detail.style, e.detail.metadata)}
               on:close={() => (showFormatToolbar = false)}
             />
@@ -1635,6 +1691,7 @@
               placeholder="Сообщение"
               bind:value={newMessage}
               on:focus={handleTextareaFocus}
+              on:blur={() => { autoResize(); syncScroll(); }}
               on:input={handleComposerInput}
               on:scroll={syncScroll}
               on:select={handleTextareaSelect}
@@ -1774,14 +1831,16 @@
 
   {#if contextMenuState}
     <InputContextMenu
-      clientX={contextMenuState.clientX}
-      clientY={contextMenuState.clientY}
-      hasSelection={contextMenuState.hasSelection}
-      activeStyles={contextMenuState.activeStyles}
+      clientX={contextMenuState?.clientX ?? 0}
+      clientY={contextMenuState?.clientY ?? 0}
+      hasSelection={contextMenuState?.hasSelection ?? false}
+      activeStyles={contextMenuState?.activeStyles ?? []}
+      anchorEl={textareaEl}
       {isMobile}
       on:format={(e) => handleContextMenuFormat(e.detail.style, e.detail.metadata)}
       on:clearFormat={handleContextMenuClear}
       on:action={(e) => handleContextMenuAction(e.detail.name)}
+      on:restoreSelection={restoreSavedSelection}
       on:close={() => (contextMenuState = null)}
     />
   {/if}
@@ -1950,7 +2009,7 @@
 
   textarea.has-formatting::selection {
     background: rgba(59, 130, 246, 0.4);
-    color: transparent;
+    color: #ffffff !important;
   }
 
   textarea::placeholder {

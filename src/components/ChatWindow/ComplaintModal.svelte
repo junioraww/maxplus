@@ -86,9 +86,7 @@
     right: 0;
     bottom: 0;
     z-index: 120;
-    background: rgba(0, 0, 0, 0.65);
-    backdrop-filter: blur(4px);
-    -webkit-backdrop-filter: blur(4px);
+    background: rgba(0, 0, 0, 0.72);
     display: flex;
     align-items: center;
     justify-content: center;

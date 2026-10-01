@@ -797,8 +797,7 @@
     width: 44px;
     height: 44px;
     border-radius: 50%;
-    background: rgba(0, 0, 0, 0.45);
-    backdrop-filter: blur(8px);
+    background: rgba(0, 0, 0, 0.7);
     display: flex;
     align-items: center;
     justify-content: center;

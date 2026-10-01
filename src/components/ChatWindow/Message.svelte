@@ -1094,9 +1094,7 @@
     position: absolute;
     bottom: 6px;
     right: 6px;
-    background: rgba(0, 0, 0, 0.45);
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
+    background: rgba(0, 0, 0, 0.7);
     border-radius: 12px;
     padding: 2px 8px;
     display: flex;
@@ -1160,12 +1158,11 @@
   .transcription-card {
     margin-top: 4px;
     max-width: 380px;
-    background: rgba(30, 41, 59, 0.95);
+    background: rgba(30, 41, 59, 0.98);
     border: 1px solid rgba(56, 189, 248, 0.25);
     border-radius: 12px;
     padding: 8px 12px;
     box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
-    backdrop-filter: blur(8px);
     user-select: text;
   }
 

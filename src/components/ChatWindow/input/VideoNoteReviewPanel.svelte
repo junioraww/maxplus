@@ -246,8 +246,7 @@
     width: 52px;
     height: 52px;
     border-radius: 50%;
-    background: rgba(0, 0, 0, 0.6);
-    backdrop-filter: blur(4px);
+    background: rgba(0, 0, 0, 0.75);
     border: none;
     color: #fff;
     display: flex;

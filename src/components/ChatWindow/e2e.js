@@ -68,6 +68,9 @@ export async function checkForEncryptionRequest(
   }
 
   const currentSettings = get(chatSettings);
+  if (currentSettings?.e2e_declined) {
+    return null;
+  }
   const isSessionActive = Boolean(
     currentSettings?.keys?.current ||
     currentSettings?.session?.shared_secret ||
@@ -200,19 +203,22 @@ export async function handleEnc(chat, chatSettings, messages, action) {
   } else if (action === "deny") {
     const msgId = req?.messageId ? String(req.messageId) : null;
     if (msgId) {
+      dismissedRequests.add(msgId);
       const set = getRejectedSet(chat.id, get(chatSettings));
       set.add(msgId);
-      chatSettings.update((old) => ({
-        ...old,
-        rejected_handshakes: Array.from(
-          new Set([...(old?.rejected_handshakes || []), msgId])
-        ),
-      }));
     }
+    chatSettings.update((old) => ({
+      ...old,
+      e2e_declined: true,
+      rejected_handshakes: Array.from(
+        new Set([...(old?.rejected_handshakes || []), ...(msgId ? [msgId] : [])])
+      ),
+    }));
     pendingRequests.delete(Number(chat.id));
   } else if (action === "block") {
     const msgId = req?.messageId ? String(req.messageId) : null;
     if (msgId) {
+      dismissedRequests.add(msgId);
       const set = getRejectedSet(chat.id, get(chatSettings));
       set.add(msgId);
     }
@@ -236,6 +242,7 @@ export async function switchEnc(chat, chatSettings, messages) {
       chatSettings.update((old) => ({
         ...old,
         pending: true,
+        e2e_declined: false,
       }));
 
       await sendMessage(

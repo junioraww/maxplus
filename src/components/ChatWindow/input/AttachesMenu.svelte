@@ -21,9 +21,10 @@
 
 <div
   class="attaches-backdrop"
-  on:click={() => dispatch("close")}
-  on:pointerdown|stopPropagation={() => dispatch("close")}
-  on:touchstart|stopPropagation={() => dispatch("close")}
+  on:click|preventDefault|stopPropagation={() => dispatch("close")}
+  on:pointerdown|preventDefault|stopPropagation={() => dispatch("close")}
+  on:touchstart|preventDefault|stopPropagation={() => dispatch("close")}
+  on:touchend|preventDefault|stopPropagation={() => dispatch("close")}
   transition:fade={{ duration: 120 }}
 ></div>
 

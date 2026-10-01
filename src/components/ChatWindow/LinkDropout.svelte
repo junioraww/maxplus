@@ -20,26 +20,35 @@
     if (!cardNode) return;
     const width = cardNode.offsetWidth || 260;
     const height = cardNode.offsetHeight || 120;
-    const { innerWidth, innerHeight } = window;
+    const vv = typeof window !== "undefined" && window.visualViewport ? window.visualViewport : null;
+    const innerWidth = vv ? vv.width : (typeof window !== "undefined" ? window.innerWidth : 360);
+    const innerHeight = vv ? vv.height : (typeof window !== "undefined" ? window.innerHeight : 640);
+    const offsetTop = vv ? vv.offsetTop : 0;
+    const offsetLeft = vv ? vv.offsetLeft : 0;
 
     let x = clientX;
     let y = clientY;
 
-    if (x + width > innerWidth - 12) {
-      x = innerWidth - width - 12;
+    if (x + width > offsetLeft + innerWidth - 12) {
+      x = offsetLeft + innerWidth - width - 12;
     }
-    if (x < 12) x = 12;
+    if (x < offsetLeft + 12) x = offsetLeft + 12;
 
-    if (y + height > innerHeight - 12) {
-      y = innerHeight - height - 12;
+    if (y + height > offsetTop + innerHeight - 12) {
+      y = offsetTop + innerHeight - height - 12;
     }
-    if (y < 12) y = 12;
+    if (y < offsetTop + 12) y = offsetTop + 12;
 
     pos = { top: y, left: x };
   }
 
   onMount(() => {
     adjustPosition();
+    const vv = typeof window !== "undefined" ? window.visualViewport : null;
+    if (vv) {
+      vv.addEventListener("resize", adjustPosition);
+      vv.addEventListener("scroll", adjustPosition);
+    }
     unregisterBack = registerBackHandler(() => {
       close();
       return true;
@@ -47,6 +56,11 @@
   });
 
   onDestroy(() => {
+    const vv = typeof window !== "undefined" ? window.visualViewport : null;
+    if (vv) {
+      vv.removeEventListener("resize", adjustPosition);
+      vv.removeEventListener("scroll", adjustPosition);
+    }
     if (unregisterBack) unregisterBack();
   });
 
@@ -94,9 +108,10 @@
 
 <div
   class="dropout-backdrop"
-  on:click={close}
-  on:pointerdown|stopPropagation={close}
-  on:touchstart|stopPropagation={close}
+  on:click|preventDefault|stopPropagation={close}
+  on:pointerdown|preventDefault|stopPropagation={close}
+  on:touchstart|preventDefault|stopPropagation={close}
+  on:touchend|preventDefault|stopPropagation={close}
   transition:fade={{ duration: 120 }}
 ></div>
 
@@ -154,9 +169,7 @@
     z-index: 4000;
     max-width: 290px;
     min-width: 220px;
-    background: rgba(28, 30, 42, 0.96);
-    backdrop-filter: blur(20px);
-    -webkit-backdrop-filter: blur(20px);
+    background: #1c1e2a;
     border: 1px solid rgba(255, 255, 255, 0.12);
     border-radius: 12px;
     box-shadow: 0 12px 36px rgba(0, 0, 0, 0.6), 0 2px 10px rgba(0, 0, 0, 0.3);

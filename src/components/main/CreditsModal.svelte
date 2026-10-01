@@ -838,8 +838,6 @@
     align-items: center;
     justify-content: center;
     cursor: pointer;
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
     transition: background 0.15s, transform 0.15s, color 0.15s;
   }
 

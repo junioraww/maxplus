@@ -103,8 +103,6 @@
     position: fixed;
     inset: 0;
     background-color: rgba(0, 0, 0, 0.72);
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
     display: flex;
     justify-content: center;
     align-items: center;

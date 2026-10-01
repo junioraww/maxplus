@@ -358,8 +358,7 @@
   .tg-overlay {
     position: fixed;
     inset: 0;
-    background: rgba(0, 0, 0, 0.55);
-    backdrop-filter: blur(6px);
+    background: rgba(0, 0, 0, 0.7);
     display: flex;
     align-items: flex-end;
     justify-content: center;

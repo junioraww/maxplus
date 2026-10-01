@@ -838,9 +838,15 @@ export default class MobileApi extends BaseAPI {
 
   async react(chatId, messageId, reaction) {
     await this.waitSync();
-    if (!reaction)
-      return await invoke("remove_reaction", { chatId, messageId });
-    return await invoke("add_reaction", { chatId, messageId, reaction });
+    const payload = {
+      chatId: Number(chatId),
+      messageId: String(messageId ?? "0"),
+    };
+    if (reaction) {
+      payload.reaction = String(reaction);
+      return await invoke("add_reaction", payload);
+    }
+    return await invoke("remove_reaction", payload);
   }
 
   async pinMessage(chatId, messageId) {

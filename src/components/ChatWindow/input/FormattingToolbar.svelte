@@ -175,22 +175,25 @@
     padding: 5px 8px;
     display: flex;
     align-items: center;
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
+    max-width: calc(100vw - 24px);
+    box-sizing: border-box;
   }
 
   .button-group {
     display: flex;
     align-items: center;
     gap: 4px;
+    max-width: 100%;
+    overflow-x: auto;
+    scrollbar-width: none;
   }
 
   .fmt-btn {
     background: transparent;
     border: none;
     color: #e0e0e0;
-    width: 42px;
-    height: 44px;
+    width: 44px;
+    height: 46px;
     border-radius: 9px;
     display: flex;
     align-items: center;

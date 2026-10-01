@@ -1598,9 +1598,7 @@
     width: 52px;
     height: 52px;
     border-radius: 50%;
-    background: rgba(255, 255, 255, 0.12);
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
+    background: rgba(30, 32, 40, 0.75);
     border: 1px solid rgba(255, 255, 255, 0.08);
     color: white;
     cursor: pointer;
