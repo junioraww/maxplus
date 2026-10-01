@@ -9,6 +9,7 @@
   } from "$lib/stores/accounts";
   import {
     get as sessionGet,
+    set as sessionSet,
   } from "$lib/stores/session.js";
   import API, {
     currentUser

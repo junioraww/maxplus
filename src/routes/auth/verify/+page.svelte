@@ -151,14 +151,8 @@
     <div class="phone-badge">{phone}</div>
   {/if}
   <p class="subtitle">
-    Код подтверждения может быть отправлен в приложение MAX на другом устройстве или по SMS.
+    Код подтверждения мог отправиться в MAX на другом устройстве или по SMS.
   </p>
-  <div class="hint-card">
-    <span class="hint-icon">ℹ</span>
-    <span>
-      Если вы уже вошли в аккаунт на другом устройстве с настроенной двухфакторной аутентификацией (облачным паролем), код поступит в приложение MAX. Если доступ к другому устройству отсутствует, дождитесь окончания таймера и запросите SMS.
-    </span>
-  </div>
   <div class="form">
     {#if error}
       <div class="error">{error}</div>
@@ -172,7 +166,7 @@
       maxlength="6"
       value={code}
       on:input={onInput}
-      placeholder="Код подтверждения"
+      placeholder="******"
       required
     />
     <ActionButton text="Подтвердить" action={verify}/>
@@ -229,28 +223,6 @@
     font-size: 13.5px;
     color: #a0a0a8;
     line-height: 1.4;
-  }
-
-  .hint-card {
-    display: flex;
-    align-items: flex-start;
-    gap: 8px;
-    background: rgba(74, 144, 226, 0.08);
-    border: 1px solid rgba(74, 144, 226, 0.22);
-    border-radius: 8px;
-    padding: 10px 12px;
-    font-size: 12.5px;
-    line-height: 1.4;
-    color: #8cb8f0;
-    text-align: left;
-    margin-bottom: 14px;
-  }
-
-  .hint-icon {
-    font-size: 14px;
-    line-height: 1;
-    margin-top: 1px;
-    flex-shrink: 0;
   }
 
   .form {
