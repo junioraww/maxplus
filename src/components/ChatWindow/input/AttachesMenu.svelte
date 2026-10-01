@@ -1,14 +1,33 @@
 <script>
-  import { createEventDispatcher } from "svelte";
+  import { createEventDispatcher, onDestroy } from "svelte";
+  import { fade } from "svelte/transition";
+  import { registerBackHandler } from "$lib/utils/backButton.js";
 
   const dispatch = createEventDispatcher();
+
+  let unregisterBack = registerBackHandler(() => {
+    dispatch("close");
+    return true;
+  });
+
+  onDestroy(() => {
+    if (unregisterBack) unregisterBack();
+  });
 
   function selectFile(type) {
     dispatch("select", { type });
   }
 </script>
 
-<div class="attaches-dropout">
+<div
+  class="attaches-backdrop"
+  on:click={() => dispatch("close")}
+  on:pointerdown|stopPropagation={() => dispatch("close")}
+  on:touchstart|stopPropagation={() => dispatch("close")}
+  transition:fade={{ duration: 120 }}
+></div>
+
+<div class="attaches-dropout" transition:fade={{ duration: 150 }}>
   <button type="button" class="dropout-item" on:click={() => selectFile("PHOTO")}>
     <svg class="dropout-svg" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
       <rect x="3" y="3" width="18" height="18" rx="3" ry="3"/>
@@ -49,6 +68,16 @@
 </div>
 
 <style>
+  .attaches-backdrop {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 39;
+    background: transparent;
+  }
+
   .attaches-dropout {
     position: absolute;
     bottom: 54px;
@@ -63,7 +92,6 @@
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
     z-index: 40;
     min-width: 165px;
-    animation: dropout-fade 0.12s ease-out;
   }
 
   @keyframes dropout-fade {

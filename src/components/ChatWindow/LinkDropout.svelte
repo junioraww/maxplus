@@ -1,8 +1,9 @@
 <script>
-  import { createEventDispatcher, onMount, tick } from "svelte";
-  import { fade, scale } from "svelte/transition";
+  import { createEventDispatcher, onMount, onDestroy, tick } from "svelte";
+  import { fade } from "svelte/transition";
   import { openUrl } from "@tauri-apps/plugin-opener";
   import { handleDeepLinkUrl } from "$lib/utils/deepLink.js";
+  import { registerBackHandler } from "$lib/utils/backButton.js";
 
   export let url = "";
   export let clientX = 0;
@@ -12,6 +13,7 @@
   let cardNode;
   let pos = { top: 0, left: 0 };
   let copied = false;
+  let unregisterBack = null;
 
   async function adjustPosition() {
     await tick();
@@ -38,6 +40,14 @@
 
   onMount(() => {
     adjustPosition();
+    unregisterBack = registerBackHandler(() => {
+      close();
+      return true;
+    });
+  });
+
+  onDestroy(() => {
+    if (unregisterBack) unregisterBack();
   });
 
   function close() {
@@ -82,7 +92,13 @@
 
 <svelte:window on:keydown={handleKeyDown} />
 
-<div class="dropout-backdrop" on:click={close} transition:fade={{ duration: 120 }}></div>
+<div
+  class="dropout-backdrop"
+  on:click={close}
+  on:pointerdown|stopPropagation={close}
+  on:touchstart|stopPropagation={close}
+  transition:fade={{ duration: 120 }}
+></div>
 
 <div
   class="link-dropout-card"
@@ -90,7 +106,7 @@
   style="top: {pos.top}px; left: {pos.left}px;"
   on:click|stopPropagation
   on:contextmenu|preventDefault|stopPropagation
-  transition:scale={{ duration: 130, start: 0.95, opacity: 0 }}
+  transition:fade={{ duration: 130 }}
 >
   <div class="url-scroll-container">
     <span class="url-text" title={url}>{url}</span>

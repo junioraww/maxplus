@@ -1,5 +1,6 @@
 <script>
   import { createEventDispatcher } from "svelte";
+  import { fade } from "svelte/transition";
   import StickerMedia from "./StickerMedia.svelte";
 
   export let suggestions = [];
@@ -12,7 +13,7 @@
 </script>
 
 {#if suggestions.length > 0}
-  <div class="sticker-suggestions-dropout">
+  <div class="sticker-suggestions-dropout" transition:fade={{ duration: 150 }}>
     <div class="header">
       <span class="title">Стикеры</span>
       <span class="count">{suggestions.length}</span>

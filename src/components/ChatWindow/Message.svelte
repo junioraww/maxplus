@@ -198,7 +198,7 @@
   let startY = 0;
 
   function handleTouchStart(e) {
-    if (e.target.closest("button, a, .rich-link, .link-dropout-card, .dropout-backdrop, input, textarea, img, video, .avatar-msg-btn, .reply-block, .forward-block, .inline-keyboard, .sticker-wrapper, .media-grid, .file-attachment, .voice-play-btn, .transcription-card, .reactions-bar, .edited-badge")) return;
+    if (e.target.closest("button, a, .rich-link, .link-dropout-card, .dropout-backdrop, input, textarea, .avatar-msg-btn")) return;
     const touch = e.touches[0];
     if (!touch) return;
     startX = touch.clientX;
@@ -207,7 +207,7 @@
     clearTimeout(pressTimer);
     pressTimer = setTimeout(() => {
       isLongPress = true;
-      dispatch("longpress", { msg });
+      dispatch("longpress", { msg, clientX: startX, clientY: startY, target: e.target });
       if (typeof navigator !== "undefined" && navigator.vibrate) {
         navigator.vibrate(40);
       }
@@ -259,7 +259,12 @@
     if (selectionMode) {
       e.stopPropagation();
       dispatch("toggleSelect", { id: msg.id });
+      return;
     }
+    if (e.target.closest("button, a, .rich-link, .link-dropout-card, .dropout-backdrop, input, textarea, .avatar-msg-btn, .avatar-wrapper, .media-download-badge, .voice-play-btn, .edited-badge, .sticker-wrapper")) return;
+    const windowSel = typeof window !== "undefined" ? window.getSelection() : null;
+    if (windowSel && !windowSel.isCollapsed && windowSel.toString().trim()) return;
+    dispatch("messageClick", { msg, e });
   }
 </script>
 

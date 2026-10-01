@@ -1,7 +1,8 @@
 <script>
-  import { createEventDispatcher, onMount, tick } from "svelte";
-  import { fade, scale } from "svelte/transition";
+  import { createEventDispatcher, onMount, onDestroy, tick } from "svelte";
+  import { fade } from "svelte/transition";
   import { STYLE_KEYS } from "$lib/formatting/constants.js";
+  import { registerBackHandler } from "$lib/utils/backButton.js";
 
   export let clientX = 0;
   export let clientY = 0;
@@ -19,6 +20,7 @@
   let mobileSubmenuOpen = false;
   let showLinkDialog = false;
   let linkInputUrl = "";
+  let unregisterBack = null;
 
   const isMac = typeof navigator !== "undefined" && /Mac|iPod|iPhone|iPad/.test(navigator.platform);
   const modLabel = isMac ? "⌘" : "Ctrl+";
@@ -91,6 +93,29 @@
 
   onMount(() => {
     adjustPosition();
+    unregisterBack = registerBackHandler(() => {
+      if (showLinkDialog) {
+        showLinkDialog = false;
+        return false;
+      }
+      if (mobileSubmenuOpen) {
+        mobileSubmenuOpen = false;
+        return false;
+      }
+      if (desktopSubmenuOpen) {
+        desktopSubmenuOpen = false;
+        return false;
+      }
+      closeMenu();
+      return true;
+    });
+  });
+
+  onDestroy(() => {
+    if (unregisterBack) {
+      unregisterBack();
+      unregisterBack = null;
+    }
   });
 
   function handleAction(name) {
@@ -136,7 +161,13 @@
 
 <svelte:window on:keydown={onKeyDown} />
 
-<div class="dropout-backdrop" on:click={closeMenu} transition:fade={{ duration: 120 }}></div>
+<div
+  class="dropout-backdrop"
+  on:click={closeMenu}
+  on:pointerdown|stopPropagation={closeMenu}
+  on:touchstart|stopPropagation={closeMenu}
+  transition:fade={{ duration: 120 }}
+></div>
 
 <div
   class="dropout-container"
@@ -144,7 +175,7 @@
   style="top: {menuPos.top}px; left: {menuPos.left}px;"
   on:click|stopPropagation
   on:contextmenu|preventDefault|stopPropagation
-  transition:scale={{ duration: 150, start: 0.95, opacity: 0 }}
+  transition:fade={{ duration: 150 }}
 >
   <div class="telegram-dropout-card">
     {#if showLinkDialog}
@@ -389,7 +420,7 @@
     style="top: {subPos.top}px; left: {subPos.left}px;"
     on:click|stopPropagation
     on:contextmenu|preventDefault|stopPropagation
-    transition:scale={{ duration: 130, start: 0.95, opacity: 0 }}
+    transition:fade={{ duration: 130 }}
   >
     <div class="telegram-dropout-card">
       <button

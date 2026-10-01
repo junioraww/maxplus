@@ -838,26 +838,26 @@
 
   function selectMessage(e, msg) {
     if (
-      e.target.closest("a") ||
-      e.target.closest(".rich-link") ||
-      e.target.closest(".link-dropout-card") ||
-      e.target.closest(".dropout-backdrop") ||
-      e.target.closest("img") ||
-      e.target.closest("video") ||
-      e.target.closest(".reply-block") ||
-      e.target.closest(".forward-block") ||
-      e.target.closest(".inline-keyboard") ||
-      e.target.closest(".inline-btn") ||
-      e.target.closest(".avatar-msg-btn") ||
-      e.target.closest(".avatar-wrapper") ||
-      e.target.closest(".media-grid") ||
-      e.target.closest(".grid-item") ||
-      e.target.closest(".attaches") ||
-      e.target.closest(".media-download-badge") ||
-      e.target.closest(".file-attachment") ||
-      e.target.closest(".file-attach") ||
-      e.target.closest(".attach") ||
-      e.target.closest(".encrypted-media-placeholder")
+      e?.target?.closest?.("a") ||
+      e?.target?.closest?.(".rich-link") ||
+      e?.target?.closest?.(".link-dropout-card") ||
+      e?.target?.closest?.(".dropout-backdrop") ||
+      e?.target?.closest?.("img") ||
+      e?.target?.closest?.("video") ||
+      e?.target?.closest?.(".reply-block") ||
+      e?.target?.closest?.(".forward-block") ||
+      e?.target?.closest?.(".inline-keyboard") ||
+      e?.target?.closest?.(".inline-btn") ||
+      e?.target?.closest?.(".avatar-msg-btn") ||
+      e?.target?.closest?.(".avatar-wrapper") ||
+      e?.target?.closest?.(".media-grid") ||
+      e?.target?.closest?.(".grid-item") ||
+      e?.target?.closest?.(".attaches") ||
+      e?.target?.closest?.(".media-download-badge") ||
+      e?.target?.closest?.(".file-attachment") ||
+      e?.target?.closest?.(".file-attach") ||
+      e?.target?.closest?.(".attach") ||
+      e?.target?.closest?.(".encrypted-media-placeholder")
     ) return;
 
     if (msg === dropoutActiveAt?.msg) return;
@@ -996,15 +996,28 @@
     promptDelete(ids);
   }
 
-  function handleMessageLongPress(msg) {
+  function handleMessageClick(msg, e) {
+    if (!msg) return;
+    if ($isSelecting) {
+      toggleMessageSelection(msg.id);
+      return;
+    }
+    selectMessage(e, msg);
+  }
+
+  function handleMessageLongPress(msg, detail) {
     if (!msg) return;
     markLongPressOccurred();
-    dropoutActiveAt = null;
-    if (!$isSelecting) {
-      startSelection(chat?.id || chatId, msg.id);
-    } else {
+    if ($isSelecting) {
       toggleMessageSelection(msg.id);
+      return;
     }
+    const fakeEvent = {
+      clientX: detail?.clientX ?? (typeof window !== "undefined" ? window.innerWidth / 2 : 0),
+      clientY: detail?.clientY ?? (typeof window !== "undefined" ? window.innerHeight / 2 : 0),
+      target: detail?.target,
+    };
+    selectMessage(fakeEvent, msg);
   }
 
   function handleMessageContextMenu(msg, e) {
@@ -1498,7 +1511,8 @@
                 on:openHistory={(e) => (historyModalMessage = e.detail.msg)}
                 on:react={handleMessageReact}
                 on:toggleSelect={(e) => toggleMessageSelection(e.detail.id)}
-                on:longpress={(e) => handleMessageLongPress(e.detail.msg)}
+                on:messageClick={(e) => handleMessageClick(e.detail.msg, e.detail.e)}
+                on:longpress={(e) => handleMessageLongPress(e.detail.msg, e.detail)}
                 on:contextmenu={(e) => handleMessageContextMenu(e.detail.msg, e.detail.e)}
               />
             </div>

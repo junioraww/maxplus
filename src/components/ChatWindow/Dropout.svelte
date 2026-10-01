@@ -238,7 +238,9 @@
   <div
     class="dropout-backdrop"
     on:click={handleBackdropClick}
-    transition:fade={{ duration: 160 }}
+    on:pointerdown|stopPropagation={handleBackdropClick}
+    on:touchstart|stopPropagation={handleBackdropClick}
+    transition:fade={{ duration: 150 }}
   />
 
   <div
@@ -246,6 +248,7 @@
     bind:this={menuNode}
     style="top:{menuPosition.top}px; left:{menuPosition.left}px;"
     on:click|stopPropagation
+    transition:fade={{ duration: 150 }}
   >
     {#if reactionsAllowed && !reactionsExpanded}
       <div

@@ -139,18 +139,43 @@
 
   function handleTextareaSelect() {
     updateSelectionState();
-    if (isMobile && textareaEl) {
+    if (textareaEl) {
       const start = textareaEl.selectionStart ?? 0;
       const end = textareaEl.selectionEnd ?? 0;
       if (start < end) {
         savedSelectionRange = { start, end };
-        const rect = textareaEl.getBoundingClientRect();
-        contextMenuState = {
-          clientX: Math.max(16, rect.left + (rect.width - 220) / 2),
-          clientY: Math.max(16, rect.top - 240),
-          hasSelection: true,
-          activeStyles: [...activeFormatStyles],
-        };
+        showFormatToolbar = true;
+        if (currentPlatform === "android") {
+          const rect = textareaEl.getBoundingClientRect();
+          contextMenuState = {
+            clientX: Math.max(16, rect.left + (rect.width - 220) / 2),
+            clientY: Math.max(16, rect.top - 240),
+            hasSelection: true,
+            activeStyles: [...activeFormatStyles],
+          };
+        }
+      }
+    }
+  }
+
+  function handleDocSelectionChange() {
+    if (currentPlatform !== "android" || !textareaEl) return;
+    if (document.activeElement === textareaEl) {
+      const start = textareaEl.selectionStart ?? 0;
+      const end = textareaEl.selectionEnd ?? 0;
+      if (start < end) {
+        if (!savedSelectionRange || savedSelectionRange.start !== start || savedSelectionRange.end !== end) {
+          savedSelectionRange = { start, end };
+          updateSelectionState();
+          showFormatToolbar = true;
+          const rect = textareaEl.getBoundingClientRect();
+          contextMenuState = {
+            clientX: Math.max(16, rect.left + (rect.width - 220) / 2),
+            clientY: Math.max(16, rect.top - 240),
+            hasSelection: true,
+            activeStyles: [...activeFormatStyles],
+          };
+        }
       }
     }
   }
@@ -189,6 +214,7 @@
 
     savedSelectionRange = { start, end };
     updateSelectionState();
+    showFormatToolbar = false;
 
     contextMenuState = {
       clientX: e.clientX,
@@ -298,7 +324,11 @@
 
   onMount(() => {
     pluginOn("input:insert", handlePluginInsert);
-    return () => pluginOff("input:insert", handlePluginInsert);
+    document.addEventListener("selectionchange", handleDocSelectionChange);
+    return () => {
+      pluginOff("input:insert", handlePluginInsert);
+      document.removeEventListener("selectionchange", handleDocSelectionChange);
+    };
   });
 
   $: commandFilter = newMessage.startsWith("/") ? newMessage : "";
@@ -351,6 +381,30 @@
       !e.target.closest(".attach-toggle-btn")
     ) {
       attachesDropout = null;
+    }
+
+    if (
+      showFormatToolbar &&
+      !e.target.closest(".formatting-bar")
+    ) {
+      showFormatToolbar = false;
+    }
+
+    if (
+      contextMenuState &&
+      !e.target.closest(".dropout-container")
+    ) {
+      contextMenuState = null;
+    }
+  }
+
+  function handleWindowPointerDown(e) {
+    if (
+      showFormatToolbar &&
+      !e.target.closest(".formatting-bar") &&
+      e.target !== textareaEl
+    ) {
+      showFormatToolbar = false;
     }
   }
 
@@ -1452,7 +1506,7 @@
   });
 </script>
 
-<svelte:window on:click={handleWindowClick} />
+<svelte:window on:click={handleWindowClick} on:pointerdown={handleWindowPointerDown} />
 
 <SelectedAttaches {attaches} on:remove={(e) => removeAttach(e.detail.index)} />
 
@@ -1540,7 +1594,7 @@
         </button>
 
         {#if attachesDropout}
-          <AttachesMenu on:select={(e) => selectFile(e.detail.type)} />
+          <AttachesMenu on:select={(e) => selectFile(e.detail.type)} on:close={() => (attachesDropout = null)} />
         {/if}
 
         <div class="input-container" class:focused={false}>
@@ -1548,6 +1602,7 @@
             <FormattingToolbar
               {activeStyles}
               on:toggle={(e) => handleFormatToggle(e.detail.style, e.detail.metadata)}
+              on:close={() => (showFormatToolbar = false)}
             />
           {/if}
 
@@ -1583,6 +1638,7 @@
               on:input={handleComposerInput}
               on:scroll={syncScroll}
               on:select={handleTextareaSelect}
+              on:touchend={handleDocSelectionChange}
               on:mouseup={updateSelectionState}
               on:keyup={updateSelectionState}
               on:contextmenu|preventDefault={handleTextareaContextMenu}

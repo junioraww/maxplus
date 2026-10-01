@@ -48,11 +48,8 @@
     if (showInputs) { showInputs = false; return false; }
     if (showMenu) { showMenu = false; return false; }
     if (selectedMemberMenuId) { selectedMemberMenuId = null; return false; }
-    if ((activeTab === "settings" || activeTab === "media") && $Session.profile?.view !== "settings") {
-      selectTab("info");
-      return false;
-    }
-    closeModal();
+    goBack();
+    return true;
   });
 
   onDestroy(() => {
@@ -60,6 +57,10 @@
     if (scrollRafId) cancelAnimationFrame(scrollRafId);
     if (scrollEndTimer) clearTimeout(scrollEndTimer);
     if (scrollTimeout) clearTimeout(scrollTimeout);
+    if (typeof window !== "undefined") {
+      window.removeEventListener("mousemove", handleWindowMouseMove);
+      window.removeEventListener("mouseup", handleWindowMouseUp);
+    }
   });
 
   let fetchedChat = null;
@@ -154,9 +155,20 @@
     }
   }
 
-  $: availableTabs = chat
-    ? (hasSettings ? ["info", "media", "settings"] : ["info", "media"])
-    : ["info"];
+  let availableTabs = ["info"];
+  $: {
+    const nextTabs = chat
+      ? (hasSettings ? ["info", "media", "settings"] : ["info", "media"])
+      : ["info"];
+    if (nextTabs.length !== availableTabs.length || nextTabs.some((t, i) => t !== availableTabs[i])) {
+      availableTabs = nextTabs;
+    }
+  }
+
+  let hasVisitedMediaTab = false;
+  $: if (activeTab === "media") {
+    hasVisitedMediaTab = true;
+  }
 
   const tabLabels = {
     info: "Информация",
@@ -259,6 +271,11 @@
     mouseStartY = e.clientY;
     mouseStartScrollLeft = swipeContainer.scrollLeft;
     mouseHasMoved = false;
+
+    if (typeof window !== "undefined") {
+      window.addEventListener("mousemove", handleWindowMouseMove);
+      window.addEventListener("mouseup", handleWindowMouseUp);
+    }
   }
 
   function handleWindowMouseMove(e) {
@@ -268,6 +285,10 @@
 
     if (!mouseHasMoved && Math.abs(dy) > Math.abs(dx) && Math.abs(dy) > 6) {
       isMouseDragging = false;
+      if (typeof window !== "undefined") {
+        window.removeEventListener("mousemove", handleWindowMouseMove);
+        window.removeEventListener("mouseup", handleWindowMouseUp);
+      }
       return;
     }
 
@@ -283,6 +304,10 @@
   }
 
   function handleWindowMouseUp(e) {
+    if (typeof window !== "undefined") {
+      window.removeEventListener("mousemove", handleWindowMouseMove);
+      window.removeEventListener("mouseup", handleWindowMouseUp);
+    }
     if (!isMouseDragging) return;
     isMouseDragging = false;
     if (!swipeContainer || !mouseHasMoved) return;
@@ -945,15 +970,11 @@
   }
 
   function goBack() {
-    if ((activeTab === "settings" || activeTab === "media") && $Session.profile?.view !== "settings") {
-      selectTab("info");
-      return;
-    }
     if ($Session.profile?.history?.length) {
       const length = $Session.profile.history.length;
       const last = $Session.profile.history[length - 1];
       $Session.profile = {
-        history: $Session.profile.history.slice(length),
+        history: $Session.profile.history.slice(0, length - 1),
         ...last
       };
     } else {
@@ -964,8 +985,6 @@
 
 <svelte:window
   on:click={handleWindowClick}
-  on:mousemove={handleWindowMouseMove}
-  on:mouseup={handleWindowMouseUp}
   on:resize={handleResize}
 />
 
@@ -1564,7 +1583,9 @@
         {#if chat}
           <div class="tg-tab-page">
             <div class="tg-tab-page-content">
-              <GroupSharedMedia {chat} />
+              {#if hasVisitedMediaTab}
+                <GroupSharedMedia {chat} />
+              {/if}
             </div>
           </div>
         {/if}
@@ -1983,8 +2004,7 @@
   .tg-profile-backdrop {
     position: fixed;
     inset: 0;
-    background: rgba(0, 0, 0, 0.55);
-    backdrop-filter: blur(6px);
+    background: rgba(0, 0, 0, 0.65);
     z-index: 100;
     display: flex;
     justify-content: flex-end;
