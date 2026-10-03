@@ -192,7 +192,7 @@
                 <span class="user-name">{item.names?.[0]?.name || "Пользователь"}</span>
                 <span class="user-sub">
                   {#if item.phone}
-                    {item.phone}
+                    {String(item.phone).startsWith('+') ? item.phone : `+${item.phone}`}
                   {:else}
                     ID: {item.id}
                   {/if}

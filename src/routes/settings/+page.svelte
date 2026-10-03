@@ -361,7 +361,7 @@ import { goto } from "$app/navigation";
 <style>
   .settings {
     position: relative;
-    width: 100vw;
+    width: 100%;
     color: #bbb;
     overflow-y: auto;
     flex-grow: 1;
@@ -371,7 +371,7 @@ import { goto } from "$app/navigation";
   .info {
     margin-top: 20px;
     top: 0;
-    width: 100vw;
+    width: 100%;
     display: flex;
     flex-direction: column;
     align-items: center;

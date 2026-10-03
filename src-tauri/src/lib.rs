@@ -13,6 +13,8 @@ mod webapp_proxy;
 use state::AppState;
 use std::sync::Arc;
 use tauri::{Emitter, Manager};
+#[cfg(desktop)]
+use tauri::webview::{PermissionKind, PermissionResponse};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -49,6 +51,14 @@ pub fn run() {
 
     #[cfg(any(target_os = "android"))]
     let builder = builder.plugin(tauri_plugin_android_fs::init());
+
+    #[cfg(desktop)]
+    let builder = builder.on_permission_request(|_, kind| match kind {
+        PermissionKind::Microphone | PermissionKind::Camera | PermissionKind::DisplayCapture => {
+            PermissionResponse::Allow
+        }
+        _ => PermissionResponse::Default,
+    });
 
     builder
         .setup(|app| {
@@ -262,6 +272,12 @@ pub fn run() {
             crypto::commands::register_media_cache,
             commands::exit_app,
             commands::parse_mxp,
+            commands::begin_call,
+            commands::open_conference,
+            commands::enter_call_by_link,
+            commands::make_call_invite_link,
+            commands::erase_call_records,
+            commands::decode_call_push,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
