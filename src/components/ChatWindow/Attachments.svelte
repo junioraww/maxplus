@@ -13,6 +13,7 @@
   import StickerMedia from "$components/ChatWindow/Stickers/StickerMedia.svelte";
   import VoiceBubble from "$components/ChatWindow/VoiceBubble.svelte";
   import VideoNoteBubble from "$components/ChatWindow/VideoNoteBubble.svelte";
+  import CallBubble from "$components/ChatWindow/CallBubble.svelte";
 
   export let getFile;
   export let attaches;
@@ -613,6 +614,10 @@
   <VideoNoteBubble {attach} {messageId} {chatId} {isMe} />
 {/each}
 
+{#each attaches.filter(a => (a._type || a.type) === "CALL") as attach}
+  <CallBubble {attach} {chatId} {isMe} />
+{/each}
+
 {#each attaches.filter(a =>
   a._type !== "PHOTO" &&
   a._type !== "VIDEO" &&
@@ -622,7 +627,8 @@
   a._type !== "CONTROL" &&
   a._type !== "INLINE_KEYBOARD" &&
   a._type !== "REPLY" &&
-  a._type !== "FORWARD") as attach}
+  a._type !== "FORWARD" &&
+  a._type !== "CALL") as attach}
   <div class="unsupported-attach">{attach._type} не поддерживается</div>
 {/each}
 

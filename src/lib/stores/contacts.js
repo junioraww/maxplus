@@ -7,29 +7,36 @@ import {
 
 const cache = {};
 
+const emptyContactStore = writable(null);
+
 export const getContact = contactId => {
-  if (!contactId) return null;
-  if (cache[contactId]) return cache[contactId].store;
+  const cid = Number(contactId);
+  if (!cid || cid <= 0 || !Number.isSafeInteger(cid)) return emptyContactStore;
+  if (cache[cid]) return cache[cid].store;
 
   const store = writable(undefined);
-  cache[contactId] = { store };
+  cache[cid] = { store };
 
   getCurrentAccount().then(async account => {
-    const cached = await invoke("get_contact", { account: +account.id, contactId });
-    if (cached) store.set(cached);
+    try {
+      const cached = await invoke("get_contact", { account: +account.id, contactId: cid });
+      if (cached) store.set(cached);
+    } catch {}
 
     let initial = true;
-    cache[contactId].unsubscribe = store.subscribe(async data => {
+    cache[cid].unsubscribe = store.subscribe(async data => {
       if (initial) {
         initial = false;
         return;
       }
       if (data !== undefined) {
-        const _account = await getCurrentAccount();
-        invoke("set_contact", { account: +_account.id, contactId, data });
+        try {
+          const _account = await getCurrentAccount();
+          invoke("set_contact", { account: +_account.id, contactId: cid, data });
+        } catch {}
       }
     });
-  });
+  }).catch(() => {});
 
   return store;
 };

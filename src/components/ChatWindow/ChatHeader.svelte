@@ -5,6 +5,8 @@
   import Session from "$lib/stores/session";
   import { currentUser } from "$lib/stores/api";
   import { getChatSettings } from "$lib/stores/messages";
+  import { getContact } from "$lib/stores/contacts";
+  import { CallService } from "$lib/services/CallService.js";
 
   export let chat;
   export let avatarUserId;
@@ -14,6 +16,17 @@
 
   $: chatSettings = chat?.id != null ? getChatSettings(chat.id) : null;
   $: fingerprint = $chatSettings?.session?.fingerprint;
+  $: peerContact = avatarUserId ? getContact(avatarUserId) : null;
+  $: canCall = Boolean(
+    chat &&
+    chat.type === "DIALOG" &&
+    avatarUserId &&
+    Number(avatarUserId) !== Number($currentUser) &&
+    !$peerContact?.bot &&
+    !$peerContact?.options?.includes("BOT") &&
+    $peerContact?.status !== "REMOVED" &&
+    $peerContact?.accountStatus !== "DELETED"
+  );
 
   function getFingerprintEmojis(val) {
     if (!val) return [];
@@ -76,6 +89,19 @@
     </div>
   </div>
   <div class="align-right">
+    {#if canCall}
+      <button
+        class="header-call-btn"
+        type="button"
+        on:click|stopPropagation={() => CallService.placeAudioCall(avatarUserId, title, $peerContact?.avatar || $peerContact?.baseUrl)}
+        title="Позвонить"
+        aria-label="Позвонить"
+      >
+        <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/>
+        </svg>
+      </button>
+    {/if}
     {#if chat && chat.type !== "CHANNEL" && chat.type !== "CHAT"}
       {#if fingerprint}
         <div
@@ -211,5 +237,28 @@
     font-size: 11px;
     line-height: 1;
     overflow: hidden;
+  }
+
+  .header-call-btn {
+    background: none;
+    border: none;
+    color: #a0a5b1;
+    cursor: pointer;
+    padding: 6px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: color 0.15s, background-color 0.15s, transform 0.1s;
+    margin-right: 4px;
+  }
+
+  .header-call-btn:hover {
+    color: var(--accent-primary, #248bfe);
+    background-color: rgba(255, 255, 255, 0.06);
+  }
+
+  .header-call-btn:active {
+    transform: scale(0.92);
   }
 </style>

@@ -24,6 +24,9 @@
   import VideoCropModal from "$components/media/VideoCropModal.svelte";
   import TraceOverlay from "$components/main/dev/TraceOverlay.svelte";
   import { videoCropState, closeVideoCropModal } from "$lib/stores/videoCrop.js";
+  import { activeCall, CALL_PHASE } from '$lib/stores/calls.js';
+  import CallScreen from '$components/calls/CallScreen.svelte';
+  import FloatingCallBadge from '$components/calls/FloatingCallBadge.svelte';
 
   import Session, { closeAvatarGallery } from "$lib/stores/session";
   import { initDeepLink } from "$lib/utils/deepLink.js";
@@ -61,8 +64,6 @@
   setContext("onBack", onBack);
 
   onMount(async () => {
-    unmountLoader();
-
     await initProxyConfig();
     cleanupDeepLink = await initDeepLink();
 
@@ -109,7 +110,7 @@
     if (loader) {
       loader.classList.add('loaded');
 
-      loader.addEventListener('transitionend', loader.remove, { once: true });
+      loader.addEventListener('transitionend', () => loader.remove(), { once: true });
 
       setTimeout(() => {
         if (loader.isConnected) loader.remove();
@@ -127,11 +128,7 @@
   if (browser) window.alert = showAlert;
 
   $: if (browser && $Session?.loaded) {
-    const el = document.getElementById("initial-loader");
-    if (el) {
-      el.classList.add("loaded");
-      setTimeout(() => el.remove(), 300);
-    }
+    unmountLoader();
   }
 </script>
 
@@ -164,6 +161,14 @@
       <slot />
     </main>
   {/key}
+{/if}
+
+{#if $activeCall.phase !== CALL_PHASE.IDLE && $activeCall.phase !== CALL_PHASE.ENDING}
+  {#if !$activeCall.minimized}
+    <CallScreen />
+  {:else}
+    <FloatingCallBadge />
+  {/if}
 {/if}
 
 <Alerts />

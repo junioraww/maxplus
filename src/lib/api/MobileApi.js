@@ -376,6 +376,12 @@ export default class MobileApi extends BaseAPI {
             await saveChats([mergedChat]).catch(() => {});
           }
         }
+      } else if (opc === 137) {
+        const p = response.payload;
+        if (p) {
+          const { CallService } = await import('$lib/services/CallService.js');
+          CallService.handleIncomingPush(p);
+        }
       } else if (opc === 159) {
         const contact = response.payload?.profile?.contact || response.payload?.contact;
         if (contact && contact.id != null) {
@@ -786,10 +792,9 @@ export default class MobileApi extends BaseAPI {
           }
         } catch {}
 
-        try {
-          const calls = await this.getCalls();
+        this.getCalls().then((calls) => {
           if (calls) currentSessionCalls.set(calls);
-        } catch {}
+        }).catch(() => {});
 
         ensureReactionsLoaded().catch(() => {});
         preloadComplaintReasons().catch(() => {});
@@ -1703,6 +1708,40 @@ export default class MobileApi extends BaseAPI {
   async getCalls() {
     await this.waitSync();
     return await invoke("get_calls", { forward: false, count: 100 });
+  }
+
+  async beginCall(calleeId, isVideo, conversationId, internalParams) {
+    await this.waitSync();
+    return await invoke('begin_call', {
+      calleeId: Number(calleeId),
+      isVideo: Boolean(isVideo),
+      conversationId: String(conversationId),
+      internalParams: String(internalParams),
+    });
+  }
+
+  async openConference(conversationId) {
+    await this.waitSync();
+    return await invoke('open_conference', { conversationId: String(conversationId) });
+  }
+
+  async enterCallByLink(joinLink, isVideo, internalParams) {
+    await this.waitSync();
+    return await invoke('enter_call_by_link', {
+      joinLink: String(joinLink),
+      isVideo: Boolean(isVideo),
+      internalParams: String(internalParams),
+    });
+  }
+
+  async makeCallInviteLink(conversationId) {
+    await this.waitSync();
+    return await invoke('make_call_invite_link', { conversationId: String(conversationId) });
+  }
+
+  async eraseCallRecords(historyIds) {
+    await this.waitSync();
+    return await invoke('erase_call_records', { historyIds: historyIds.map(Number) });
   }
 
   async call(actionId, payload) {

@@ -66,6 +66,11 @@ delegate_cmd!(set_group_options(chat_id: i64, all_can_pin_message: Option<bool>,
 delegate_cmd!(fetch_join_requests(chat_id: i64) => get_join_requests(chat_id));
 delegate_cmd!(confirm_join_requests(chat_id: i64, user_ids: Vec<i64>, show_history: Option<bool>) => confirm_join_requests(chat_id, user_ids, show_history));
 delegate_cmd!(decline_join_requests(chat_id: i64, user_ids: Vec<i64>) => decline_join_requests(chat_id, user_ids));
+delegate_cmd!(begin_call(callee_id: u64, is_video: bool, conversation_id: String, internal_params: String) => start_outgoing_call(callee_id, is_video, conversation_id, internal_params));
+delegate_cmd!(open_conference(conversation_id: String) => open_conference(conversation_id));
+delegate_cmd!(enter_call_by_link(join_link: String, is_video: bool, internal_params: String) => enter_by_link(join_link, is_video, internal_params));
+delegate_cmd!(make_call_invite_link(conversation_id: String) => make_invite_link(conversation_id));
+delegate_cmd!(erase_call_records(history_ids: Vec<i64>) => erase_call_records(history_ids));
 #[tauri::command]
 pub async fn purge_chat_history(
     app: AppHandle,
@@ -429,4 +434,22 @@ pub fn parse_mxp(bytes: Vec<u8>) -> Result<Value, String> {
         "manifest": manifest,
         "files": files_value,
     }))
+}
+
+#[tauri::command]
+pub fn decode_call_push(blob: String) -> Result<Value, String> {
+    use base64::Engine;
+    let colon = blob.find(':').ok_or("Invalid vcp: no colon separator")?;
+    let raw_len_str = &blob[..colon];
+    let raw_len: usize = raw_len_str.parse().map_err(|_| "Invalid vcp: bad rawLen")?;
+    let b64 = &blob[colon + 1..];
+    let compressed = base64::engine::general_purpose::STANDARD
+        .decode(b64)
+        .map_err(|e| format!("vcp base64 decode: {e}"))?;
+    let decompressed = lz4_flex::decompress(&compressed, raw_len)
+        .or_else(|_| lz4_flex::decompress_size_prepended(&compressed))
+        .map_err(|e| format!("vcp lz4 decompress: {e}"))?;
+    let parsed: Value = serde_json::from_slice(&decompressed)
+        .map_err(|e| format!("vcp json parse: {e}"))?;
+    Ok(parsed)
 }

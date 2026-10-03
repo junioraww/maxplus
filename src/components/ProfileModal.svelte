@@ -21,6 +21,7 @@
   import { formatMs } from "$lib/utils/time";
   import { dict } from "$lib/crypto/text-codec";
   import { isChatMuted } from "$lib/utils/notifications";
+  import { CallService } from "$lib/services/CallService.js";
   import { autoDownloadEncryptedMedia } from "$lib/stores/e2eSettings.js";
   import { switchEnc } from "$components/ChatWindow/e2e";
   import { getChatSettings, getChat } from "$lib/stores/messages";
@@ -135,6 +136,24 @@
   $: muted = chat ? isChatMuted(chat) : false;
   $: isChannel = chat?.type === "CHANNEL";
   $: hasSettings = Boolean(chat && !isChannel);
+  $: isBot = Boolean(
+    $contact?.options?.includes("BOT") ||
+    $contact?.bot ||
+    $contact?.type === "BOT" ||
+    chat?.isBot
+  );
+  $: isDeletedOrBlocked = Boolean(
+    $contact?.status === "REMOVED" ||
+    $contact?.accountStatus === "DELETED" ||
+    $contact?.blocked
+  );
+  $: canCallUser = Boolean(
+    userId &&
+    (!chat || chat.type === "DIALOG") &&
+    Number(userId) !== Number($currentUser) &&
+    !isBot &&
+    !isDeletedOrBlocked
+  );
 
   let activeTab = "info";
   let previousProfile = null;
@@ -557,9 +576,15 @@
     }
   }
 
+  function formatPhone(phone) {
+    if (!phone) return "";
+    const s = String(phone).trim();
+    return s.startsWith("+") ? s : `+${s}`;
+  }
+
   $: infoFields = [
     info(chat?.description || $contact?.description, "about", "Описание", chat?.description || $contact?.description),
-    info(chat?.phone || $contact?.phone, "phone", "Телефон", chat?.phone || $contact?.phone),
+    info(chat?.phone || $contact?.phone, "phone", "Телефон", formatPhone(chat?.phone || $contact?.phone)),
     info(chat?.created > 1, "calendar", "Дата создания", formatMs(chat?.created)),
     info($contact?.registrationTime, "calendar", "Дата регистрации", formatMs($contact?.registrationTime)),
   ].filter(Boolean);
@@ -1248,6 +1273,46 @@
                   </svg>
                 </div>
                 <span class="tg-action-label">Ссылка</span>
+              </button>
+            {/if}
+
+            {#if canCallUser}
+              <button
+                type="button"
+                class="tg-action-btn"
+                on:click={() => {
+                  const targetId = userId;
+                  const targetTitle = title;
+                  const targetAvatar = $contact?.avatar || $contact?.baseUrl;
+                  closeModal();
+                  CallService.placeAudioCall(targetId, targetTitle, targetAvatar);
+                }}
+              >
+                <div class="tg-action-circle tg-action-circle--call">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/>
+                  </svg>
+                </div>
+                <span class="tg-action-label">Позвонить</span>
+              </button>
+              <button
+                type="button"
+                class="tg-action-btn"
+                on:click={() => {
+                  const targetId = userId;
+                  const targetTitle = title;
+                  const targetAvatar = $contact?.avatar || $contact?.baseUrl;
+                  closeModal();
+                  CallService.placeVideoCall(targetId, targetTitle, targetAvatar);
+                }}
+              >
+                <div class="tg-action-circle tg-action-circle--video">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polygon points="23 7 16 12 23 17 23 7"/>
+                    <rect x="1" y="5" width="15" height="14" rx="2" ry="2"/>
+                  </svg>
+                </div>
+                <span class="tg-action-label">Видео</span>
               </button>
             {/if}
           </div>
@@ -2337,6 +2402,24 @@
   .tg-action-btn:hover .tg-action-circle {
     background: #3390ec;
     color: #ffffff;
+  }
+
+  .tg-action-circle--call {
+    color: var(--status-success, #4ade80);
+  }
+
+  .tg-action-btn:hover .tg-action-circle--call {
+    background: var(--status-success, #4ade80);
+    color: #fff;
+  }
+
+  .tg-action-circle--video {
+    color: var(--accent-primary, #248bfe);
+  }
+
+  .tg-action-btn:hover .tg-action-circle--video {
+    background: var(--accent-primary, #248bfe);
+    color: #fff;
   }
 
   .tg-action-label {

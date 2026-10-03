@@ -24,6 +24,7 @@
     transition: transform 0.22s ease-out;
     display: flex;
     flex-direction: column;
+    background: var(--bg-app, #17181c);
   }
 
   .page-card.inactive {

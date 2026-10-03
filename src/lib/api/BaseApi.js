@@ -73,4 +73,9 @@ export default class API {
     uploadProfilePhoto() { throw "uploadProfilePhoto: Unimplemented" }
     deleteProfilePhoto() { throw "deleteProfilePhoto: Unimplemented" }
     uploadChatPhoto() { throw "uploadChatPhoto: Unimplemented" }
+    beginCall() { throw 'beginCall: Unimplemented'; }
+    openConference() { throw 'openConference: Unimplemented'; }
+    enterCallByLink() { throw 'enterCallByLink: Unimplemented'; }
+    makeCallInviteLink() { throw 'makeCallInviteLink: Unimplemented'; }
+    eraseCallRecords() { throw 'eraseCallRecords: Unimplemented'; }
 }

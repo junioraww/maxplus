@@ -117,39 +117,6 @@
   let searchPublic = [];
   let searchMsg = [];
 
-  /*receivedMessage.subscribe((msg) => {//TODO перенести в layout
-    if (!msg || !msg.chatId) return;
-
-    currentSessionChats.update((chats) => {
-      const index = chats.findIndex((x) => x.id === msg.chatId);
-      if (index === -1) return chats;
-
-      const newChats = [...chats];
-      const oldChat = newChats[index];
-
-      const newLastMessage = {
-        id: msg.id || Date.now(),
-        text: msg.text || msg.content || "",
-        time: Date.now(), // Время
-        sender: msg.sender || msg.from,
-        read: false,
-        file: msg.file || null,
-      };
-
-      const updatedChat = {
-        ...oldChat,
-        lastMessage: newLastMessage,
-        lastEventTime: Date.now(),
-        newMessages: (oldChat.newMessages || 0) + 1,
-      };
-
-      newChats.splice(index, 1);
-      newChats.unshift(updatedChat);
-
-      return newChats;
-    });
-  });*/
-
   function handleChatLongPress(event) {
     const chat = event.detail;
     // вибрация уже сработала в компоненте
@@ -829,7 +796,6 @@
     height: 100%;
     width: 100%;
     overflow: hidden;
-    background-color: #1e1e1e;
   }
 
   .header-container {
@@ -851,7 +817,6 @@
     left: 0;
     width: 100%;
     height: 100%;
-    background-color: #252525;
     z-index: 20;
     display: flex;
     align-items: center;
