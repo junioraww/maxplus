@@ -183,7 +183,6 @@
     display: flex;
     flex-direction: column;
     overflow: hidden;
-    background: var(--bg-app, #17181c);
   }
 
   .modal-search-wrapper {

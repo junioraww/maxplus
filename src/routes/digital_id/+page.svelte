@@ -403,7 +403,6 @@
   .digital-id-page {
     width: 100%;
     height: 100%;
-    background: var(--bg-app, #17181c);
     color: #e5e7eb;
     display: flex;
     flex-direction: column;

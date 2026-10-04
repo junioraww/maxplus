@@ -395,7 +395,7 @@ pub fn update_messages_sync(
             let id = message.get("id").cloned();
             let mut found = false;
 
-            if let Some(id) = id {
+            if let Some(ref id) = id {
                 for file in day_files.iter().rev() {
                     let mut saved: Vec<Value> = storage
                         .load(file)
@@ -405,7 +405,7 @@ pub fn update_messages_sync(
                     let orig_len = saved.len();
                     clean_sending_and_cids(&mut saved, std::slice::from_ref(&message));
 
-                    if let Some(old) = saved.iter_mut().find(|x| x.get("id") == Some(&id)) {
+                    if let Some(old) = saved.iter_mut().find(|x| x.get("id") == Some(id)) {
                         merge_single_message(old, &message);
                         saved.sort_by_key(|x| x.get("time").and_then(|t| t.as_i64()).unwrap_or(0));
                         storage.save_coalesced(file.clone(), &Value::Array(saved));
@@ -415,6 +415,8 @@ pub fn update_messages_sync(
                         storage.save_coalesced(file.clone(), &Value::Array(saved));
                     }
                 }
+            }
+
             if !found {
                 if let Some(ref id) = id {
                     let other_files: Vec<PathBuf> = Storage::list(&dir)

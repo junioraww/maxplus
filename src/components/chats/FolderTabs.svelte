@@ -149,7 +149,6 @@
     width: 100%;
     align-items: center;
     border-bottom: 1px solid #333;
-    background: #1e1e1e;
     position: relative;
     z-index: 10;
     user-select: none;
@@ -193,13 +192,13 @@
       transform: rotate(0deg);
     }
     25% {
-      transform: rotate(1.5deg) translateY(-1px);
+      transform: rotate(1.5deg);
     }
     50% {
       transform: rotate(0deg);
     }
     75% {
-      transform: rotate(-1.5deg) translateY(1px);
+      transform: rotate(-1.5deg);
     }
     100% {
       transform: rotate(0deg);
@@ -218,7 +217,7 @@
 
   .edit-icon {
     position: absolute;
-    top: -4px;
+    top: 0;
     right: -4px;
     background: #007afd;
     border: 2px solid #1e1e1e;
