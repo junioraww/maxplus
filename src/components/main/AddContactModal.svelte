@@ -15,7 +15,7 @@
   });
 
   let name = "";
-  let phone = "+7";
+  let phone = "+";
   let isLoading = false;
   let groupName = "";
   let mode = "contact";
@@ -29,14 +29,14 @@
     let isValid = true;
     errors = { name: "", phone: "" };
 
-    if (!name || name.length < 1) {
+    if (!name || name.trim().length < 1) {
       errors.name = "Введите имя контакта";
       isValid = false;
     }
 
-    const cleanPhone = phone.replace(/\s+/g, "");
-    if (cleanPhone.length < 5) {
-      errors.phone = "Некорректный формат";
+    const digits = phone.replace(/\D/g, "");
+    if (digits.length < 7 || digits.length > 15) {
+      errors.phone = "Введите корректный номер (от 7 до 15 цифр)";
       isValid = false;
     }
 
@@ -56,7 +56,8 @@
         return;
       }
 
-      response = await $API.addContact(name, "+" + phone);
+      const formattedPhone = phone.startsWith("+") ? phone : "+" + phone;
+      response = await $API.addContact(name, formattedPhone);
     }
 
     if (mode === "group") {
@@ -70,30 +71,28 @@
 
     isLoading = false;
 
+    console.log('a')
+
     if (!response?.success) {
-      errors.phone = response?.error || "Ошибка";
+      console.log(response);
+      errors.phone = response?.localizedMessage || "Ошибка";
       return;
     }
 
     dispatch("close");
   };
 
-  function formatPhone(value) {
-    const digits = value.replace(/\D/g, "");
-
-    let formatted = "+7";
-    if (digits.length > 1) formatted += " " + digits.slice(1, 4);
-    if (digits.length >= 5) formatted += " " + digits.slice(4, 7);
-    if (digits.length >= 8) formatted += "-" + digits.slice(7, 9);
-    if (digits.length >= 10) formatted += "-" + digits.slice(9, 11);
-
-    return formatted;
-  }
-
   function handleInput(event) {
-    const rawValue = event.target.value;
-    phone = rawValue.replace(/\D/g, "");
-    event.target.value = formatPhone(rawValue);
+    let raw = event.target.value.replace(/[^\d+]/g, "");
+
+    if (!raw.startsWith("+")) {
+      raw = "+" + raw.replace(/\+/g, "");
+    } else {
+      raw = "+" + raw.slice(1).replace(/\+/g, "");
+    }
+
+    phone = raw;
+    event.target.value = phone;
     errors.phone = "";
   }
 
@@ -150,8 +149,8 @@
           <div class="input-wrapper" class:has-error={errors.phone}>
             <input
               type="tel"
-              value={formatPhone(phone)}
-              placeholder="+7 999 000-00-00"
+              value={phone}
+              placeholder="+374 91 123456"
               on:input={handleInput}
             />
           </div>
@@ -219,7 +218,6 @@
     gap: 8px;
     width: 90%;
     max-width: 350px;
-    display: flex;
   }
 
   .tabs button {

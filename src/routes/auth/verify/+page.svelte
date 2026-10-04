@@ -32,7 +32,8 @@
   const codeLength = typeof serverCodeLength === "number" && serverCodeLength > 0 ? serverCodeLength : 6;
 
   function detectCallVerification(auth, phoneNumber) {
-    if (auth.requestType.includes("CALL")) return true;
+    console.log(auth);
+    if (auth.requestType?.includes("CALL")) return true;
 
     // TODO ???
     const clean = (phoneNumber || "").replace(/[^\d+]/g, "");

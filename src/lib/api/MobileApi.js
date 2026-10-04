@@ -1150,17 +1150,17 @@ export default class MobileApi extends BaseAPI {
     try {
       let response = await invoke("get_by_phone", { phone });
       oldContact = response.contact;
-      if (!oldContact) throw new Error();
-    } catch (e) {
-      return { success: false, error: "not-found" };
+      if (!oldContact) throw response;
+    } catch (error) {
+      return { success: false, ...error };
     }
 
     const contactId = oldContact.id;
 
-    const { contact: result } =
-      (await invoke("add_contact", { contactId, firstName: name })) || {};
+    const response = await invoke("add_contact", { contactId, firstName: name });
 
-    if (!result) return { success: false, error: "denied" };
+    if (!response.contact) return { success: false, ...response };
+    const result = response.contact;
 
     const contact = {
       avatar: result.baseUrl,
