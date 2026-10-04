@@ -27,6 +27,7 @@ export default class API {
     getComplaintReasons() { throw "getComplaintReasons: Unimplemented" }
     sendComplaint() { throw "sendComplaint: Unimplemented" }
     reaction() { throw "reaction: Unimplemented" }
+    getDetailedReactions() { throw "getDetailedReactions: Unimplemented" }
     addContact() { throw "addContact: Unimplemented" }
     removeContact() { throw "removeContact: Unimplemented" }
     searchPublic() { throw "searchPublic: Unimplemented" }

@@ -8,6 +8,7 @@
   import API, { currentSessionChats, currentUser, serverConfig } from "$lib/stores/api";
   import { saveChats } from "$lib/stores/messages";
   import { reactionEmojis, ensureReactionsLoaded } from "$lib/stores/reactions.js";
+  import Avatar from "$components/main/Avatar.svelte";
 
   export let activeAt;
   export let chat;
@@ -240,6 +241,45 @@
   }
 
   $: editTimeoutSec = Number($serverConfig?.["edit-timeout"]) || 86400;
+
+  $: readers = (() => {
+    if (!activeAt?.msg || !chat?.participants) return [];
+    const msg = activeAt.msg;
+    const msgTime = Number(msg.time) || 0;
+    if (msgTime <= 0) return [];
+    const senderId = Number(msg.sender);
+    const list = [];
+    for (const [uidStr, markVal] of Object.entries(chat.participants)) {
+      const uid = Number(uidStr);
+      const mark = Number(markVal);
+      if (!uid || uid === senderId) continue;
+      if (mark >= msgTime) {
+        list.push({
+          userId: uid,
+          readTime: mark,
+        });
+      }
+    }
+    list.sort((a, b) => b.readTime - a.readTime);
+    return list;
+  })();
+
+  function handleOpenSeenBy() {
+    const targetMsg = activeAt?.msg;
+    if (targetMsg) {
+      dispatch("seenBy", { msg: targetMsg, readers });
+    }
+    dispatch("close", {});
+    cleanupBack();
+  }
+
+  function getPluralReaders(count) {
+    const mod10 = count % 10;
+    const mod100 = count % 100;
+    if (mod100 >= 11 && mod100 <= 19) return "просмотрели";
+    if (mod10 === 1) return "просмотрел";
+    return "просмотрели";
+  }
 </script>
 
 <svelte:window on:keydown={handleKeyDown} />
@@ -404,6 +444,23 @@
             <button type="button" class="action-row report-row" on:click={handleReportMessage}>
               <svg viewBox="0 0 24 24" class="action-icon"><path d="M14.4 6L14 4H5v17h2v-7h5.6l.4 2h7V6h-5.6z" fill="currentColor"/></svg>
               <span class="action-label">Пожаловаться</span>
+            </button>
+          {/if}
+
+          {#if (chat?.type === "CHAT" || chat?.type === "GROUP") && readers.length > 0}
+            <div class="divider" />
+            <button type="button" class="action-row seen-by-row" on:click={handleOpenSeenBy}>
+              <div class="seen-by-avatars">
+                {#each readers.slice(0, 3) as reader, idx (reader.userId)}
+                  <div class="seen-by-avatar-item" style="z-index: {4 - idx}; margin-left: {idx === 0 ? 0 : -8}px;">
+                    <Avatar userId={reader.userId} size={18} />
+                  </div>
+                {/each}
+              </div>
+              <span class="action-label seen-by-label">
+                {readers.length} {getPluralReaders(readers.length)}
+              </span>
+              <svg viewBox="0 0 24 24" class="seen-by-arrow"><path d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6-1.41-1.41z" fill="currentColor"/></svg>
             </button>
           {/if}
 
@@ -660,5 +717,46 @@
 
   .delete-row:hover {
     background: rgba(239, 68, 68, 0.12);
+  }
+
+  .seen-by-row {
+    justify-content: space-between;
+  }
+
+  .seen-by-avatars {
+    display: flex;
+    align-items: center;
+    flex-shrink: 0;
+  }
+
+  .seen-by-avatar-item {
+    border-radius: 50%;
+    border: 1.5px solid #1c1e2a;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+  }
+
+  .seen-by-label {
+    flex: 1;
+    margin-left: 8px;
+    font-size: 12px;
+    color: #8b98a5;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .seen-by-arrow {
+    width: 14px;
+    height: 14px;
+    color: #8b98a5;
+    flex-shrink: 0;
+  }
+
+  .seen-by-row:hover .seen-by-label,
+  .seen-by-row:hover .seen-by-arrow {
+    color: #e4ecf2;
   }
 </style>

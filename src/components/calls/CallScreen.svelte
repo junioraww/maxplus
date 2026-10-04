@@ -5,8 +5,23 @@
   import { get } from 'svelte/store';
 
   import { activeCall, patchCallState, resetCallState, CALL_PHASE, CALL_MODE } from '$lib/stores/calls.js';
+  import { currentUserDetails } from '$lib/stores/api.js';
   import { CallService } from '$lib/services/CallService.js';
   import ParticipantGrid from '$components/calls/ParticipantGrid.svelte';
+
+  function srcObject(node, stream) {
+    node.srcObject = stream || null;
+    return {
+      update(newStream) {
+        if (node.srcObject !== newStream) {
+          node.srcObject = newStream || null;
+        }
+      },
+      destroy() {
+        node.srcObject = null;
+      }
+    };
+  }
 
   let phase, callType, mode, peerName, peerAvatar, muted, videoOn, screenOn, speakerOn, isGroup, roomName;
   let remoteStream, localCameraStream, localScreenStream;
@@ -22,8 +37,7 @@
     errorText, connectionStatus, serverTopology, conversationId,
   } = $activeCall);
 
-  let remoteVideoEl;
-  let localVideoEl;
+  let remoteAudioEl;
   let elapsed = 0;
   let elapsedTimer;
   let controlsVisible = true;
@@ -31,20 +45,36 @@
   let pipX = null;
   let pipY = null;
   let dragging = false;
-  let dragStartX, dragStartY, pipStartX, pipStartY;
+  let dragStartX = 0;
+  let dragStartY = 0;
+  let pipStartX = 0;
+  let pipStartY = 0;
+  let dragDistance = 0;
+  let dragStartTime = 0;
 
   $: isRinging = phase === CALL_PHASE.INCOMING || phase === CALL_PHASE.OUTGOING;
   $: isActive = phase === CALL_PHASE.ACTIVE;
   $: isConnecting = phase === CALL_PHASE.CONNECTING;
-  $: showVideo = (videoOn || screenOn) && isActive;
+
+  $: isSwapped = Boolean($activeCall.swapped);
+  $: hasRemoteVideo = Boolean(
+    remoteStream &&
+    remoteStream.getVideoTracks &&
+    remoteStream.getVideoTracks().some(t => t.readyState === 'live' && t.enabled)
+  );
+  $: hasLocalVideo = Boolean((videoOn || screenOn) && (localCameraStream || localScreenStream));
+  $: localEffectiveStream = screenOn ? localScreenStream : localCameraStream;
+  $: isGroupCall = Boolean(isGroup || ($activeCall.participants && $activeCall.participants.length > 1));
+  $: showVideo = (hasLocalVideo || hasRemoteVideo) && isActive;
+  $: mainVideoActive = isActive && (!isSwapped ? hasRemoteVideo : hasLocalVideo);
+  $: showPip = !isGroupCall && isActive && (hasLocalVideo || hasRemoteVideo);
   $: isSecure = mode === CALL_MODE.SECURE && secureStatus === 'active' && isActive;
 
-  $: if (remoteVideoEl && remoteStream) {
-    remoteVideoEl.srcObject = remoteStream;
-  }
-
-  $: if (localVideoEl && (localCameraStream || localScreenStream)) {
-    localVideoEl.srcObject = screenOn ? localScreenStream : localCameraStream;
+  $: if (remoteAudioEl && remoteStream) {
+    if (remoteAudioEl.srcObject !== remoteStream) {
+      remoteAudioEl.srcObject = remoteStream;
+      remoteAudioEl.play().catch(() => {});
+    }
   }
 
   $: if (isActive) {
@@ -119,10 +149,16 @@
     await CallService.toggleSecure();
   }
 
+  function toggleSwap() {
+    patchCallState({ swapped: !isSwapped });
+  }
+
   function onPipPointerDown(e) {
     dragging = true;
     dragStartX = e.clientX;
     dragStartY = e.clientY;
+    dragDistance = 0;
+    dragStartTime = Date.now();
     pipStartX = pipX ?? (window.innerWidth - 124);
     pipStartY = pipY ?? (window.innerHeight - 200);
     e.currentTarget.setPointerCapture(e.pointerId);
@@ -130,12 +166,23 @@
 
   function onPipPointerMove(e) {
     if (!dragging) return;
-    pipX = Math.max(8, Math.min(window.innerWidth - 116, pipStartX + e.clientX - dragStartX));
-    pipY = Math.max(8, Math.min(window.innerHeight - 192, pipStartY + e.clientY - dragStartY));
+    const dx = e.clientX - dragStartX;
+    const dy = e.clientY - dragStartY;
+    dragDistance = Math.hypot(dx, dy);
+    pipX = Math.max(8, Math.min(window.innerWidth - 116, pipStartX + dx));
+    pipY = Math.max(8, Math.min(window.innerHeight - 192, pipStartY + dy));
   }
 
-  function onPipPointerUp() {
+  function onPipPointerUp(e) {
+    if (!dragging) return;
     dragging = false;
+    try {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    } catch {}
+    const duration = Date.now() - dragStartTime;
+    if (dragDistance < 10 && duration < 400) {
+      toggleSwap();
+    }
   }
 
   onMount(() => {
@@ -145,6 +192,9 @@
   onDestroy(() => {
     clearTimeout(hideTimer);
     clearInterval(elapsedTimer);
+    if (remoteAudioEl) {
+      remoteAudioEl.srcObject = null;
+    }
   });
 </script>
 
@@ -156,37 +206,102 @@
   in:fly={{ y: 60, duration: 320, easing: cubicOut }}
   out:fly={{ y: 60, duration: 240, easing: cubicOut }}
 >
-  {#if showVideo && remoteStream}
-    <video
-      class="remote-video"
-      bind:this={remoteVideoEl}
-      autoplay
-      playsinline
-      muted={false}
-    ></video>
-  {:else}
-    <div class="avatar-backdrop" style={peerAvatar ? `background-image: url('${peerAvatar}')` : ''}>
-      <div class="avatar-blur"></div>
-    </div>
-  {/if}
+  <audio bind:this={remoteAudioEl} autoplay playsinline></audio>
 
-  {#if showVideo && (localCameraStream || localScreenStream)}
-    <div
-      class="pip-container"
-      style="left: {pipX ?? (window.innerWidth - 124)}px; top: {pipY ?? (window.innerHeight - 200)}px;"
-      on:pointerdown={onPipPointerDown}
-      on:pointermove={onPipPointerMove}
-      on:pointerup={onPipPointerUp}
-      role="presentation"
-    >
-      <video
-        class="pip-video"
-        bind:this={localVideoEl}
-        autoplay
-        playsinline
-        muted
-      ></video>
-    </div>
+  {#if !isGroupCall}
+    {#if !isSwapped}
+      {#if hasRemoteVideo && remoteStream}
+        <video
+          class="remote-video"
+          autoplay
+          playsinline
+          muted
+          use:srcObject={remoteStream}
+        ></video>
+      {:else}
+        <div class="avatar-backdrop" style={peerAvatar ? `background-image: url('${peerAvatar}')` : ''}>
+          <div class="avatar-blur"></div>
+        </div>
+      {/if}
+    {:else}
+      {#if hasLocalVideo && localEffectiveStream}
+        <video
+          class="remote-video"
+          class:mirror={!screenOn}
+          autoplay
+          playsinline
+          muted
+          use:srcObject={localEffectiveStream}
+        ></video>
+      {:else}
+        <div
+          class="avatar-backdrop"
+          style={$currentUserDetails?.avatar || $currentUserDetails?.photo ? `background-image: url('${$currentUserDetails.avatar || $currentUserDetails.photo}')` : ''}
+        >
+          <div class="avatar-blur"></div>
+        </div>
+      {/if}
+    {/if}
+
+    {#if showPip}
+      <div
+        class="pip-container"
+        style="left: {pipX ?? (window.innerWidth - 124)}px; top: {pipY ?? (window.innerHeight - 200)}px;"
+        on:pointerdown={onPipPointerDown}
+        on:pointermove={onPipPointerMove}
+        on:pointerup={onPipPointerUp}
+        role="presentation"
+      >
+        {#if !isSwapped}
+          {#if hasLocalVideo && localEffectiveStream}
+            <video
+              class="pip-video"
+              class:mirror={!screenOn}
+              autoplay
+              playsinline
+              muted
+              use:srcObject={localEffectiveStream}
+            ></video>
+          {:else}
+            <div class="pip-fallback">
+              <span class="pip-avatar-fallback">
+                {($currentUserDetails?.name || 'Вы')[0].toUpperCase()}
+              </span>
+            </div>
+          {/if}
+        {:else}
+          {#if hasRemoteVideo && remoteStream}
+            <video
+              class="pip-video"
+              autoplay
+              playsinline
+              muted
+              use:srcObject={remoteStream}
+            ></video>
+          {:else}
+            <div
+              class="pip-fallback"
+              style={peerAvatar ? `background-image: url('${peerAvatar}'); background-size: cover; background-position: center;` : ''}
+            >
+              {#if !peerAvatar}
+                <span class="pip-avatar-fallback">
+                  {(peerName || '?')[0].toUpperCase()}
+                </span>
+              {/if}
+            </div>
+          {/if}
+        {/if}
+
+        <button
+          class="pip-swap-btn"
+          on:click|stopPropagation={toggleSwap}
+          aria-label="Поменять местами"
+          title="Поменять местами"
+        >
+          <img src="/icons/reload.svg" alt="" width="14" height="14" />
+        </button>
+      </div>
+    {/if}
   {/if}
 
   <div class="top-bar" class:visible={controlsVisible || !showVideo}>
@@ -195,7 +310,7 @@
     </button>
 
     <div class="top-bar-center">
-      {#if isGroup}
+      {#if isGroupCall}
         <span class="group-title-label">{roomName || peerName || 'Групповой звонок'}</span>
         {#if elapsed > 0}
           <span class="duration">{formatDuration(elapsed)}</span>
@@ -272,12 +387,12 @@
     </div>
   {/if}
 
-  {#if isGroup}
+  {#if isGroupCall}
     <div class="group-grid-area">
       <ParticipantGrid />
     </div>
   {:else}
-    <div class="peer-info" class:hidden={showVideo && isActive}>
+    <div class="peer-info" class:hidden={mainVideoActive}>
       {#if peerAvatar}
         <div class="peer-avatar" class:ringing={isRinging} style="background-image: url('{peerAvatar}')">
           {#if isRinging}
@@ -294,7 +409,7 @@
           {/if}
         </div>
       {/if}
-      <p class="peer-name">{isGroup ? (roomName || peerName || 'Групповой звонок') : (peerName || 'Собеседник')}</p>
+      <p class="peer-name">{isGroupCall ? (roomName || peerName || 'Групповой звонок') : (peerName || 'Собеседник')}</p>
       <p class="call-status">
         {#if phase === CALL_PHASE.OUTGOING}Вызов...
         {:else if phase === CALL_PHASE.INCOMING}{callType === 'video' ? 'Входящий видеозвонок' : 'Входящий звонок'}
@@ -607,6 +722,10 @@
     object-fit: cover;
   }
 
+  .remote-video.mirror, .pip-video.mirror {
+    transform: scaleX(-1);
+  }
+
   .pip-container {
     position: fixed;
     width: 108px;
@@ -618,6 +737,8 @@
     touch-action: none;
     z-index: 1010;
     border: 1.5px solid rgba(255,255,255,0.12);
+    user-select: none;
+    -webkit-user-select: none;
   }
 
   .pip-container:active { cursor: grabbing; }
@@ -626,6 +747,51 @@
     width: 100%;
     height: 100%;
     object-fit: cover;
+    display: block;
+  }
+
+  .pip-fallback {
+    width: 100%;
+    height: 100%;
+    background: #1e1f2b;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .pip-avatar-fallback {
+    font-size: 26px;
+    font-weight: 700;
+    color: #ffffff;
+  }
+
+  .pip-swap-btn {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    border: none;
+    background: rgba(0, 0, 0, 0.65);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    z-index: 10;
+    padding: 0;
+    transition: background 0.15s, transform 0.15s;
+  }
+
+  .pip-swap-btn:hover {
+    background: rgba(0, 0, 0, 0.85);
+    transform: scale(1.08);
+  }
+
+  .pip-swap-btn:active {
+    transform: scale(0.92);
   }
 
   .top-bar {

@@ -48,6 +48,7 @@
   import BotStart from "$components/ChatWindow/BotStart.svelte";
   import StickerPackModal from "$components/ChatWindow/Stickers/StickerPackModal.svelte";
   import EditHistoryModal from "$components/ChatWindow/EditHistoryModal.svelte";
+  import SeenByModal from "$components/ChatWindow/SeenByModal.svelte";
   import { computeTextDiff } from "$lib/utils/diff.js";
   import { clearChatNotification } from "$lib/utils/notifications.js";
   import { showAlert } from "$lib/utils/alert.js";
@@ -87,6 +88,7 @@
   let replyTo = null;
   let editingMessage = null;
   let historyModalMessage = null;
+  let seenByModalData = null;
 
   let settingsShown = false;
   let dropoutActiveAt;
@@ -370,6 +372,7 @@
 
 
   let unsubReceivedMessage = null;
+  let unsubDeletedMessages = null;
   let currentSubscribedChatId = null;
   let lastProcessedMessageKey = null;
 
@@ -379,8 +382,38 @@
       unsubReceivedMessage();
       unsubReceivedMessage = null;
     }
+    if (unsubDeletedMessages) {
+      unsubDeletedMessages();
+      unsubDeletedMessages = null;
+    }
     currentSubscribedChatId = targetChatId;
     const currentChatCache = getChat(targetChatId);
+    if (currentChatCache?.deletedMessages) {
+      unsubDeletedMessages = currentChatCache.deletedMessages.subscribe(async (delData) => {
+        if (!delData || String(delData.chatId) !== String(targetChatId)) return;
+        const ids = new Set((delData.messageIds || []).map(String));
+        if (ids.size === 0) return;
+        messages.update((_messages) => {
+          let changed = false;
+          const next = _messages.map((m) => {
+            if (ids.has(String(m.id)) && !m.deleted) {
+              changed = true;
+              return {
+                ...m,
+                deleted: true,
+                deleted_at: m.deleted_at || Date.now(),
+              };
+            }
+            return m;
+          });
+          return changed ? next : _messages;
+        });
+        await tick();
+        virtualScroll.applyPendingHeights($messages);
+        virtualScroll.computeCumulativeHeights($messages);
+        await updateVisibleMessages();
+      });
+    }
     if (currentChatCache?.receivedMessage) {
       unsubReceivedMessage = currentChatCache.receivedMessage.subscribe(async (message) => {
         if (!message || String(message.chatId) !== String(targetChatId)) return;
@@ -406,6 +439,26 @@
         if (scrollElement) {
           const { scrollTop, scrollHeight, clientHeight } = scrollElement;
           wasAtBottom = scrollHeight - scrollTop - clientHeight < 150;
+        }
+
+        if (message.status === "REMOVED" || message.deleted) {
+          messages.update((_messages) => {
+            const idx = _messages.findIndex((x) => String(x.id) === String(message.id));
+            if (idx !== -1) {
+              const old = _messages[idx];
+              _messages[idx] = {
+                ...old,
+                deleted: true,
+                deleted_at: old.deleted_at || Date.now(),
+              };
+            }
+            return _messages;
+          });
+          await tick();
+          virtualScroll.applyPendingHeights($messages);
+          virtualScroll.computeCumulativeHeights($messages);
+          await updateVisibleMessages();
+          return;
         }
 
         if (message.status === "EDITED" || message.edited) {
@@ -486,6 +539,10 @@
     if (unsubReceivedMessage) {
       unsubReceivedMessage();
       unsubReceivedMessage = null;
+    }
+    if (unsubDeletedMessages) {
+      unsubDeletedMessages();
+      unsubDeletedMessages = null;
     }
   });
 
@@ -1514,6 +1571,7 @@
               <Message
                 {msg}
                 {chat}
+                {isBot}
                 {dropoutActiveAt}
                 {scrollElement}
                 {otherReadTime}
@@ -1548,6 +1606,7 @@
     on:reply={(e) => (replyTo = e.detail.id)}
     on:edit={(e) => (editingMessage = e.detail.msg)}
     on:history={(e) => (historyModalMessage = e.detail.msg)}
+    on:seenBy={(e) => (seenByModalData = e.detail)}
     on:copyText={(e) => handleCopyText(e.detail.msg)}
     on:forward={(e) => handleStartForward([e.detail.msg])}
     on:select={(e) => startSelection(chat?.id || chatId, e.detail.msg?.id)}
@@ -1560,6 +1619,15 @@
     <EditHistoryModal
       msg={historyModalMessage}
       on:close={() => (historyModalMessage = null)}
+    />
+  {/if}
+
+  {#if seenByModalData}
+    <SeenByModal
+      chat={chat}
+      msg={seenByModalData.msg}
+      readers={seenByModalData.readers}
+      on:close={() => (seenByModalData = null)}
     />
   {/if}
 

@@ -121,6 +121,7 @@ pub fn run() {
             commands::delete_message,
             commands::delete_messages,
             commands::edit_message,
+            commands::get_detailed_reactions,
             commands::set_token,
             commands::fetch_contacts,
             commands::fetch_history,
