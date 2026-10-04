@@ -1012,7 +1012,6 @@
     flex-direction: column;
     height: 100%;
     padding: 16px 16px 0;
-    background: var(--bg-app, #17181c);
     color: var(--text-primary, #ffffff);
     overflow: hidden;
     position: relative;
