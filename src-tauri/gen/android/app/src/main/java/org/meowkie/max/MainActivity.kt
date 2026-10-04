@@ -50,6 +50,17 @@ class MainActivity : TauriActivity() {
     handleChatIntent(intent)
   }
 
+  override fun onWebViewCreate(webView: android.webkit.WebView) {
+    super.onWebViewCreate(webView)
+    webView.webChromeClient = object : android.webkit.WebChromeClient() {
+      override fun onPermissionRequest(request: android.webkit.PermissionRequest) {
+        runOnUiThread {
+          request.grant(request.resources)
+        }
+      }
+    }
+  }
+
   override fun onNewIntent(intent: Intent) {
     super.onNewIntent(intent)
     setIntent(intent)

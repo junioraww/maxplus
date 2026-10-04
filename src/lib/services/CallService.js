@@ -27,6 +27,54 @@ function log(...args) {
   console.log('[call]', ...args);
 }
 
+function labelLocalTracks(sdp, userId, cameraTrackId, screenTrackId) {
+  if (!sdp || !userId) return sdp;
+  const prefix = `u${userId}`;
+  let result = sdp;
+  if (cameraTrackId) {
+    const escaped = cameraTrackId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    result = result
+      .replace(new RegExp(`^a=msid:(\\S+) ${escaped}\\s*$`, 'gm'), `a=msid:$1 ${prefix}:sCAMERA`)
+      .replace(new RegExp(`^(a=ssrc:\\d+ msid:\\S+) ${escaped}\\s*$`, 'gm'), `$1 ${prefix}:sCAMERA`)
+      .replace(new RegExp(`^(a=ssrc:\\d+ label:)${escaped}\\s*$`, 'gm'), `$1${prefix}:sCAMERA`);
+  }
+  if (screenTrackId) {
+    const escaped = screenTrackId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    result = result
+      .replace(new RegExp(`^a=msid:(\\S+) ${escaped}\\s*$`, 'gm'), `a=msid:$1 ${prefix}:sSCREEN`)
+      .replace(new RegExp(`^(a=ssrc:\\d+ msid:\\S+) ${escaped}\\s*$`, 'gm'), `$1 ${prefix}:sSCREEN`)
+      .replace(new RegExp(`^(a=ssrc:\\d+ label:)${escaped}\\s*$`, 'gm'), `$1${prefix}:sSCREEN`);
+  }
+  return result;
+}
+
+function encodeDisplayLayout(trackKeys) {
+  const parts = [];
+  parts.push(0x94, 0x00, 0x00, 0x01, 0xc3);
+  if (!trackKeys.length) {
+    parts.push(0xc0);
+  } else {
+    const total = trackKeys.length * 2;
+    if (total < 16) {
+      parts.push(0x90 | total);
+    } else {
+      parts.push(0xdc, (total >> 8) & 0xff, total & 0xff);
+    }
+    for (const key of trackKeys) {
+      const keyBytes = new TextEncoder().encode(key);
+      if (keyBytes.length < 32) {
+        parts.push(0xa0 | keyBytes.length);
+      } else {
+        parts.push(0xd9, keyBytes.length);
+      }
+      for (let i = 0; i < keyBytes.length; i++) parts.push(keyBytes[i]);
+      parts.push(0x00, 0xc0, 0xcd, (640 >> 8) & 0xff, 640 & 0xff, 0xcd, (360 >> 8) & 0xff, 360 & 0xff, 0x00);
+    }
+  }
+  parts.push(0xc0);
+  return new Uint8Array(parts);
+}
+
 function getRTCPeerConnection() {
   if (typeof window !== 'undefined') {
     return window.RTCPeerConnection || window.webkitRTCPeerConnection || window.mozRTCPeerConnection || null;
@@ -198,6 +246,7 @@ class MaxCallSession {
   #voiceChannel = null;
   #pc = null;
   #dataChannel = null;
+  #sfuCommandChannel = null;
   #localStream = null;
   #cameraStream = null;
   #screenStream = null;
@@ -205,6 +254,7 @@ class MaxCallSession {
   #destroyed = false;
   #conversationId = null;
   #peerId = null;
+  #myCallUserId = null;
   #topology = null;
   #iceServers = ICE_DEFAULTS;
   #pendingCandidates = [];
@@ -215,11 +265,39 @@ class MaxCallSession {
 
   get encryption() { return this.#encryption; }
 
+  #applyTrackLabels(sdp) {
+    const camTrack = this.#cameraStream?.getVideoTracks()[0]?.id;
+    const scrTrack = this.#screenStream?.getVideoTracks()[0]?.id;
+    return labelLocalTracks(sdp, this.#myCallUserId, camTrack, scrTrack);
+  }
+
+  #sendSfuDisplayLayout() {
+    if (!this.#sfuCommandChannel || this.#sfuCommandChannel.readyState !== 'open') return;
+    const participants = get(activeCall).participants || [];
+    const keys = [];
+    for (const p of participants) {
+      if (p.videoOn || p.screenOn) {
+        keys.push(`u${p.id}:${p.screenOn ? 'sSCREEN' : 'sCAMERA'}`);
+      }
+    }
+    try {
+      const bytes = encodeDisplayLayout(keys);
+      this.#sfuCommandChannel.send(bytes);
+    } catch {}
+  }
+
   async begin({ endpoint, conversationId, role, isVideo, mode, peerId = null }) {
     this.#conversationId = conversationId;
     this.#role = role;
     this.#peerId = peerId;
-    log(`begin session: role=${role} isVideo=${isVideo} mode=${mode} convId=${conversationId}`);
+    let myCallUserId = null;
+    try {
+      const parsedUrl = new URL(endpoint);
+      myCallUserId = parsedUrl.searchParams.get('userId');
+    } catch {}
+    this.#myCallUserId = myCallUserId;
+    patchCallState({ myCallUserId });
+    log(`begin session: role=${role} isVideo=${isVideo} mode=${mode} convId=${conversationId} myCallUserId=${myCallUserId}`);
 
     await this.#encryption.initPlain();
 
@@ -291,6 +369,16 @@ class MaxCallSession {
 
   #setupDataChannel(dc) {
     if (!dc) return;
+    if (dc.label === 'producerCommand') {
+      this.#sfuCommandChannel = dc;
+      dc.onopen = () => {
+        this.#sendSfuDisplayLayout();
+      };
+      return;
+    }
+    if (dc.label === 'producerNotification') {
+      return;
+    }
     this.#dataChannel = dc;
     dc.onopen = () => {
       log('e2e data channel opened');
@@ -377,7 +465,17 @@ class MaxCallSession {
     });
     ch.on('hungup', (msg) => {
       log('hungup', msg);
-      if (String(msg.participantId) === String(get(currentUser))) this.destroy();
+      const pid = String(msg.participantId || msg.participant?.id || '');
+      if (pid === String(this.#myCallUserId)) {
+        this.destroy();
+        return;
+      }
+      if (!get(activeCall).isGroup) {
+        this.destroy();
+        return;
+      }
+      const cur = get(activeCall).participants.filter(p => p.id !== pid);
+      patchCallState({ participants: cur });
     });
     ch.on('closed-conversation', () => {
       log('closed-conversation');
@@ -490,9 +588,14 @@ class MaxCallSession {
     };
 
     pc.ontrack = (e) => {
-      log('Remote media track received:', e.track.kind);
-      if (e.streams[0]) {
-        patchCallState({ remoteStream: e.streams[0] });
+      log('Remote media track received:', e.track.kind, e.track.id);
+      const track = e.track;
+      const stream = e.streams[0] || new MediaStream([track]);
+      patchCallState({ remoteStream: stream });
+      const targetId = this.#resolveParticipantIdFromTrack(track.id) || this.#peerId;
+      if (targetId) {
+        const streams = { ...get(activeCall).participantStreams, [String(targetId)]: stream };
+        patchCallState({ participantStreams: streams });
       }
       if (this.#encryption.mode === CALL_MODE.SECURE) {
         this.#encryption.applyToReceiver(e.receiver);
@@ -527,6 +630,15 @@ class MaxCallSession {
     return pc;
   }
 
+  #resolveParticipantIdFromTrack(trackId) {
+    if (!trackId) return null;
+    const match = trackId.match(/^(?:video-|audio-)?u?(\d+)/);
+    if (match && match[1] !== String(this.#myCallUserId)) {
+      return match[1];
+    }
+    return null;
+  }
+
   #checkActive(pc) {
     const ice = pc.iceConnectionState;
     const conn = pc.connectionState;
@@ -553,9 +665,9 @@ class MaxCallSession {
       }
 
       const isGroup = get(activeCall).isGroup || this.#topology === 'SERVER';
+      const myId = String(this.#myCallUserId || '');
 
       if (Array.isArray(conversation.participants)) {
-        const myId = String(get(currentUser));
         const roster = conversation.participants
           .filter(p => String(p.userId || p.id) !== myId)
           .map(parseParticipant);
@@ -569,17 +681,17 @@ class MaxCallSession {
 
       const pc = await this.#buildPeerConnection();
 
+      await this.#voiceChannel.send('accept-call', {
+        mediaSettings: {
+          isVideoEnabled: get(activeCall).videoOn,
+          isAudioEnabled: !get(activeCall).muted,
+          isScreenSharingEnabled: false,
+          isAnimojiEnabled: false,
+        },
+      }).catch(() => {});
+
       if (this.#topology === 'SERVER' || isGroup) {
         patchCallState({ phase: CALL_PHASE.ACTIVE, startedAt: get(activeCall).startedAt || Date.now() });
-
-        await this.#voiceChannel.send('accept-call', {
-          mediaSettings: {
-            isVideoEnabled: get(activeCall).videoOn,
-            isAudioEnabled: !get(activeCall).muted,
-            isScreenSharingEnabled: false,
-            isAnimojiEnabled: false,
-          },
-        });
 
         await this.#voiceChannel.send('allocate-consumer', {
           capabilities: {
@@ -592,7 +704,10 @@ class MaxCallSession {
             singleSession: true,
             unifiedPlan: true,
             fastScreenShare: true,
+            consumerFastScreenShareQualityOnDemand: true,
+            red: true,
             videoTracksCount: 10,
+            csrcAccessible: true,
           },
         });
         return;
@@ -603,7 +718,7 @@ class MaxCallSession {
         const offer = await pc.createOffer(OFFER_CONSTRAINTS);
         await pc.setLocalDescription(offer);
         await this.#gatherDone();
-        const localSdp = pc.localDescription?.sdp || offer.sdp;
+        const localSdp = this.#applyTrackLabels(pc.localDescription?.sdp || offer.sdp);
         this.#extractAndApplyFingerprint(localSdp);
         if (this.#peerId) {
           await this.#voiceChannel.send('transmit-data', {
@@ -620,7 +735,7 @@ class MaxCallSession {
         const offer = await pc.createOffer(OFFER_CONSTRAINTS);
         await pc.setLocalDescription(offer);
         await this.#gatherDone();
-        const localSdp = pc.localDescription?.sdp || offer.sdp;
+        const localSdp = this.#applyTrackLabels(pc.localDescription?.sdp || offer.sdp);
         this.#extractAndApplyFingerprint(localSdp);
         if (this.#peerId) {
           await this.#voiceChannel.send('transmit-data', {
@@ -633,14 +748,6 @@ class MaxCallSession {
             capabilities: WS2_CAPABILITIES,
           });
         }
-        await this.#voiceChannel.send('accept-call', {
-          mediaSettings: {
-            isVideoEnabled: get(activeCall).videoOn,
-            isAudioEnabled: !get(activeCall).muted,
-            isScreenSharingEnabled: false,
-            isAnimojiEnabled: false,
-          },
-        });
       }
     } catch (err) {
       log('onConnection error:', err);
@@ -698,7 +805,7 @@ class MaxCallSession {
       await pc.setLocalDescription(answer);
       await this.#gatherDone();
 
-      const answerSdp = pc.localDescription?.sdp || answer.sdp || '';
+      const answerSdp = this.#applyTrackLabels(pc.localDescription?.sdp || answer.sdp || '');
       log('Sending accept-producer response with answer SDP');
 
       await this.#voiceChannel.send('accept-producer', {
@@ -706,6 +813,7 @@ class MaxCallSession {
         ...(ssrcs.length > 0 ? { ssrcs } : {}),
         ...(this.#sfuSessionId ? { sessionId: this.#sfuSessionId } : {}),
       });
+      this.#sendSfuDisplayLayout();
     } catch (err) {
       log('onProducerUpdated error:', err);
       patchCallState({ errorText: err?.message || String(err) });
@@ -748,7 +856,7 @@ class MaxCallSession {
           const answer = await pc.createAnswer();
           await pc.setLocalDescription(answer);
           await this.#gatherDone();
-          const localSdp = pc.localDescription?.sdp || answer.sdp;
+          const localSdp = this.#applyTrackLabels(pc.localDescription?.sdp || answer.sdp);
           if (this.#peerId) {
             await this.#voiceChannel.send('transmit-data', {
               participantId: Number(this.#peerId),
@@ -812,20 +920,22 @@ class MaxCallSession {
 
   #onPeerMedia(msg) {
     const ms = msg.mediaSettings || {};
+    const pid = String(msg.participantId || '');
     patchCallState({
       participants: get(activeCall).participants.map(p =>
-        p.id === String(msg.participantId)
+        p.id === pid
           ? { ...p, muted: !ms.isAudioEnabled, videoOn: Boolean(ms.isVideoEnabled), screenOn: Boolean(ms.isScreenSharingEnabled) }
           : p
       ),
     });
+    this.#sendSfuDisplayLayout();
   }
 
   #onParticipantJoined(msg) {
     const raw = msg.participant || msg;
     if (!raw) return;
     const p = parseParticipant(raw);
-    const myId = String(get(currentUser));
+    const myId = String(this.#myCallUserId || '');
     if (!p.id || p.id === myId) return;
     log('Participant joined room:', p.name, p.id);
     const cur = get(activeCall).participants;
@@ -834,25 +944,48 @@ class MaxCallSession {
     } else {
       patchCallState({ participants: [...cur, p] });
     }
+    if (!this.#peerId) {
+      this.#peerId = p.id;
+      if (this.#role === 'originator' && this.#pc?.localDescription) {
+        this.#voiceChannel?.send('transmit-data', {
+          participantId: Number(this.#peerId),
+          participantType: 'USER',
+          deviceIdx: 0,
+          data: {
+            sdp: { type: this.#pc.localDescription.type || 'offer', sdp: this.#applyTrackLabels(this.#pc.localDescription.sdp) },
+          },
+          capabilities: WS2_CAPABILITIES,
+        }).catch(() => {});
+      }
+    }
+    this.#sendSfuDisplayLayout();
   }
 
   #onParticipantLeft(msg) {
     const id = String(msg.participantId || msg.userId || msg.id || '');
     if (!id) return;
     log('Participant left room:', id);
+    const cur = get(activeCall).participants.filter(p => p.id !== id);
     patchCallState({
-      participants: get(activeCall).participants.filter(p => p.id !== id),
+      participants: cur,
     });
+    if (!get(activeCall).isGroup && (id === String(this.#peerId) || cur.length === 0)) {
+      this.destroy();
+    }
   }
 
   #onSessionState(msg) {
     const list = msg.participants || msg.sessionParticipants || [];
     if (!list.length) return;
-    const myId = String(get(currentUser));
+    const myId = String(this.#myCallUserId || '');
     const roster = list
       .filter(p => String(p.userId || p.id) !== myId)
       .map(parseParticipant);
     patchCallState({ participants: roster });
+    if (!this.#peerId && roster.length > 0) {
+      this.#peerId = roster[0].id;
+    }
+    this.#sendSfuDisplayLayout();
   }
 
   async #attemptIceRestart() {
@@ -953,6 +1086,7 @@ class MaxCallSession {
         isAnimojiEnabled: false,
       },
     }).catch(() => {});
+    this.#sendSfuDisplayLayout();
   }
 
   async enableScreen(on) {
@@ -989,12 +1123,13 @@ class MaxCallSession {
         isAnimojiEnabled: false,
       },
     }).catch(() => {});
+    this.#sendSfuDisplayLayout();
   }
 
   async hangup() {
     try {
       this.#voiceChannel?.sendQuiet('hangup', {
-        participantId: get(currentUser),
+        reason: 'HUNGUP',
       });
     } catch {}
     this.destroy();
@@ -1013,6 +1148,7 @@ class MaxCallSession {
     this.#pc?.close();
     this.#pc = null;
     this.#voiceChannel = null;
+    this.#sfuCommandChannel = null;
     resetCallState();
   }
 }

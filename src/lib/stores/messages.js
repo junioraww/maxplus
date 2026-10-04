@@ -80,11 +80,13 @@ export const getChat = chatId => {
 
   const receivedMessage = writable(null);
   const readReceipt = writable(null);
+  const deletedMessages = writable(null);
 
   const entry = {
     getInfo: () => get(currentSessionChats).find(chat => chat.id === Number(chatId)),
     receivedMessage,
     readReceipt,
+    deletedMessages,
     updateMessages: async messages => {
       const account = await getCurrentAccount();
       return invoke("update_messages", { account: Number(account.id), chatId: Number(chatId), messages });

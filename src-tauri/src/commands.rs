@@ -115,6 +115,7 @@ pub async fn delete_messages(
     Ok(r.payload)
 }
 delegate_cmd!(edit_message(chat_id: i64, message_id: String, text: String, attaches: Option<Vec<Value>>, elements: Option<Vec<Value>>) => edit_message(chat_id, p(message_id)?, text, attaches, elements));
+delegate_cmd!(get_detailed_reactions(chat_id: i64, message_id: String, count: Option<i32>) => get_detailed_reactions(chat_id, p(message_id)?, count));
 delegate_cmd!(get_video_by_id(chat_id: i64, message_id: String, video_id: i64, token: Option<String>) => get_video_by_id(chat_id, message_id.parse::<u64>().unwrap_or(0), video_id, token));
 delegate_cmd!(get_file_by_id(chat_id: i64, message_id: String, file_id: i64) => get_file_by_id(chat_id, message_id.parse::<u64>().unwrap_or(0), file_id));
 delegate_cmd!(get_chat_media(chat_id: i64, message_id: Option<String>, attach_types: Vec<String>, forward: i32, backward: i32) => get_chat_media(chat_id, message_id.as_deref().and_then(|s| s.parse::<i64>().ok()).unwrap_or(0), attach_types, forward, backward));

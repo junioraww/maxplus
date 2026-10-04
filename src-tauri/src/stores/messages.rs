@@ -415,6 +415,30 @@ pub fn update_messages_sync(
                         storage.save_coalesced(file.clone(), &Value::Array(saved));
                     }
                 }
+            if !found {
+                if let Some(ref id) = id {
+                    let other_files: Vec<PathBuf> = Storage::list(&dir)
+                        .into_iter()
+                        .filter(|p| !day_files.contains(p))
+                        .collect();
+                    for file in other_files {
+                        let mut saved: Vec<Value> = storage
+                            .load(&file)
+                            .and_then(|x| x.as_array().cloned())
+                            .unwrap_or_default();
+                        let orig_len = saved.len();
+                        clean_sending_and_cids(&mut saved, std::slice::from_ref(&message));
+                        if let Some(old) = saved.iter_mut().find(|x| x.get("id") == Some(id)) {
+                            merge_single_message(old, &message);
+                            saved.sort_by_key(|x| x.get("time").and_then(|t| t.as_i64()).unwrap_or(0));
+                            storage.save_coalesced(file.clone(), &Value::Array(saved));
+                            found = true;
+                            break;
+                        } else if saved.len() != orig_len {
+                            storage.save_coalesced(file.clone(), &Value::Array(saved));
+                        }
+                    }
+                }
             }
 
             if !found {

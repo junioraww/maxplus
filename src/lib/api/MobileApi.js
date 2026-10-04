@@ -181,9 +181,12 @@ export default class MobileApi extends BaseAPI {
         message.chatId = response.payload.chatId;
 
         const chat = getChat(message.chatId);
-        chat.updateMessages([ message ]);
-
-        if (message.status === "EDITED") {
+        if (message.status === "REMOVED") {
+          chat.markMessageDeleted?.(message.id);
+          chat.deletedMessages?.set({ messageIds: [String(message.id)], chatId: message.chatId });
+          pluginEmit("message:deleted", { messageId: message.id, chatId: message.chatId });
+        } else if (message.status === "EDITED" || message.edited) {
+          chat.updateMessages([ message ]);
           chat.receivedMessage.set(message);
           pluginEmit("message:edited", { message, chatId: message.chatId });
 
@@ -346,6 +349,8 @@ export default class MobileApi extends BaseAPI {
           for (const mId of messageIds) {
             chat.markMessageDeleted?.(mId);
           }
+          chat.deletedMessages?.set({ messageIds: messageIds.map(String), chatId: cId });
+          pluginEmit("messages:deleted", { messageIds: messageIds.map(String), chatId: cId });
         }
       } else if (opc === 131) {
         const contact = response.payload?.contact;
@@ -852,6 +857,15 @@ export default class MobileApi extends BaseAPI {
       return await invoke("add_reaction", payload);
     }
     return await invoke("remove_reaction", payload);
+  }
+
+  async getDetailedReactions(chatId, messageId, count = 100) {
+    await this.waitSync();
+    return await invoke("get_detailed_reactions", {
+      chatId: Number(chatId),
+      messageId: String(messageId),
+      count: Number(count),
+    });
   }
 
   async pinMessage(chatId, messageId) {

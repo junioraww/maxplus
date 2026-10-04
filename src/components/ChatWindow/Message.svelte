@@ -25,14 +25,15 @@
   export let dropoutActiveAt;
   export let scrollElement;
   export let decoded;
-  export let makeVisible;
+  export let makeVisible = undefined;
+  export let isBot = false;
   export let otherReadTime = 0;
   export let selected = false;
   export let selectionMode = false;
 
   $: isMe = Number(msg.sender) === Number($currentUser);
   $: isSending = msg.status === "sending" || msg.status === "pending" || msg.status === 0 || msg.sending === true;
-  $: isRead = !isSending && (msg.read === true || msg.status === 3 || msg.status === "read" || (otherReadTime > 0 && otherReadTime >= (msg.time || 0)));
+  $: isRead = !isSending && (isBot || msg.read === true || msg.status === 3 || msg.status === "read" || (otherReadTime > 0 && otherReadTime >= (msg.time || 0)));
   $: isSystem = Boolean(msg.attaches?.some((x) => x._type === "CONTROL"));
 
   $: rawText = decoded ? (decoded.text ?? "") : (msg.text || "");
@@ -887,32 +888,36 @@
   }
 
   .message-status {
-    display: flex;
-    gap: 6px;
-    align-items: end;
+    display: inline-flex;
+    gap: 4px;
+    align-items: center;
     white-space: nowrap;
     margin-left: auto;
     margin-right: 0;
-    margin-bottom: -3px;
+    line-height: 1;
   }
 
   .status-meta {
-    display: flex;
-    gap: 10px;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    line-height: 1;
   }
 
   .views {
-    display: flex;
+    display: inline-flex;
     align-items: center;
     gap: 2px;
     font-size: 10px;
-    margin-bottom: -1px;
     opacity: 0.6;
+    line-height: 1;
   }
 
   .views-icon {
     width: 12px;
+    height: 12px;
     fill: currentColor;
+    display: block;
   }
 
   .deleted-notice {
@@ -940,17 +945,20 @@
     color: #ef4444;
     font-weight: 600;
     margin-right: 2px;
+    line-height: 1;
   }
 
   .edited-badge {
     background: transparent;
     border: none;
     font-size: 10px;
+    line-height: 1;
     color: #8b929e;
     cursor: pointer;
     padding: 0 2px;
     border-radius: 3px;
     transition: color 0.15s ease;
+    display: inline-block;
   }
 
   .edited-badge:hover {
@@ -960,34 +968,34 @@
 
   .timestamp {
     font-size: 11px;
+    line-height: 1;
     opacity: 0.5;
+    display: inline-block;
   }
 
   .status-ticks {
     display: inline-flex;
     align-items: center;
-    align-self: end;
-  }
-
-  .status-ticks * {
-    position: relative;
+    justify-content: center;
+    line-height: 1;
+    height: 11px;
   }
 
   .status-icon {
     width: 14px;
     height: 10px;
-    top: 1px;
+    display: block;
     fill: currentColor;
     color: #8e8e93;
   }
 
   .status-icon.is-sending {
-    width: 12px;
-    height: 12px;
+    width: 11px;
+    height: 11px;
     color: #8e8e93;
     stroke: currentColor;
     fill: none;
-    top: 0;
+    display: block;
   }
 
   .status-icon.is-sent {
@@ -995,6 +1003,7 @@
     height: 10px;
     color: #8e8e93;
     fill: currentColor;
+    display: block;
   }
 
   .status-icon.is-read {
@@ -1002,6 +1011,7 @@
     height: 10px;
     color: #34b7f1;
     fill: currentColor;
+    display: block;
   }
 
   .obf-type {
