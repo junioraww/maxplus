@@ -30,6 +30,7 @@ import { handleTranscriptionPush } from "$lib/stores/transcription.js";
 import {
   addAccount,
   getAccounts,
+  removeAccount,
   removeAccountByUserId,
   getCurrentAccount,
   setCurrentAccount,
@@ -517,7 +518,10 @@ export default class MobileApi extends BaseAPI {
   }
 
   async submitRegister(first_name, last_name = null) {
-    const response = await invoke("register", { first_name });
+    const response = await invoke("register", {
+      firstName: first_name,
+      lastName: last_name,
+    });
     return this._handleLoginResponse(response);
   }
 
@@ -538,16 +542,19 @@ export default class MobileApi extends BaseAPI {
     if (checkCode?.profile) {
       register = checkCode;
     } else {
-      register = await invoke("register", { first_name });
+      register = await invoke("register", {
+        firstName: first_name,
+      });
     }
     return this._handleLoginResponse(register);
   }
 
-  async _handleLoginResponse(payload) {
-    if (!payload?.tokenAttrs?.LOGIN) return payload;
+  async _handleLoginResponse(payload, fallbackToken = null) {
+    const token = payload?.tokenAttrs?.LOGIN?.token || payload?.token || fallbackToken;
+    if (!token) return payload;
 
     const accountEntry = await addAccount(
-      payload.tokenAttrs.LOGIN.token,
+      token,
       sessionGet("device")
     );
 
@@ -569,13 +576,48 @@ export default class MobileApi extends BaseAPI {
     };
   }
 
-  async handleLoginResponse(payload) {
-    return this._handleLoginResponse(payload);
+  async handleLoginResponse(payload, fallbackToken = null) {
+    return this._handleLoginResponse(payload, fallbackToken);
   }
 
   async checkPassword(password, trackId) {
     const response = await invoke("check_password", { password, trackId });
     return this._handleLoginResponse(response);
+  }
+
+  async removeAccountOnly(account) {
+    const activeUserId = get(currentUser);
+    if (activeUserId && (activeUserId === account?.contact?.id || activeUserId === account?.id)) {
+      this.disconnect();
+    }
+    await removeAccount(account.id);
+  }
+
+  async logoutAccount(account) {
+    const activeUserId = get(currentUser);
+    const isActive = activeUserId && (activeUserId === account?.contact?.id || activeUserId === account?.id);
+
+    if (isActive) {
+      await setCurrentAccount(null);
+      try {
+        await invoke("logout");
+      } catch (e) {
+        console.error(e);
+      }
+      this.disconnect();
+    } else if (account?.meta?.token && account?.meta?.device) {
+      try {
+        await invoke("init", {
+          token: account.meta.token,
+          identity: account.meta.device,
+        });
+        await invoke("logout");
+      } catch (e) {
+        console.error(e);
+      }
+    }
+
+    await removeAccount(account.id);
   }
 
   async logout(userId = get(currentUser), redirect = true) {
@@ -589,11 +631,11 @@ export default class MobileApi extends BaseAPI {
 
     if (get(currentUser) === userId) this.disconnect();
 
-    await removeAccountByUserId(userId);
+    if (userId) {
+      await removeAccountByUserId(userId);
+    }
 
     if (redirect) goto("/auth/login");
-
-    // TODO purge all data
   }
 
   async closeAllSessions() {

@@ -27,6 +27,36 @@
   const name = sessionGet("name");
   const state = !name ? "login" : "register";
 
+  const authPayload = sessionGet("authPayload") || {};
+  const serverCodeLength = sessionGet("codeLength") || authPayload.codeLength;
+  const codeLength = typeof serverCodeLength === "number" && serverCodeLength > 0 ? serverCodeLength : 6;
+
+  function detectCallVerification(auth, phoneNumber) {
+    if (auth.requestType.includes("CALL")) return true;
+
+    // TODO ???
+    const clean = (phoneNumber || "").replace(/[^\d+]/g, "");
+    if (clean.startsWith("+374") || clean.startsWith("374")) {
+      return true;
+    }
+
+    return false;
+  }
+
+  let isCall = detectCallVerification(authPayload, phone);
+
+  $: subtitleText = isCall
+    ? `Вам поступит звонок-сброс. Введите последние ${codeLength} цифр номера входящего вызова.`
+    : "Код подтверждения отправлен по SMS или в MAX на другом устройстве.";
+
+  $: placeholderText = isCall
+    ? `Последние ${codeLength} цифр`
+    : "•".repeat(codeLength);
+
+  $: resendButtonText = isCall
+    ? "Запросить повторный звонок"
+    : "Отправить код по SMS";
+
   function startTimer() {
     stopTimer();
     timerInterval = setInterval(() => {
@@ -74,7 +104,11 @@
       if (response?.error) {
         error = parseApiError(response);
       } else {
-        infoMessage = "Код отправлен по SMS";
+        sessionSet("authPayload", response);
+        isCall = detectCallVerification(response, phone);
+        infoMessage = isCall
+          ? "Ожидайте повторный звонок"
+          : "Код отправлен по SMS";
         timerSeconds = response?.codeDelay || 60;
         startTimer();
       }
@@ -87,8 +121,8 @@
 
   async function verify() {
     if (loading) return;
-    if (code.length !== 6) {
-      error = "Длина кода - 6 символов!";
+    if (code.length !== codeLength) {
+      error = `Длина кода — ${codeLength} символов!`;
       return;
     }
 
@@ -114,14 +148,21 @@
 
       const isRegistration = response?.tokenAttrs?.REGISTER && !response?.tokenAttrs?.LOGIN;
       if (isRegistration) {
+        const registerToken = response?.tokenAttrs?.REGISTER?.token;
         if (!name) {
-          sessionSet("registerToken", response?.tokenAttrs?.REGISTER?.token);
+          sessionSet("registerToken", registerToken);
           loading = false;
           goto("/auth/register");
           return;
         }
+
         const regResponse = await $API.submitRegister(name);
-        await $API.handleLoginResponse(regResponse);
+        if (regResponse?.error) {
+          error = parseApiError(regResponse);
+          loading = false;
+          return;
+        }
+
         loading = false;
         goto("/");
         return;
@@ -139,7 +180,7 @@
   function onInput(e) {
     error = "";
     code = e.target.value.trim();
-    if (code.length === 6) {
+    if (code.length === codeLength) {
       verify();
     }
   }
@@ -151,7 +192,7 @@
     <div class="phone-badge">{phone}</div>
   {/if}
   <p class="subtitle">
-    Код подтверждения мог отправиться в MAX на другом устройстве или по SMS.
+    {subtitleText}
   </p>
   <div class="form">
     {#if error}
@@ -163,10 +204,10 @@
     <input
       type="text"
       inputmode="numeric"
-      maxlength="6"
+      maxlength={codeLength}
       value={code}
       on:input={onInput}
-      placeholder="******"
+      placeholder={placeholderText}
       required
     />
     <ActionButton text="Подтвердить" action={verify}/>
@@ -181,7 +222,7 @@
           on:click={resendCode}
           disabled={resending}
         >
-          {resending ? "Отправка..." : "Отправить код по SMS"}
+          {resending ? "Отправка..." : resendButtonText}
         </button>
       {/if}
     </div>

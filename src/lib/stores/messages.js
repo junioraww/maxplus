@@ -121,6 +121,7 @@ export const getChat = chatId => {
     },
     removeMessagesFromStorage: async messageIds => {
       const account = await getCurrentAccount();
+      if (!account?.id) return;
       return Promise.all(
         messageIds.map(id =>
           invoke("remove_message_from_storage", {
@@ -133,10 +134,12 @@ export const getChat = chatId => {
     },
     loadMessages: async (time, amount) => {
       const account = await getCurrentAccount();
+      if (!account?.id) return [];
       return invoke("load_messages", { account: Number(account.id), chatId: Number(chatId), time, amount });
     },
     clearLocalMessages: async () => {
       const account = await getCurrentAccount();
+      if (!account?.id) return;
       return invoke("clear_local_messages", { account: Number(account.id), chatId: Number(chatId) });
     }
   };

@@ -1,4 +1,5 @@
 <script>
+  import { onMount } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
   import { goto } from "$app/navigation";
 
@@ -6,6 +7,7 @@
     getAccounts,
     addAccount,
     setCurrentAccount,
+    getDevice,
   } from "$lib/stores/accounts";
   import {
     get as sessionGet,
@@ -23,27 +25,42 @@
   let phone = "";
   let error = "";
 
+  onMount(async () => {
+    if (!sessionGet("device")) {
+      const dev = await getDevice();
+      if (dev) sessionSet("device", dev);
+    }
+  });
+
   async function login() {
     if (phone.length < 7) {
       error = "Это не номер!";
       return;
     }
 
-    if (!sessionGet("device")) return alert("Нажмите на иконку телефона, чтобы настроить данные входа!");
+    if (!sessionGet("device")) {
+      const dev = await getDevice();
+      if (dev) {
+        sessionSet("device", dev);
+      } else {
+        return alert("Нажмите на иконку телефона, чтобы настроить данные входа!");
+      }
+    }
 
     error = "";
-    console.log("Запрос на вход:", phone);
     if (!phone.startsWith("+")) phone = "+" + phone;
 
     sessionSet("phone", phone);
 
     const response = await $API.startAuth(phone);
 
-    if (response.success) {
+    if (response?.success) {
       if (response.codeDelay) sessionSet("codeDelay", response.codeDelay);
+      if (response.codeLength) sessionSet("codeLength", response.codeLength);
+      sessionSet("authPayload", response);
       goto("/auth/verify");
     } else {
-      error = response.title || response.message;
+      error = response?.title || response?.message || "Ошибка входа";
     }
   }
 
