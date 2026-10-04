@@ -25,14 +25,28 @@
   let holdTimer;
   let unregisterMenuBack = null;
 
-  let accountsPromise;
+  let accounts = [];
+  let loadingAccounts = true;
+
   onMount(() => {
-    accountsPromise = updateAccounts();
+    refreshAccounts();
   });
 
-  async function updateAccounts() {
-    const encrypted = await getAccounts();
-    return await Promise.all(encrypted.map(entry => getAccount(entry.id)));
+  async function refreshAccounts() {
+    loadingAccounts = true;
+    try {
+      const encrypted = await getAccounts();
+      accounts = await Promise.all(encrypted.map(entry => getAccount(entry.id)));
+    } catch (e) {
+      console.error(e);
+      accounts = [];
+    } finally {
+      loadingAccounts = false;
+    }
+
+    if (accounts.length === 0) {
+      goto("/auth/login");
+    }
   }
 
   async function select(selected) {
@@ -52,20 +66,24 @@
     return goto("/")
   }
 
-  async function logout(account) {
-    console.log('Logging out', account.id, 'current', $currentUser)
-
+  async function removeAccountLocally(account) {
+    closeMenu();
     try {
-      await $API.logout(account.uid, false);
+      await $API.removeAccountOnly(account);
     } catch (e) {
       console.error(e);
     }
+    await refreshAccounts();
+  }
 
-    await updateAccounts();
-
-    if (!accountsPromise.length) {
-      goto("/auth/login")
+  async function logoutAndRemoveAccount(account) {
+    closeMenu();
+    try {
+      await $API.logoutAccount(account);
+    } catch (e) {
+      console.error(e);
     }
+    await refreshAccounts();
   }
 
   async function addNew(e) {
@@ -150,11 +168,6 @@
     await writeFile(path, json);
   }
 
-  async function deleteAccount(account) {
-    closeMenu();
-    await logout(account);
-  }
-
   function closeMenu() {
     menu = null;
     if (unregisterMenuBack) {
@@ -187,8 +200,7 @@
   <a class="hint">Зажми для открытия меню действий.</a>
 
   <div class="accounts">
-    {#await accountsPromise}
-    {:then accounts}
+    {#if !loadingAccounts}
       {#each accounts as account}
         <div
           class="account"
@@ -213,10 +225,10 @@
           on:mouseleave={cancelHold}
         >
           <Avatar contactId={account.contact?.id} seed={account.id} size=72/>
-          <a>{ account.contact?.names[0]?.firstName || "Зашифр." }</a>
+          <a>{ account.contact?.names?.[0]?.firstName || "Зашифр." }</a>
         </div>
       {/each}
-    {/await}
+    {/if}
     <div on:click={addNew} class="account">
       <div class="avatar"><a>+</a></div>
       <a>Новый</a>
@@ -233,11 +245,15 @@
       Экспортировать
     </button>
 
+    <button on:click={() => removeAccountLocally(menu.account)}>
+      Удалить с устройства
+    </button>
+
     <button
       class="danger"
-      on:click={() => deleteAccount(menu.account)}
+      on:click={() => logoutAndRemoveAccount(menu.account)}
     >
-      Удалить
+      Выйти из аккаунта
     </button>
   </div>
 {/if}

@@ -17,11 +17,20 @@ export const init = () => invoke("accounts_init");
 export const getAccountMeta = id => invoke("account_get", { id });
 export const getAccountContact = id => invoke("account_contact", { id });
 export const setAccountContact = (id, data) => invoke("account_contact", { id, data });
-export const removeAccount = id => invoke("account_delete", { id });
+export const removeAccount = id => invoke("account_delete", { id: Number(id) });
 export const removeAccountByUserId = async uid => {
+  if (!uid) return;
   const accounts = await invoke("accounts_get");
-  const acc = Array.isArray(accounts) ? accounts.find(x => x.uid === uid) : null;
-  if (acc?.id) return invoke("account_delete", { id: acc.id });
+  if (!Array.isArray(accounts)) return;
+  for (const entry of accounts) {
+    if (entry.id === uid) {
+      return invoke("account_delete", { id: Number(entry.id) });
+    }
+    const acc = await invoke("account_get", { id: entry.id });
+    if (acc?.contact?.id === uid || acc?.id === uid) {
+      return invoke("account_delete", { id: Number(entry.id) });
+    }
+  }
 };
 export const setEncryption = (account, key, enabled) => invoke("set_encryption", { account, key, enabled });
 export const getDatabaseFilesCount = account => invoke("get_database_files_count", { account });
