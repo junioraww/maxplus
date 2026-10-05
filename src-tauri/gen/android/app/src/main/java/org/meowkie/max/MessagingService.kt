@@ -9,17 +9,28 @@ class MessagingService : FirebaseMessagingService() {
   override fun onMessageReceived(message: RemoteMessage) {
     super.onMessageReceived(message)
     
+    val data = message.data
+    if (data.isEmpty()) return
+
+    val type = data["type"]
+    if (type == "InboundCall" || data.containsKey("vcp")) {
+      if (!AppState.isAppInForeground) {
+        CallNotificationManager.showIncomingCallNotification(this, data)
+      }
+      return
+    }
+    if (type == "CallFinished") {
+      CallNotificationManager.cancelCallNotification(this)
+      return
+    }
+
     if (AppState.isAppInForeground) {
       return
     }
-    
-    val data = message.data
-    if (data.isEmpty()) return
       
     val chatId = (data["mc"] ?: data["chat_id"])?.toLongOrNull() ?: return
       
     val notifier = NotificationHelper(this)
-    val type = data["type"]
     
     when {
       type == "edit" || data.containsKey("edit") -> notifier.handleEditMessage(data)

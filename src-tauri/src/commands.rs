@@ -1,4 +1,4 @@
-use crate::stores::{load_sync_state, save_sync_state, save_user_settings};
+use crate::stores::{load_sync_state, save_sync_state, save_user_settings, update_account_token};
 use crate::state::AppState;
 use serde_json::{json, Value};
 use std::collections::HashMap;
@@ -236,7 +236,26 @@ pub async fn sync_client(
         let _ = save_user_settings(&app, account_id, user_config);
     }
 
+    let updated_token = final_payload
+        .get("token")
+        .and_then(|t| t.as_str())
+        .or_else(|| {
+            final_payload
+                .pointer("/tokenAttrs/LOGIN/token")
+                .and_then(|t| t.as_str())
+        });
+
+    if let Some(new_token) = updated_token {
+        let _ = update_account_token(&app, account_id, new_token);
+    }
+
     Ok(final_payload)
+}
+
+#[tauri::command]
+pub async fn disconnect(state: State<'_, AppState>) -> Result<(), String> {
+    state.client.disconnect().await;
+    Ok(())
 }
 
 #[tauri::command]
@@ -443,6 +462,9 @@ pub fn decode_call_push(blob: String) -> Result<Value, String> {
     let colon = blob.find(':').ok_or("Invalid vcp: no colon separator")?;
     let raw_len_str = &blob[..colon];
     let raw_len: usize = raw_len_str.parse().map_err(|_| "Invalid vcp: bad rawLen")?;
+    if raw_len == 0 {
+        return Err("Invalid vcp: empty length".to_string());
+    }
     let b64 = &blob[colon + 1..];
     let compressed = base64::engine::general_purpose::STANDARD
         .decode(b64)
@@ -450,7 +472,12 @@ pub fn decode_call_push(blob: String) -> Result<Value, String> {
     let decompressed = lz4_flex::decompress(&compressed, raw_len)
         .or_else(|_| lz4_flex::decompress_size_prepended(&compressed))
         .map_err(|e| format!("vcp lz4 decompress: {e}"))?;
-    let parsed: Value = serde_json::from_slice(&decompressed)
+    let valid_slice = if decompressed.len() > raw_len {
+        &decompressed[..raw_len]
+    } else {
+        &decompressed[..]
+    };
+    let parsed: Value = serde_json::from_slice(valid_slice)
         .map_err(|e| format!("vcp json parse: {e}"))?;
     Ok(parsed)
 }

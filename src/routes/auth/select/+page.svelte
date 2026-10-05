@@ -7,7 +7,8 @@
     getContext,
   } from "svelte";
   import { goto } from "$app/navigation";
-  import API, { currentUser } from "$lib/stores/api";
+  import API, { currentUser, currentUserDetails } from "$lib/stores/api";
+  import { set as sessionSet } from "$lib/stores/session";
   import {
     getAccounts,
     getAccount,
@@ -57,13 +58,19 @@
       return goto("/auth/lock")
     }
 
-    if ($currentUser !== account.contact.id || !$currentUser) {
+    if ($currentUser !== account.contact?.id || !$currentUser) {
+      sessionSet("sync", false);
+      sessionSet("connected", false);
       await setCurrentAccount(account.id);
-      await currentUser.set(account.contact.id);
-      await $API.init(true);
+      if (account.contact) {
+        currentUserDetails.set(account.contact);
+        currentUser.set(account.contact.id);
+      }
+      $API.latest_init = 0;
+      await $API.init(true, true);
     }
 
-    return goto("/")
+    return goto("/");
   }
 
   async function removeAccountLocally(account) {

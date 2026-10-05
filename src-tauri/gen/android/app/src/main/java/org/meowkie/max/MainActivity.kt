@@ -21,6 +21,44 @@ class MainActivity : TauriActivity() {
 
   private external fun initJni()
   private external fun notifyChatClickedNative(chatId: Long)
+  private external fun notifyCallActionNative(action: String, payload: String)
+
+  fun forwardCallDismiss(conversationId: String, callerId: String, vcp: String) {
+    try {
+      val json = org.json.JSONObject().apply {
+        put("conversationId", conversationId)
+        put("callerId", callerId)
+        put("vcp", vcp)
+      }
+      notifyCallActionNative("dismiss", json.toString())
+    } catch (e: Throwable) {
+      Log.e("MaxPlus", "forwardCallDismiss error", e)
+    }
+  }
+
+  private fun handleCallIntent(intent: Intent?) {
+    if (intent == null) return
+    val callAction = intent.getStringExtra("call_action")
+    if (callAction != null) {
+      CallNotificationManager.stopAlerts()
+      val conversationId = intent.getStringExtra("conversationId") ?: ""
+      val callerId = intent.getStringExtra("callerId") ?: ""
+      val isVideo = intent.getBooleanExtra("isVideo", false)
+      val vcp = intent.getStringExtra("vcp") ?: ""
+      intent.removeExtra("call_action")
+      try {
+        val json = org.json.JSONObject().apply {
+          put("conversationId", conversationId)
+          put("callerId", callerId)
+          put("isVideo", isVideo)
+          put("vcp", vcp)
+        }
+        notifyCallActionNative(callAction, json.toString())
+      } catch (e: Throwable) {
+        Log.e("MaxPlus", "handleCallIntent error", e)
+      }
+    }
+  }
 
   private fun handleChatIntent(intent: Intent?) {
     if (intent != null && intent.hasExtra("chatId")) {
@@ -48,6 +86,7 @@ class MainActivity : TauriActivity() {
       Log.e("MaxPlus", "Failed to call initJni", e)
     }
     handleChatIntent(intent)
+    handleCallIntent(intent)
   }
 
   override fun onWebViewCreate(webView: android.webkit.WebView) {
@@ -65,6 +104,7 @@ class MainActivity : TauriActivity() {
     super.onNewIntent(intent)
     setIntent(intent)
     handleChatIntent(intent)
+    handleCallIntent(intent)
   }
 
   override fun onResume() {

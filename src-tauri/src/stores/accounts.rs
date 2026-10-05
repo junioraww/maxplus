@@ -232,6 +232,26 @@ pub async fn current_account_meta(app: AppHandle) -> Result<Value, String> {
     ).await
 }
 
+pub fn update_account_token(app: &AppHandle, id: u64, token: &str) -> Result<(), String> {
+    let key = crypto_key(app, id);
+    let storage = Storage::new(key);
+    let meta_path = account_path(app, &id.to_string(), "meta");
+    let mut meta = storage.load(&meta_path).unwrap_or(Value::Null);
+    if let Value::Object(ref mut map) = meta {
+        map.insert("token".to_string(), Value::String(token.to_string()));
+        storage.save(meta_path, &meta)?;
+        if let Ok(mut guard) = ACCOUNT_CACHE.write() {
+            guard.remove(&id);
+        }
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub fn account_update_token(app: AppHandle, id: u64, token: String) -> Result<(), String> {
+    update_account_token(&app, id, &token)
+}
+
 #[tauri::command]
 pub async fn decrypt_account(
     app: AppHandle,
