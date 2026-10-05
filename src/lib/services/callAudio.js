@@ -121,3 +121,16 @@ export function stopCallAudio() {
     activeContext = null;
   }
 }
+
+export function playRejectionTone() {
+  if (!get(callSoundEnabled)) return;
+  stopCallAudio();
+  const ctx = getOrCreateContext();
+  if (!ctx) return;
+  playDualTone(ctx, 480, 620, 0.2, 0.0, 0.2);
+  playDualTone(ctx, 480, 620, 0.2, 0.3, 0.2);
+  playDualTone(ctx, 480, 620, 0.2, 0.6, 0.2);
+  setTimeout(() => {
+    stopCallAudio();
+  }, 950);
+}

@@ -664,3 +664,24 @@ pub async fn update_call_notification_config(sound: bool, vibration: bool, enabl
     }
     Ok(())
 }
+
+#[tauri::command]
+pub async fn cancel_call_notification() -> Result<(), String> {
+    #[cfg(target_os = "android")]
+    {
+        if let Some(vm) = GLOBAL_JVM.get() {
+            let _ = vm.attach_current_thread(|env| -> Result<(), jni::errors::Error> {
+                let mgr_class = env.find_class(jni_str!("org/meowkie/max/CallNotificationManager"))?;
+                env.call_static_method(
+                    mgr_class,
+                    jni_str!("cancelCallNotificationFromNative"),
+                    jni_sig!("()V"),
+                    &[],
+                )?;
+                Ok(())
+            });
+        }
+    }
+    Ok(())
+}
+

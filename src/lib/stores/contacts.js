@@ -58,6 +58,16 @@ export const getContactDirect = async contactId => {
       }
       return cached;
     }
+    const resp = await invoke("fetch_contacts", { userIds: [id] });
+    if (resp?.contacts && resp.contacts.length > 0) {
+      const raw = resp.contacts[0];
+      const contact = {
+        ...raw,
+        avatar: raw.avatar || raw.baseRawUrl || raw.baseUrl || null,
+      };
+      await updateContact(contact);
+      return contact;
+    }
   } catch (_) {}
   return null;
 };

@@ -6,9 +6,10 @@ import { mediaPipeline } from '$lib/services/MediaPipelineHost.js';
 import { showAlert } from '$lib/utils/alert.js';
 import { currentUser } from '$lib/stores/api.js';
 import { createSyntheticAudioStream, createSyntheticVideoStream } from '$lib/utils/mediaFallback.js';
-import { startIncomingRingtone, startOutgoingRingback, stopCallAudio } from '$lib/services/callAudio.js';
+import { startIncomingRingtone, startOutgoingRingback, stopCallAudio, playRejectionTone } from '$lib/services/callAudio.js';
 import { showDesktopCallNotification } from '$lib/utils/notifications.js';
 import { getContactDirect } from '$lib/stores/contacts.js';
+import { LinuxFallbackPeerConnection } from '$lib/services/LinuxFallbackPeerConnection.js';
 
 const WS2_VERSION = '5';
 const WS2_CAPABILITIES = '3c02f';
@@ -87,32 +88,49 @@ function encodeDisplayLayout(trackKeys) {
 
 function getRTCPeerConnection() {
   if (typeof window !== 'undefined') {
-    return window.RTCPeerConnection || window.webkitRTCPeerConnection || window.mozRTCPeerConnection || null;
+    const pc = window.RTCPeerConnection || window.webkitRTCPeerConnection || window.mozRTCPeerConnection;
+    if (pc) return pc;
   }
   if (typeof globalThis !== 'undefined') {
-    return globalThis.RTCPeerConnection || globalThis.webkitRTCPeerConnection || null;
+    const pc = globalThis.RTCPeerConnection || globalThis.webkitRTCPeerConnection;
+    if (pc) return pc;
   }
-  return null;
+  return LinuxFallbackPeerConnection;
 }
 
 function getRTCSessionDescription() {
   if (typeof window !== 'undefined') {
-    return window.RTCSessionDescription || window.webkitRTCSessionDescription || null;
+    const sd = window.RTCSessionDescription || window.webkitRTCSessionDescription;
+    if (sd) return sd;
   }
   if (typeof globalThis !== 'undefined') {
-    return globalThis.RTCSessionDescription || null;
+    const sd = globalThis.RTCSessionDescription;
+    if (sd) return sd;
   }
-  return null;
+  return class MockSessionDescription {
+    constructor(init = {}) {
+      this.type = init.type || 'offer';
+      this.sdp = init.sdp || '';
+    }
+  };
 }
 
 function getRTCIceCandidate() {
   if (typeof window !== 'undefined') {
-    return window.RTCIceCandidate || window.webkitRTCIceCandidate || null;
+    const ic = window.RTCIceCandidate || window.webkitRTCIceCandidate;
+    if (ic) return ic;
   }
   if (typeof globalThis !== 'undefined') {
-    return globalThis.RTCIceCandidate || null;
+    const ic = globalThis.RTCIceCandidate;
+    if (ic) return ic;
   }
-  return null;
+  return class MockIceCandidate {
+    constructor(init = {}) {
+      this.candidate = init.candidate || '';
+      this.sdpMid = init.sdpMid || '0';
+      this.sdpMLineIndex = init.sdpMLineIndex ?? 0;
+    }
+  };
 }
 
 class VoiceChannel {
@@ -478,6 +496,9 @@ class MaxCallSession {
     ch.on('accepted-call', (msg) => this.#onAcceptedCall(msg));
     ch.on('hungup', (msg) => {
       log('hungup', msg);
+      if (get(activeCall).phase === CALL_PHASE.OUTGOING || get(activeCall).phase === CALL_PHASE.INCOMING) {
+        playRejectionTone();
+      }
       const pid = String(msg.participantId || msg.participant?.id || '');
       if (pid === String(this.#myCallUserId)) {
         this.destroy();
@@ -1254,7 +1275,10 @@ class MaxCallSession {
     this.#pc = null;
     this.#voiceChannel = null;
     this.#sfuCommandChannel = null;
-    resetCallState();
+    invoke('cancel_call_notification').catch(() => {});
+    setTimeout(() => {
+      resetCallState();
+    }, 320);
   }
 }
 
@@ -1356,8 +1380,6 @@ export const CallService = {
   async handleIncomingPush(pushData) {
     try {
       const vcp = pushData.vcp || pushData.conversationParams;
-      const conversationId = pushData.conversationId || pushData.conference_id;
-      const callerId = pushData.callerId || pushData.caller_id;
       let convParams = {};
       if (vcp) {
         try {
@@ -1366,6 +1388,8 @@ export const CallService = {
           log('vcp decode error:', e);
         }
       }
+      const conversationId = pushData.conversationId || pushData.vcId || pushData.conference_id || (convParams?.cid ? String(convParams.cid) : '');
+      const callerId = pushData.callerId || pushData.suid || pushData.caller_id || (convParams?.from ? String(convParams.from) : '');
       let endpoint = convParams.endpoint || convParams.ws2url || pushData.endpoint;
       if (!endpoint && convParams.wse) {
         try {
@@ -1388,8 +1412,8 @@ export const CallService = {
         }
       }
       if (!endpoint) { log('incoming call without endpoint'); return; }
-      const contact = callerId ? getContactDirect(callerId) : null;
-      const peerName = contact?.name || contact?.displayName || (callerId ? `User ${callerId}` : 'Входящий звонок');
+      const contact = callerId ? await getContactDirect(callerId) : null;
+      const peerName = contact?.name || contact?.displayName || pushData.userName || pushData.title || pushData.name || (callerId ? `User ${callerId}` : 'Входящий звонок');
       const peerAvatar = contact?.avatar || contact?.avatarUrl || null;
       const isVideo = Boolean(pushData.isVideo || convParams.iv);
       const callType = isVideo ? 'video' : 'audio';
@@ -1415,6 +1439,7 @@ export const CallService = {
 
   async acceptIncoming(mode = CALL_MODE.PLAIN) {
     stopCallAudio();
+    invoke('cancel_call_notification').catch(() => {});
     const pending = this._pendingIncoming;
     if (!pending) return;
     this._pendingIncoming = null;
@@ -1432,6 +1457,8 @@ export const CallService = {
 
   declineIncoming() {
     stopCallAudio();
+    playRejectionTone();
+    invoke('cancel_call_notification').catch(() => {});
     const pending = this._pendingIncoming;
     this._pendingIncoming = null;
     if (pending?.endpoint) {
@@ -1444,21 +1471,29 @@ export const CallService = {
       } catch {}
     }
     this._endActive();
-    resetCallState();
+    patchCallState({ phase: CALL_PHASE.ENDING });
+    setTimeout(() => {
+      resetCallState();
+    }, 320);
   },
 
   async hangup() {
     stopCallAudio();
+    invoke('cancel_call_notification').catch(() => {});
     this._pendingIncoming = null;
     const session = _activeSession;
     _activeSession = null;
-    resetCallState();
+    patchCallState({ phase: CALL_PHASE.ENDING });
     if (session) {
       try {
         await session.hangup();
       } catch {
         session.destroy();
       }
+    } else {
+      setTimeout(() => {
+        resetCallState();
+      }, 320);
     }
   },
 

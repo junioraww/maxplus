@@ -191,7 +191,7 @@
   {/key}
 {/if}
 
-{#if $activeCall.phase !== CALL_PHASE.IDLE && $activeCall.phase !== CALL_PHASE.ENDING}
+{#if $activeCall.phase !== CALL_PHASE.IDLE}
   {#if !$activeCall.minimized}
     <CallScreen />
   {:else}
