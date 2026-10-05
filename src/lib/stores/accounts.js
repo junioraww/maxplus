@@ -37,3 +37,4 @@ export const getDatabaseFilesCount = account => invoke("get_database_files_count
 export const decrypt = (account, key) => invoke("decrypt_account", { account, key });
 export const getDevice = () => invoke("common_store_load", { store: "device" });
 export const saveDevice = device => invoke("common_store_save", { store: "device", data: device });
+export const updateAccountToken = (id, token) => invoke("account_update_token", { id: Number(id), token });

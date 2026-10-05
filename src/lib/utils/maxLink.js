@@ -1,5 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { getWebAppProxyBase } from "./proxyConfig.js";
+import { showAlert } from "./alert.js";
+import { parseApiError } from "./errors.js";
 
 const RESERVED_SLUGS = new Set([
   "login",
@@ -228,20 +230,25 @@ export async function processMaxLink(targetUrl, { currentUserId, api, onOpenChat
       if (info.startPayload !== null && api && typeof api.sendBotStart === "function") {
         try {
           const res = await api.sendBotStart(targetChatId, info.startPayload);
-          const msg = res?.message;
-          if (msg) {
-            msg.status = 1;
-            try {
-              const { getChat } = await import("../stores/messages.js");
-              const c = getChat(targetChatId);
-              if (c) {
-                c.receivedMessage?.set(msg);
-                c.updateMessages?.([msg]);
-              }
-            } catch {}
+          if (res?.error) {
+            showAlert(parseApiError(res));
+          } else {
+            const msg = res?.message;
+            if (msg && typeof msg === "object") {
+              const msgCopy = { ...msg, status: 1 };
+              try {
+                const { getChat } = await import("../stores/messages.js");
+                const c = getChat(targetChatId);
+                if (c) {
+                  c.receivedMessage?.set(msgCopy);
+                  c.updateMessages?.([msgCopy]);
+                }
+              } catch {}
+            }
           }
         } catch (err) {
           console.error(err);
+          showAlert(parseApiError(err));
         }
       }
 

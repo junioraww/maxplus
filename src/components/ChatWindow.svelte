@@ -10,6 +10,7 @@
   import { writable, get } from "svelte/store";
   import { fly } from "svelte/transition";
   import { registerBackHandler } from "$lib/utils/backButton.js";
+  import { parseApiError } from "$lib/utils/errors.js";
 
   import Message from "$components/ChatWindow/Message.svelte";
   import PinnedMessage from "$components/ChatWindow/PinnedMessage.svelte";
@@ -618,25 +619,28 @@
     botStarting = true;
     try {
       const response = await $API.sendBotStart(chat.id, "");
+      if (response?.error) {
+        showAlert(parseApiError(response));
+        return;
+      }
       const message = response?.message;
-      if (message) {
-        message.status = 1;
-        chatCache.receivedMessage.set(message);
-        chatCache.updateMessages([message]);
+      if (message && typeof message === "object") {
+        const msgCopy = { ...message, status: 1 };
+        chatCache.receivedMessage.set(msgCopy);
+        chatCache.updateMessages([msgCopy]);
         messages.update((msgs) => {
-          if (msgs.some((m) => m.id === message.id)) return msgs;
-          return [...msgs, message];
+          if (msgs.some((m) => m.id === msgCopy.id)) return msgs;
+          return [...msgs, msgCopy];
         });
       } else {
-        await $API.sendMessage("/start", chat.id, { notify: true });
+        const sendResp = await $API.sendMessage("/start", chat.id, { notify: true });
+        if (sendResp?.error) {
+          showAlert(parseApiError(sendResp));
+        }
       }
     } catch (e) {
       console.error("handleBotStart error:", e);
-      try {
-        await $API.sendMessage("/start", chat.id, { notify: true });
-      } catch (err) {
-        console.error("fallback /start error:", err);
-      }
+      showAlert(parseApiError(e));
     } finally {
       botStarting = false;
     }

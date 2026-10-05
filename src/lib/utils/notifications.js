@@ -37,6 +37,8 @@ const NOTIFICATIONS_KEY = 'client_notifications_enabled';
 const PREVIEW_KEY = 'client_preview_enabled';
 const SOUND_KEY = 'client_sound_enabled';
 const CALLS_KEY = 'client_calls_enabled';
+const CALL_SOUND_KEY = 'client_call_sound_enabled';
+const CALL_VIBRATION_KEY = 'client_call_vibration_enabled';
 const NEW_CONTACTS_KEY = 'client_new_contacts_enabled';
 
 let _activeAccountId = null;
@@ -60,13 +62,42 @@ const initialEnabled = lsGet(NOTIFICATIONS_KEY) !== 'false';
 const initialPreview = lsGet(PREVIEW_KEY) !== 'false';
 const initialSound = lsGet(SOUND_KEY) !== 'false';
 const initialCalls = lsGet(CALLS_KEY) !== 'false';
+const initialCallSound = lsGet(CALL_SOUND_KEY) !== 'false';
+const initialCallVibration = lsGet(CALL_VIBRATION_KEY) !== 'false';
 const initialNewContacts = lsGet(NEW_CONTACTS_KEY) === 'true';
 
 export const clientNotificationsEnabled = writable(initialEnabled);
 export const messagePreviewEnabled = writable(initialPreview);
 export const notificationSoundEnabled = writable(initialSound);
 export const callNotificationsEnabled = writable(initialCalls);
+export const callSoundEnabled = writable(initialCallSound);
+export const callVibrationEnabled = writable(initialCallVibration);
 export const newContactsNotificationsEnabled = writable(initialNewContacts);
+
+export function setCallSoundEnabled(enabled) {
+  callSoundEnabled.set(enabled);
+  lsSet(CALL_SOUND_KEY, enabled ? 'true' : 'false', _activeAccountId);
+  syncNativeCallSettings();
+}
+
+export function setCallVibrationEnabled(enabled) {
+  callVibrationEnabled.set(enabled);
+  lsSet(CALL_VIBRATION_KEY, enabled ? 'true' : 'false', _activeAccountId);
+  syncNativeCallSettings();
+}
+
+async function syncNativeCallSettings() {
+  if (!currentOs) currentOs = type();
+  if (currentOs === 'android') {
+    try {
+      await invoke('update_call_notification_config', {
+        enabled: get(callNotificationsEnabled),
+        sound: get(callSoundEnabled),
+        vibration: get(callVibrationEnabled),
+      });
+    } catch {}
+  }
+}
 
 export function isClientNotificationsEnabled() {
   return get(clientNotificationsEnabled);
@@ -130,7 +161,10 @@ export function loadAccountNotificationSettings(accountId) {
   messagePreviewEnabled.set(lsGet(PREVIEW_KEY, accountId) !== 'false');
   notificationSoundEnabled.set(lsGet(SOUND_KEY, accountId) !== 'false');
   callNotificationsEnabled.set(lsGet(CALLS_KEY, accountId) !== 'false');
+  callSoundEnabled.set(lsGet(CALL_SOUND_KEY, accountId) !== 'false');
+  callVibrationEnabled.set(lsGet(CALL_VIBRATION_KEY, accountId) !== 'false');
   newContactsNotificationsEnabled.set(lsGet(NEW_CONTACTS_KEY, accountId) === 'true');
+  syncNativeCallSettings();
 }
 
 export async function setAllNotificationsServer(enabled) {
@@ -381,3 +415,25 @@ export async function sendNotification(data) {
     console.error("Failed to display notification:", e);
   }
 }
+
+export async function showDesktopCallNotification({ callerName, isVideo = false, avatar = null }) {
+  if (!get(callNotificationsEnabled)) return;
+  if (!granted) {
+    await suggestNotifications();
+  }
+  if (!granted) return;
+  try {
+    const title = isVideo ? `Входящий видеозвонок` : `Входящий аудиозвонок`;
+    const body = callerName || `Неизвестный абонент`;
+    await pluginSendNotification({
+      id: 999991,
+      title,
+      body,
+      icon: avatar,
+      largeIcon: avatar,
+    });
+  } catch (e) {
+    console.error("Failed to display call notification:", e);
+  }
+}
+

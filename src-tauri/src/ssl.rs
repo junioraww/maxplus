@@ -1,4 +1,6 @@
+#[cfg(not(target_os = "android"))]
 use std::fs;
+#[cfg(not(target_os = "android"))]
 use std::path::{Path, PathBuf};
 
 pub fn init_ssl_certificates() {
@@ -56,6 +58,7 @@ fn setup_ca_bundle() {
     }
 }
 
+#[cfg(not(target_os = "android"))]
 fn get_ca_bundle_path() -> PathBuf {
     if let Some(cache_dir) = dirs::cache_dir() {
         return cache_dir.join("maxplus").join("ca-bundle-mintsifry.crt");

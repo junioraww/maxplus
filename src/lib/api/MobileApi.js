@@ -30,6 +30,7 @@ import { handleTranscriptionPush } from "$lib/stores/transcription.js";
 import {
   addAccount,
   getAccounts,
+  getDevice,
   removeAccount,
   removeAccountByUserId,
   getCurrentAccount,
@@ -425,55 +426,75 @@ export default class MobileApi extends BaseAPI {
   }
 
   async init(forceSync = false, isReconnect = false) {
-    if (!isReconnect && this.latest_init > Date.now() - 3000) {
-      return false;
-    }
-
-    const account = await getCurrentAccount();
-
-    if (!account?.meta?.device)
-      throw new Error("No device entry");
-
-    loadAccountNotificationSettings(account.id);
-
-    if (this.unlisten) await this.unlisten();
-    this.startListener();
-
-    this.latest_init = Date.now();
-    sessionSet("connected", false);
-    sessionSet("sync", false);
-    if (!this.synchronizedPending) {
-      this.synchronizedPending = true;
-      this.synchronized = new Promise((resolve) => (this.resolve_sync = resolve));
-    }
-
-    const response = await invoke("init", {
-      userId: get(currentUser),
-      token: account.meta.token,
-      identity: account.meta.device,
-    });
-
-    const isError = !response || Boolean(response.error) || (response.type && response.type !== "ApiResponse");
-
-    if (!isError) {
-      sessionSet("connected", true);
-      if (forceSync) {
+    if (this.initializing) {
+      const res = await this.initializing;
+      if (forceSync && !sessionGet("sync")) {
         await this.sync();
-      } else {
-        this.synchronizedPending = false;
-        if (this.resolve_sync) {
-          this.resolve_sync();
-        }
       }
-      return true;
-    } else {
-      sessionSet("connected", false);
-      sessionSet("sync", false);
-      if (!isReconnect) {
-        alert(response?.message || response?.text || response?.error || "Ошибка подключения");
-      }
-      return false;
+      return res;
     }
+
+    this.initializing = (async () => {
+      try {
+        if (!isReconnect && this.latest_init > Date.now() - 3000) {
+          return false;
+        }
+
+        const account = await getCurrentAccount();
+
+        if (!account?.meta?.device)
+          throw new Error("No device entry");
+
+        loadAccountNotificationSettings(account.id);
+
+        if (this.unlisten) await this.unlisten();
+        this.startListener();
+
+        this.latest_init = Date.now();
+        sessionSet("connected", false);
+        sessionSet("sync", false);
+        if (!this.synchronizedPending) {
+          this.synchronizedPending = true;
+          this.synchronized = new Promise((resolve) => (this.resolve_sync = resolve));
+        }
+
+        const response = await invoke("init", {
+          userId: get(currentUser),
+          token: account.meta.token,
+          identity: account.meta.device,
+        });
+
+        const isError = !response || Boolean(response.error) || (response.type && response.type !== "ApiResponse");
+
+        if (!isError) {
+          sessionSet("connected", true);
+          if (forceSync) {
+            await this.sync();
+          } else {
+            this.synchronizedPending = false;
+            if (this.resolve_sync) {
+              this.resolve_sync();
+            }
+          }
+          return true;
+        } else {
+          sessionSet("connected", false);
+          sessionSet("sync", false);
+          this.synchronizedPending = false;
+          if (this.resolve_sync) {
+            this.resolve_sync();
+          }
+          if (!isReconnect) {
+            alert(response?.message || response?.text || response?.error || "Ошибка подключения");
+          }
+          return false;
+        }
+      } finally {
+        this.initializing = null;
+      }
+    })();
+
+    return await this.initializing;
   }
 
   async startAuth(phone) {
@@ -553,9 +574,15 @@ export default class MobileApi extends BaseAPI {
     const token = payload?.tokenAttrs?.LOGIN?.token || payload?.token || fallbackToken;
     if (!token) return payload;
 
+    let device = sessionGet("device");
+    if (!device) {
+      device = await getDevice();
+      if (device) sessionSet("device", device);
+    }
+
     const accountEntry = await addAccount(
       token,
-      sessionGet("device")
+      device
     );
 
     await setCurrentAccount(accountEntry.id);
@@ -659,35 +686,48 @@ export default class MobileApi extends BaseAPI {
 
     sessionSet("sync", false);
     sessionSet("connected", false);
-    this.synchronizedPending = true;
-    this.synchronized = new Promise((resolve) => (this.resolve_sync = resolve));
+    this.latest_init = 0;
+    this.synchronizedPending = false;
+    if (this.resolve_sync) {
+      this.resolve_sync();
+    }
+    this.synchronized = Promise.resolve();
+    invoke("disconnect").catch(() => {});
   }
 
   async sync() {
-    try {
-      if (sessionGet("sync")) {
-        console.warn("Уже синхронизовано!");
-        return;
-      }
+    if (this.syncing) {
+      return this.syncing;
+    }
+    if (sessionGet("sync")) {
+      console.warn("Уже синхронизовано!");
+      return;
+    }
 
-      console.warn("Синхронизируем!");
+    this.syncing = (async () => {
+      try {
+        console.warn("Синхронизируем!");
 
-      const account = await getCurrentAccount();
-      console.log('Current account', account);
+        const account = await getCurrentAccount();
+        console.log('Current account', account);
 
-      const t0 = Date.now();
-      const synced = await invoke("sync_client", {
-        accountId: account.id
-      });
-      const t1 = Date.now();
+        const t0 = Date.now();
+        const synced = await invoke("sync_client", {
+          accountId: account.id
+        });
+        const t1 = Date.now();
 
-      const isError = !synced || Boolean(synced.error) || (synced.type && synced.type !== "ApiResponse") || Boolean(synced.text);
-      if (isError) {
-        sessionSet("sync", false);
-        return null;
-      }
+        const isError = !synced || Boolean(synced.error) || (synced.type && synced.type !== "ApiResponse") || Boolean(synced.text);
+        if (isError) {
+          sessionSet("sync", false);
+          return null;
+        }
 
-      sessionSet("sync", true);
+        sessionSet("sync", true);
+
+        if (synced?.token && account?.meta) {
+          account.meta.token = synced.token;
+        }
 
       const rtt = t1 - t0;
       const offset = Math.ceil(synced.time - (t0 + rtt / 2));
@@ -824,11 +864,12 @@ export default class MobileApi extends BaseAPI {
       const text = e?.toString() || "";
       if (text.includes("login.token")) await this.logout();
     } finally {
+      this.synchronizedPending = false;
+      if (this.resolve_sync) {
+        this.resolve_sync();
+      }
+      this.syncing = null;
       if (sessionGet("sync")) {
-        this.synchronizedPending = false;
-        if (this.resolve_sync) {
-          this.resolve_sync();
-        }
         console.log("Синхронизация завершена!");
 
         try {
@@ -847,7 +888,10 @@ export default class MobileApi extends BaseAPI {
         preloadComplaintReasons().catch(() => {});
       }
     }
-  }
+  })();
+
+  return await this.syncing;
+}
 
   async fetchContacts(userIds) {
     await this.waitSync();

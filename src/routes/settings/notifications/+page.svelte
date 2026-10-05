@@ -15,11 +15,15 @@
     messagePreviewEnabled,
     notificationSoundEnabled,
     callNotificationsEnabled,
+    callSoundEnabled,
+    callVibrationEnabled,
     newContactsNotificationsEnabled,
     toggleClientNotifications,
     setMessagePreviewServer,
     setNotificationSoundServer,
     setCallNotificationsServer,
+    setCallSoundEnabled,
+    setCallVibrationEnabled,
     setNewContactsServer,
     isChatMuted
   } from "$lib/utils/notifications";
@@ -178,6 +182,42 @@
         </div>
         <div class="toggle-track" class:active={$callNotificationsEnabled}>
           <div class="toggle-thumb" class:active={$callNotificationsEnabled}></div>
+        </div>
+      </div>
+
+      <div class="card-divider"></div>
+
+      <div
+        class="toggle-row"
+        class:disabled={!$callNotificationsEnabled}
+        on:click={() => {
+          if ($callNotificationsEnabled) setCallSoundEnabled(!$callSoundEnabled);
+        }}
+      >
+        <div class="toggle-info">
+          <span class="toggle-title">Звук звонка</span>
+          <span class="toggle-desc">Воспроизводить рингтон при входящем звонке</span>
+        </div>
+        <div class="toggle-track" class:active={$callSoundEnabled && $callNotificationsEnabled}>
+          <div class="toggle-thumb" class:active={$callSoundEnabled && $callNotificationsEnabled}></div>
+        </div>
+      </div>
+
+      <div class="card-divider"></div>
+
+      <div
+        class="toggle-row"
+        class:disabled={!$callNotificationsEnabled}
+        on:click={() => {
+          if ($callNotificationsEnabled) setCallVibrationEnabled(!$callVibrationEnabled);
+        }}
+      >
+        <div class="toggle-info">
+          <span class="toggle-title">Вибрация при звонке</span>
+          <span class="toggle-desc">Вибрировать при входящем звонке</span>
+        </div>
+        <div class="toggle-track" class:active={$callVibrationEnabled && $callNotificationsEnabled}>
+          <div class="toggle-thumb" class:active={$callVibrationEnabled && $callNotificationsEnabled}></div>
         </div>
       </div>
 

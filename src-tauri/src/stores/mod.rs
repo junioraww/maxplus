@@ -10,7 +10,7 @@ use serde_json::{json, Value};
 
 use storage::crypto_key;
 pub use storage::{Paths, Storage};
-pub use accounts::{current_get, load_accounts};
+pub use accounts::{current_get, load_accounts, update_account_token};
 #[cfg(target_os = "android")]
 pub use accounts::{get_background_creds, resolve_app_root};
 pub use messages::clear_local_messages;

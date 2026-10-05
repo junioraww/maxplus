@@ -59,6 +59,7 @@
   });
   let cleanupDeepLink = null;
   let unlistenBackButton = null;
+  let unlistenCallAction = null;
   let handleKeydown = null;
 
   setContext("onBack", onBack);
@@ -102,6 +103,32 @@
         console.warn("BackButton listener unavailable", e);
       }
     }
+
+    try {
+      unlistenCallAction = await listen("native_call_action", async (event) => {
+        try {
+          const payloadObj = typeof event.payload?.payload === 'string'
+            ? JSON.parse(event.payload.payload)
+            : event.payload?.payload || {};
+          const action = event.payload?.action;
+          const { CallService } = await import('$lib/services/CallService.js');
+          if (action === 'answer') {
+            if (payloadObj.vcp || payloadObj.conversationId) {
+              await CallService.handleIncomingPush(payloadObj);
+            }
+            await CallService.acceptIncoming();
+          } else if (action === 'dismiss') {
+            CallService.declineIncoming();
+          } else if (action === 'show_incoming') {
+            if (payloadObj.vcp || payloadObj.conversationId) {
+              await CallService.handleIncomingPush(payloadObj);
+            }
+          }
+        } catch (err) {
+          console.error("native_call_action error:", err);
+        }
+      });
+    } catch {}
   });
 
   function unmountLoader() {
@@ -121,6 +148,7 @@
   onDestroy(() => {
     if (handleKeydown) window.removeEventListener("keydown", handleKeydown);
     if (unlistenBackButton) unlistenBackButton();
+    if (unlistenCallAction) unlistenCallAction();
     if (cleanupDeepLink) cleanupDeepLink();
     $API.unlisten();
   });

@@ -479,6 +479,33 @@ pub extern "system" fn Java_org_meowkie_max_MainActivity_notifyChatClickedNative
 }
 
 #[cfg(target_os = "android")]
+#[no_mangle]
+pub extern "system" fn Java_org_meowkie_max_MainActivity_notifyCallActionNative<'local>(
+    mut unowned_env: EnvUnowned<'local>,
+    _this: JObject<'local>,
+    action: JString<'local>,
+    payload: JString<'local>,
+) {
+    let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let (action_str, payload_str) = match unowned_env.with_env(|env| -> Result<_, jni::errors::Error> {
+            let a = action.try_to_string(env)?;
+            let p = payload.try_to_string(env)?;
+            Ok((a, p))
+        }).into_outcome() {
+            jni::Outcome::Ok(pair) => pair,
+            _ => return,
+        };
+
+        if let Some(app) = GLOBAL_APP_HANDLE.get() {
+            let _ = app.emit("native_call_action", serde_json::json!({
+                "action": action_str,
+                "payload": payload_str
+            }));
+        }
+    }));
+}
+
+#[cfg(target_os = "android")]
 static GLOBAL_JVM: std::sync::OnceLock<jni::JavaVM> = std::sync::OnceLock::new();
 #[cfg(target_os = "android")]
 static GLOBAL_NOTIFICATION_CLASS: std::sync::OnceLock<jni::refs::Global<jni::objects::JClass<'static>>> = std::sync::OnceLock::new();
@@ -612,6 +639,27 @@ pub async fn cancel_notification(chat_id: i64) -> Result<(), String> {
             }
         } else {
             android_log(5, "MaxPlusJNI", "cancel_notification: GLOBAL_JVM or GLOBAL_NOTIFICATION_CLASS is None");
+        }
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn update_call_notification_config(sound: bool, vibration: bool, enabled: Option<bool>) -> Result<(), String> {
+    #[cfg(target_os = "android")]
+    {
+        let _ = enabled;
+        if let Some(vm) = GLOBAL_JVM.get() {
+            let _ = vm.attach_current_thread(|env| -> Result<(), jni::errors::Error> {
+                let mgr_class = env.find_class(jni_str!("org/meowkie/max/CallNotificationManager"))?;
+                env.call_static_method(
+                    mgr_class,
+                    jni_str!("syncCallSettings"),
+                    jni_sig!("(ZZ)V"),
+                    &[jni::objects::JValue::Bool(sound), jni::objects::JValue::Bool(vibration)],
+                )?;
+                Ok(())
+            });
         }
     }
     Ok(())

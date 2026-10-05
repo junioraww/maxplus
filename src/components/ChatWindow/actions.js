@@ -10,6 +10,8 @@ import {
 import { getCurrentAccount } from "$lib/stores/accounts";
 import { encryptMessage } from "$lib/crypto/messages";
 import { get } from "svelte/store";
+import { showAlert } from "$lib/utils/alert.js";
+import { parseApiError } from "$lib/utils/errors.js";
 
 export async function sendMessage(
   chat,
@@ -130,12 +132,29 @@ export async function sendMessage(
       }
       return [...msgs];
     });
+    showAlert(parseApiError(err));
     throw err;
+  }
+
+  if (response?.error) {
+    const errorText = parseApiError(response);
+    messages.update((msgs) => {
+      const target = msgs.find((x) => x.id === id);
+      if (target) {
+        target.sending = false;
+        target.deleted = true;
+        target.status = "failed";
+        target.error = errorText;
+      }
+      return [...msgs];
+    });
+    showAlert(errorText);
+    return response;
   }
 
   const message = response?.message;
 
-  if (!message) {
+  if (!message || typeof message !== "object") {
     messages.update((msgs) => {
       const target = msgs.find((x) => x.id === id);
       if (target) {
@@ -345,8 +364,12 @@ export async function forwardMessages(targetChatId, messagesToForward, optionalT
     const textToSend = i === 0 ? (optionalText || "") : "";
     try {
       const resp = await api.sendMessage(textToSend, targetIdNum, params);
+      if (resp?.error) {
+        showAlert(parseApiError(resp));
+        return false;
+      }
       const sentMsg = resp?.message || resp?.payload?.message;
-      if (sentMsg) {
+      if (sentMsg && typeof sentMsg === "object") {
         const originalMsg = m.link?.message ? { ...m.link.message } : {
           id: msgIdStr,
           sender: m.sender,
