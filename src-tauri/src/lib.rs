@@ -100,6 +100,19 @@ pub fn run() {
                 let _ = w.eval(&script);
             }
 
+            #[cfg(target_os = "linux")]
+            {
+                use webkit2gtk::{SettingsExt, WebViewExt};
+                for (_name, w) in app.webview_windows() {
+                    let _ = w.with_webview(|webview| {
+                        if let Some(settings) = webview.inner().settings() {
+                            settings.set_enable_webrtc(true);
+                            settings.set_enable_media_stream(true);
+                        }
+                    });
+                }
+            }
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -259,6 +272,7 @@ pub fn run() {
             notifications::show_notification,
             notifications::cancel_notification,
             notifications::update_call_notification_config,
+            notifications::cancel_call_notification,
             notifications::check_pending_open_chat,
             webapp_proxy::set_webapp_filter_rules,
             webapp_proxy::get_webapp_filter_rules,

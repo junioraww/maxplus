@@ -71,3 +71,7 @@ tauri-plugin-barcode-scanner = "2.5.0"
 [target.'cfg(target_os = "ios")'.dependencies]
 tauri-plugin-safe-area-insets-css = "0.2"
 tauri-plugin-ios-webview-insets = "0.1"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+webkit2gtk = { version = "2.0", default-features = false }
+

@@ -41,6 +41,7 @@ class MainActivity : TauriActivity() {
     val callAction = intent.getStringExtra("call_action")
     if (callAction != null) {
       CallNotificationManager.stopAlerts()
+      CallNotificationManager.cancelCallNotification(this)
       val conversationId = intent.getStringExtra("conversationId") ?: ""
       val callerId = intent.getStringExtra("callerId") ?: ""
       val isVideo = intent.getBooleanExtra("isVideo", false)

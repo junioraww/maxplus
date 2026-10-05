@@ -17,6 +17,7 @@ import android.os.Vibrator
 import android.os.VibratorManager
 import androidx.core.app.NotificationCompat
 import androidx.core.app.Person
+import androidx.core.graphics.drawable.IconCompat
 
 object CallNotificationManager {
   const val CALL_NOTIFICATION_ID = 987654
@@ -45,6 +46,12 @@ object CallNotificationManager {
       .apply()
   }
 
+  @JvmStatic
+  fun cancelCallNotificationFromNative() {
+    val ctx = MainActivity.appContext ?: MainActivity.instance?.applicationContext ?: return
+    cancelCallNotification(ctx)
+  }
+
   fun showIncomingCallNotification(context: Context, data: Map<String, String>) {
     createCallChannel(context)
 
@@ -52,11 +59,13 @@ object CallNotificationManager {
     val soundEnabled = prefs.getBoolean(KEY_SOUND, true)
     val vibrationEnabled = prefs.getBoolean(KEY_VIBRATION, true)
 
-    val conversationId = data["conversationId"] ?: data["conference_id"] ?: ""
-    val callerId = data["callerId"] ?: data["caller_id"] ?: ""
-    val callerName = data["callerName"] ?: data["caller_name"] ?: data["name"] ?: if (callerId.isNotEmpty()) "Пользователь $callerId" else "Входящий вызов"
-    val isVideo = data["isVideo"]?.toBoolean() ?: data["video"]?.toBoolean() ?: false
+    val conversationId = data["conversationId"] ?: data["vcId"] ?: data["conference_id"] ?: ""
+    val callerId = data["callerId"] ?: data["suid"] ?: data["caller_id"] ?: ""
+    val callerName = data["userName"] ?: data["title"] ?: data["callerName"] ?: data["caller_name"] ?: data["name"] ?: if (callerId.isNotEmpty()) "Пользователь $callerId" else "Входящий вызов"
+    val isVideo = data["isVideo"]?.toBoolean() ?: data["video"]?.toBoolean() ?: (data["iv"] == "1" || data["iv"] == "true")
     val vcp = data["vcp"] ?: data["conversationParams"] ?: ""
+    val account = data["c"]?.toLongOrNull() ?: 0L
+    val callerIdLong = callerId.toLongOrNull() ?: 0L
 
     val dismissIntent = Intent(context, CallDismissReceiver::class.java).apply {
       action = "${context.packageName}.ACTION_DISMISS_CALL"
@@ -105,8 +114,11 @@ object CallNotificationManager {
       PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
     )
 
+    val avatarBitmap = AvatarHelper.getAvatar(context, callerIdLong, callerName, null, account)
     val callerPerson = Person.Builder()
       .setName(callerName)
+      .setKey(callerId)
+      .setIcon(IconCompat.createWithBitmap(avatarBitmap))
       .setImportant(true)
       .build()
 
@@ -115,6 +127,7 @@ object CallNotificationManager {
 
     val builder = NotificationCompat.Builder(context, CALL_CHANNEL_ID)
       .setSmallIcon(R.drawable.ic_notification)
+      .setLargeIcon(avatarBitmap)
       .setContentTitle(titleText)
       .setContentText(contentText)
       .setPriority(NotificationCompat.PRIORITY_MAX)
@@ -164,6 +177,7 @@ object CallNotificationManager {
       try {
         val alertUri: Uri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE)
           ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+          ?: android.provider.Settings.System.DEFAULT_RINGTONE_URI
         val ringtone = RingtoneManager.getRingtone(context.applicationContext, alertUri)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
           ringtone.audioAttributes = AudioAttributes.Builder()
@@ -218,6 +232,14 @@ object CallNotificationManager {
       val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
       val existing = notificationManager.getNotificationChannel(CALL_CHANNEL_ID)
       if (existing == null) {
+        val soundUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE)
+          ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+          ?: android.provider.Settings.System.DEFAULT_RINGTONE_URI
+        val audioAttrs = AudioAttributes.Builder()
+          .setUsage(AudioAttributes.USAGE_NOTIFICATION_RINGTONE)
+          .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+          .build()
+
         val channel = NotificationChannel(
           CALL_CHANNEL_ID,
           CALL_CHANNEL_NAME,
@@ -227,8 +249,8 @@ object CallNotificationManager {
           enableLights(true)
           lightColor = Color.GREEN
           lockscreenVisibility = android.app.Notification.VISIBILITY_PUBLIC
-          setSound(null, null)
-          enableVibration(false)
+          setSound(soundUri, audioAttrs)
+          enableVibration(true)
         }
         notificationManager.createNotificationChannel(channel)
       }

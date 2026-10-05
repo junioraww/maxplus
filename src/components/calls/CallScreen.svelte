@@ -127,7 +127,6 @@
       e.stopPropagation();
       e.preventDefault();
     }
-    resetCallState();
     try {
       await CallService.hangup();
     } catch {}
@@ -203,8 +202,8 @@
   role="presentation"
   on:pointermove={touchControls}
   on:click={touchControls}
-  in:fly={{ y: 60, duration: 320, easing: cubicOut }}
-  out:fly={{ y: 60, duration: 240, easing: cubicOut }}
+  in:fade={{ duration: 250, easing: cubicOut }}
+  out:fade={{ duration: 200, easing: cubicInOut }}
 >
   <audio bind:this={remoteAudioEl} autoplay playsinline></audio>
 
@@ -422,7 +421,11 @@
 
 
   {#if phase === CALL_PHASE.INCOMING}
-    <div class="incoming-actions" in:fly={{ y: 40, duration: 300, easing: cubicOut }}>
+    <div
+      class="incoming-actions"
+      in:fly={{ y: 30, duration: 280, easing: cubicOut }}
+      out:fade={{ duration: 160 }}
+    >
       <button class="action-btn action-btn--decline" on:click={onDecline} aria-label="Decline">
         <img src="/icons/call-end.svg" alt="" width="28" height="28" />
       </button>
@@ -431,7 +434,12 @@
       </button>
     </div>
   {:else}
-    <div class="control-bar" class:visible={controlsVisible || !showVideo}>
+    <div
+      class="control-bar"
+      class:visible={controlsVisible || !showVideo}
+      in:fly={{ y: 30, duration: 280, easing: cubicOut }}
+      out:fade={{ duration: 160 }}
+    >
       <div class="controls-inner">
         <button
           class="ctrl-btn"
