@@ -218,7 +218,12 @@ class ScreenCaptureService : Service() {
     }
 
     private fun handleImageAvailable(reader: ImageReader) {
-        val image = reader.acquireLatestImage() ?: return
+        if (!isStreaming) return
+        val image = try {
+            reader.acquireLatestImage()
+        } catch (_: Throwable) {
+            null
+        } ?: return
         try {
             val plane = image.planes[0]
             val buffer = plane.buffer
@@ -228,8 +233,8 @@ class ScreenCaptureService : Service() {
 
             val fullWidth = targetWidth + rowPadding / pixelStride
             var bitmap = reusableBitmap
-            if (bitmap == null || bitmap.width != fullWidth || bitmap.height != targetHeight) {
-                bitmap?.recycle()
+            if (bitmap == null || bitmap.isRecycled || bitmap.width != fullWidth || bitmap.height != targetHeight) {
+                try { bitmap?.recycle() } catch (_: Throwable) {}
                 bitmap = Bitmap.createBitmap(fullWidth, targetHeight, Bitmap.Config.ARGB_8888)
                 reusableBitmap = bitmap
             }
@@ -246,13 +251,13 @@ class ScreenCaptureService : Service() {
             frameBitmap.compress(Bitmap.CompressFormat.JPEG, 65, baos)
             val jpegBytes = baos.toByteArray()
             if (frameBitmap !== bitmap) {
-                frameBitmap.recycle()
+                try { frameBitmap.recycle() } catch (_: Throwable) {}
             }
 
             broadcastFrame(jpegBytes)
         } catch (_: Throwable) {
         } finally {
-            image.close()
+            try { image.close() } catch (_: Throwable) {}
         }
     }
 
@@ -309,9 +314,19 @@ class ScreenCaptureService : Service() {
     }
 
     private fun teardown() {
+        if (!isStreaming && mediaProjection == null && virtualDisplay == null && imageReader == null) return
         isStreaming = false
         pendingResultCode = 0
         pendingResultData = null
+
+        try {
+            imageReader?.setOnImageAvailableListener(null, null)
+        } catch (_: Throwable) {}
+
+        try {
+            handlerThread?.quitSafely()
+        } catch (_: Throwable) {}
+        handlerThread = null
 
         for (client in clients) {
             try { client.close() } catch (_: Throwable) {}
@@ -330,13 +345,14 @@ class ScreenCaptureService : Service() {
         try { mediaProjection?.stop() } catch (_: Throwable) {}
         mediaProjection = null
 
-        reusableBitmap?.recycle()
+        try {
+            reusableBitmap?.recycle()
+        } catch (_: Throwable) {}
         reusableBitmap = null
 
-        handlerThread?.quitSafely()
-        handlerThread = null
-
-        MainActivity.instance?.notifyScreenCaptureStoppedNative()
+        try {
+            MainActivity.instance?.notifyScreenCaptureStoppedNative()
+        } catch (_: Throwable) {}
     }
 
     override fun onDestroy() {

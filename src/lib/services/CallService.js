@@ -90,83 +90,118 @@ function encodeDisplayLayout(trackKeys) {
 function alignSdpMLines(answerSdp, offerSdp) {
   if (!answerSdp || !offerSdp) return answerSdp;
 
-  function parseSdp(sdp) {
-    const lines = sdp.split(/\r?\n/);
+  const parseCleanSdp = (sdp) => {
+    const rawLines = sdp.split(/\r?\n/);
     const sessionLines = [];
     const mSections = [];
-    let currentM = null;
+    let cur = null;
 
-    for (const line of lines) {
+    for (const raw of rawLines) {
+      const line = raw.trim();
+      if (!line || !/^[a-zA-Z0-9_-]+=/.test(line)) continue;
       if (line.startsWith('m=')) {
-        if (currentM) mSections.push(currentM);
-        const match = line.match(/^m=(\w+)/);
-        currentM = {
-          type: match ? match[1].toLowerCase() : '',
+        if (cur) mSections.push(cur);
+        const m = line.match(/^m=(\w+)/i);
+        cur = {
+          type: m ? m[1].toLowerCase() : '',
           mid: null,
+          direction: 'sendrecv',
           lines: [line],
         };
-      } else if (currentM) {
-        currentM.lines.push(line);
-        const midMatch = line.match(/^a=mid:(\S+)/);
-        if (midMatch) currentM.mid = midMatch[1];
+      } else if (cur) {
+        cur.lines.push(line);
+        const midMatch = line.match(/^a=mid:(\S+)/i);
+        if (midMatch) cur.mid = midMatch[1];
+        if (line === 'a=sendrecv' || line === 'a=sendonly' || line === 'a=recvonly' || line === 'a=inactive') {
+          cur.direction = line.substring(2);
+        }
       } else {
         sessionLines.push(line);
       }
     }
-    if (currentM) mSections.push(currentM);
+    if (cur) mSections.push(cur);
     return { sessionLines, mSections };
-  }
+  };
 
-  const offer = parseSdp(offerSdp);
-  const answer = parseSdp(answerSdp);
+  const offer = parseCleanSdp(offerSdp);
+  const answer = parseCleanSdp(answerSdp);
 
-  if (!offer.mSections.length || !answer.mSections.length) {
-    return answerSdp;
-  }
+  if (!offer.mSections.length || !answer.mSections.length) return answerSdp;
 
-  const remainingAnswer = [...answer.mSections];
-  const orderedAnswer = [];
+  const remaining = [...answer.mSections];
+  const ordered = [];
 
   for (const offSec of offer.mSections) {
-    let matchIdx = -1;
+    let idx = -1;
     if (offSec.mid) {
-      matchIdx = remainingAnswer.findIndex(a => a.mid === offSec.mid);
+      idx = remaining.findIndex(s => s.mid === offSec.mid && s.type === offSec.type);
+      if (idx === -1) {
+        idx = remaining.findIndex(s => s.mid === offSec.mid);
+      }
     }
-    if (matchIdx === -1 && offSec.type) {
-      matchIdx = remainingAnswer.findIndex(a => a.type === offSec.type);
+    if (idx === -1 && offSec.type) {
+      idx = remaining.findIndex(s => s.type === offSec.type);
     }
-
-    if (matchIdx !== -1) {
-      const matched = remainingAnswer.splice(matchIdx, 1)[0];
-      if (offSec.mid && matched.lines) {
-        const hasMid = matched.lines.some(l => l.startsWith('a=mid:'));
-        if (hasMid) {
-          matched.lines = matched.lines.map(l => l.startsWith('a=mid:') ? `a=mid:${offSec.mid}` : l);
-        } else {
+    if (idx !== -1) {
+      const matched = remaining.splice(idx, 1)[0];
+      if (offSec.mid) {
+        matched.lines = matched.lines.map(l => l.startsWith('a=mid:') ? `a=mid:${offSec.mid}` : l);
+        if (!matched.lines.some(l => l.startsWith('a=mid:'))) {
           matched.lines.push(`a=mid:${offSec.mid}`);
         }
+        matched.mid = offSec.mid;
       }
-      orderedAnswer.push(matched);
+      let targetDir = matched.direction || 'sendrecv';
+      if (offSec.direction === 'recvonly') {
+        if (targetDir === 'sendrecv' || targetDir === 'sendonly') targetDir = 'sendonly';
+        else targetDir = 'inactive';
+      } else if (offSec.direction === 'sendonly') {
+        if (targetDir === 'sendrecv' || targetDir === 'recvonly') targetDir = 'recvonly';
+        else targetDir = 'inactive';
+      } else if (offSec.direction === 'inactive') {
+        targetDir = 'inactive';
+      }
+      matched.lines = matched.lines.filter(l => !['a=sendrecv', 'a=sendonly', 'a=recvonly', 'a=inactive'].includes(l));
+      matched.lines.push(`a=${targetDir}`);
+      matched.direction = targetDir;
+      ordered.push(matched);
     } else {
-      orderedAnswer.push({
+      const proto = offSec.type === 'application' ? 'UDP/DTLS/SCTP webrtc-datachannel' : 'UDP/TLS/RTP/SAVPF 0';
+      const lines = [
+        `m=${offSec.type} 0 ${proto}`,
+        'c=IN IP4 0.0.0.0',
+      ];
+      if (offSec.mid) {
+        lines.push(`a=mid:${offSec.mid}`);
+      }
+      lines.push('a=inactive');
+      ordered.push({
         type: offSec.type,
         mid: offSec.mid,
-        lines: [
-          `m=${offSec.type} 0 UDP/TLS/RTP/SAVPF 0`,
-          `c=IN IP4 0.0.0.0`,
-          offSec.mid ? `a=mid:${offSec.mid}` : null,
-          `a=inactive`,
-        ].filter(Boolean),
+        direction: 'inactive',
+        lines,
       });
     }
   }
 
-  const eol = answerSdp.includes('\r\n') ? '\r\n' : '\n';
-  const outLines = [...answer.sessionLines];
-  for (const sec of orderedAnswer) {
-    outLines.push(...sec.lines);
+  const activeMids = ordered.filter(s => {
+    const mLine = s.lines[0] || '';
+    const portMatch = mLine.match(/^m=\w+\s+(\d+)/);
+    const port = portMatch ? parseInt(portMatch[1], 10) : 0;
+    return port > 0 && s.mid;
+  }).map(s => s.mid);
+
+  let sessionLines = answer.sessionLines.filter(l => !l.startsWith('a=group:BUNDLE'));
+  if (activeMids.length > 0) {
+    sessionLines.push(`a=group:BUNDLE ${activeMids.join(' ')}`);
   }
-  return outLines.join(eol);
+
+  const resultLines = [...sessionLines];
+  for (const sec of ordered) {
+    resultLines.push(...sec.lines);
+  }
+
+  return resultLines.join('\r\n') + '\r\n';
 }
 
 function getRTCPeerConnection() {
@@ -380,6 +415,7 @@ class MaxCallSession {
   #dtlsFingerprint = null;
   #androidScreenCapture = null;
   #unlistenScreenCaptureStopped = null;
+  #cameraToggling = false;
 
   get encryption() { return this.#encryption; }
 
@@ -416,6 +452,10 @@ class MaxCallSession {
     this.#myCallUserId = myCallUserId;
     patchCallState({ myCallUserId });
     log(`begin session: role=${role} isVideo=${isVideo} mode=${mode} convId=${conversationId} myCallUserId=${myCallUserId}`);
+
+    if (role === 'responder') {
+      patchCallState({ phase: CALL_PHASE.CONNECTING, connectionStatus: 'connecting' });
+    }
 
     try {
       this.#unlistenScreenCaptureStopped = await listen('screen_capture_stopped', () => {
@@ -507,14 +547,16 @@ class MaxCallSession {
     }
     this.#dataChannel = dc;
     dc.onopen = () => {
-      log('e2e data channel opened');
-      if (this._myPublicKeyBytes) {
-        try {
-          dc.send(JSON.stringify({
-            type: 'e2e-pubkey',
-            pubkey: Array.from(this._myPublicKeyBytes),
-          }));
-        } catch {}
+      if (this.#encryption.mode === CALL_MODE.SECURE) {
+        log('e2e data channel opened');
+        if (this._myPublicKeyBytes) {
+          try {
+            dc.send(JSON.stringify({
+              type: 'e2e-pubkey',
+              pubkey: Array.from(this._myPublicKeyBytes),
+            }));
+          } catch {}
+        }
       }
     };
     dc.onmessage = async (e) => {
@@ -748,8 +790,8 @@ class MaxCallSession {
 
     pc.onicecandidate = (e) => {
       if (e.candidate) {
-        log('ICE candidate local:', e.candidate.type, e.candidate.protocol);
-        if (this.#topology !== 'SERVER' && this.#ws2PeerId) {
+        log('ICE candidate local:', e.candidate.candidate);
+        if (this.#topology !== 'SERVER' && this.#ws2PeerId && !this.#pendingOffer) {
           this.#voiceChannel?.send('transmit-data', {
             participantId: Number(this.#ws2PeerId),
             participantType: 'USER',
@@ -808,7 +850,7 @@ class MaxCallSession {
         }
       }
     } else {
-      pc.addTransceiver('audio', { direction: 'recvonly' });
+      pc.addTransceiver('audio', { direction: 'sendrecv' });
     }
 
     if (this.#cameraStream) {
@@ -826,13 +868,15 @@ class MaxCallSession {
         }
       }
     } else {
-      pc.addTransceiver('video', { direction: 'recvonly' });
+      pc.addTransceiver('video', { direction: 'sendrecv' });
     }
 
-    try {
-      const dc = pc.createDataChannel('max-e2e', { negotiated: true, id: 0 });
-      this.#setupDataChannel(dc);
-    } catch {}
+    if (this.#encryption.mode === CALL_MODE.SECURE) {
+      try {
+        const dc = pc.createDataChannel('max-e2e', { negotiated: true, id: 0 });
+        this.#setupDataChannel(dc);
+      } catch {}
+    }
 
     pc.ondatachannel = (e) => {
       if (e.channel) this.#setupDataChannel(e.channel);
@@ -930,7 +974,6 @@ class MaxCallSession {
         patchCallState({ phase: CALL_PHASE.OUTGOING });
         const offer = await pc.createOffer(OFFER_CONSTRAINTS);
         await pc.setLocalDescription(offer);
-        await this.#gatherDone();
         const localSdp = this.#applyTrackLabels(pc.localDescription?.sdp || offer.sdp);
         this.#extractAndApplyFingerprint(localSdp);
         if (this.#ws2PeerId) {
@@ -950,7 +993,6 @@ class MaxCallSession {
       } else if (this.#role === 'joiner') {
         const offer = await pc.createOffer(OFFER_CONSTRAINTS);
         await pc.setLocalDescription(offer);
-        await this.#gatherDone();
         const localSdp = this.#applyTrackLabels(pc.localDescription?.sdp || offer.sdp);
         this.#extractAndApplyFingerprint(localSdp);
         if (this.#ws2PeerId) {
@@ -1078,15 +1120,24 @@ class MaxCallSession {
 
         const finalSdp = type === 'answer' ? alignSdpMLines(sdp, pc.localDescription?.sdp) : sdp;
         const SessionDesc = getRTCSessionDescription();
-        const descObj = SessionDesc ? new SessionDesc({ type, sdp: finalSdp }) : { type, sdp: finalSdp };
-        await pc.setRemoteDescription(descObj);
+        let descObj = SessionDesc ? new SessionDesc({ type, sdp: finalSdp }) : { type, sdp: finalSdp };
+        try {
+          await pc.setRemoteDescription(descObj);
+        } catch (err) {
+          if (finalSdp !== sdp) {
+            log('setRemoteDescription aligned fallback to raw SDP:', err);
+            descObj = SessionDesc ? new SessionDesc({ type, sdp }) : { type, sdp };
+            await pc.setRemoteDescription(descObj);
+          } else {
+            throw err;
+          }
+        }
         this.#remoteDescSet = true;
         await this.#flushCandidates();
 
         if (type === 'offer') {
           const answer = await pc.createAnswer();
           await pc.setLocalDescription(answer);
-          await this.#gatherDone();
           const localSdp = this.#applyTrackLabels(pc.localDescription?.sdp || answer.sdp);
           if (this.#ws2PeerId) {
             await this.#voiceChannel.send('transmit-data', {
@@ -1270,75 +1321,87 @@ class MaxCallSession {
   }
 
   async enableCamera(on) {
-    if (on && !this.#cameraStream) {
-      try {
+    if (this.#cameraToggling) return;
+    this.#cameraToggling = true;
+    try {
+      if (on && !this.#cameraStream) {
+        patchCallState({ videoOn: true, cameraLoading: true });
         try {
-          this.#cameraStream = await navigator.mediaDevices.getUserMedia({
-            video: { width: { ideal: 1280 }, height: { ideal: 720 } },
-          });
-        } catch {
-          this.#cameraStream = await navigator.mediaDevices.getUserMedia({ video: true });
+          try {
+            this.#cameraStream = await navigator.mediaDevices.getUserMedia({
+              video: { width: { ideal: 1280 }, height: { ideal: 720 } },
+            });
+          } catch {
+            this.#cameraStream = await navigator.mediaDevices.getUserMedia({ video: true });
+          }
+        } catch (e) {
+          log('getUserMedia video failed, using synthetic fallback:', e?.name, e?.message);
+          try {
+            this.#syntheticVideo = createSyntheticVideoStream();
+            this.#cameraStream = this.#syntheticVideo.stream;
+          } catch (err) {
+            showAlert('Не удалось получить доступ к камере');
+            patchCallState({ videoOn: false, localCameraStream: null, cameraLoading: false });
+            return;
+          }
         }
-      } catch (e) {
-        log('getUserMedia video failed, using synthetic fallback:', e.name, e.message);
-        try {
-          this.#syntheticVideo = createSyntheticVideoStream();
-          this.#cameraStream = this.#syntheticVideo.stream;
-        } catch (err) {
-          showAlert('Не удалось получить доступ к камере');
-          return;
-        }
-      }
 
-      mediaPipeline.setSourceTracks(this.#cameraStream.getVideoTracks()[0], this.#localStream?.getAudioTracks()[0] || null);
-      const processedStream = mediaPipeline.getProcessedVideoStream();
-      const track = processedStream?.getVideoTracks()[0] || this.#cameraStream.getVideoTracks()[0];
-      if (track && this.#pc) {
-        let sender = this.#pc.getSenders().find(s => s.track?.kind === 'video');
-        const transceiver = this.#pc.getTransceivers().find(t => t.receiver?.track?.kind === 'video' || t.sender?.track?.kind === 'video');
-        if (transceiver) {
-          transceiver.direction = 'sendrecv';
-          sender = transceiver.sender;
+        mediaPipeline.setSourceTracks(this.#cameraStream.getVideoTracks()[0], this.#localStream?.getAudioTracks()[0] || null);
+        const processedStream = mediaPipeline.getProcessedVideoStream();
+        const track = processedStream?.getVideoTracks()[0] || this.#cameraStream.getVideoTracks()[0];
+        if (track && this.#pc) {
+          const senders = typeof this.#pc.getSenders === 'function' ? this.#pc.getSenders() : [];
+          let sender = senders.find(s => s.track?.kind === 'video');
+          const transceivers = typeof this.#pc.getTransceivers === 'function' ? this.#pc.getTransceivers() : [];
+          const transceiver = transceivers.find(t => t.receiver?.track?.kind === 'video' || t.sender?.track?.kind === 'video');
+          if (transceiver) {
+            transceiver.direction = 'sendrecv';
+            sender = transceiver.sender;
+          }
+          if (sender) await sender.replaceTrack(track);
+          else {
+            const s = this.#pc.addTrack(track, processedStream || this.#cameraStream);
+            if (this.#encryption.mode === CALL_MODE.SECURE) this.#encryption.applyToSender(s);
+          }
+          if (this.#topology !== 'SERVER') {
+            await this.#renegotiate();
+          }
         }
-        if (sender) await sender.replaceTrack(track);
-        else {
-          const s = this.#pc.addTrack(track, processedStream || this.#cameraStream);
-          if (this.#encryption.mode === CALL_MODE.SECURE) this.#encryption.applyToSender(s);
+        patchCallState({ videoOn: true, localCameraStream: this.#cameraStream, cameraLoading: false });
+      } else if (!on && this.#cameraStream) {
+        patchCallState({ videoOn: false, localCameraStream: null, cameraLoading: false });
+        for (const t of this.#cameraStream.getTracks()) t.stop();
+        if (this.#syntheticVideo) {
+          this.#syntheticVideo.stop();
+          this.#syntheticVideo = null;
+        }
+        this.#cameraStream = null;
+        const transceivers = typeof this.#pc?.getTransceivers === 'function' ? this.#pc.getTransceivers() : [];
+        const transceiver = transceivers.find(t => t.receiver?.track?.kind === 'video' || t.sender?.track?.kind === 'video');
+        if (transceiver) {
+          transceiver.direction = 'recvonly';
+          await transceiver.sender?.replaceTrack(null);
+        } else {
+          const senders = typeof this.#pc?.getSenders === 'function' ? this.#pc.getSenders() : [];
+          const sender = senders.find(s => s.track?.kind === 'video');
+          await sender?.replaceTrack(null);
         }
         if (this.#topology !== 'SERVER') {
           await this.#renegotiate();
         }
       }
-      patchCallState({ videoOn: true, localCameraStream: this.#cameraStream });
-    } else if (!on && this.#cameraStream) {
-      for (const t of this.#cameraStream.getTracks()) t.stop();
-      if (this.#syntheticVideo) {
-        this.#syntheticVideo.stop();
-        this.#syntheticVideo = null;
-      }
-      this.#cameraStream = null;
-      const transceiver = this.#pc?.getTransceivers().find(t => t.receiver?.track?.kind === 'video' || t.sender?.track?.kind === 'video');
-      if (transceiver) {
-        transceiver.direction = 'recvonly';
-        await transceiver.sender?.replaceTrack(null);
-      } else {
-        const sender = this.#pc?.getSenders().find(s => s.track?.kind === 'video');
-        await sender?.replaceTrack(null);
-      }
-      if (this.#topology !== 'SERVER') {
-        await this.#renegotiate();
-      }
-      patchCallState({ videoOn: false, localCameraStream: null });
+      await this.#voiceChannel?.send('change-media-settings', {
+        mediaSettings: {
+          isVideoEnabled: on,
+          isAudioEnabled: !get(activeCall).muted,
+          isScreenSharingEnabled: get(activeCall).screenOn,
+          isAnimojiEnabled: false,
+        },
+      }).catch(() => {});
+      this.#sendSfuDisplayLayout();
+    } finally {
+      this.#cameraToggling = false;
     }
-    await this.#voiceChannel?.send('change-media-settings', {
-      mediaSettings: {
-        isVideoEnabled: on,
-        isAudioEnabled: !get(activeCall).muted,
-        isScreenSharingEnabled: get(activeCall).screenOn,
-        isAnimojiEnabled: false,
-      },
-    }).catch(() => {});
-    this.#sendSfuDisplayLayout();
   }
 
   async #renegotiate() {
@@ -1346,7 +1409,6 @@ class MaxCallSession {
     try {
       const offer = await this.#pc.createOffer(OFFER_CONSTRAINTS);
       await this.#pc.setLocalDescription(offer);
-      await this.#gatherDone();
       const localSdp = this.#applyTrackLabels(this.#pc.localDescription?.sdp || offer.sdp);
       this.#extractAndApplyFingerprint(localSdp);
       await this.#voiceChannel?.send('transmit-data', {
@@ -1365,6 +1427,7 @@ class MaxCallSession {
   }
 
   async enableScreen(on) {
+    if (this.#destroyed) return;
     if (on && !this.#screenStream) {
       try {
         let stream = null;
@@ -1420,8 +1483,10 @@ class MaxCallSession {
         this.#screenStream.getVideoTracks()[0].onended = () => this.enableScreen(false);
         const track = this.#screenStream.getVideoTracks()[0];
         if (this.#pc) {
-          let sender = this.#pc.getSenders().find(s => s.track?.kind === 'video' && !get(activeCall).videoOn);
-          const transceiver = this.#pc.getTransceivers().find(t => t.receiver?.track?.kind === 'video' || t.sender?.track?.kind === 'video');
+          const senders = typeof this.#pc.getSenders === 'function' ? this.#pc.getSenders() : [];
+          let sender = senders.find(s => s.track?.kind === 'video' && !get(activeCall).videoOn);
+          const transceivers = typeof this.#pc.getTransceivers === 'function' ? this.#pc.getTransceivers() : [];
+          const transceiver = transceivers.find(t => t.receiver?.track?.kind === 'video' || t.sender?.track?.kind === 'video');
           if (transceiver && !get(activeCall).videoOn) {
             transceiver.direction = 'sendrecv';
             sender = transceiver.sender;
@@ -1447,12 +1512,14 @@ class MaxCallSession {
       }
       for (const t of this.#screenStream.getTracks()) t.stop();
       this.#screenStream = null;
-      const transceiver = this.#pc?.getTransceivers().find(t => t.receiver?.track?.kind === 'video' || t.sender?.track?.kind === 'video');
+      const transceivers = typeof this.#pc?.getTransceivers === 'function' ? this.#pc.getTransceivers() : [];
+      const transceiver = transceivers.find(t => t.receiver?.track?.kind === 'video' || t.sender?.track?.kind === 'video');
       if (transceiver && !get(activeCall).videoOn) {
         transceiver.direction = 'recvonly';
         await transceiver.sender?.replaceTrack(null);
       } else {
-        const sender = this.#pc?.getSenders().find(s => s.track?.kind === 'video' && get(activeCall).screenOn);
+        const senders = typeof this.#pc?.getSenders === 'function' ? this.#pc.getSenders() : [];
+        const sender = senders.find(s => s.track?.kind === 'video' && get(activeCall).screenOn);
         await sender?.replaceTrack(null);
       }
       if (this.#topology !== 'SERVER') {
@@ -1486,29 +1553,35 @@ class MaxCallSession {
     log('MaxCallSession destroyed');
     patchCallState({ phase: CALL_PHASE.ENDING });
     stopCallAudio();
+    if (this.#unlistenScreenCaptureStopped) {
+      try { this.#unlistenScreenCaptureStopped(); } catch {}
+      this.#unlistenScreenCaptureStopped = null;
+    }
+    if (this.#androidScreenCapture) {
+      try { this.#androidScreenCapture.cleanup(); } catch {}
+      this.#androidScreenCapture = null;
+    }
+    invoke('stop_android_screen_capture').catch(() => {});
     if (this.#syntheticAudio) {
-      this.#syntheticAudio.stop();
+      try { this.#syntheticAudio.stop(); } catch {}
       this.#syntheticAudio = null;
     }
     if (this.#syntheticVideo) {
-      this.#syntheticVideo.stop();
+      try { this.#syntheticVideo.stop(); } catch {}
       this.#syntheticVideo = null;
     }
-    if (this.#androidScreenCapture) {
-      this.#androidScreenCapture.cleanup();
-      this.#androidScreenCapture = null;
+    for (const t of (this.#localStream?.getTracks() || [])) {
+      try { t.stop(); } catch {}
     }
-    if (this.#unlistenScreenCaptureStopped) {
-      this.#unlistenScreenCaptureStopped();
-      this.#unlistenScreenCaptureStopped = null;
+    for (const t of (this.#cameraStream?.getTracks() || [])) {
+      try { t.stop(); } catch {}
     }
-    invoke('stop_android_screen_capture').catch(() => {});
-    for (const t of (this.#localStream?.getTracks() || [])) t.stop();
-    for (const t of (this.#cameraStream?.getTracks() || [])) t.stop();
-    for (const t of (this.#screenStream?.getTracks() || [])) t.stop();
-    mediaPipeline.teardown();
-    this.#voiceChannel?.close();
-    this.#pc?.close();
+    for (const t of (this.#screenStream?.getTracks() || [])) {
+      try { t.stop(); } catch {}
+    }
+    try { mediaPipeline.teardown(); } catch {}
+    try { this.#voiceChannel?.close(); } catch {}
+    try { this.#pc?.close(); } catch {}
     this.#pc = null;
     this.#voiceChannel = null;
     this.#sfuCommandChannel = null;
@@ -1681,16 +1754,23 @@ export const CallService = {
     const pending = this._pendingIncoming;
     if (!pending) return;
     this._pendingIncoming = null;
+    patchCallState({ phase: CALL_PHASE.CONNECTING, connectionStatus: 'connecting' });
     const session = new MaxCallSession();
     _activeSession = session;
-    await session.begin({
-      endpoint: pending.endpoint,
-      conversationId: pending.conversationId,
-      role: 'responder',
-      isVideo: pending.isVideo,
-      mode,
-      peerId: pending.callerId,
-    });
+    try {
+      await session.begin({
+        endpoint: pending.endpoint,
+        conversationId: pending.conversationId,
+        role: 'responder',
+        isVideo: pending.isVideo,
+        mode,
+        peerId: pending.callerId,
+      });
+    } catch (e) {
+      log('acceptIncoming failed:', e);
+      resetCallState();
+      _activeSession = null;
+    }
   },
 
   declineIncoming() {

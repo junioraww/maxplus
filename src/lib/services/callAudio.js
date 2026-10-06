@@ -127,10 +127,8 @@ export function playRejectionTone() {
   stopCallAudio();
   const ctx = getOrCreateContext();
   if (!ctx) return;
-  playDualTone(ctx, 480, 620, 0.2, 0.0, 0.2);
-  playDualTone(ctx, 480, 620, 0.2, 0.3, 0.2);
-  playDualTone(ctx, 480, 620, 0.2, 0.6, 0.2);
+  playDualTone(ctx, 480, 620, 0.45, 0.0, 0.2);
   setTimeout(() => {
     stopCallAudio();
-  }, 950);
+  }, 600);
 }
