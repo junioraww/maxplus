@@ -123,8 +123,9 @@ export class LinuxFallbackPeerConnection extends EventTarget {
 
     setTimeout(() => {
       if (this._closed) return;
+      const ufr = this._ufrag || 'mock';
       const candidate = {
-        candidate: 'candidate:1 1 UDP 2130706431 127.0.0.1 50000 typ host',
+        candidate: `candidate:1 1 UDP 2130706431 127.0.0.1 50000 typ host generation 0 ufrag ${ufr}`,
         sdpMid: '0',
         sdpMLineIndex: 0
       };
@@ -227,6 +228,11 @@ export class LinuxFallbackPeerConnection extends EventTarget {
 
   _generateSdp(type) {
     const sessId = Date.now();
+    if (!this._ufrag) {
+      this._ufrag = Math.random().toString(36).substring(2, 6);
+      this._pwd = Math.random().toString(36).substring(2, 26);
+    }
+    const setup = type === 'answer' ? 'active' : 'actpass';
     return [
       'v=0',
       `o=- ${sessId} 2 IN IP4 127.0.0.1`,
@@ -234,6 +240,11 @@ export class LinuxFallbackPeerConnection extends EventTarget {
       't=0 0',
       'a=group:BUNDLE 0 1',
       'a=msid-semantic: WMS',
+      `a=ice-ufrag:${this._ufrag}`,
+      `a=ice-pwd:${this._pwd}`,
+      'a=ice-options:trickle',
+      'a=fingerprint:sha-256 AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99:AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99',
+      `a=setup:${setup}`,
       'm=audio 9 UDP/TLS/RTP/SAVPF 111 9',
       'c=IN IP4 0.0.0.0',
       'a=rtcp:9 IN IP4 0.0.0.0',
