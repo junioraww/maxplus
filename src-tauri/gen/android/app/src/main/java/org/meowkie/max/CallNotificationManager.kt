@@ -61,11 +61,15 @@ object CallNotificationManager {
 
     val conversationId = data["conversationId"] ?: data["vcId"] ?: data["conference_id"] ?: ""
     val callerId = data["callerId"] ?: data["suid"] ?: data["caller_id"] ?: ""
-    val callerName = data["userName"] ?: data["title"] ?: data["callerName"] ?: data["caller_name"] ?: data["name"] ?: if (callerId.isNotEmpty()) "Пользователь $callerId" else "Входящий вызов"
-    val isVideo = data["isVideo"]?.toBoolean() ?: data["video"]?.toBoolean() ?: (data["iv"] == "1" || data["iv"] == "true")
-    val vcp = data["vcp"] ?: data["conversationParams"] ?: ""
     val account = data["c"]?.toLongOrNull() ?: 0L
     val callerIdLong = callerId.toLongOrNull() ?: 0L
+    val rawCallerName = data["userName"] ?: data["title"] ?: data["callerName"] ?: data["caller_name"] ?: data["name"]
+    val contactInfo = if (callerIdLong > 0L) ContactHelper.getContactInfo(context, account, callerIdLong) else null
+    val callerName = contactInfo?.name?.takeIf { it.isNotBlank() }
+      ?: rawCallerName?.takeIf { it.isNotBlank() && !it.startsWith("Пользователь ") && !it.startsWith("User ") }
+      ?: if (callerId.isNotEmpty()) "Пользователь $callerId" else "Входящий вызов"
+    val isVideo = data["isVideo"]?.toBoolean() ?: data["video"]?.toBoolean() ?: (data["iv"] == "1" || data["iv"] == "true")
+    val vcp = data["vcp"] ?: data["conversationParams"] ?: ""
 
     val dismissIntent = Intent(context, CallDismissReceiver::class.java).apply {
       action = "${context.packageName}.ACTION_DISMISS_CALL"
@@ -114,7 +118,7 @@ object CallNotificationManager {
       PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
     )
 
-    val avatarBitmap = AvatarHelper.getAvatar(context, callerIdLong, callerName, null, account)
+    val avatarBitmap = AvatarHelper.getAvatar(context, callerIdLong, callerName, contactInfo?.avatarPath, account)
     val callerPerson = Person.Builder()
       .setName(callerName)
       .setKey(callerId)

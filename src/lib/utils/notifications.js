@@ -416,7 +416,16 @@ export async function sendNotification(data) {
   }
 }
 
+export async function cancelDesktopCallNotification() {
+  try {
+    await invoke("cancel_notification", { chatId: 999991 });
+  } catch {}
+}
+
 export async function showDesktopCallNotification({ callerName, isVideo = false, avatar = null }) {
+  if (typeof document !== 'undefined' && document.visibilityState === 'visible' && document.hasFocus()) {
+    return;
+  }
   if (!get(callNotificationsEnabled)) return;
   if (!granted) {
     await suggestNotifications();
@@ -424,7 +433,7 @@ export async function showDesktopCallNotification({ callerName, isVideo = false,
   if (!granted) return;
   try {
     const title = isVideo ? `Входящий видеозвонок` : `Входящий аудиозвонок`;
-    const body = callerName || `Неизвестный абонент`;
+    const body = callerName && callerName.trim() ? callerName.trim() : `Входящий вызов`;
     await pluginSendNotification({
       id: 999991,
       title,

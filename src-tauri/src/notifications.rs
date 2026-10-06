@@ -158,6 +158,182 @@ pub extern "system" fn Java_org_meowkie_max_ReplyReceiver_sendReplyNative<'local
 }
 
 #[cfg(target_os = "android")]
+fn extract_contact_name(val: &serde_json::Value) -> Option<String> {
+    if let Some(names) = val.get("names").and_then(|n| n.as_array()) {
+        if let Some(first) = names.first() {
+            let fn_str = first.get("firstName").and_then(|v| v.as_str()).unwrap_or("").trim();
+            let ln_str = first.get("lastName").and_then(|v| v.as_str()).unwrap_or("").trim();
+            let full = format!("{} {}", fn_str, ln_str).trim().to_string();
+            if !full.is_empty() {
+                return Some(full);
+            }
+        }
+    }
+    if let Some(name) = val.get("name").and_then(|v| v.as_str()) {
+        let trimmed = name.trim();
+        if !trimmed.is_empty() {
+            return Some(trimmed.to_string());
+        }
+    }
+    if let Some(first) = val.get("firstName").and_then(|v| v.as_str()) {
+        let last = val.get("lastName").and_then(|v| v.as_str()).unwrap_or("");
+        let full = format!("{} {}", first, last).trim().to_string();
+        if !full.is_empty() {
+            return Some(full);
+        }
+    }
+    if let Some(title) = val.get("title").and_then(|v| v.as_str()) {
+        let trimmed = title.trim();
+        if !trimmed.is_empty() {
+            return Some(trimmed.to_string());
+        }
+    }
+    None
+}
+
+#[cfg(target_os = "android")]
+fn extract_avatar_url(val: &serde_json::Value) -> Option<String> {
+    val.get("baseRawUrl")
+        .or_else(|| val.get("baseUrl"))
+        .or_else(|| val.get("avatar"))
+        .or_else(|| val.get("photo"))
+        .or_else(|| val.get("baseIconUrl"))
+        .or_else(|| val.get("baseRawIconUrl"))
+        .or_else(|| val.get("iconUrl"))
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string())
+}
+
+#[cfg(target_os = "android")]
+pub fn resolve_contact_info_internal(
+    account: i64,
+    id: i64,
+    rust_app_dir: &str,
+) -> (Option<String>, Option<String>) {
+    let root = crate::stores::resolve_app_root(rust_app_dir);
+    let creds = crate::stores::get_background_creds(rust_app_dir, account as u64);
+    let local_id = creds.as_ref().map(|c| c.0).unwrap_or(0);
+    let data_dir = root.join("data").join(local_id.to_string());
+    let cache_dir = root.join("cache").join(local_id.to_string());
+    let cache_files_dir = cache_dir.join("files");
+    let _ = fs::create_dir_all(&cache_files_dir);
+
+    let storage = crate::stores::Storage::new(None);
+    let mut resolved_name: Option<String> = None;
+    let mut avatar_url: Option<String> = None;
+
+    let contact_path = data_dir.join("contacts").join(id.to_string());
+    if let Some(val) = storage.load(&contact_path) {
+        resolved_name = extract_contact_name(&val);
+        avatar_url = extract_avatar_url(&val);
+    }
+
+    if resolved_name.is_none() || avatar_url.is_none() {
+        let chat_path = data_dir.join("chats").join(id.to_string()).join("info");
+        if let Some(val) = storage.load(&chat_path) {
+            if resolved_name.is_none() {
+                resolved_name = extract_contact_name(&val);
+            }
+            if avatar_url.is_none() {
+                avatar_url = extract_avatar_url(&val);
+            }
+        }
+    }
+
+    if (resolved_name.is_none() || avatar_url.is_none()) && id > 0 {
+        if let Some((_, server_user_id, token, identity)) = creds {
+            let data_dir_clone = data_dir.clone();
+            let contact_path_clone = contact_path.clone();
+            let fetched = std::thread::spawn(move || {
+                let rt = tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()
+                    .ok()?;
+                rt.block_on(async {
+                    let client = rumax::MaxClient::new();
+                    client.set_user_id(server_user_id).await;
+                    client.set_token(token).await;
+
+                    if client.connect(identity, false).await.is_ok() {
+                        if client.sync(None).await.is_ok() {
+                            let mut found_name = None;
+                            let mut found_url = None;
+                            if let Ok(resp) = client.fetch_contacts(vec![id as u64]).await {
+                                if let Some(contacts) = resp.payload.get("contacts").and_then(|c| c.as_array()) {
+                                    if let Some(c) = contacts.first() {
+                                        let storage = crate::stores::Storage::new(None);
+                                        let _ = fs::create_dir_all(data_dir_clone.join("contacts"));
+                                        let _ = storage.save(&contact_path_clone, c);
+                                        found_name = extract_contact_name(c);
+                                        found_url = extract_avatar_url(c);
+                                    }
+                                }
+                            }
+                            client.disconnect().await;
+                            return Some((found_name, found_url));
+                        }
+                        client.disconnect().await;
+                    }
+                    None
+                })
+            }).join().ok().flatten();
+
+            if let Some((name, url)) = fetched {
+                if resolved_name.is_none() {
+                    resolved_name = name;
+                }
+                if avatar_url.is_none() {
+                    avatar_url = url;
+                }
+            }
+        }
+    }
+
+    let mut local_avatar_path: Option<String> = None;
+    if let Some(ref url) = avatar_url {
+        if let Some(index) = storage.load(cache_dir.join("index")) {
+            if let Some(entry) = index.get(url) {
+                if let Some(p) = entry.get(0).and_then(|v| v.as_str()) {
+                    let f = PathBuf::from(p);
+                    if f.exists() {
+                        local_avatar_path = Some(f.to_string_lossy().to_string());
+                    }
+                }
+            }
+        }
+
+        if local_avatar_path.is_none() {
+            let hashed_name = crate::stores::hash(url);
+            let cached_file = cache_files_dir.join(&hashed_name);
+            if cached_file.exists() {
+                local_avatar_path = Some(cached_file.to_string_lossy().to_string());
+            } else {
+                let url_clone = url.clone();
+                let target_file = cached_file.clone();
+                let downloaded = std::thread::spawn(move || {
+                    let client = reqwest::blocking::Client::builder()
+                        .timeout(Duration::from_secs(4))
+                        .build()
+                        .ok()?;
+                    let resp = client.get(&url_clone).send().ok()?;
+                    if resp.status().is_success() {
+                        let bytes = resp.bytes().ok()?;
+                        let _ = fs::create_dir_all(target_file.parent()?);
+                        fs::write(&target_file, bytes).ok()?;
+                        Some(target_file.to_string_lossy().to_string())
+                    } else {
+                        None
+                    }
+                }).join().ok().flatten();
+                local_avatar_path = downloaded;
+            }
+        }
+    }
+
+    (resolved_name, local_avatar_path)
+}
+
+#[cfg(target_os = "android")]
 #[no_mangle]
 pub extern "system" fn Java_org_meowkie_max_AvatarHelper_getAvatarPathNative<'local>(
     mut unowned_env: EnvUnowned<'local>,
@@ -175,140 +351,8 @@ pub extern "system" fn Java_org_meowkie_max_AvatarHelper_getAvatarPathNative<'lo
             _ => return None,
         };
 
-        let root = crate::stores::resolve_app_root(&rust_app_dir);
-        let creds = crate::stores::get_background_creds(&rust_app_dir, account as u64);
-        let local_id = creds.as_ref().map(|c| c.0).unwrap_or(0);
-        let data_dir = root.join("data").join(local_id.to_string());
-        let cache_dir = root.join("cache").join(local_id.to_string());
-        let cache_files_dir = cache_dir.join("files");
-        let _ = fs::create_dir_all(&cache_files_dir);
-
-        let storage = crate::stores::Storage::new(None);
-        let mut avatar_url: Option<String> = None;
-
-        let contact_path = data_dir.join("contacts").join(id.to_string());
-        if let Some(val) = storage.load(&contact_path) {
-            avatar_url = val.get("baseUrl")
-                .or_else(|| val.get("avatar"))
-                .or_else(|| val.get("iconUrl"))
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string());
-        }
-
-        if avatar_url.is_none() {
-            let chat_path = data_dir.join("chats").join(id.to_string()).join("info");
-            if let Some(val) = storage.load(&chat_path) {
-                avatar_url = val.get("baseIconUrl")
-                    .or_else(|| val.get("iconUrl"))
-                    .or_else(|| val.get("baseUrl"))
-                    .or_else(|| val.get("avatar"))
-                    .and_then(|v| v.as_str())
-                    .map(|s| s.to_string());
-            }
-        }
-
-        if avatar_url.is_none() {
-            if let Some((_, server_user_id, token, identity)) = creds {
-                let data_dir_clone = data_dir.clone();
-                let contact_path_clone = contact_path.clone();
-                let fetched_url = std::thread::spawn(move || {
-                    let rt = tokio::runtime::Builder::new_current_thread()
-                        .enable_all()
-                        .build()
-                        .ok()?;
-                    rt.block_on(async {
-                        let client = rumax::MaxClient::new();
-                        client.set_user_id(server_user_id).await;
-                        client.set_token(token).await;
-
-                        if client.connect(identity, false).await.is_ok() {
-                            if client.sync(None).await.is_ok() {
-                                let mut found_url = None;
-                                if id > 0 {
-                                    if let Ok(resp) = client.fetch_contacts(vec![id as u64]).await {
-                                        if let Some(contacts) = resp.payload.get("contacts").and_then(|c| c.as_array()) {
-                                            if let Some(c) = contacts.first() {
-                                                let storage = crate::stores::Storage::new(None);
-                                                let _ = fs::create_dir_all(data_dir_clone.join("contacts"));
-                                                let _ = storage.save(&contact_path_clone, c);
-                                                found_url = c.get("baseUrl")
-                                                    .or_else(|| c.get("avatar"))
-                                                    .and_then(|v| v.as_str())
-                                                    .map(|s| s.to_string());
-                                            }
-                                        }
-                                    }
-                                } else {
-                                    if let Ok(resp) = client.get_chats(vec![id]).await {
-                                        if let Some(chats) = resp.payload.get("chats").and_then(|c| c.as_array()) {
-                                            if let Some(c) = chats.first() {
-                                                let storage = crate::stores::Storage::new(None);
-                                                let chat_dir = data_dir_clone.join("chats").join(id.to_string());
-                                                let _ = fs::create_dir_all(&chat_dir);
-                                                let _ = storage.save(chat_dir.join("info"), c);
-                                                found_url = c.get("baseIconUrl")
-                                                    .or_else(|| c.get("iconUrl"))
-                                                    .or_else(|| c.get("baseUrl"))
-                                                    .or_else(|| c.get("avatar"))
-                                                    .and_then(|v| v.as_str())
-                                                    .map(|s| s.to_string());
-                                            }
-                                        }
-                                    }
-                                }
-                                client.disconnect().await;
-                                return found_url;
-                            }
-                            client.disconnect().await;
-                        }
-                        None
-                    })
-                }).join().ok().flatten();
-
-                if let Some(url) = fetched_url {
-                    avatar_url = Some(url);
-                }
-            }
-        }
-
-        let url = avatar_url?;
-
-        if let Some(index) = storage.load(cache_dir.join("index")) {
-            if let Some(entry) = index.get(&url) {
-                if let Some(p) = entry.get(0).and_then(|v| v.as_str()) {
-                    let f = PathBuf::from(p);
-                    if f.exists() {
-                        return Some(f.to_string_lossy().to_string());
-                    }
-                }
-            }
-        }
-
-        let hashed_name = crate::stores::hash(&url);
-        let cached_file = cache_files_dir.join(&hashed_name);
-        if cached_file.exists() {
-            return Some(cached_file.to_string_lossy().to_string());
-        }
-
-        let url_clone = url.clone();
-        let target_file = cached_file.clone();
-        let downloaded = std::thread::spawn(move || {
-            let client = reqwest::blocking::Client::builder()
-                .timeout(Duration::from_secs(4))
-                .build()
-                .ok()?;
-            let resp = client.get(&url_clone).send().ok()?;
-            if resp.status().is_success() {
-                let bytes = resp.bytes().ok()?;
-                let _ = fs::create_dir_all(target_file.parent()?);
-                fs::write(&target_file, bytes).ok()?;
-                Some(target_file.to_string_lossy().to_string())
-            } else {
-                None
-            }
-        }).join().ok().flatten();
-
-        downloaded
+        let (_, avatar_path) = resolve_contact_info_internal(account, id, &rust_app_dir);
+        avatar_path
     }));
 
     let path_str = match res {
@@ -317,6 +361,43 @@ pub extern "system" fn Java_org_meowkie_max_AvatarHelper_getAvatarPathNative<'lo
     };
 
     match unowned_env.with_env(|_env| _env.new_string(&path_str)).into_outcome() {
+        jni::Outcome::Ok(jstr) => jstr,
+        _ => JString::default(),
+    }
+}
+
+#[cfg(target_os = "android")]
+#[no_mangle]
+pub extern "system" fn Java_org_meowkie_max_ContactHelper_getContactInfoNative<'local>(
+    mut unowned_env: EnvUnowned<'local>,
+    _this: JObject<'local>,
+    account: i64,
+    id: i64,
+    app_dir: JString<'local>,
+) -> JString<'local> {
+    let res: Result<Option<String>, _> = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let rust_app_dir: String = match unowned_env.with_env(|_env| -> Result<_, jni::errors::Error> {
+            let a = app_dir.try_to_string(_env)?;
+            Ok(a)
+        }).into_outcome() {
+            jni::Outcome::Ok(v) => v,
+            _ => return None,
+        };
+
+        let (name, avatar_path) = resolve_contact_info_internal(account, id, &rust_app_dir);
+        let out = json!({
+            "name": name,
+            "avatarPath": avatar_path
+        });
+        Some(out.to_string())
+    }));
+
+    let out_str = match res {
+        Ok(Some(s)) => s,
+        _ => return JString::default(),
+    };
+
+    match unowned_env.with_env(|_env| _env.new_string(&out_str)).into_outcome() {
         jni::Outcome::Ok(jstr) => jstr,
         _ => JString::default(),
     }
@@ -446,7 +527,7 @@ pub extern "system" fn Java_org_meowkie_max_NotificationHelper_isChatGroupNative
 #[cfg(target_os = "android")]
 use tauri::Emitter;
 
-static GLOBAL_APP_HANDLE: std::sync::OnceLock<tauri::AppHandle> = std::sync::OnceLock::new();
+pub static GLOBAL_APP_HANDLE: std::sync::OnceLock<tauri::AppHandle> = std::sync::OnceLock::new();
 static PENDING_OPEN_CHAT: std::sync::atomic::AtomicI64 = std::sync::atomic::AtomicI64::new(0);
 
 pub fn set_app_handle(handle: tauri::AppHandle) {
@@ -506,9 +587,11 @@ pub extern "system" fn Java_org_meowkie_max_MainActivity_notifyCallActionNative<
 }
 
 #[cfg(target_os = "android")]
-static GLOBAL_JVM: std::sync::OnceLock<jni::JavaVM> = std::sync::OnceLock::new();
+pub static GLOBAL_JVM: std::sync::OnceLock<jni::JavaVM> = std::sync::OnceLock::new();
 #[cfg(target_os = "android")]
 static GLOBAL_NOTIFICATION_CLASS: std::sync::OnceLock<jni::refs::Global<jni::objects::JClass<'static>>> = std::sync::OnceLock::new();
+#[cfg(target_os = "android")]
+pub static GLOBAL_MAIN_ACTIVITY_CLASS: std::sync::OnceLock<jni::refs::Global<jni::objects::JClass<'static>>> = std::sync::OnceLock::new();
 
 #[cfg(target_os = "android")]
 #[no_mangle]
@@ -526,9 +609,42 @@ pub extern "system" fn Java_org_meowkie_max_MainActivity_initJni<'local>(
                 .or_else(|_| env.find_class(jni_str!("ru/oneme/app/NotificationHelper")))?;
             let global_helper = env.new_global_ref(helper_class)?;
             let _ = GLOBAL_NOTIFICATION_CLASS.set(global_helper);
+
+            if let Ok(main_activity_class) = env.find_class(jni_str!("org/meowkie/max/MainActivity")) {
+                if let Ok(global_main) = env.new_global_ref(main_activity_class) {
+                    let _ = GLOBAL_MAIN_ACTIVITY_CLASS.set(global_main);
+                }
+            }
+
             android_log(4, "MaxPlusJNI", "initJni: NotificationHelper class cached successfully");
             Ok(())
         });
+    }));
+}
+
+#[cfg(target_os = "android")]
+#[no_mangle]
+pub extern "system" fn Java_org_meowkie_max_MainActivity_notifyScreenCaptureResultNative<'local>(
+    mut _unowned_env: EnvUnowned<'local>,
+    _this: JObject<'local>,
+    success: jboolean,
+    port: i32,
+    width: i32,
+    height: i32,
+) {
+    let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        crate::screen_capture::on_screen_capture_result(success, port, width, height);
+    }));
+}
+
+#[cfg(target_os = "android")]
+#[no_mangle]
+pub extern "system" fn Java_org_meowkie_max_MainActivity_notifyScreenCaptureStoppedNative<'local>(
+    mut _unowned_env: EnvUnowned<'local>,
+    _this: JObject<'local>,
+) {
+    let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        crate::screen_capture::on_screen_capture_stopped();
     }));
 }
 

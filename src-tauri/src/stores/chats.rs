@@ -13,15 +13,41 @@ pub static CHAT_SETTINGS_CACHE: LazyLock<RwLock<HashMap<(u64, i64), Value>>> =
 #[tauri::command]
 pub async fn get_contact(
     app: AppHandle,
+    state: tauri::State<'_, crate::state::AppState>,
     account: u64,
     contact_id: u64,
 ) -> Result<Option<Value>, String> {
-    tokio::task::spawn_blocking(move || {
-        let key = crypto_key(&app, account);
-        Ok(Storage::new(key).load(Paths::new(&app, account).contact(contact_id)))
+    let app_clone = app.clone();
+    let local = tokio::task::spawn_blocking(move || {
+        let key = crypto_key(&app_clone, account);
+        let storage = Storage::new(key.clone());
+        if let Some(val) = storage.load(Paths::new(&app_clone, account).contact(contact_id)) {
+            return Some(val);
+        }
+        storage.load(Paths::new(&app_clone, account).chat(contact_id as i64).join("info"))
     })
     .await
-    .map_err(|e| e.to_string())?
+    .map_err(|e| e.to_string())?;
+
+    if local.is_some() {
+        return Ok(local);
+    }
+
+    if let Ok(resp) = state.client.fetch_contacts(vec![contact_id]).await {
+        if let Some(contacts) = resp.payload.get("contacts").and_then(|c| c.as_array()) {
+            if let Some(first) = contacts.first().cloned() {
+                let app_save = app.clone();
+                let to_save = first.clone();
+                let _ = tokio::task::spawn_blocking(move || {
+                    let key = crypto_key(&app_save, account);
+                    Storage::new(key).save(Paths::new(&app_save, account).contact(contact_id), &to_save)
+                }).await;
+                return Ok(Some(first));
+            }
+        }
+    }
+
+    Ok(None)
 }
 
 #[tauri::command]

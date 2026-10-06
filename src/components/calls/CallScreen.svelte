@@ -454,20 +454,18 @@
           {/if}
         </button>
 
-        {#if callType === 'video' || videoOn}
-          <button
-            class="ctrl-btn"
-            class:ctrl-btn--active={!videoOn}
-            on:click={onToggleVideo}
-            aria-label={videoOn ? 'Stop camera' : 'Start camera'}
-          >
-            {#if videoOn}
-              <img src="/icons/video.svg" alt="" width="24" height="24" />
-            {:else}
-              <img src="/icons/video-off.svg" alt="" width="24" height="24" />
-            {/if}
-          </button>
-        {/if}
+        <button
+          class="ctrl-btn"
+          class:ctrl-btn--active={!videoOn}
+          on:click={onToggleVideo}
+          aria-label={videoOn ? 'Stop camera' : 'Start camera'}
+        >
+          {#if videoOn}
+            <img src="/icons/video.svg" alt="" width="24" height="24" />
+          {:else}
+            <img src="/icons/video-off.svg" alt="" width="24" height="24" />
+          {/if}
+        </button>
 
         <button
           class="ctrl-btn"
