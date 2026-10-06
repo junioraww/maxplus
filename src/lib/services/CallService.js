@@ -10,6 +10,7 @@ import { createSyntheticAudioStream, createSyntheticVideoStream } from '$lib/uti
 import { startIncomingRingtone, startOutgoingRingback, stopCallAudio, playRejectionTone } from '$lib/services/callAudio.js';
 import { showDesktopCallNotification, cancelDesktopCallNotification } from '$lib/utils/notifications.js';
 import { getContactDirect } from '$lib/stores/contacts.js';
+import { LinuxNativePeerConnection } from '$lib/services/LinuxNativePeerConnection.js';
 import { LinuxFallbackPeerConnection } from '$lib/services/LinuxFallbackPeerConnection.js';
 
 const WS2_VERSION = '5';
@@ -213,7 +214,7 @@ function getRTCPeerConnection() {
     const pc = globalThis.RTCPeerConnection || globalThis.webkitRTCPeerConnection;
     if (pc) return pc;
   }
-  return LinuxFallbackPeerConnection;
+  return LinuxNativePeerConnection || LinuxFallbackPeerConnection;
 }
 
 function getRTCSessionDescription() {

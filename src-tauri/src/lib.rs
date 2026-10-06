@@ -10,6 +10,7 @@ mod state;
 mod stores;
 mod video;
 mod webapp_proxy;
+mod linux_webrtc;
 
 use state::AppState;
 use std::sync::Arc;
@@ -22,6 +23,7 @@ pub fn run() {
     ssl::init_ssl_certificates();
     video::start_video_proxy();
     webapp_proxy::start_webapp_proxy();
+    linux_webrtc::start_linux_webrtc_daemon();
 
     let builder = tauri::Builder::default();
 
@@ -95,8 +97,8 @@ pub fn run() {
             let p_cfg = proxy_auth::get_proxy_config();
             if let Some(w) = app.get_webview_window("main") {
                 let script = format!(
-                    "window.__MAXPLUS_PROXY__ = {{ videoPort: {}, videoToken: '{}', webappPort: {}, webappToken: '{}' }};",
-                    p_cfg.video_port, p_cfg.video_token, p_cfg.webapp_port, p_cfg.webapp_token
+                    "window.__MAXPLUS_PROXY__ = {{ videoPort: {}, videoToken: '{}', webappPort: {}, webappToken: '{}', webrtcPort: {} }};",
+                    p_cfg.video_port, p_cfg.video_token, p_cfg.webapp_port, p_cfg.webapp_token, p_cfg.webrtc_port
                 );
                 let _ = w.eval(&script);
             }
@@ -300,6 +302,7 @@ pub fn run() {
             commands::decode_call_push,
             screen_capture::start_android_screen_capture,
             screen_capture::stop_android_screen_capture,
+            linux_webrtc::get_linux_webrtc_port,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
