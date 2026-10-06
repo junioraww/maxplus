@@ -32,7 +32,7 @@
   let phase, callType, mode, peerName, peerAvatar, muted, videoOn, screenOn, speakerOn, isGroup, roomName;
   let remoteStream, localCameraStream, localScreenStream;
   let startedAt, secureKeyFingerprint, secureStatus;
-  let errorText, connectionStatus, serverTopology, conversationId, cameraLoading;
+  let errorText, connectionStatus, serverTopology, conversationId, cameraLoading, peerVideoOn, peerScreenOn;
   let showDebug = false;
 
   $: ({
@@ -41,6 +41,7 @@
     remoteStream, localCameraStream, localScreenStream,
     startedAt, secureKeyFingerprint, secureStatus,
     errorText, connectionStatus, serverTopology, conversationId, cameraLoading,
+    peerVideoOn, peerScreenOn,
   } = $activeCall);
 
   let remoteAudioEl;
@@ -66,7 +67,8 @@
   $: hasRemoteVideo = Boolean(
     remoteStream &&
     remoteStream.getVideoTracks &&
-    remoteStream.getVideoTracks().some(t => t.readyState === 'live' && t.enabled)
+    remoteStream.getVideoTracks().some(t => t.readyState === 'live' && t.enabled) &&
+    (peerVideoOn || peerScreenOn || ($activeCall.participants && $activeCall.participants.some(p => p.id !== $activeCall.myCallUserId && (p.videoOn || p.screenOn))))
   );
   $: hasLocalVideo = Boolean((videoOn || screenOn || cameraLoading) && (localCameraStream || localScreenStream || cameraLoading));
   $: localEffectiveStream = screenOn ? localScreenStream : localCameraStream;
@@ -79,7 +81,13 @@
   $: if (remoteAudioEl && remoteStream) {
     if (remoteAudioEl.srcObject !== remoteStream) {
       remoteAudioEl.srcObject = remoteStream;
-      remoteAudioEl.play().catch(() => {});
+      remoteAudioEl.play()
+        .then(() => {
+          console.log('[call] remote audio playback started');
+        })
+        .catch(err => {
+          console.warn('[call] remote audio playback error:', err?.message || err);
+        });
     }
   }
 

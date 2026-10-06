@@ -416,6 +416,10 @@ class MaxCallSession {
   #androidScreenCapture = null;
   #unlistenScreenCaptureStopped = null;
   #cameraToggling = false;
+  #remoteStream = null;
+  #participantStreams = new Map();
+  #signalQueue = Promise.resolve();
+  #iceRestarting = false;
 
   get encryption() { return this.#encryption; }
 
@@ -440,7 +444,7 @@ class MaxCallSession {
     } catch {}
   }
 
-  async begin({ endpoint, conversationId, role, isVideo, mode, peerId = null }) {
+  async begin({ endpoint, conversationId, role, isVideo, mode, peerId = null, convParams = null }) {
     this.#conversationId = conversationId;
     this.#role = role;
     this.#contactPeerId = peerId;
@@ -451,6 +455,12 @@ class MaxCallSession {
     } catch {}
     this.#myCallUserId = myCallUserId;
     patchCallState({ myCallUserId });
+    if (convParams) {
+      const parsedIce = this.#parseIceServers(convParams);
+      if (parsedIce.length) {
+        this.#iceServers = parsedIce;
+      }
+    }
     log(`begin session: role=${role} isVideo=${isVideo} mode=${mode} convId=${conversationId} myCallUserId=${myCallUserId}`);
 
     if (role === 'responder') {
@@ -702,10 +712,11 @@ class MaxCallSession {
   }
 
   async #flushPendingLocalCandidates() {
-    if (!this.#ws2PeerId || !this.#voiceChannel) return;
+    const targetPeerId = this.#ws2PeerId || this.#contactPeerId;
+    if (!targetPeerId || !this.#voiceChannel) return;
     for (const cand of this.#pendingLocalCandidates) {
       await this.#voiceChannel.send('transmit-data', {
-        participantId: Number(this.#ws2PeerId),
+        participantId: Number(targetPeerId),
         participantType: 'USER',
         deviceIdx: 0,
         data: {
@@ -716,7 +727,9 @@ class MaxCallSession {
           },
         },
         capabilities: WS2_CAPABILITIES,
-      }).catch(() => {});
+      }).catch((err) => {
+        log('Failed to flush local candidate:', err?.message || err);
+      });
     }
     this.#pendingLocalCandidates = [];
   }
@@ -780,7 +793,7 @@ class MaxCallSession {
       throw err;
     }
 
-    log('instantiating RTCPeerConnection, iceServers:', this.#iceServers);
+    log(`instantiating RTCPeerConnection (${PeerConnection.name || 'Anonymous'}), iceServers:`, this.#iceServers);
     const pc = new PeerConnection({
       iceServers: this.#iceServers,
       sdpSemantics: 'unified-plan',
@@ -791,9 +804,10 @@ class MaxCallSession {
     pc.onicecandidate = (e) => {
       if (e.candidate) {
         log('ICE candidate local:', e.candidate.candidate);
-        if (this.#topology !== 'SERVER' && this.#ws2PeerId && !this.#pendingOffer) {
+        const targetPeerId = this.#ws2PeerId || this.#contactPeerId;
+        if (this.#topology !== 'SERVER' && targetPeerId && !this.#pendingOffer) {
           this.#voiceChannel?.send('transmit-data', {
-            participantId: Number(this.#ws2PeerId),
+            participantId: Number(targetPeerId),
             participantType: 'USER',
             deviceIdx: 0,
             data: {
@@ -804,7 +818,9 @@ class MaxCallSession {
               },
             },
             capabilities: WS2_CAPABILITIES,
-          }).catch(() => {});
+          }).catch((err) => {
+            log('transmit-data candidate error:', err?.message || err);
+          });
         } else if (this.#topology !== 'SERVER') {
           this.#pendingLocalCandidates.push(e.candidate);
         }
@@ -828,15 +844,51 @@ class MaxCallSession {
     };
 
     pc.ontrack = (e) => {
-      log('Remote media track received:', e.track.kind, e.track.id);
       const track = e.track;
-      const stream = e.streams[0] || new MediaStream([track]);
-      patchCallState({ remoteStream: stream });
-      const targetId = this.#resolveParticipantIdFromTrack(track.id) || this.#ws2PeerId;
+      log(`Remote media track received: kind=${track.kind} id=${track.id} readyState=${track.readyState} enabled=${track.enabled} muted=${track.muted}`);
+      track.onmute = () => {
+        log(`Remote track muted: ${track.kind} ${track.id}`);
+      };
+      track.onunmute = () => {
+        log(`Remote track unmuted: ${track.kind} ${track.id}`);
+      };
+      if (!this.#remoteStream) {
+        this.#remoteStream = new MediaStream();
+      }
+      const existing = this.#remoteStream.getTracks().find(t => t.id === track.id || t.kind === track.kind);
+      if (existing) {
+        this.#remoteStream.removeTrack(existing);
+      }
+      this.#remoteStream.addTrack(track);
+
+      track.onended = () => {
+        log(`Remote track ended: ${track.kind} ${track.id}`);
+        if (this.#remoteStream) {
+          this.#remoteStream.removeTrack(track);
+          patchCallState({ remoteStream: new MediaStream(this.#remoteStream.getTracks()) });
+        }
+      };
+
+      const unified = new MediaStream(this.#remoteStream.getTracks());
+      patchCallState({ remoteStream: unified });
+
+      const targetId = this.#resolveParticipantIdFromTrack(track.id) || this.#ws2PeerId || this.#contactPeerId;
       if (targetId) {
-        const streams = { ...get(activeCall).participantStreams, [String(targetId)]: stream };
+        let pStream = this.#participantStreams.get(String(targetId));
+        if (!pStream) {
+          pStream = new MediaStream();
+          this.#participantStreams.set(String(targetId), pStream);
+        }
+        const ex = pStream.getTracks().find(t => t.id === track.id || t.kind === track.kind);
+        if (ex) pStream.removeTrack(ex);
+        pStream.addTrack(track);
+        const streams = {
+          ...get(activeCall).participantStreams,
+          [String(targetId)]: new MediaStream(pStream.getTracks()),
+        };
         patchCallState({ participantStreams: streams });
       }
+
       if (this.#encryption.mode === CALL_MODE.SECURE) {
         this.#encryption.applyToReceiver(e.receiver);
       }
@@ -915,9 +967,22 @@ class MaxCallSession {
       log('Processing ws2 connection message');
       const conversation = msg.conversation || {};
       this.#topology = conversation.topology || (get(activeCall).isGroup ? 'SERVER' : null);
-      const ice = this.#parseIceServers(msg.conversationParams || {});
+      const convParams = msg.conversationParams || msg.params || msg.conversation?.conversationParams || msg.conversation?.params || {};
+      const ice = this.#parseIceServers(convParams);
       if (ice.length) {
         this.#iceServers = ice;
+        if (this.#pc && typeof this.#pc.setConfiguration === 'function') {
+          try {
+            this.#pc.setConfiguration({
+              iceServers: this.#iceServers,
+              sdpSemantics: 'unified-plan',
+              bundlePolicy: 'max-bundle',
+              rtcpMuxPolicy: 'require',
+            });
+          } catch (e) {
+            log('setConfiguration error:', e);
+          }
+        }
       }
 
       const isGroup = get(activeCall).isGroup || this.#topology === 'SERVER';
@@ -931,6 +996,10 @@ class MaxCallSession {
         const peer = roster.find(p => p.id && p.id !== myId);
         if (peer) {
           this.#ws2PeerId = peer.id;
+          patchCallState({
+            peerVideoOn: Boolean(peer.videoOn),
+            peerScreenOn: Boolean(peer.screenOn),
+          });
         }
       }
 
@@ -970,15 +1039,17 @@ class MaxCallSession {
         return;
       }
 
+      const targetPeerId = this.#ws2PeerId || this.#contactPeerId;
+
       if (this.#role === 'originator') {
         patchCallState({ phase: CALL_PHASE.OUTGOING });
         const offer = await pc.createOffer(OFFER_CONSTRAINTS);
         await pc.setLocalDescription(offer);
         const localSdp = this.#applyTrackLabels(pc.localDescription?.sdp || offer.sdp);
         this.#extractAndApplyFingerprint(localSdp);
-        if (this.#ws2PeerId) {
+        if (targetPeerId) {
           await this.#voiceChannel.send('transmit-data', {
-            participantId: Number(this.#ws2PeerId),
+            participantId: Number(targetPeerId),
             participantType: 'USER',
             deviceIdx: 0,
             data: {
@@ -995,9 +1066,9 @@ class MaxCallSession {
         await pc.setLocalDescription(offer);
         const localSdp = this.#applyTrackLabels(pc.localDescription?.sdp || offer.sdp);
         this.#extractAndApplyFingerprint(localSdp);
-        if (this.#ws2PeerId) {
+        if (targetPeerId) {
           await this.#voiceChannel.send('transmit-data', {
-            participantId: Number(this.#ws2PeerId),
+            participantId: Number(targetPeerId),
             participantType: 'USER',
             deviceIdx: 0,
             data: {
@@ -1081,7 +1152,16 @@ class MaxCallSession {
     }
   }
 
-  async #onRemoteSignal(msg) {
+  #onRemoteSignal(msg) {
+    this.#signalQueue = this.#signalQueue.then(async () => {
+      await this.#processRemoteSignal(msg);
+    }).catch(err => {
+      log('Signal queue error:', err);
+    });
+  }
+
+  async #processRemoteSignal(msg) {
+    if (this.#destroyed) return;
     try {
       const raw = msg.data;
       if (!raw) return;
@@ -1092,15 +1172,16 @@ class MaxCallSession {
         return;
       }
 
-      if (msg.participantId && !this.#ws2PeerId) {
-        this.#ws2PeerId = String(msg.participantId);
+      const rawPeerId = msg.participantId ?? msg.peerId?.id ?? msg.peerId?.userId ?? (typeof msg.peerId === 'number' || typeof msg.peerId === 'string' ? msg.peerId : null) ?? msg.userId;
+      if (rawPeerId && !this.#ws2PeerId) {
+        this.#ws2PeerId = String(rawPeerId);
         this.#transmitPendingOffer();
       }
 
       const sdpData = signal.sdp || (signal.type ? signal : null);
-      const candData = signal.candidate;
 
       const pc = await this.#buildPeerConnection();
+      if (!pc || this.#destroyed) return;
 
       if (sdpData && sdpData.type) {
         const type = sdpData.type;
@@ -1108,8 +1189,11 @@ class MaxCallSession {
         log(`Signaling transmitted SDP received: type=${type}`);
         this.#extractAndApplyFingerprint(sdp);
 
-        if (type === 'answer' && pc.signalingState !== 'have-local-offer') {
-          return;
+        if (type === 'answer') {
+          if (pc.signalingState !== 'have-local-offer') {
+            log(`Ignoring remote answer in signaling state: ${pc.signalingState}`);
+            return;
+          }
         }
 
         if (type === 'offer' && pc.signalingState === 'have-local-offer') {
@@ -1124,10 +1208,21 @@ class MaxCallSession {
         try {
           await pc.setRemoteDescription(descObj);
         } catch (err) {
+          if (type === 'answer' && pc.signalingState === 'stable') {
+            log('Answer already applied, ignoring duplicate error');
+            return;
+          }
           if (finalSdp !== sdp) {
             log('setRemoteDescription aligned fallback to raw SDP:', err);
             descObj = SessionDesc ? new SessionDesc({ type, sdp }) : { type, sdp };
-            await pc.setRemoteDescription(descObj);
+            try {
+              await pc.setRemoteDescription(descObj);
+            } catch (err2) {
+              if (type === 'answer' && pc.signalingState === 'stable') {
+                return;
+              }
+              throw err2;
+            }
           } else {
             throw err;
           }
@@ -1139,9 +1234,10 @@ class MaxCallSession {
           const answer = await pc.createAnswer();
           await pc.setLocalDescription(answer);
           const localSdp = this.#applyTrackLabels(pc.localDescription?.sdp || answer.sdp);
-          if (this.#ws2PeerId) {
+          const targetPeerId = this.#ws2PeerId || this.#contactPeerId;
+          if (targetPeerId) {
             await this.#voiceChannel.send('transmit-data', {
-              participantId: Number(this.#ws2PeerId),
+              participantId: Number(targetPeerId),
               participantType: 'USER',
               deviceIdx: 0,
               data: {
@@ -1155,18 +1251,31 @@ class MaxCallSession {
           stopCallAudio();
           patchCallState({ phase: CALL_PHASE.ACTIVE, startedAt: get(activeCall).startedAt || Date.now() });
         }
-      } else if (candData) {
-        const candidateStr = typeof candData === 'string' ? candData : (candData.candidate || '');
-        const sdpMid = candData.sdpMid ?? '0';
-        const sdpMLineIndex = candData.sdpMLineIndex ?? 0;
-        const IceCand = getRTCIceCandidate();
-        const candidateObj = IceCand
-          ? new IceCand({ candidate: candidateStr, sdpMid, sdpMLineIndex })
-          : { candidate: candidateStr, sdpMid, sdpMLineIndex };
-        if (this.#remoteDescSet) {
-          await pc.addIceCandidate(candidateObj).catch(() => {});
-        } else {
-          this.#pendingCandidates.push(candidateObj);
+      } else {
+        const rawCandidates = Array.isArray(signal.candidates)
+          ? signal.candidates
+          : (signal.candidate ? [signal.candidate] : (signal.ice ? [signal.ice] : []));
+        for (const item of rawCandidates) {
+          if (!item) continue;
+          const candidateStr = typeof item === 'string' ? item : (item.candidate || '');
+          if (!candidateStr || typeof candidateStr !== 'string' || !candidateStr.trim()) continue;
+          const sdpMid = item.sdpMid != null ? String(item.sdpMid) : undefined;
+          const sdpMLineIndex = item.sdpMLineIndex != null ? Number(item.sdpMLineIndex) : undefined;
+          log(`Remote ICE candidate received: ${candidateStr} (mid=${sdpMid}, mline=${sdpMLineIndex})`);
+          const IceCand = getRTCIceCandidate();
+          const candidateObj = IceCand
+            ? new IceCand({ candidate: candidateStr, ...(sdpMid != null ? { sdpMid } : {}), ...(sdpMLineIndex != null ? { sdpMLineIndex } : {}) })
+            : { candidate: candidateStr, sdpMid, sdpMLineIndex };
+          if (this.#remoteDescSet) {
+            try {
+              await pc.addIceCandidate(candidateObj);
+              log('Remote ICE candidate added successfully');
+            } catch (candErr) {
+              log('Failed to add remote ICE candidate:', candErr?.message || candErr);
+            }
+          } else {
+            this.#pendingCandidates.push(candidateObj);
+          }
         }
       }
     } catch (err) {
@@ -1176,11 +1285,18 @@ class MaxCallSession {
 
   async #flushCandidates() {
     const pc = this.#pc;
-    if (!pc) return;
-    for (const c of this.#pendingCandidates) {
-      await pc.addIceCandidate(c).catch(() => {});
-    }
+    if (!pc || this.#pendingCandidates.length === 0) return;
+    const list = [...this.#pendingCandidates];
     this.#pendingCandidates = [];
+    log(`Flushing ${list.length} pending remote ICE candidates`);
+    for (const c of list) {
+      try {
+        await pc.addIceCandidate(c);
+        log('Flushed remote ICE candidate added successfully');
+      } catch (candErr) {
+        log('Failed to add flushed remote ICE candidate:', candErr?.message || candErr, c.candidate);
+      }
+    }
   }
 
   #gatherDone() {
@@ -1205,6 +1321,13 @@ class MaxCallSession {
   #onPeerMedia(msg) {
     const ms = msg.mediaSettings || {};
     const pid = String(msg.participantId || '');
+    const myId = String(this.#myCallUserId || '');
+    if (pid && pid !== myId) {
+      patchCallState({
+        peerVideoOn: Boolean(ms.isVideoEnabled),
+        peerScreenOn: Boolean(ms.isScreenSharingEnabled),
+      });
+    }
     patchCallState({
       participants: get(activeCall).participants.map(p =>
         p.id === pid
@@ -1265,12 +1388,14 @@ class MaxCallSession {
   }
 
   async #attemptIceRestart() {
-    if (this.#destroyed) return;
+    if (this.#destroyed || this.#iceRestarting) return;
+    const pc = this.#pc;
+    if (!pc || pc.signalingState !== 'stable') return;
+    this.#iceRestarting = true;
     try {
-      const pc = this.#pc;
-      if (!pc) return;
       log('Attempting ICE restart');
       const offer = await pc.createOffer({ ...OFFER_CONSTRAINTS, iceRestart: true });
+      if (pc.signalingState !== 'stable') return;
       await pc.setLocalDescription(offer);
       if (this.#topology !== 'SERVER' && this.#ws2PeerId) {
         await this.#voiceChannel?.send('transmit-data', {
@@ -1284,7 +1409,11 @@ class MaxCallSession {
         });
       }
     } catch (e) {
-      log('ICE restart error:', e.message);
+      log('ICE restart error:', e?.message || e);
+    } finally {
+      setTimeout(() => {
+        this.#iceRestarting = false;
+      }, 3000);
     }
   }
 
@@ -1295,14 +1424,91 @@ class MaxCallSession {
     }
   }
 
+  #normalizeIceUrl(url, scheme) {
+    if (!url || typeof url !== 'string') return null;
+    const trimmed = url.trim();
+    if (!trimmed) return null;
+    if (trimmed.startsWith('stun:') || trimmed.startsWith('turn:') || trimmed.startsWith('turns:')) {
+      return trimmed;
+    }
+    return `${scheme}:${trimmed}`;
+  }
+
   #parseIceServers(convParams) {
+    if (!convParams || typeof convParams !== 'object') {
+      return [...ICE_DEFAULTS];
+    }
     const servers = [];
-    const raw = convParams.iceServers || convParams.stunServers || [];
-    for (const s of raw) {
-      if (s.url || s.urls) {
-        servers.push({ urls: s.urls || s.url, username: s.username, credential: s.credential });
+
+    const rawList = convParams.iceServers || convParams.stunServers;
+    if (Array.isArray(rawList)) {
+      for (const s of rawList) {
+        if (s && (s.url || s.urls)) {
+          servers.push({
+            urls: s.urls || s.url,
+            ...(s.username ? { username: s.username } : {}),
+            ...(s.credential ? { credential: s.credential } : {}),
+          });
+        }
       }
     }
+
+    const stunRaw = convParams.stun || convParams.stn;
+    if (stunRaw) {
+      if (typeof stunRaw === 'string') {
+        const url = this.#normalizeIceUrl(stunRaw, 'stun');
+        if (url) servers.push({ urls: url });
+      } else if (Array.isArray(stunRaw)) {
+        const urls = stunRaw.map(u => this.#normalizeIceUrl(u, 'stun')).filter(Boolean);
+        if (urls.length) servers.push({ urls });
+      } else if (typeof stunRaw === 'object' && (stunRaw.urls || stunRaw.url)) {
+        const u = stunRaw.urls || stunRaw.url;
+        const urls = Array.isArray(u) ? u.map(x => this.#normalizeIceUrl(x, 'stun')).filter(Boolean) : this.#normalizeIceUrl(u, 'stun');
+        if (urls) servers.push({ urls });
+      }
+    }
+
+    const turnRaw = convParams.turn || convParams.trn;
+    const turnUser = convParams.turnUser || convParams.trnu || convParams.username || '';
+    const turnPassword = convParams.turnPassword || convParams.trnp || convParams.credential || convParams.password || '';
+
+    if (turnRaw) {
+      if (typeof turnRaw === 'string') {
+        const url = this.#normalizeIceUrl(turnRaw, 'turn');
+        if (url) {
+          const entry = { urls: url };
+          if (turnUser) entry.username = turnUser;
+          if (turnPassword) entry.credential = turnPassword;
+          servers.push(entry);
+        }
+      } else if (Array.isArray(turnRaw)) {
+        const urls = turnRaw.map(u => this.#normalizeIceUrl(u, 'turn')).filter(Boolean);
+        if (urls.length) {
+          const entry = { urls };
+          if (turnUser) entry.username = turnUser;
+          if (turnPassword) entry.credential = turnPassword;
+          servers.push(entry);
+        }
+      } else if (typeof turnRaw === 'object') {
+        const u = turnRaw.urls || turnRaw.url;
+        if (u) {
+          const urls = Array.isArray(u) ? u.map(x => this.#normalizeIceUrl(x, 'turn')).filter(Boolean) : this.#normalizeIceUrl(u, 'turn');
+          const entry = { urls };
+          const uName = turnRaw.username || turnUser;
+          const uCred = turnRaw.credential || turnPassword;
+          if (uName) entry.username = uName;
+          if (uCred) entry.credential = uCred;
+          servers.push(entry);
+        }
+      }
+    }
+
+    for (const def of ICE_DEFAULTS) {
+      if (!servers.some(s => s.urls === def.urls || (Array.isArray(s.urls) && s.urls.includes(def.urls)))) {
+        servers.push(def);
+      }
+    }
+
     return servers;
   }
 
@@ -1579,6 +1785,14 @@ class MaxCallSession {
     for (const t of (this.#screenStream?.getTracks() || [])) {
       try { t.stop(); } catch {}
     }
+    if (this.#remoteStream) {
+      for (const t of this.#remoteStream.getTracks()) {
+        try { t.stop(); } catch {}
+      }
+      this.#remoteStream = null;
+    }
+    this.#participantStreams.clear();
+    this.#signalQueue = Promise.resolve();
     try { mediaPipeline.teardown(); } catch {}
     try { this.#voiceChannel?.close(); } catch {}
     try { this.#pc?.close(); } catch {}
@@ -1640,9 +1854,10 @@ export const CallService = {
       const endpoint = this._extractEndpoint(resp);
       if (!endpoint) throw new Error('No ws2 endpoint in response');
       startOutgoingRingback();
+      const convParams = this._extractConvParams(resp);
       const session = new MaxCallSession();
       _activeSession = session;
-      await session.begin({ endpoint, conversationId: convId, role: 'originator', isVideo: false, mode, peerId });
+      await session.begin({ endpoint, conversationId: convId, role: 'originator', isVideo: false, mode, peerId, convParams });
     } catch (e) {
       stopCallAudio();
       showAlert('Не удалось начать звонок: ' + (e?.message || e));
@@ -1677,9 +1892,10 @@ export const CallService = {
       const endpoint = this._extractEndpoint(resp);
       if (!endpoint) throw new Error('No ws2 endpoint in response');
       startOutgoingRingback();
+      const convParams = this._extractConvParams(resp);
       const session = new MaxCallSession();
       _activeSession = session;
-      await session.begin({ endpoint, conversationId: convId, role: 'originator', isVideo: true, mode, peerId });
+      await session.begin({ endpoint, conversationId: convId, role: 'originator', isVideo: true, mode, peerId, convParams });
     } catch (e) {
       stopCallAudio();
       showAlert('Не удалось начать видеозвонок: ' + (e?.message || e));
@@ -1765,6 +1981,7 @@ export const CallService = {
         isVideo: pending.isVideo,
         mode,
         peerId: pending.callerId,
+        convParams: pending.convParams,
       });
     } catch (e) {
       log('acceptIncoming failed:', e);
@@ -1867,9 +2084,10 @@ export const CallService = {
       const endpoint = this._extractEndpoint(resp);
       if (!endpoint) throw new Error('No ws2 endpoint in response');
       const convId = resp?.conversationId || token;
+      const convParams = this._extractConvParams(resp);
       const session = new MaxCallSession();
       _activeSession = session;
-      await session.begin({ endpoint, conversationId: convId, role: 'joiner', isVideo, mode, peerId: null });
+      await session.begin({ endpoint, conversationId: convId, role: 'joiner', isVideo, mode, peerId: null, convParams });
     } catch (e) {
       showAlert('Не удалось присоединиться: ' + (e?.message || e));
       patchCallState({ errorText: String(e?.message || e) });
@@ -1917,6 +2135,20 @@ export const CallService = {
       const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
       return parsed.endpoint || null;
     } catch { return null; }
+  },
+
+  _extractConvParams(resp) {
+    if (!resp) return null;
+    if (resp.conversationParams && typeof resp.conversationParams === 'object') return resp.conversationParams;
+    const raw = resp.internalCallerParams || resp.internalParams || resp.callerParams || resp.conversationParams;
+    if (raw) {
+      try {
+        const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+        if (parsed?.conversationParams) return parsed.conversationParams;
+        return parsed;
+      } catch {}
+    }
+    return null;
   },
 
   getActiveSession() { return _activeSession; },

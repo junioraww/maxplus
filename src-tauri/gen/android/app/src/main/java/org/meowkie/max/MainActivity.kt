@@ -145,6 +145,7 @@ class MainActivity : TauriActivity() {
 
   override fun onWebViewCreate(webView: android.webkit.WebView) {
     super.onWebViewCreate(webView)
+    webView.settings.mediaPlaybackRequiresUserGesture = false
     webView.webChromeClient = object : android.webkit.WebChromeClient() {
       override fun onPermissionRequest(request: android.webkit.PermissionRequest) {
         runOnUiThread {
