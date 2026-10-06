@@ -41,29 +41,60 @@ export const getContact = contactId => {
   return store;
 };
 
+export function getContactDisplayName(contact) {
+  if (!contact) return '';
+  if (contact.names?.[0]?.firstName) {
+    const fn = contact.names[0].firstName;
+    const ln = contact.names[0].lastName || '';
+    return `${fn} ${ln}`.trim();
+  }
+  if (contact.firstName) {
+    const ln = contact.lastName || '';
+    return `${contact.firstName} ${ln}`.trim();
+  }
+  return contact.name || contact.displayName || contact.title || '';
+}
+
+export function getContactAvatarUrl(contact) {
+  if (!contact) return null;
+  return contact.avatar || contact.baseRawUrl || contact.baseUrl || contact.photo || contact.iconUrl || null;
+}
+
 export const getContactDirect = async contactId => {
   const id = Number(contactId);
   if (!id || id <= 0) return null;
   if (cache[id]) {
     const val = get(cache[id].store);
-    if (val !== undefined && val !== null) return val;
+    if (val !== undefined && val !== null) {
+      return {
+        ...val,
+        avatar: getContactAvatarUrl(val),
+        displayName: getContactDisplayName(val),
+      };
+    }
   }
   try {
     const account = await getCurrentAccount();
     if (!account?.id) return null;
     const cached = await invoke("get_contact", { account: +account.id, contactId: id });
     if (cached) {
+      const normalized = {
+        ...cached,
+        avatar: getContactAvatarUrl(cached),
+        displayName: getContactDisplayName(cached),
+      };
       if (cache[id]) {
-        cache[id].store.set(cached);
+        cache[id].store.set(normalized);
       }
-      return cached;
+      return normalized;
     }
     const resp = await invoke("fetch_contacts", { userIds: [id] });
     if (resp?.contacts && resp.contacts.length > 0) {
       const raw = resp.contacts[0];
       const contact = {
         ...raw,
-        avatar: raw.avatar || raw.baseRawUrl || raw.baseUrl || null,
+        avatar: getContactAvatarUrl(raw),
+        displayName: getContactDisplayName(raw),
       };
       await updateContact(contact);
       return contact;

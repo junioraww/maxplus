@@ -4,6 +4,7 @@ mod crypto;
 mod files;
 mod media_validator;
 mod notifications;
+mod screen_capture;
 mod ssl;
 mod state;
 mod stores;
@@ -297,6 +298,8 @@ pub fn run() {
             commands::make_call_invite_link,
             commands::erase_call_records,
             commands::decode_call_push,
+            screen_capture::start_android_screen_capture,
+            screen_capture::stop_android_screen_capture,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

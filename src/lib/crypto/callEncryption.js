@@ -20,7 +20,7 @@ export class CallEncryptionSession {
     this.#fingerprint = null;
   }
 
-  async initSecure(sharedSecret) {
+  async initSecure(sharedSecret, isOriginator = true) {
     this.#mode = 'secure';
     const raw = typeof sharedSecret === 'string'
       ? hexToBytes(sharedSecret)
@@ -30,11 +30,12 @@ export class CallEncryptionSession {
       'raw', raw, { name: 'HKDF' }, false, ['deriveKey', 'deriveBits']
     );
 
-    const salt = new Uint8Array(32);
-    crypto.getRandomValues(salt);
+    const salt = new TextEncoder().encode('maxplus-call-media-salt-v1-32b');
+    const sendLabel = isOriginator ? '-orig-to-resp' : '-resp-to-orig';
+    const recvLabel = isOriginator ? '-resp-to-orig' : '-orig-to-resp';
 
     this.#encKey = await crypto.subtle.deriveKey(
-      { name: 'HKDF', hash: 'SHA-256', salt, info: concatBytes(HKDF_INFO, new TextEncoder().encode('-enc')) },
+      { name: 'HKDF', hash: 'SHA-256', salt, info: concatBytes(HKDF_INFO, new TextEncoder().encode(sendLabel)) },
       baseKey,
       { name: 'AES-GCM', length: 128 },
       false,
@@ -42,7 +43,7 @@ export class CallEncryptionSession {
     );
 
     this.#decKey = await crypto.subtle.deriveKey(
-      { name: 'HKDF', hash: 'SHA-256', salt, info: concatBytes(HKDF_INFO, new TextEncoder().encode('-dec')) },
+      { name: 'HKDF', hash: 'SHA-256', salt, info: concatBytes(HKDF_INFO, new TextEncoder().encode(recvLabel)) },
       baseKey,
       { name: 'AES-GCM', length: 128 },
       false,

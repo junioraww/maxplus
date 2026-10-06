@@ -1,14 +1,37 @@
 package org.meowkie.max
 
+import android.app.Activity
 import android.content.Context
 import android.content.Intent
+import android.media.projection.MediaProjectionManager
 import android.os.Bundle
 import android.util.Log
+import androidx.activity.result.contract.ActivityResultContracts
 
 class MainActivity : TauriActivity() {
   companion object {
     @Volatile var instance: MainActivity? = null
     @Volatile var appContext: Context? = null
+
+    @JvmStatic
+    fun startScreenCaptureStatic() {
+      val inst = instance
+      if (inst != null) {
+        inst.requestScreenCapture()
+      } else {
+        notifyScreenCaptureResultStatic(false, 0, 0, 0)
+      }
+    }
+
+    @JvmStatic
+    fun stopScreenCaptureStatic() {
+      instance?.stopScreenCapture()
+    }
+
+    @JvmStatic
+    fun notifyScreenCaptureResultStatic(success: Boolean, port: Int, width: Int, height: Int) {
+      instance?.notifyScreenCaptureResultNative(success, port, width, height)
+    }
   }
 
   init {
@@ -22,6 +45,36 @@ class MainActivity : TauriActivity() {
   private external fun initJni()
   private external fun notifyChatClickedNative(chatId: Long)
   private external fun notifyCallActionNative(action: String, payload: String)
+  external fun notifyScreenCaptureResultNative(success: Boolean, port: Int, width: Int, height: Int)
+  external fun notifyScreenCaptureStoppedNative()
+
+  private val screenCaptureLauncher = registerForActivityResult(
+    ActivityResultContracts.StartActivityForResult()
+  ) { result ->
+    if (result.resultCode == Activity.RESULT_OK && result.data != null) {
+      ScreenCaptureService.start(this, result.resultCode, result.data!!)
+    } else {
+      notifyScreenCaptureResultNative(false, 0, 0, 0)
+    }
+  }
+
+  fun requestScreenCapture() {
+    runOnUiThread {
+      val mgr = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as? MediaProjectionManager
+      if (mgr != null) {
+        val intent = mgr.createScreenCaptureIntent()
+        screenCaptureLauncher.launch(intent)
+      } else {
+        notifyScreenCaptureResultNative(false, 0, 0, 0)
+      }
+    }
+  }
+
+  fun stopScreenCapture() {
+    runOnUiThread {
+      ScreenCaptureService.stop(this)
+    }
+  }
 
   fun forwardCallDismiss(conversationId: String, callerId: String, vcp: String) {
     try {

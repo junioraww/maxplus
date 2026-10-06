@@ -147,8 +147,13 @@ class NotificationHelper(private val ctx: Context) {
     val mid = data["msgid"] ?: data["mid"] ?: ""
     val text = data["msg"] ?: data["body"] ?: data["text"] ?: "Сообщение"
     val senderId = data["suid"] ?: ""
-    val senderName = data["userName"] ?: data["title"] ?: "Собеседник"
-    val chatTitle = data["title"] ?: senderName
+    val senderIdLong = senderId.toLongOrNull() ?: 0L
+    val contactInfo = if (senderIdLong > 0L) ContactHelper.getContactInfo(ctx, account, senderIdLong) else null
+    val rawSenderName = data["userName"] ?: data["title"]
+    val senderName = contactInfo?.name?.takeIf { it.isNotBlank() }
+      ?: rawSenderName?.takeIf { it.isNotBlank() && !it.startsWith("Пользователь ") && !it.startsWith("User ") }
+      ?: "Собеседник"
+    val chatTitle = data["title"]?.takeIf { it.isNotBlank() } ?: senderName
     val ts = data["ctime"]?.toLongOrNull() ?: System.currentTimeMillis()
     
     val isGroup = (if (data.containsKey("isGroup")) {
