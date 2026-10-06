@@ -44,6 +44,7 @@ const INITIAL_STATE = {
   minimized: false,
   errorText: null,
   connectionStatus: null,
+  cameraLoading: false,
 };
 
 export const activeCall = writable({ ...INITIAL_STATE });

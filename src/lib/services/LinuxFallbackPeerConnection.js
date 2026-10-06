@@ -17,6 +17,7 @@ export class LinuxFallbackPeerConnection extends EventTarget {
     this.ondatachannel = null;
     this._senders = [];
     this._receivers = [];
+    this._transceivers = [];
     this._syntheticAudio = null;
     this._syntheticVideo = null;
     this._closed = false;
@@ -30,6 +31,10 @@ export class LinuxFallbackPeerConnection extends EventTarget {
     return [...this._receivers];
   }
 
+  getTransceivers() {
+    return [...this._transceivers];
+  }
+
   addTrack(track, stream) {
     const sender = {
       track,
@@ -39,6 +44,15 @@ export class LinuxFallbackPeerConnection extends EventTarget {
       }
     };
     this._senders.push(sender);
+    const receiver = {
+      track: { kind: track?.kind || 'video', id: `mock-${track?.kind || 'video'}-${Date.now()}` }
+    };
+    this._receivers.push(receiver);
+    this._transceivers.push({
+      sender,
+      receiver,
+      direction: 'sendrecv'
+    });
     return sender;
   }
 
@@ -61,11 +75,13 @@ export class LinuxFallbackPeerConnection extends EventTarget {
     };
     this._senders.push(sender);
     this._receivers.push(receiver);
-    return {
+    const transceiver = {
       sender,
       receiver,
       direction: options.direction || 'sendrecv'
     };
+    this._transceivers.push(transceiver);
+    return transceiver;
   }
 
   createDataChannel(label, options = {}) {

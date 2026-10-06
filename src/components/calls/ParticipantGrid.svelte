@@ -4,10 +4,16 @@
 
   function srcObject(node, stream) {
     node.srcObject = stream || null;
+    if (stream) {
+      node.play().catch(() => {});
+    }
     return {
       update(newStream) {
         if (node.srcObject !== newStream) {
           node.srcObject = newStream || null;
+          if (newStream) {
+            node.play().catch(() => {});
+          }
         }
       },
       destroy() {
@@ -79,6 +85,7 @@
           class:mirror={p.isSelf && !$activeCall.screenOn}
           autoplay
           playsinline
+          webkit-playsinline
           muted={p.isSelf}
           use:srcObject={p.stream}
         ></video>

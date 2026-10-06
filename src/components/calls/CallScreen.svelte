@@ -11,10 +11,16 @@
 
   function srcObject(node, stream) {
     node.srcObject = stream || null;
+    if (stream) {
+      node.play().catch(() => {});
+    }
     return {
       update(newStream) {
         if (node.srcObject !== newStream) {
           node.srcObject = newStream || null;
+          if (newStream) {
+            node.play().catch(() => {});
+          }
         }
       },
       destroy() {
@@ -26,7 +32,7 @@
   let phase, callType, mode, peerName, peerAvatar, muted, videoOn, screenOn, speakerOn, isGroup, roomName;
   let remoteStream, localCameraStream, localScreenStream;
   let startedAt, secureKeyFingerprint, secureStatus;
-  let errorText, connectionStatus, serverTopology, conversationId;
+  let errorText, connectionStatus, serverTopology, conversationId, cameraLoading;
   let showDebug = false;
 
   $: ({
@@ -34,7 +40,7 @@
     muted, videoOn, screenOn, speakerOn, isGroup, roomName,
     remoteStream, localCameraStream, localScreenStream,
     startedAt, secureKeyFingerprint, secureStatus,
-    errorText, connectionStatus, serverTopology, conversationId,
+    errorText, connectionStatus, serverTopology, conversationId, cameraLoading,
   } = $activeCall);
 
   let remoteAudioEl;
@@ -62,12 +68,12 @@
     remoteStream.getVideoTracks &&
     remoteStream.getVideoTracks().some(t => t.readyState === 'live' && t.enabled)
   );
-  $: hasLocalVideo = Boolean((videoOn || screenOn) && (localCameraStream || localScreenStream));
+  $: hasLocalVideo = Boolean((videoOn || screenOn || cameraLoading) && (localCameraStream || localScreenStream || cameraLoading));
   $: localEffectiveStream = screenOn ? localScreenStream : localCameraStream;
   $: isGroupCall = Boolean(isGroup || ($activeCall.participants && $activeCall.participants.length > 1));
   $: showVideo = (hasLocalVideo || hasRemoteVideo) && isActive;
-  $: mainVideoActive = isActive && (!isSwapped ? hasRemoteVideo : hasLocalVideo);
-  $: showPip = !isGroupCall && isActive && (hasLocalVideo || hasRemoteVideo);
+  $: mainVideoActive = isActive && (!isSwapped ? (hasRemoteVideo || (screenOn && localScreenStream)) : hasLocalVideo);
+  $: showPip = !isGroupCall && isActive && (hasRemoteVideo ? hasLocalVideo : (screenOn ? (videoOn && Boolean(localCameraStream)) : hasLocalVideo));
   $: isSecure = mode === CALL_MODE.SECURE && secureStatus === 'active' && isActive;
 
   $: if (remoteAudioEl && remoteStream) {
@@ -214,8 +220,18 @@
           class="remote-video"
           autoplay
           playsinline
+          webkit-playsinline
           muted
           use:srcObject={remoteStream}
+        ></video>
+      {:else if screenOn && localScreenStream}
+        <video
+          class="remote-video"
+          autoplay
+          playsinline
+          webkit-playsinline
+          muted
+          use:srcObject={localScreenStream}
         ></video>
       {:else}
         <div class="avatar-backdrop" style={peerAvatar ? `background-image: url('${peerAvatar}')` : ''}>
@@ -229,9 +245,14 @@
           class:mirror={!screenOn}
           autoplay
           playsinline
+          webkit-playsinline
           muted
           use:srcObject={localEffectiveStream}
         ></video>
+      {:else if cameraLoading}
+        <div class="camera-loading-backdrop">
+          <div class="spinner"></div>
+        </div>
       {:else}
         <div
           class="avatar-backdrop"
@@ -252,15 +273,39 @@
         role="presentation"
       >
         {#if !isSwapped}
-          {#if hasLocalVideo && localEffectiveStream}
+          {#if !hasRemoteVideo && screenOn}
+            {#if videoOn && localCameraStream}
+              <video
+                class="pip-video mirror"
+                autoplay
+                playsinline
+                webkit-playsinline
+                muted
+                use:srcObject={localCameraStream}
+              ></video>
+            {:else if videoOn && cameraLoading}
+              <div class="pip-fallback">
+                <div class="pip-loader">
+                  <div class="spinner"></div>
+                </div>
+              </div>
+            {/if}
+          {:else if hasLocalVideo && localEffectiveStream}
             <video
               class="pip-video"
               class:mirror={!screenOn}
               autoplay
               playsinline
+              webkit-playsinline
               muted
               use:srcObject={localEffectiveStream}
             ></video>
+          {:else if cameraLoading}
+            <div class="pip-fallback">
+              <div class="pip-loader">
+                <div class="spinner"></div>
+              </div>
+            </div>
           {:else}
             <div class="pip-fallback">
               <span class="pip-avatar-fallback">
@@ -274,6 +319,7 @@
               class="pip-video"
               autoplay
               playsinline
+              webkit-playsinline
               muted
               use:srcObject={remoteStream}
             ></video>
@@ -1071,4 +1117,35 @@
   }
 
   .ctrl-btn--hangup:hover { background: #dc2626; }
+
+  .pip-loader {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.45);
+  }
+
+  .camera-loading-backdrop {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #111;
+  }
+
+  .spinner {
+    width: 26px;
+    height: 26px;
+    border: 2.5px solid rgba(255, 255, 255, 0.2);
+    border-top-color: #fff;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
 </style>
