@@ -77,6 +77,7 @@
   $: mainVideoActive = isActive && (!isSwapped ? (hasRemoteVideo || (screenOn && localScreenStream)) : hasLocalVideo);
   $: showPip = !isGroupCall && isActive && (hasRemoteVideo ? hasLocalVideo : (screenOn ? (videoOn && Boolean(localCameraStream)) : hasLocalVideo));
   $: isSecure = mode === CALL_MODE.SECURE && secureStatus === 'active' && isActive;
+  $: nativeVideoFeedUrl = (typeof window !== 'undefined' && window.__MAXPLUS_PROXY__?.webrtcPort && hasRemoteVideo) ? `http://127.0.0.1:${window.__MAXPLUS_PROXY__.webrtcPort}/video_stream` : null;
 
   $: if (remoteAudioEl && remoteStream) {
     if (remoteAudioEl.srcObject !== remoteStream) {
@@ -223,15 +224,19 @@
 
   {#if !isGroupCall}
     {#if !isSwapped}
-      {#if hasRemoteVideo && remoteStream}
-        <video
-          class="remote-video"
-          autoplay
-          playsinline
-          webkit-playsinline
-          muted
-          use:srcObject={remoteStream}
-        ></video>
+      {#if hasRemoteVideo && (remoteStream || nativeVideoFeedUrl)}
+        {#if nativeVideoFeedUrl}
+          <img class="remote-video" src={nativeVideoFeedUrl} alt="Remote Video" />
+        {:else}
+          <video
+            class="remote-video"
+            autoplay
+            playsinline
+            webkit-playsinline
+            muted
+            use:srcObject={remoteStream}
+          ></video>
+        {/if}
       {:else if screenOn && localScreenStream}
         <video
           class="remote-video"
@@ -322,15 +327,23 @@
             </div>
           {/if}
         {:else}
-          {#if hasRemoteVideo && remoteStream}
-            <video
-              class="pip-video"
-              autoplay
-              playsinline
-              webkit-playsinline
-              muted
-              use:srcObject={remoteStream}
-            ></video>
+          {#if hasRemoteVideo && (remoteStream || nativeVideoFeedUrl)}
+            {#if nativeVideoFeedUrl}
+              <img
+                class="pip-video"
+                src={nativeVideoFeedUrl}
+                alt="Remote Video"
+              />
+            {:else}
+              <video
+                class="pip-video"
+                autoplay
+                playsinline
+                webkit-playsinline
+                muted
+                use:srcObject={remoteStream}
+              ></video>
+            {/if}
           {:else}
             <div
               class="pip-fallback"
