@@ -4,7 +4,7 @@
   import { cubicOut, cubicInOut } from 'svelte/easing';
   import { get } from 'svelte/store';
 
-  import { activeCall, patchCallState, resetCallState, CALL_PHASE, CALL_MODE } from '$lib/stores/calls.js';
+  import { activeCall, patchCallState, resetCallState, CALL_PHASE, CALL_MODE, callUseStubs, setCallUseStubs } from '$lib/stores/calls.js';
   import { currentUserDetails } from '$lib/stores/api.js';
   import { CallService } from '$lib/services/CallService.js';
   import ParticipantGrid from '$components/calls/ParticipantGrid.svelte';
@@ -63,12 +63,21 @@
   $: isActive = phase === CALL_PHASE.ACTIVE;
   $: isConnecting = phase === CALL_PHASE.CONNECTING;
 
+  import { platform } from '@tauri-apps/plugin-os';
+
+  let isLinux = false;
+  try {
+    isLinux = platform() === 'linux';
+  } catch {
+    isLinux = typeof navigator !== 'undefined' && /linux/i.test(navigator.userAgent || navigator.platform || '') && !/android/i.test(navigator.userAgent || '');
+  }
+
   $: isSwapped = Boolean($activeCall.swapped);
   $: hasRemoteVideo = Boolean(
-    remoteStream &&
-    remoteStream.getVideoTracks &&
-    remoteStream.getVideoTracks().some(t => t.readyState === 'live' && t.enabled) &&
-    (peerVideoOn || peerScreenOn || ($activeCall.participants && $activeCall.participants.some(p => p.id !== $activeCall.myCallUserId && (p.videoOn || p.screenOn))))
+    (remoteStream &&
+      remoteStream.getVideoTracks &&
+      remoteStream.getVideoTracks().some(t => t.readyState === 'live' && t.enabled)) ||
+    (peerVideoOn || peerScreenOn)
   );
   $: hasLocalVideo = Boolean((videoOn || screenOn || cameraLoading) && (localCameraStream || localScreenStream || cameraLoading));
   $: localEffectiveStream = screenOn ? localScreenStream : localCameraStream;
@@ -77,18 +86,11 @@
   $: mainVideoActive = isActive && (!isSwapped ? (hasRemoteVideo || (screenOn && localScreenStream)) : hasLocalVideo);
   $: showPip = !isGroupCall && isActive && (hasRemoteVideo ? hasLocalVideo : (screenOn ? (videoOn && Boolean(localCameraStream)) : hasLocalVideo));
   $: isSecure = mode === CALL_MODE.SECURE && secureStatus === 'active' && isActive;
-  $: nativeVideoFeedUrl = (typeof window !== 'undefined' && window.__MAXPLUS_PROXY__?.webrtcPort && hasRemoteVideo) ? `http://127.0.0.1:${window.__MAXPLUS_PROXY__.webrtcPort}/video_stream` : null;
 
   $: if (remoteAudioEl && remoteStream) {
     if (remoteAudioEl.srcObject !== remoteStream) {
       remoteAudioEl.srcObject = remoteStream;
-      remoteAudioEl.play()
-        .then(() => {
-          console.log('[call] remote audio playback started');
-        })
-        .catch(err => {
-          console.warn('[call] remote audio playback error:', err?.message || err);
-        });
+      remoteAudioEl.play().catch(() => {});
     }
   }
 
@@ -167,6 +169,15 @@
     patchCallState({ swapped: !isSwapped });
   }
 
+  function canvasVideo(node) {
+    CallService.attachVideoCanvas(node);
+    return {
+      destroy() {
+        CallService.detachVideoCanvas(node);
+      },
+    };
+  }
+
   function onPipPointerDown(e) {
     dragging = true;
     dragStartX = e.clientX;
@@ -224,9 +235,12 @@
 
   {#if !isGroupCall}
     {#if !isSwapped}
-      {#if hasRemoteVideo && (remoteStream || nativeVideoFeedUrl)}
-        {#if nativeVideoFeedUrl}
-          <img class="remote-video" src={nativeVideoFeedUrl} alt="Remote Video" />
+      {#if hasRemoteVideo && (remoteStream || isLinux)}
+        {#if isLinux}
+          <canvas
+            class="remote-video"
+            use:canvasVideo
+          ></canvas>
         {:else}
           <video
             class="remote-video"
@@ -327,13 +341,12 @@
             </div>
           {/if}
         {:else}
-          {#if hasRemoteVideo && (remoteStream || nativeVideoFeedUrl)}
-            {#if nativeVideoFeedUrl}
-              <img
+          {#if hasRemoteVideo && (remoteStream || isLinux)}
+            {#if isLinux}
+              <canvas
                 class="pip-video"
-                src={nativeVideoFeedUrl}
-                alt="Remote Video"
-              />
+                use:canvasVideo
+              ></canvas>
             {:else}
               <video
                 class="pip-video"
@@ -393,7 +406,7 @@
 
     <div class="top-bar-right">
       {#if mode === CALL_MODE.SECURE}
-        <div class="secure-badge secure-badge--{secureStatus}" title={secureKeyFingerprint ? `Код: ${secureKeyFingerprint}` : 'E2E шифрование'}>
+        <button type="button" class="secure-badge secure-badge--{secureStatus}" on:click={() => CallService.toggleSecure()} title={secureKeyFingerprint ? `Код: ${secureKeyFingerprint}` : 'E2E шифрование'}>
           {#if secureStatus === 'active'}
             <img src="/icons/lock-green.svg" alt="" width="13" height="13" class="lock-icon" />
             <span class="secure-text">Защищено</span>
@@ -404,7 +417,7 @@
             <img src="/icons/pending.svg" alt="" width="13" height="13" class="lock-icon" />
             <span class="secure-text">E2E...</span>
           {/if}
-        </div>
+        </button>
       {/if}
 
       <button class="debug-btn" on:click={() => showDebug = !showDebug} aria-label="Отладка" title="Диагностика связи">
@@ -445,6 +458,20 @@
           {#if errorText}
             <div class="debug-item debug-item--error"><span class="debug-label">Ошибка:</span> <span class="debug-val">{errorText}</span></div>
           {/if}
+          <div class="debug-item">
+            <span class="debug-label">Тест. заглушки:</span>
+            <button
+              type="button"
+              class="debug-val"
+              style="cursor: pointer; background: rgba(255, 255, 255, 0.1); border: 1px solid rgba(255, 255, 255, 0.2); border-radius: 4px; padding: 2px 8px; color: inherit;"
+              on:click={() => {
+                const next = !$callUseStubs;
+                setCallUseStubs(next);
+              }}
+            >
+              {$callUseStubs ? 'Вкл (шум/снег)' : 'Выкл'}
+            </button>
+          </div>
           {#if conversationId}
             <div class="debug-item"><span class="debug-label">ID комнаты:</span> <span class="debug-val debug-val--mono">{conversationId}</span></div>
           {/if}
@@ -587,6 +614,9 @@
     z-index: 1003;
     display: flex;
     flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
   }
 
   .group-title-label {
@@ -792,7 +822,14 @@
     inset: 0;
     width: 100%;
     height: 100%;
-    object-fit: cover;
+    max-width: 100%;
+    max-height: 100%;
+    min-width: 0;
+    min-height: 0;
+    object-fit: contain;
+    background-color: #000;
+    box-sizing: border-box;
+    display: block;
   }
 
   .remote-video.mirror, .pip-video.mirror {
@@ -929,6 +966,8 @@
     border: 1px solid rgba(74, 222, 128, 0.3);
     border-radius: 20px;
     padding: 3px 10px;
+    cursor: pointer;
+    font: inherit;
   }
 
   .lock-icon { width: 13px; height: 13px; object-fit: contain; }

@@ -8,7 +8,6 @@ pub struct ProxyConfig {
     pub video_token: String,
     pub webapp_port: u16,
     pub webapp_token: String,
-    pub webrtc_port: u16,
 }
 
 static PROXY_CONFIG: OnceLock<Arc<RwLock<ProxyConfig>>> = OnceLock::new();
@@ -20,7 +19,6 @@ fn get_config_lock() -> &'static Arc<RwLock<ProxyConfig>> {
             video_token: generate_token(),
             webapp_port: 0,
             webapp_token: generate_token(),
-            webrtc_port: 0,
         }))
     })
 }
@@ -45,12 +43,6 @@ pub fn set_webapp_proxy_info(port: u16, token: String) {
     }
 }
 
-pub fn set_webrtc_proxy_port(port: u16) {
-    if let Ok(mut lock) = get_config_lock().write() {
-        lock.webrtc_port = port;
-    }
-}
-
 pub fn get_proxy_config() -> ProxyConfig {
     get_config_lock()
         .read()
@@ -60,7 +52,6 @@ pub fn get_proxy_config() -> ProxyConfig {
             video_token: String::new(),
             webapp_port: 0,
             webapp_token: String::new(),
-            webrtc_port: 0,
         })
 }
 

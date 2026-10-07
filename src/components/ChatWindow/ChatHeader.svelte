@@ -93,7 +93,10 @@
       <button
         class="header-call-btn"
         type="button"
-        on:click|stopPropagation={() => CallService.placeAudioCall(avatarUserId, title, $peerContact?.avatar || $peerContact?.baseUrl)}
+        on:click|stopPropagation={() => {
+          const mode = ($chatSettings?.session?.shared_secret || fingerprint) ? 'secure' : 'plain';
+          CallService.placeAudioCall(avatarUserId, title, $peerContact?.avatar || $peerContact?.baseUrl, mode);
+        }}
         title="Позвонить"
         aria-label="Позвонить"
       >

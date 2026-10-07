@@ -14,6 +14,18 @@ export const CALL_MODE = Object.freeze({
   SECURE: 'secure',
 });
 
+const initialStubs = typeof window !== 'undefined' && localStorage.getItem('maxplus_call_use_stubs') === 'true';
+
+export const callUseStubs = writable(initialStubs);
+
+export function setCallUseStubs(enabled) {
+  callUseStubs.set(Boolean(enabled));
+  if (typeof window !== 'undefined') {
+    localStorage.setItem('maxplus_call_use_stubs', enabled ? 'true' : 'false');
+  }
+  patchCallState({ useStubs: Boolean(enabled) });
+}
+
 const INITIAL_STATE = {
   phase: CALL_PHASE.IDLE,
   callType: 'audio',
@@ -47,12 +59,13 @@ const INITIAL_STATE = {
   cameraLoading: false,
   peerVideoOn: false,
   peerScreenOn: false,
+  useStubs: initialStubs,
 };
 
 export const activeCall = writable({ ...INITIAL_STATE });
 
 export function resetCallState() {
-  activeCall.set({ ...INITIAL_STATE });
+  activeCall.set({ ...INITIAL_STATE, useStubs: initialStubs });
 }
 
 export function patchCallState(patch) {
