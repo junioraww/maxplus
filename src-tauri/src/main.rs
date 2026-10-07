@@ -6,12 +6,6 @@ fn main() {
         if std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none() {
             std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
         }
-        if std::env::var_os("DRI_PRIME").is_none() {
-            std::env::set_var("DRI_PRIME", "0");
-        }
-        if std::env::var_os("WEBKIT_FORCE_SANDBOX").is_none() {
-            std::env::set_var("WEBKIT_FORCE_SANDBOX", "0");
-        }
     }
     maxplus_lib::run();
 }

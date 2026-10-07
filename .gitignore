@@ -16,3 +16,4 @@ test-results
 playwright-report
 
 /plugins
+**/__pycache__

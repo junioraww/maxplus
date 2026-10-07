@@ -1,4 +1,5 @@
 import { get } from "svelte/store";
+import { invoke } from "@tauri-apps/api/core";
 import API, { currentUser } from "$lib/stores/api";
 import { getCurrentAccount } from "$lib/stores/accounts";
 import {
@@ -119,18 +120,26 @@ export async function checkForEncryptionRequest(
             chat.id,
             dec.handshake_data
           );
-          chatSettings.update((old) => ({
-            ...old,
-            pending: false,
-            session: {
-              ...(old.session || {}),
-              fingerprint,
-            },
-            keys: {
-              ...(old.keys || {}),
-              current: 1,
-            },
-          }));
+          const freshSettings = await invoke("get_chat_settings", {
+            account: accId,
+            chatId: Number(chat.id),
+          });
+          if (freshSettings) {
+            chatSettings.set(freshSettings);
+          } else {
+            chatSettings.update((old) => ({
+              ...old,
+              pending: false,
+              session: {
+                ...(old.session || {}),
+                fingerprint,
+              },
+              keys: {
+                ...(old.keys || {}),
+                current: 1,
+              },
+            }));
+          }
         } catch (e) {
           console.error(e);
         }
@@ -239,11 +248,19 @@ export async function switchEnc(chat, chatSettings, messages) {
       const obf = settings?.obfs || "zh";
       const initPacket = await initHandshake(accId, chat.id, obf);
 
-      chatSettings.update((old) => ({
-        ...old,
-        pending: true,
-        e2e_declined: false,
-      }));
+      const freshSettings = await invoke("get_chat_settings", {
+        account: accId,
+        chatId: Number(chat.id),
+      });
+      if (freshSettings) {
+        chatSettings.set(freshSettings);
+      } else {
+        chatSettings.update((old) => ({
+          ...old,
+          pending: true,
+          e2e_declined: false,
+        }));
+      }
 
       await sendMessage(
         chat,

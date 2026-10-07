@@ -214,6 +214,17 @@ pub fn set_chat_settings_sync(
     chat_id: i64,
     data: Value,
 ) -> Result<(), String> {
+    let mut data = data;
+    if data.get("pending").map_or(false, |p| p.is_boolean() && p.as_bool() == Some(true)) {
+        if let Ok(existing) = get_chat_settings_sync(app, account, chat_id) {
+            if let Some(existing_pending) = existing.get("pending") {
+                if existing_pending.is_object() {
+                    data["pending"] = existing_pending.clone();
+                }
+            }
+        }
+    }
+
     let key = crypto_key(app, account);
     let storage = Storage::new(key);
     storage.save_coalesced(Paths::new(app, account).settings(chat_id), &data);

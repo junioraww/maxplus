@@ -10,7 +10,7 @@ mod state;
 mod stores;
 mod video;
 mod webapp_proxy;
-mod linux_webrtc;
+mod webrtc_engine;
 
 use state::AppState;
 use std::sync::Arc;
@@ -23,7 +23,6 @@ pub fn run() {
     ssl::init_ssl_certificates();
     video::start_video_proxy();
     webapp_proxy::start_webapp_proxy();
-    linux_webrtc::start_linux_webrtc_daemon();
 
     let builder = tauri::Builder::default();
 
@@ -97,8 +96,8 @@ pub fn run() {
             let p_cfg = proxy_auth::get_proxy_config();
             if let Some(w) = app.get_webview_window("main") {
                 let script = format!(
-                    "window.__MAXPLUS_PROXY__ = {{ videoPort: {}, videoToken: '{}', webappPort: {}, webappToken: '{}', webrtcPort: {} }};",
-                    p_cfg.video_port, p_cfg.video_token, p_cfg.webapp_port, p_cfg.webapp_token, p_cfg.webrtc_port
+                    "window.__MAXPLUS_PROXY__ = {{ videoPort: {}, videoToken: '{}', webappPort: {}, webappToken: '{}' }};",
+                    p_cfg.video_port, p_cfg.video_token, p_cfg.webapp_port, p_cfg.webapp_token
                 );
                 let _ = w.eval(&script);
             }
@@ -302,7 +301,19 @@ pub fn run() {
             commands::decode_call_push,
             screen_capture::start_android_screen_capture,
             screen_capture::stop_android_screen_capture,
-            linux_webrtc::get_linux_webrtc_port,
+            webrtc_engine::commands::webrtc_create,
+            webrtc_engine::commands::webrtc_create_offer,
+            webrtc_engine::commands::webrtc_create_answer,
+            webrtc_engine::commands::webrtc_set_local_description,
+            webrtc_engine::commands::webrtc_set_remote_description,
+            webrtc_engine::commands::webrtc_add_ice_candidate,
+            webrtc_engine::commands::webrtc_set_camera_enabled,
+            webrtc_engine::commands::webrtc_set_mic_muted,
+            webrtc_engine::commands::webrtc_listen_video,
+            webrtc_engine::commands::webrtc_listen_candidates,
+            webrtc_engine::commands::webrtc_listen_state,
+            webrtc_engine::commands::webrtc_create_data_channel,
+            webrtc_engine::commands::webrtc_close,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -6,6 +6,16 @@ import {
 import { CryptoPluginRegistry } from "../src/lib/crypto/plugins.js";
 import { detectObfuscation } from "../src/lib/crypto/messages.js";
 import { dict } from "../src/lib/crypto/text-codec.js";
+import {
+  CallEncryptionSession,
+  generateCallKeyPair,
+  exportPublicKeyBytes,
+  deriveSharedSecret,
+  FRAME_HEADER_SIZE,
+  FRAME_MAGIC_0,
+  FRAME_MAGIC_1,
+  FRAME_TYPE_MEDIA,
+} from "../src/lib/crypto/callEncryption.js";
 
 test.describe("End-to-End Encryption and Obfuscation Detection", () => {
   test("detectObfuscation recognizes Chinese marker prefix and returns zh", async () => {
@@ -630,3 +640,107 @@ test.describe("Encrypted Media Descriptor Structure", () => {
     expect(results["9103"].media.name).toBe("photo_9103.jpg");
   });
 });
+
+test.describe("End-to-End Call Media Encryption", () => {
+  const SYNTHETIC_SHARED_SECRET = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+  const SYNTHETIC_CONV_ID = "conv-synth-1001-2002";
+
+  test("deterministic derivation from chat secret produces matching fingerprints", async () => {
+    const alice = new CallEncryptionSession();
+    const bob = new CallEncryptionSession();
+
+    await alice.initFromChatSecret(SYNTHETIC_SHARED_SECRET, SYNTHETIC_CONV_ID, true);
+    await bob.initFromChatSecret(SYNTHETIC_SHARED_SECRET, SYNTHETIC_CONV_ID, false);
+
+    expect(alice.mode).toBe("secure");
+    expect(bob.mode).toBe("secure");
+    expect(alice.fingerprint).toBe(bob.fingerprint);
+    expect(alice.fingerprint).toMatch(/^[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}$/);
+  });
+
+  test("different conversation IDs produce distinct fingerprints and keys", async () => {
+    const sessionA = new CallEncryptionSession();
+    const sessionB = new CallEncryptionSession();
+
+    await sessionA.initFromChatSecret(SYNTHETIC_SHARED_SECRET, "conv-1", true);
+    await sessionB.initFromChatSecret(SYNTHETIC_SHARED_SECRET, "conv-2", true);
+
+    expect(sessionA.fingerprint).not.toBe(sessionB.fingerprint);
+  });
+
+  test("audio frame encryption and decryption between originator and responder", async () => {
+    const alice = new CallEncryptionSession();
+    const bob = new CallEncryptionSession();
+
+    await alice.initFromChatSecret(SYNTHETIC_SHARED_SECRET, SYNTHETIC_CONV_ID, true);
+    await bob.initFromChatSecret(SYNTHETIC_SHARED_SECRET, SYNTHETIC_CONV_ID, false);
+
+    const sampleAudio = new Uint8Array([10, 20, 30, 40, 50, 60, 70, 80]);
+    const encrypted = await alice.encryptFrame(sampleAudio, "audio");
+
+    expect(encrypted[0]).toBe(FRAME_MAGIC_0);
+    expect(encrypted[1]).toBe(FRAME_MAGIC_1);
+    expect(encrypted[2]).toBe(FRAME_TYPE_MEDIA);
+    expect(encrypted.length).toBe(FRAME_HEADER_SIZE + sampleAudio.length + 16);
+
+    const decrypted = await bob.decryptFrame(encrypted, "audio");
+    expect(Array.from(decrypted)).toEqual(Array.from(sampleAudio));
+  });
+
+  test("video frame encryption and decryption with key isolation from audio", async () => {
+    const alice = new CallEncryptionSession();
+    const bob = new CallEncryptionSession();
+
+    await alice.initFromChatSecret(SYNTHETIC_SHARED_SECRET, SYNTHETIC_CONV_ID, true);
+    await bob.initFromChatSecret(SYNTHETIC_SHARED_SECRET, SYNTHETIC_CONV_ID, false);
+
+    const sampleVideo = new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+    const encryptedVideo = await alice.encryptFrame(sampleVideo, "video");
+
+    const decryptedVideo = await bob.decryptFrame(encryptedVideo, "video");
+    expect(Array.from(decryptedVideo)).toEqual(Array.from(sampleVideo));
+
+    const crossDecrypt = await bob.decryptFrame(encryptedVideo, "audio");
+    expect(crossDecrypt).toBeNull();
+  });
+
+  test("plain frames pass through unchanged", async () => {
+    const plainSession = new CallEncryptionSession();
+    await plainSession.initPlain();
+
+    const sampleData = new Uint8Array([99, 88, 77]);
+    const result = await plainSession.encryptFrame(sampleData, "audio");
+    expect(Array.from(result)).toEqual(Array.from(sampleData));
+
+    const unencryptedIncoming = new Uint8Array([11, 22, 33]);
+    const decryptedIncoming = await plainSession.decryptFrame(unencryptedIncoming, "audio");
+    expect(Array.from(decryptedIncoming)).toEqual(Array.from(unencryptedIncoming));
+  });
+
+  test("ephemeral ECDH key agreement works end-to-end", async () => {
+    const aliceKeypair = await generateCallKeyPair();
+    const bobKeypair = await generateCallKeyPair();
+
+    const alicePubBytes = await exportPublicKeyBytes(aliceKeypair);
+    const bobPubBytes = await exportPublicKeyBytes(bobKeypair);
+
+    const aliceShared = await deriveSharedSecret(aliceKeypair.privateKey, bobPubBytes);
+    const bobShared = await deriveSharedSecret(bobKeypair.privateKey, alicePubBytes);
+
+    expect(Array.from(aliceShared)).toEqual(Array.from(bobShared));
+
+    const alice = new CallEncryptionSession();
+    const bob = new CallEncryptionSession();
+
+    await alice.initSecure(aliceShared, true);
+    await bob.initSecure(bobShared, false);
+
+    expect(alice.fingerprint).toBe(bob.fingerprint);
+
+    const testPayload = new Uint8Array([5, 4, 3, 2, 1]);
+    const encrypted = await alice.encryptFrame(testPayload, "audio");
+    const decrypted = await bob.decryptFrame(encrypted, "audio");
+    expect(Array.from(decrypted)).toEqual(Array.from(testPayload));
+  });
+});
+

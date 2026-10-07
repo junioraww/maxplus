@@ -106,7 +106,9 @@ export async function sendMessage(
     sending: true,
   };
 
-  messages.update((msgs) => [...msgs, displayMessageEarlyEntry]);
+  if (messages?.update) {
+    messages.update((msgs) => [...msgs, displayMessageEarlyEntry]);
+  }
   const chatCache = getChat(chat.id);
   chatCache.receivedMessage.set(displayMessageEarlyEntry);
 
@@ -123,31 +125,35 @@ export async function sendMessage(
     response = await get(API).sendMessage(text, chatId, params);
   } catch (err) {
     console.error(err);
-    messages.update((msgs) => {
-      const target = msgs.find((x) => x.id === id);
-      if (target) {
-        target.sending = false;
-        target.deleted = true;
-        target.status = "failed";
-      }
-      return [...msgs];
-    });
+    if (messages?.update) {
+      messages.update((msgs) => {
+        const target = msgs.find((x) => x.id === id);
+        if (target) {
+          target.sending = false;
+          target.deleted = true;
+          target.status = "failed";
+        }
+        return [...msgs];
+      });
+    }
     showAlert(parseApiError(err));
     throw err;
   }
 
   if (response?.error) {
     const errorText = parseApiError(response);
-    messages.update((msgs) => {
-      const target = msgs.find((x) => x.id === id);
-      if (target) {
-        target.sending = false;
-        target.deleted = true;
-        target.status = "failed";
-        target.error = errorText;
-      }
-      return [...msgs];
-    });
+    if (messages?.update) {
+      messages.update((msgs) => {
+        const target = msgs.find((x) => x.id === id);
+        if (target) {
+          target.sending = false;
+          target.deleted = true;
+          target.status = "failed";
+          target.error = errorText;
+        }
+        return [...msgs];
+      });
+    }
     showAlert(errorText);
     return response;
   }
@@ -155,15 +161,17 @@ export async function sendMessage(
   const message = response?.message;
 
   if (!message || typeof message !== "object") {
-    messages.update((msgs) => {
-      const target = msgs.find((x) => x.id === id);
-      if (target) {
-        target.sending = false;
-        target.deleted = true;
-        target.status = "failed";
-      }
-      return [...msgs];
-    });
+    if (messages?.update) {
+      messages.update((msgs) => {
+        const target = msgs.find((x) => x.id === id);
+        if (target) {
+          target.sending = false;
+          target.deleted = true;
+          target.status = "failed";
+        }
+        return [...msgs];
+      });
+    }
   }
   else {
     if (decodedMessagesStore && plainEntry && message.id) {
@@ -188,15 +196,17 @@ export async function sendMessage(
     chatCache.receivedMessage.set(fullMsg);
     chatCache.updateMessages([fullMsg]);
 
-    messages.update(msgs => {
-      const withoutOptimistic = msgs.filter(m => String(m.id) !== String(id));
-      const existingIdx = withoutOptimistic.findIndex(m => String(m.id) === String(fullMsg.id));
-      if (existingIdx !== -1) {
-        withoutOptimistic[existingIdx] = fullMsg;
-        return withoutOptimistic;
-      }
-      return [...withoutOptimistic, fullMsg];
-    });
+    if (messages?.update) {
+      messages.update(msgs => {
+        const withoutOptimistic = msgs.filter(m => String(m.id) !== String(id));
+        const existingIdx = withoutOptimistic.findIndex(m => String(m.id) === String(fullMsg.id));
+        if (existingIdx !== -1) {
+          withoutOptimistic[existingIdx] = fullMsg;
+          return withoutOptimistic;
+        }
+        return [...withoutOptimistic, fullMsg];
+      });
+    }
 
     currentSessionChats.update((chats) => {
       if (!chats) return chats;

@@ -1,6 +1,24 @@
 <script>
   import { activeCall } from '$lib/stores/calls.js';
   import { currentUserDetails } from '$lib/stores/api.js';
+  import { CallService } from '$lib/services/CallService.js';
+  import { platform } from '@tauri-apps/plugin-os';
+
+  let isLinux = false;
+  try {
+    isLinux = platform() === 'linux';
+  } catch {
+    isLinux = typeof navigator !== 'undefined' && /linux/i.test(navigator.userAgent || navigator.platform || '') && !/android/i.test(navigator.userAgent || '');
+  }
+
+  function canvasVideo(node) {
+    CallService.attachVideoCanvas(node);
+    return {
+      destroy() {
+        CallService.detachVideoCanvas(node);
+      },
+    };
+  }
 
   function srcObject(node, stream) {
     node.srcObject = stream || null;
@@ -79,16 +97,23 @@
     {/if}
 
     <div class="participant-tile" class:participant-tile--self={p.isSelf}>
-      {#if p.video && p.stream}
-        <video
-          class="tile-video"
-          class:mirror={p.isSelf && !$activeCall.screenOn}
-          autoplay
-          playsinline
-          webkit-playsinline
-          muted={p.isSelf}
-          use:srcObject={p.stream}
-        ></video>
+      {#if p.video && (p.stream || (!p.isSelf && isLinux))}
+        {#if !p.isSelf && isLinux}
+          <canvas
+            class="tile-video"
+            use:canvasVideo
+          ></canvas>
+        {:else}
+          <video
+            class="tile-video"
+            class:mirror={p.isSelf && !$activeCall.screenOn}
+            autoplay
+            playsinline
+            webkit-playsinline
+            muted={p.isSelf}
+            use:srcObject={p.stream}
+          ></video>
+        {/if}
       {:else}
         <div class="tile-fallback">
           <div
@@ -130,6 +155,7 @@
     width: 100%;
     height: 100%;
     flex: 1;
+    min-width: 0;
     min-height: 0;
     display: grid;
     gap: 8px;
@@ -137,39 +163,40 @@
     box-sizing: border-box;
     align-content: center;
     justify-content: center;
+    overflow: hidden;
   }
 
   .grid--1 {
-    grid-template-columns: 1fr;
-    grid-template-rows: 1fr;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr);
   }
 
   .grid--2 {
-    grid-template-columns: 1fr;
-    grid-template-rows: 1fr 1fr;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: repeat(2, minmax(0, 1fr));
   }
 
   @media (min-width: 600px) {
     .grid--2 {
-      grid-template-columns: 1fr 1fr;
-      grid-template-rows: 1fr;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      grid-template-rows: minmax(0, 1fr);
     }
   }
 
   .grid--4 {
-    grid-template-columns: 1fr 1fr;
-    grid-template-rows: 1fr 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-rows: repeat(2, minmax(0, 1fr));
   }
 
   .grid--6 {
-    grid-template-columns: repeat(2, 1fr);
-    grid-template-rows: repeat(3, 1fr);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-rows: repeat(3, minmax(0, 1fr));
   }
 
   @media (min-width: 600px) {
     .grid--6 {
-      grid-template-columns: repeat(3, 1fr);
-      grid-template-rows: repeat(2, 1fr);
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      grid-template-rows: repeat(2, minmax(0, 1fr));
     }
   }
 
@@ -189,7 +216,10 @@
     justify-content: center;
     width: 100%;
     height: 100%;
-    min-height: 80px;
+    min-width: 0;
+    min-height: 0;
+    max-width: 100%;
+    max-height: 100%;
     box-sizing: border-box;
   }
 
@@ -205,8 +235,14 @@
   .tile-video {
     width: 100%;
     height: 100%;
-    object-fit: cover;
+    min-width: 0;
+    min-height: 0;
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+    background-color: #000;
     display: block;
+    box-sizing: border-box;
   }
 
   .tile-video.mirror {
