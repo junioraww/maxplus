@@ -328,6 +328,9 @@ pub async fn init_e2e_handshake(
     let timestamp = Utc::now().timestamp_millis();
 
     let mut settings = load_chat_settings_json(&app, account, chat_id);
+    if let Some(obj) = settings.as_object_mut() {
+        obj.remove("e2e_declined");
+    }
     settings["pending"] = json!({
         "ed_sk": hex::encode(bundle.ed_sk),
         "ed_pk": hex::encode(bundle.ed_pk),
@@ -378,6 +381,10 @@ pub async fn accept_e2e_handshake(
         "established_at": timestamp
     });
     settings["keys"]["current"] = json!(1);
+    if let Some(o) = settings.as_object_mut() {
+        o.remove("pending");
+        o.remove("e2e_declined");
+    }
     save_chat_settings_json(&app, account, chat_id, &settings)?;
 
     let hs_packet = create_handshake_accept(
@@ -413,6 +420,12 @@ pub async fn process_e2e_accept(
         .and_then(|f| f.as_str())
         .map(|s| s.to_string());
 
+    if let Some(ref fp) = existing_fingerprint {
+        if settings.get("session").and_then(|s| s.get("shared_secret")).is_some() && settings.get("pending").is_none() {
+            return Ok(fp.clone());
+        }
+    }
+
     let pending = settings.get("pending");
     let x_sk_hex = pending.and_then(|p| p.get("x_sk")).and_then(|x| x.as_str());
 
@@ -447,7 +460,10 @@ pub async fn process_e2e_accept(
         "established_at": Utc::now().timestamp_millis()
     });
     settings["keys"]["current"] = json!(1);
-    settings.as_object_mut().map(|o| o.remove("pending"));
+    if let Some(o) = settings.as_object_mut() {
+        o.remove("pending");
+        o.remove("e2e_declined");
+    }
     save_chat_settings_json(&app, account, chat_id, &settings)?;
 
     Ok(fingerprint)

@@ -4,7 +4,7 @@ use libwebrtc::{
     ice_candidate::IceCandidate,
     media_stream_track::MediaStreamTrack,
     peer_connection::{
-        AnswerOptions, OfferOptions, PeerConnection, PeerConnectionState, TrackEvent,
+        AnswerOptions, IceGatheringState, OfferOptions, PeerConnection, PeerConnectionState, TrackEvent,
     },
     peer_connection_factory::{
         native::PeerConnectionFactoryExt, ContinualGatheringPolicy, IceServer, IceTransportsType,
@@ -175,6 +175,22 @@ impl NativeWebRtcSession {
                     pending.lock().await.push(cand);
                 }
             });
+        })));
+
+        let cand_chan_clone2 = Arc::clone(&candidate_channel);
+        let h_gather = handle.clone();
+        pc.on_ice_gathering_state_change(Some(Box::new(move |state: IceGatheringState| {
+            if state == IceGatheringState::Complete {
+                let chan = cand_chan_clone2.clone();
+                h_gather.spawn(async move {
+                    let lock = chan.lock().await;
+                    if let Some(ch) = lock.as_ref() {
+                        let _ = ch.send(serde_json::json!({
+                            "candidate": null,
+                        }));
+                    }
+                });
+            }
         })));
 
         let state_chan_clone = Arc::clone(&state_channel);
