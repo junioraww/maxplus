@@ -69,19 +69,21 @@ export async function checkForEncryptionRequest(
   }
 
   const currentSettings = get(chatSettings);
-  if (currentSettings?.e2e_declined) {
-    return null;
-  }
   const isSessionActive = Boolean(
-    currentSettings?.keys?.current ||
     currentSettings?.session?.shared_secret ||
-    currentSettings?.session?.fingerprint
+    currentSettings?.session?.fingerprint ||
+    currentSettings?.keys?.current
   );
   const establishedAt = Number(currentSettings?.session?.established_at || 0);
   const rejectedSet = getRejectedSet(chat.id, currentSettings);
 
   const account = await getCurrentAccount();
   const accId = Number(account?.id || 0);
+  const myIds = new Set([
+    Number(currentUid),
+    Number(account?.id),
+    Number(account?.contact?.id),
+  ].filter((n) => !isNaN(n) && n > 0));
 
   let detectedRequest = null;
 
@@ -94,7 +96,8 @@ export async function checkForEncryptionRequest(
     const dec = decryptedBatch[msgIdStr];
     if (!dec) continue;
 
-    const isFromMe = Number(msg.sender) === Number(currentUid);
+    const senderId = Number(msg.sender?.id || msg.sender);
+    const isFromMe = myIds.has(senderId);
 
     if (dec.is_handshake_request && dec.handshake_data) {
       if (isSessionActive) {
@@ -113,7 +116,8 @@ export async function checkForEncryptionRequest(
         pendingRequests.set(Number(chat.id), detectedRequest);
       }
     } else if (dec.is_handshake_accept && dec.handshake_data) {
-      if (currentSettings?.pending && !currentSettings?.session?.fingerprint && (!isFromMe || isSavedMessagesChat)) {
+      const hasPending = Boolean(currentSettings?.pending?.x_sk || currentSettings?.pending === true || (currentSettings?.pending && typeof currentSettings.pending === 'object'));
+      if (hasPending && !currentSettings?.session?.fingerprint && (!isFromMe || isSavedMessagesChat)) {
         try {
           const fingerprint = await processAccept(
             accId,
@@ -131,11 +135,12 @@ export async function checkForEncryptionRequest(
               ...old,
               pending: false,
               session: {
-                ...(old.session || {}),
+                ...(old?.session || {}),
                 fingerprint,
+                established_at: Date.now(),
               },
               keys: {
-                ...(old.keys || {}),
+                ...(old?.keys || {}),
                 current: 1,
               },
             }));
@@ -169,6 +174,51 @@ export async function handleEnc(chat, chatSettings, messages, action) {
 
       pendingRequests.delete(Number(chat.id));
 
+      const freshSettings = await invoke("get_chat_settings", {
+        account: accId,
+        chatId: Number(chat.id),
+      });
+
+      const msgId = req?.messageId ? String(req.messageId) : null;
+      if (msgId) {
+        const set = getRejectedSet(chat.id, get(chatSettings));
+        set.add(msgId);
+      }
+
+      if (freshSettings) {
+        chatSettings.set({
+          ...freshSettings,
+          pending: false,
+          handled_handshakes: Array.from(
+            new Set([...(freshSettings?.handled_handshakes || []), ...(msgId ? [msgId] : [])])
+          ),
+          rejected_handshakes: Array.from(
+            new Set([...(freshSettings?.rejected_handshakes || []), ...(msgId ? [msgId] : [])])
+          ),
+        });
+      } else {
+        const info = await getEncryptionInfo(accId, chat.id);
+        chatSettings.update((old) => ({
+          ...old,
+          pending: false,
+          handled_handshakes: Array.from(
+            new Set([...(old?.handled_handshakes || []), ...(msgId ? [msgId] : [])])
+          ),
+          rejected_handshakes: Array.from(
+            new Set([...(old?.rejected_handshakes || []), ...(msgId ? [msgId] : [])])
+          ),
+          session: {
+            ...(old?.session || {}),
+            fingerprint: info?.fingerprint,
+            established_at: Date.now(),
+          },
+          keys: {
+            ...(old?.keys || {}),
+            current: 1,
+          },
+        }));
+      }
+
       await sendMessage(
         chat,
         chatSettings,
@@ -179,32 +229,6 @@ export async function handleEnc(chat, chatSettings, messages, action) {
         undefined,
         true
       );
-
-      const info = await getEncryptionInfo(accId, chat.id);
-      const msgId = req?.messageId ? String(req.messageId) : null;
-      if (msgId) {
-        const set = getRejectedSet(chat.id, get(chatSettings));
-        set.add(msgId);
-      }
-      chatSettings.update((old) => ({
-        ...old,
-        pending: false,
-        handled_handshakes: Array.from(
-          new Set([...(old?.handled_handshakes || []), ...(msgId ? [msgId] : [])])
-        ),
-        rejected_handshakes: Array.from(
-          new Set([...(old?.rejected_handshakes || []), ...(msgId ? [msgId] : [])])
-        ),
-        session: {
-          ...(old?.session || {}),
-          fingerprint: info?.fingerprint,
-          established_at: Date.now(),
-        },
-        keys: {
-          ...(old?.keys || {}),
-          current: 1,
-        },
-      }));
     } catch (e) {
       console.error(e);
       alert(String(e));
@@ -216,14 +240,20 @@ export async function handleEnc(chat, chatSettings, messages, action) {
       const set = getRejectedSet(chat.id, get(chatSettings));
       set.add(msgId);
     }
-    chatSettings.update((old) => ({
-      ...old,
-      e2e_declined: true,
-      rejected_handshakes: Array.from(
+    chatSettings.update((old) => {
+      const next = { ...old };
+      delete next.e2e_declined;
+      next.rejected_handshakes = Array.from(
         new Set([...(old?.rejected_handshakes || []), ...(msgId ? [msgId] : [])])
-      ),
-    }));
+      );
+      return next;
+    });
     pendingRequests.delete(Number(chat.id));
+    invoke("set_chat_settings", {
+      account: accId,
+      chatId: Number(chat.id),
+      data: get(chatSettings),
+    }).catch(() => {});
   } else if (action === "block") {
     const msgId = req?.messageId ? String(req.messageId) : null;
     if (msgId) {
@@ -241,7 +271,11 @@ export async function switchEnc(chat, chatSettings, messages) {
   const account = await getCurrentAccount();
   const accId = Number(account?.id || 0);
   const settings = get(chatSettings);
-  const isSessionActive = Boolean(settings?.keys?.current || settings?.session);
+  const isSessionActive = Boolean(
+    settings?.session?.shared_secret ||
+    settings?.session?.fingerprint ||
+    settings?.keys?.current
+  );
 
   if (!isSessionActive) {
     try {
@@ -253,13 +287,14 @@ export async function switchEnc(chat, chatSettings, messages) {
         chatId: Number(chat.id),
       });
       if (freshSettings) {
+        delete freshSettings.e2e_declined;
         chatSettings.set(freshSettings);
       } else {
-        chatSettings.update((old) => ({
-          ...old,
-          pending: true,
-          e2e_declined: false,
-        }));
+        chatSettings.update((old) => {
+          const next = { ...old, pending: true };
+          delete next.e2e_declined;
+          return next;
+        });
       }
 
       await sendMessage(
@@ -281,12 +316,19 @@ export async function switchEnc(chat, chatSettings, messages) {
       const next = { ...old };
       delete next.session;
       delete next.pending;
+      delete next.e2e_declined;
       next.keys = {
         ...(next.keys || {}),
         current: null,
       };
       return next;
     });
+    const fresh = get(chatSettings);
+    invoke("set_chat_settings", {
+      account: accId,
+      chatId: Number(chat.id),
+      data: fresh,
+    }).catch(() => {});
   }
 }
 

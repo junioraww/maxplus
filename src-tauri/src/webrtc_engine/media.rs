@@ -41,15 +41,24 @@ impl CameraCapturer {
                 RequestedFormatType::AbsoluteHighestFrameRate,
             );
 
-            let mut camera = match Camera::new(index, requested) {
+            let mut camera = match Camera::new(index.clone(), requested) {
                 Ok(cam) => cam,
-                Err(_) => {
-                    running_clone.store(false, Ordering::SeqCst);
-                    return;
+                Err(e) => {
+                    eprintln!("[webrtc:camera] Camera::new high framerate failed: {:?}, trying fallback", e);
+                    let fallback_requested = RequestedFormat::new::<RgbAFormat>(RequestedFormatType::None);
+                    match Camera::new(index, fallback_requested) {
+                        Ok(cam) => cam,
+                        Err(e2) => {
+                            eprintln!("[webrtc:camera] Camera::new fallback failed: {:?}", e2);
+                            running_clone.store(false, Ordering::SeqCst);
+                            return;
+                        }
+                    }
                 }
             };
 
-            if camera.open_stream().is_err() {
+            if let Err(e) = camera.open_stream() {
+                eprintln!("[webrtc:camera] camera.open_stream error: {:?}", e);
                 running_clone.store(false, Ordering::SeqCst);
                 return;
             }

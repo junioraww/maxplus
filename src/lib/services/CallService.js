@@ -75,6 +75,25 @@ function labelLocalTracks(sdp, userId, cameraTrackId, screenTrackId) {
       .replace(new RegExp(`^a=msid:(\\S+) ${escaped}\\s*$`, 'gm'), `a=msid:$1 ${prefix}:sCAMERA`)
       .replace(new RegExp(`^(a=ssrc:\\d+ msid:\\S+) ${escaped}\\s*$`, 'gm'), `$1 ${prefix}:sCAMERA`)
       .replace(new RegExp(`^(a=ssrc:\\d+ label:)${escaped}\\s*$`, 'gm'), `$1${prefix}:sCAMERA`);
+    if (!result.includes(`${prefix}:sCAMERA`)) {
+      const lines = result.split('\n');
+      let inVideo = false;
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        if (line.startsWith('m=')) {
+          inVideo = line.startsWith('m=video');
+        } else if (inVideo) {
+          if (line.startsWith('a=msid:')) {
+            lines[i] = line.replace(/^a=msid:(\S+)\s+\S+/, `a=msid:$1 ${prefix}:sCAMERA`);
+          } else if (line.startsWith('a=ssrc:') && line.includes(' msid:')) {
+            lines[i] = line.replace(/^(a=ssrc:\d+\s+msid:\S+)\s+\S+/, `$1 ${prefix}:sCAMERA`);
+          } else if (line.startsWith('a=ssrc:') && line.includes(' label:')) {
+            lines[i] = line.replace(/^(a=ssrc:\d+\s+label:)\S+/, `$1${prefix}:sCAMERA`);
+          }
+        }
+      }
+      result = lines.join('\n');
+    }
   }
   if (screenTrackId) {
     const escaped = screenTrackId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -82,6 +101,25 @@ function labelLocalTracks(sdp, userId, cameraTrackId, screenTrackId) {
       .replace(new RegExp(`^a=msid:(\\S+) ${escaped}\\s*$`, 'gm'), `a=msid:$1 ${prefix}:sSCREEN`)
       .replace(new RegExp(`^(a=ssrc:\\d+ msid:\\S+) ${escaped}\\s*$`, 'gm'), `$1 ${prefix}:sSCREEN`)
       .replace(new RegExp(`^(a=ssrc:\\d+ label:)${escaped}\\s*$`, 'gm'), `$1${prefix}:sSCREEN`);
+    if (!result.includes(`${prefix}:sSCREEN`)) {
+      const lines = result.split('\n');
+      let inVideo = false;
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        if (line.startsWith('m=')) {
+          inVideo = line.startsWith('m=video');
+        } else if (inVideo) {
+          if (line.startsWith('a=msid:')) {
+            lines[i] = line.replace(/^a=msid:(\S+)\s+\S+/, `a=msid:$1 ${prefix}:sSCREEN`);
+          } else if (line.startsWith('a=ssrc:') && line.includes(' msid:')) {
+            lines[i] = line.replace(/^(a=ssrc:\d+\s+msid:\S+)\s+\S+/, `$1 ${prefix}:sSCREEN`);
+          } else if (line.startsWith('a=ssrc:') && line.includes(' label:')) {
+            lines[i] = line.replace(/^(a=ssrc:\d+\s+label:)\S+/, `$1${prefix}:sSCREEN`);
+          }
+        }
+      }
+      result = lines.join('\n');
+    }
   }
   return result;
 }
@@ -264,6 +302,11 @@ class VoiceChannel {
 
     if (msg.type === 'error' || msg.error) {
       const errorMsg = msg.message || msg.error || 'Server error';
+      if (errorMsg === 'conversation-ended' || msg.error === 'conversation-ended') {
+        log('[call:ws2:conversation-ended]');
+        this.destroy();
+        return;
+      }
       log('[call:ws2:server-error]', errorMsg);
       patchCallState({ errorText: errorMsg });
       showAlert(errorMsg);
@@ -360,6 +403,8 @@ class MaxCallSession {
   #role = null;
   #sfuSessionId = null;
   #dtlsFingerprint = null;
+  #localDtlsFingerprint = null;
+  #remoteDtlsFingerprint = null;
   #androidScreenCapture = null;
   #unlistenScreenCaptureStopped = null;
   #cameraToggling = false;
@@ -372,8 +417,10 @@ class MaxCallSession {
   get encryption() { return this.#encryption; }
 
   #applyTrackLabels(sdp) {
-    const camTrack = this.#cameraStream?.getVideoTracks()[0]?.id;
-    const scrTrack = this.#screenStream?.getVideoTracks()[0]?.id;
+    const isScreen = Boolean(get(activeCall).screenOn);
+    const isVideo = Boolean(get(activeCall).videoOn);
+    const camTrack = this.#cameraStream?.getVideoTracks()[0]?.id || (isLinuxClient && isVideo && !isScreen ? 'camera0' : null);
+    const scrTrack = this.#screenStream?.getVideoTracks()[0]?.id || (isLinuxClient && isScreen ? 'camera0' : null);
     return labelLocalTracks(sdp, this.#myCallUserId, camTrack, scrTrack);
   }
 
@@ -507,17 +554,25 @@ class MaxCallSession {
   }
 
   async #resolveSharedSecret(peerId) {
-    if (!peerId) return null;
+    if (!peerId && !this.#contactPeerId) return null;
     try {
       const account = await getCurrentAccount().catch(() => null);
       if (!account?.id) return null;
       const user = get(currentUser);
       const myUid = user?.id || user?.userId || (typeof user === 'number' || typeof user === 'string' ? user : null);
       const candidates = new Set();
-      candidates.add(Number(peerId));
+      if (peerId) candidates.add(Number(peerId));
+      if (this.#contactPeerId) candidates.add(Number(this.#contactPeerId));
+      const activePeer = get(activeCall).peerId;
+      if (activePeer) candidates.add(Number(activePeer));
       if (myUid && peerId) {
         try {
           candidates.add(Number(BigInt(peerId) ^ BigInt(myUid)));
+        } catch {}
+      }
+      if (myUid && this.#contactPeerId) {
+        try {
+          candidates.add(Number(BigInt(this.#contactPeerId) ^ BigInt(myUid)));
         } catch {}
       }
       const chats = get(currentSessionChats) || [];
@@ -525,16 +580,16 @@ class MaxCallSession {
         if (!c?.id) continue;
         const cid = Number(c.id);
         if (c.type === 'DIALOG' || c.type === 'private') {
-          if (c.participants && Object.keys(c.participants).some(p => String(p) === String(peerId))) {
+          if (c.participants && Object.keys(c.participants).some(p => String(p) === String(peerId) || String(p) === String(this.#contactPeerId))) {
             candidates.add(cid);
           }
-          if (c.owner && String(c.owner) === String(peerId)) {
+          if (c.owner && (String(c.owner) === String(peerId) || String(c.owner) === String(this.#contactPeerId))) {
             candidates.add(cid);
           }
-          if (c.userId && String(c.userId) === String(peerId)) {
+          if (c.userId && (String(c.userId) === String(peerId) || String(c.userId) === String(this.#contactPeerId))) {
             candidates.add(cid);
           }
-          if (String(c.id) === String(peerId)) {
+          if (String(c.id) === String(peerId) || String(c.id) === String(this.#contactPeerId)) {
             candidates.add(cid);
           }
         }
@@ -560,32 +615,6 @@ class MaxCallSession {
       this._keyPair = await generateCallKeyPair();
       this._myPublicKeyBytes = await exportPublicKeyBytes(this._keyPair);
     }
-    const hexKey = Array.from(this._myPublicKeyBytes).map(b => b.toString(16).padStart(2, '0')).join('');
-    const tag = isReply ? 'e2erep' : 'e2ereq';
-    const validCandidate = `candidate:0 1 udp 2130706431 127.0.0.1 9 typ host ${tag} ${hexKey}`;
-
-    if (this.#voiceChannel) {
-      await this.#voiceChannel.send('transmit-data', {
-        participantId: Number(targetPeerId),
-        participantType: this.#peerType || 'USER',
-        deviceIdx: this.#peerDeviceIdx ?? 0,
-        data: {
-          candidate: {
-            candidate: validCandidate,
-            sdpMid: '0',
-            sdpMLineIndex: 0,
-          },
-          e2e: {
-            pubKey: Array.from(this._myPublicKeyBytes),
-            isReply,
-          },
-        },
-        capabilities: WS2_CAPABILITIES,
-      }).catch((err) => {
-        log('Failed to send e2e candidate:', err?.message || err);
-      });
-    }
-
     if (this.#dataChannel && this.#dataChannel.readyState === 'open') {
       try {
         this.#dataChannel.send(JSON.stringify({
@@ -606,9 +635,11 @@ class MaxCallSession {
       const myId = String(this.#myCallUserId || get(currentUser)?.id || '');
       const participants = get(activeCall).participants || [];
       const remoteParticipant = participants.find(p => String(p.id) !== myId);
-      const targetPeerId = (this.#ws2PeerId && String(this.#ws2PeerId) !== myId ? this.#ws2PeerId : null)
-        || (remoteParticipant ? String(remoteParticipant.id) : null)
-        || (this.#contactPeerId && String(this.#contactPeerId) !== myId ? this.#contactPeerId : null);
+      const targetPeerId = (this.#contactPeerId && String(this.#contactPeerId) !== myId ? this.#contactPeerId : null)
+        || (get(activeCall).peerId && String(get(activeCall).peerId) !== myId ? get(activeCall).peerId : null)
+        || (this.#ws2PeerId && String(this.#ws2PeerId) !== myId ? this.#ws2PeerId : null)
+        || (remoteParticipant ? String(remoteParticipant.id) : null);
+
       if (targetPeerId) {
         const secret = await this.#resolveSharedSecret(targetPeerId);
         if (secret) {
@@ -624,15 +655,34 @@ class MaxCallSession {
         }
       }
 
-      if (targetPeerId) {
-        await this.#sendE2eKey(targetPeerId, false);
-        patchCallState({ mode: CALL_MODE.SECURE, secureStatus: 'pending', secureKeyFingerprint: null });
-        showAlert('Запрос на установку E2E шифрования отправлен...');
+      if (this.#pc) {
+        if (!this.#localDtlsFingerprint && this.#pc.localDescription?.sdp) {
+          this.#extractAndApplyFingerprint(this.#pc.localDescription.sdp, true);
+        }
+        if (!this.#remoteDtlsFingerprint && this.#pc.remoteDescription?.sdp) {
+          this.#extractAndApplyFingerprint(this.#pc.remoteDescription.sdp, false);
+        }
+      }
+
+      const fps = [this.#localDtlsFingerprint, this.#remoteDtlsFingerprint].filter(Boolean).sort();
+      if (fps.length > 0) {
+        const seedStr = `${fps.join('|')}|${this.#conversationId || 'default'}`;
+        const hashBuf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(seedStr));
+        const hashBytes = new Uint8Array(hashBuf);
+        const hex = Array.from(hashBytes.slice(0, 16)).map(b => b.toString(16).padStart(2, '0')).join('').toUpperCase();
+        const code = hex.match(/.{4}/g)?.join('-') || hex;
+        await this.#encryption.initSecure(hashBytes, this.#role === 'originator');
+        patchCallState({
+          mode: CALL_MODE.SECURE,
+          secureStatus: 'active',
+          secureKeyFingerprint: code,
+        });
+        showAlert('E2E шифрование установлено. Код: ' + code);
         return;
       }
 
-      patchCallState({ mode: CALL_MODE.SECURE, secureStatus: 'unsupported', secureKeyFingerprint: null });
-      showAlert('Секретный чат не найден. Для E2E звонка создайте секретный чат с собеседником.');
+      patchCallState({ mode: CALL_MODE.SECURE, secureStatus: 'pending', secureKeyFingerprint: null });
+      showAlert('Запрос на установку E2E шифрования отправлен...');
     } catch (e) {
       log('enableSecureMode error:', e);
       showAlert('Не удалось включить E2E шифрование');
@@ -720,6 +770,7 @@ class MaxCallSession {
 
   async #syncEncryptionToMedia() {
     if (!this.#encryption || this.#encryption.mode !== 'secure') return;
+    if (isLinuxClient) return;
     if (this.#pc && typeof this.#pc.setEncryptionKeys === 'function') {
       await this.#pc.setEncryptionKeys(this.#encryption.getExportedKeys());
     }
@@ -745,11 +796,17 @@ class MaxCallSession {
 
   async #retransmitAllLocalCandidates() {}
 
-  #extractAndApplyFingerprint(sdp) {
+  #extractAndApplyFingerprint(sdp, isLocal = false) {
     if (!sdp) return;
     const m = sdp.match(/^a=fingerprint:\S+\s+([0-9A-Fa-f:]+)/m);
     if (!m) return;
-    this.#dtlsFingerprint = m[1];
+    const fp = m[1];
+    this.#dtlsFingerprint = fp;
+    if (isLocal) {
+      this.#localDtlsFingerprint = fp;
+    } else {
+      this.#remoteDtlsFingerprint = fp;
+    }
   }
 
   #formatFingerprintCode(fp) {
@@ -813,9 +870,7 @@ class MaxCallSession {
   #onCallActivated() {
     patchCallState({ phase: CALL_PHASE.ACTIVE, startedAt: get(activeCall).startedAt || Date.now() });
     if (get(activeCall).mode === CALL_MODE.SECURE && this.#encryption.mode !== 'secure') {
-      if (this.#role === 'originator') {
-        this.enableSecureMode().catch(() => {});
-      }
+      this.enableSecureMode().catch(() => {});
     }
   }
 
@@ -1304,7 +1359,7 @@ class MaxCallSession {
         await pc.setLocalDescription(offer);
         const localSdp = this.#applyTrackLabels(pc.localDescription?.sdp || offer.sdp);
         log(`[call:sdp:local-offer] role=${this.#role}`, localSdp);
-        this.#extractAndApplyFingerprint(localSdp);
+        this.#extractAndApplyFingerprint(localSdp, true);
         if (targetPeerId && localSdp && localSdp.trim().startsWith('v=')) {
           this.#pendingOffer = false;
           await this.#voiceChannel.send('transmit-data', {
@@ -1372,7 +1427,7 @@ class MaxCallSession {
       }
 
       const ssrcs = this.#extractSsrcs(sdp);
-      this.#extractAndApplyFingerprint(sdp);
+      this.#extractAndApplyFingerprint(sdp, false);
 
       let pc = await this.#buildPeerConnection();
       await this.#prepareVideoSlot(pc, sdp);
@@ -1399,6 +1454,10 @@ class MaxCallSession {
       await this.#gatherDone();
 
       const answerSdp = this.#applyTrackLabels(pc.localDescription?.sdp || answer.sdp || '');
+      this.#extractAndApplyFingerprint(answerSdp, true);
+      if (get(activeCall).mode === CALL_MODE.SECURE && get(activeCall).secureStatus !== 'active') {
+        this.enableSecureMode().catch(() => {});
+      }
       log('Sending accept-producer response with answer SDP');
 
       await this.#voiceChannel.send('accept-producer', {
@@ -1464,7 +1523,7 @@ class MaxCallSession {
           return;
         }
         log(`[call:sdp:remote-${type}]`, sdp);
-        this.#extractAndApplyFingerprint(sdp);
+        this.#extractAndApplyFingerprint(sdp, false);
 
         if (type === 'answer') {
           if (pc.signalingState !== 'have-local-offer') {
@@ -1492,11 +1551,15 @@ class MaxCallSession {
         }
         this.#remoteDescSet = true;
         await this.#flushCandidates();
+        if (get(activeCall).mode === CALL_MODE.SECURE && get(activeCall).secureStatus !== 'active') {
+          this.enableSecureMode().catch(() => {});
+        }
 
         if (type === 'offer') {
           const answer = await pc.createAnswer();
           await pc.setLocalDescription(answer);
           const localSdp = this.#applyTrackLabels(pc.localDescription?.sdp || answer.sdp);
+          this.#extractAndApplyFingerprint(localSdp, true);
           const targetPeerId = this.#ws2PeerId || this.#contactPeerId;
           log('[call:sdp:local-answer]', localSdp);
           if (targetPeerId && localSdp && localSdp.trim().startsWith('v=')) {
@@ -1526,6 +1589,7 @@ class MaxCallSession {
         if (!item) continue;
         const candidateStr = typeof item === 'string' ? item : (item.candidate || '');
         if (!candidateStr || typeof candidateStr !== 'string' || !candidateStr.trim()) continue;
+        if (candidateStr.includes('e2ereq') || candidateStr.includes('e2erep')) continue;
         const sdpMid = item.sdpMid != null ? String(item.sdpMid) : undefined;
         const sdpMLineIndex = item.sdpMLineIndex != null ? Number(item.sdpMLineIndex) : undefined;
         log(`[call:ice:remote] ${candidateStr} (mid=${sdpMid}, mline=${sdpMLineIndex})`);
@@ -1567,19 +1631,30 @@ class MaxCallSession {
   #gatherDone() {
     const pc = this.#pc;
     if (!pc) return Promise.resolve();
-    if (pc.iceGatheringState === 'complete') return Promise.resolve();
+    if (pc.iceGatheringState === 'complete' || pc.connectionState === 'connected' || pc.iceConnectionState === 'connected') return Promise.resolve();
     return new Promise(resolve => {
-      const check = () => {
-        if (pc.iceGatheringState === 'complete') {
-          pc.removeEventListener('icegatheringstatechange', check);
-          resolve();
+      let done = false;
+      const finish = () => {
+        if (done) return;
+        done = true;
+        pc.removeEventListener('icegatheringstatechange', checkGathering);
+        pc.removeEventListener('icecandidate', checkCandidate);
+        clearTimeout(timer);
+        resolve();
+      };
+      const checkGathering = () => {
+        if (pc.iceGatheringState === 'complete') finish();
+      };
+      const checkCandidate = (e) => {
+        if (!e?.candidate || (e.candidate.candidate && e.candidate.candidate.includes('typ relay'))) {
+          finish();
         }
       };
-      pc.addEventListener('icegatheringstatechange', check);
-      setTimeout(() => {
-        log('ICE gathering wait timed out, continuing');
-        resolve();
-      }, 4000);
+      pc.addEventListener('icegatheringstatechange', checkGathering);
+      pc.addEventListener('icecandidate', checkCandidate);
+      const timer = setTimeout(() => {
+        finish();
+      }, 1000);
     });
   }
 
@@ -1808,6 +1883,9 @@ class MaxCallSession {
           await this.#pc.setCameraEnabled(on);
         }
         patchCallState({ videoOn: on, localCameraStream: null, cameraLoading: false });
+        if (this.#pc && this.#topology !== 'SERVER') {
+          await this.#renegotiate();
+        }
       } else if (on && !this.#cameraStream) {
         patchCallState({ videoOn: true, cameraLoading: true });
         try {
@@ -1905,7 +1983,7 @@ class MaxCallSession {
       const offer = await this.#pc.createOffer(OFFER_CONSTRAINTS);
       await this.#pc.setLocalDescription(offer);
       const localSdp = sanitizeSdpBundle(this.#applyTrackLabels(this.#pc.localDescription?.sdp || offer.sdp));
-      this.#extractAndApplyFingerprint(localSdp);
+      this.#extractAndApplyFingerprint(localSdp, true);
       if (localSdp && localSdp.trim().startsWith('v=')) {
         log('[call:sdp:renegotiate-offer]', localSdp);
         await this.#voiceChannel?.send('transmit-data', {
@@ -1926,6 +2004,25 @@ class MaxCallSession {
 
   async enableScreen(on) {
     if (this.#destroyed) return;
+    if (isLinuxClient) {
+      patchCallState({ screenOn: on, localScreenStream: null });
+      if (this.#pc && typeof this.#pc.setCameraEnabled === 'function') {
+        await this.#pc.setCameraEnabled(on || get(activeCall).videoOn);
+      }
+      if (this.#pc && this.#topology !== 'SERVER') {
+        await this.#renegotiate();
+      }
+      await this.#voiceChannel?.send('change-media-settings', {
+        mediaSettings: {
+          isVideoEnabled: get(activeCall).videoOn,
+          isAudioEnabled: !get(activeCall).muted,
+          isScreenSharingEnabled: on,
+          isAnimojiEnabled: false,
+        },
+      }).catch(() => {});
+      this.#sendSfuDisplayLayout();
+      return;
+    }
     if (on && !this.#screenStream) {
       try {
         let stream = null;

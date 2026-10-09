@@ -1670,7 +1670,7 @@
               <div class="tg-row-main">
                 <div class="tg-row-title">Сквозное шифрование</div>
                 <div class="tg-row-subtitle">
-                  {#if $chatSettings?.keys?.current || $chatSettings?.session}
+                  {#if $chatSettings?.session?.shared_secret || $chatSettings?.session?.fingerprint || $chatSettings?.keys?.current}
                     <span class="tg-badge tg-badge-success">Активно</span>
                   {:else if $chatSettings?.pending}
                     <span class="tg-badge tg-badge-warning">Запрос отправлен</span>
@@ -1682,10 +1682,10 @@
               <button
                 type="button"
                 class="tg-btn-action"
-                class:danger={$chatSettings?.keys?.current || $chatSettings?.session}
+                class:danger={$chatSettings?.session?.shared_secret || $chatSettings?.session?.fingerprint || $chatSettings?.keys?.current}
                 on:click={triggerSwitchEnc}
               >
-                { !($chatSettings?.keys?.current || $chatSettings?.session) ? "Новая сессия" : "Отключить" }
+                { !($chatSettings?.session?.shared_secret || $chatSettings?.session?.fingerprint || $chatSettings?.keys?.current) ? "Новая сессия" : "Отключить" }
               </button>
             </div>
 

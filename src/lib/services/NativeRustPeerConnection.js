@@ -17,9 +17,35 @@ export class NativeRustPeerConnection extends EventTarget {
     this.ondatachannel = null;
     this.sessionId = null;
 
-    this._senders = [];
-    this._receivers = [];
-    this._transceivers = [];
+    const audioSender = {
+      track: { kind: 'audio', id: 'audio0', readyState: 'live', enabled: true },
+      replaceTrack: async () => {},
+    };
+    const videoSender = {
+      track: { kind: 'video', id: 'camera0', readyState: 'live', enabled: true },
+      replaceTrack: async () => {},
+    };
+    const audioReceiver = {
+      track: { kind: 'audio', id: 'rem-audio0', readyState: 'live', enabled: true },
+    };
+    const videoReceiver = {
+      track: { kind: 'video', id: 'rem-video0', readyState: 'live', enabled: true },
+    };
+    const audioTransceiver = {
+      mid: '0',
+      sender: audioSender,
+      receiver: audioReceiver,
+      direction: 'sendrecv',
+    };
+    const videoTransceiver = {
+      mid: '1',
+      sender: videoSender,
+      receiver: videoReceiver,
+      direction: 'sendrecv',
+    };
+    this._senders = [audioSender, videoSender];
+    this._receivers = [audioReceiver, videoReceiver];
+    this._transceivers = [audioTransceiver, videoTransceiver];
     this._remoteStream = new MediaStream();
     this._closed = false;
     this._attachedCanvases = new Set();
@@ -55,6 +81,7 @@ export class NativeRustPeerConnection extends EventTarget {
     this._candidatesChannel.onmessage = (payload) => {
       if (!payload || !payload.candidate) {
         this.iceGatheringState = 'complete';
+        this.dispatchEvent(new Event('icegatheringstatechange'));
         const ev = { candidate: null };
         this.onicecandidate?.(ev);
         this.dispatchEvent(new CustomEvent('icecandidate', { detail: ev }));
