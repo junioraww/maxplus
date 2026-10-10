@@ -873,7 +873,6 @@ class MaxCallSession {
 
   async #syncEncryptionToMedia() {
     if (!this.#encryption || this.#encryption.mode !== 'secure') return;
-    if (isLinuxClient) return;
     if (this.#pc && typeof this.#pc.setEncryptionKeys === 'function') {
       await this.#pc.setEncryptionKeys(this.#encryption.getExportedKeys());
     }

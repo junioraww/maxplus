@@ -29,6 +29,20 @@ pub struct IceServerConfig {
     pub password: String,
 }
 
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct EncryptionKeysPayload {
+    pub mode: Option<String>,
+    pub audio_send_key: Option<Vec<u8>>,
+    pub audio_recv_key: Option<Vec<u8>>,
+    pub audio_send_salt: Option<Vec<u8>>,
+    pub audio_recv_salt: Option<Vec<u8>>,
+    pub video_send_key: Option<Vec<u8>>,
+    pub video_recv_key: Option<Vec<u8>>,
+    pub video_send_salt: Option<Vec<u8>>,
+    pub video_recv_salt: Option<Vec<u8>>,
+}
+
 #[tauri::command]
 pub async fn webrtc_create(ice_servers: Vec<IceServerConfig>) -> Result<u32, String> {
     #[cfg(target_os = "linux")]
@@ -239,6 +253,23 @@ pub async fn webrtc_close(session_id: u32) -> Result<(), String> {
     #[cfg(not(target_os = "linux"))]
     {
         let _ = session_id;
+        Ok(())
+    }
+}
+
+#[tauri::command]
+pub async fn webrtc_set_encryption_keys(
+    session_id: u32,
+    keys: EncryptionKeysPayload,
+) -> Result<(), String> {
+    #[cfg(target_os = "linux")]
+    {
+        let session = NativeWebRtcSession::get(session_id).await?;
+        session.set_encryption_keys(keys).await
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        let _ = (session_id, keys);
         Ok(())
     }
 }
