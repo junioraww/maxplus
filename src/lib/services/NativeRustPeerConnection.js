@@ -492,6 +492,19 @@ export class NativeRustPeerConnection extends EventTarget {
 
   restartIce() {}
 
+  async setEncryptionKeys(keys) {
+    await this._initPromise;
+    if (this.sessionId == null) return;
+    try {
+      await invoke('webrtc_set_encryption_keys', {
+        sessionId: this.sessionId,
+        keys,
+      });
+    } catch (err) {
+      console.error('[NativeRustPeerConnection] setEncryptionKeys error:', err);
+    }
+  }
+
   async close() {
     this._closed = true;
     for (const canvas of this._attachedCanvases) {

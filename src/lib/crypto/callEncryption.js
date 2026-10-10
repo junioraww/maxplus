@@ -1,10 +1,3 @@
-export const FRAME_HEADER_SIZE = 7;
-export const FRAME_MAGIC_0 = 0x4d;
-export const FRAME_MAGIC_1 = 0x58;
-export const FRAME_TYPE_MEDIA = 0x01;
-export const FRAME_TYPE_HANDSHAKE_INIT = 0x02;
-export const FRAME_TYPE_HANDSHAKE_RESP = 0x03;
-
 export class CallEncryptionSession {
   #mode = 'plain';
   #fingerprint = null;
@@ -29,7 +22,6 @@ export class CallEncryptionSession {
   #videoFrameCounter = 0;
 
   #workers = new Set();
-  #inbandHandshakeHandler = null;
 
   get mode() { return this.#mode; }
   get fingerprint() { return this.#fingerprint; }
@@ -46,22 +38,6 @@ export class CallEncryptionSession {
       videoSendSalt: this.#videoSendSalt ? Array.from(this.#videoSendSalt) : null,
       videoRecvSalt: this.#videoRecvSalt ? Array.from(this.#videoRecvSalt) : null,
     };
-  }
-
-  createInbandHandshakeFrame(type, publicKeyBytes) {
-    const rawPub = publicKeyBytes instanceof Uint8Array ? publicKeyBytes : new Uint8Array(publicKeyBytes);
-    const result = new Uint8Array(FRAME_HEADER_SIZE + rawPub.length);
-    const dv = new DataView(result.buffer);
-    dv.setUint8(0, FRAME_MAGIC_0);
-    dv.setUint8(1, FRAME_MAGIC_1);
-    dv.setUint8(2, type);
-    dv.setUint32(3, 0, false);
-    result.set(rawPub, FRAME_HEADER_SIZE);
-    return result;
-  }
-
-  onInbandHandshake(handler) {
-    this.#inbandHandshakeHandler = handler;
   }
 
   async initPlain() {
@@ -199,44 +175,56 @@ export class CallEncryptionSession {
     const salt = kind === 'video' ? this.#videoSendSalt : this.#audioSendSalt;
     if (!encKey || !salt) return data;
 
+    const raw = data instanceof Uint8Array ? data : new Uint8Array(data);
+    const unencryptedBytes = kind === 'video' ? ((raw.length > 0 && (raw[0] & 0x01) === 0) ? 10 : 3) : 1;
+    if (raw.length <= unencryptedBytes) return data;
+
+    const payload = raw.subarray(unencryptedBytes);
     const counter = kind === 'video' ? this.#videoFrameCounter++ : this.#audioFrameCounter++;
     const iv = new Uint8Array(12);
-    iv.set(salt, 0);
-    new DataView(iv.buffer).setUint32(8, counter, false);
+    iv.set(salt.subarray(0, Math.min(8, salt.length)), 0);
+    new DataView(iv.buffer).setUint32(8, counter >>> 0, false);
 
-    const plaintext = data instanceof Uint8Array ? data : new Uint8Array(data);
-    const ciphertext = await crypto.subtle.encrypt({ name: 'AES-GCM', iv, tagLength: 128 }, encKey, plaintext);
+    const ciphertext = await crypto.subtle.encrypt(
+      { name: 'AES-GCM', iv, tagLength: 128 },
+      encKey,
+      payload
+    );
+    const cipherBytes = new Uint8Array(ciphertext);
 
-    const result = new Uint8Array(FRAME_HEADER_SIZE + ciphertext.byteLength);
-    const dv = new DataView(result.buffer);
-    dv.setUint8(0, FRAME_MAGIC_0);
-    dv.setUint8(1, FRAME_MAGIC_1);
-    dv.setUint8(2, FRAME_TYPE_MEDIA);
-    dv.setUint32(3, counter, false);
-    result.set(new Uint8Array(ciphertext), FRAME_HEADER_SIZE);
+    const result = new Uint8Array(unencryptedBytes + cipherBytes.length + 14);
+    result.set(raw.subarray(0, unencryptedBytes), 0);
+    result.set(cipherBytes, unencryptedBytes);
+    result.set(iv, unencryptedBytes + cipherBytes.length);
+    result[result.length - 2] = 0x0c;
+    result[result.length - 1] = 0x00;
     return result;
   }
 
   async decryptFrame(data, kind = 'audio') {
     if (this.#mode === 'plain') return data;
     const decKey = kind === 'video' ? this.#videoDecKey : this.#audioDecKey;
-    const salt = kind === 'video' ? this.#videoRecvSalt : this.#audioRecvSalt;
-    if (!decKey || !salt) return data;
+    if (!decKey) return data;
 
-    const bytes = data instanceof Uint8Array ? data : new Uint8Array(data);
-    if (bytes.length < FRAME_HEADER_SIZE + 16) return data;
-    if (bytes[0] !== FRAME_MAGIC_0 || bytes[1] !== FRAME_MAGIC_1) return data;
-    if (bytes[2] !== FRAME_TYPE_MEDIA) return null;
+    const raw = data instanceof Uint8Array ? data : new Uint8Array(data);
+    const unencryptedBytes = kind === 'video' ? ((raw.length > 0 && (raw[0] & 0x01) === 0) ? 10 : 3) : 1;
+    if (raw.length < unencryptedBytes + 30) return data;
+    if (raw[raw.length - 2] !== 0x0c) return data;
 
-    const counter = new DataView(bytes.buffer, bytes.byteOffset).getUint32(3, false);
-    const iv = new Uint8Array(12);
-    iv.set(salt, 0);
-    new DataView(iv.buffer).setUint32(8, counter, false);
+    const iv = raw.subarray(raw.length - 14, raw.length - 2);
+    const ciphertext = raw.subarray(unencryptedBytes, raw.length - 14);
 
-    const ciphertext = bytes.slice(FRAME_HEADER_SIZE);
     try {
-      const plain = await crypto.subtle.decrypt({ name: 'AES-GCM', iv, tagLength: 128 }, decKey, ciphertext);
-      return new Uint8Array(plain);
+      const plain = await crypto.subtle.decrypt(
+        { name: 'AES-GCM', iv, tagLength: 128 },
+        decKey,
+        ciphertext
+      );
+      const plainBytes = new Uint8Array(plain);
+      const result = new Uint8Array(unencryptedBytes + plainBytes.length);
+      result.set(raw.subarray(0, unencryptedBytes), 0);
+      result.set(plainBytes, unencryptedBytes);
+      return result;
     } catch {
       return null;
     }
@@ -275,11 +263,6 @@ export class CallEncryptionSession {
     if (typeof RTCRtpScriptTransform !== 'undefined') {
       try {
         const worker = new Worker(new URL('./callEncryptionWorker.js', import.meta.url), { type: 'module' });
-        worker.onmessage = (e) => {
-          if (e.data?.type === 'inbandHandshake') {
-            this.#inbandHandshakeHandler?.(e.data);
-          }
-        };
         this.#workers.add({ worker, kind, op: 'decrypt' });
         this.#sendWorkerKeys(worker, kind, 'decrypt');
         receiver.transform = new RTCRtpScriptTransform(worker, { op: 'decrypt', kind });

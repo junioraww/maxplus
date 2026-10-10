@@ -1,4 +1,3 @@
-const FRAME_HEADER_SIZE = 7;
 let encKey = null;
 let decKey = null;
 let salt = null;
@@ -7,7 +6,9 @@ let counter = 0;
 self.addEventListener('message', async (e) => {
   if (e.data?.type === 'setKeys') {
     const { op, keyRaw, salt: s } = e.data;
-    salt = s instanceof Uint8Array ? s : new Uint8Array(s);
+    if (s) {
+      salt = s instanceof Uint8Array ? s : new Uint8Array(s);
+    }
     if (op === 'encrypt' && keyRaw) {
       encKey = await crypto.subtle.importKey(
         'raw',
@@ -33,6 +34,7 @@ self.onrtctransform = async (event) => {
   const reader = readable.getReader();
   const writer = writable.getWriter();
   const op = options?.op;
+  const kind = options?.kind || 'audio';
 
   while (true) {
     const { value: frame, done } = await reader.read();
@@ -40,40 +42,51 @@ self.onrtctransform = async (event) => {
 
     try {
       if (op === 'encrypt' && encKey && salt) {
-        const iv = new Uint8Array(12);
-        iv.set(salt, 0);
-        new DataView(iv.buffer).setUint32(8, counter++, false);
+        const raw = new Uint8Array(frame.data);
+        const unencryptedBytes = kind === 'video' ? (frame.type === 'key' ? 10 : 3) : 1;
 
-        const plain = new Uint8Array(frame.data);
-        const encrypted = await crypto.subtle.encrypt({ name: 'AES-GCM', iv, tagLength: 128 }, encKey, plain);
+        if (raw.length > unencryptedBytes) {
+          const payload = raw.subarray(unencryptedBytes);
+          const iv = new Uint8Array(12);
+          iv.set(salt.subarray(0, Math.min(8, salt.length)), 0);
+          new DataView(iv.buffer).setUint32(8, (counter++) >>> 0, false);
 
-        const out = new Uint8Array(FRAME_HEADER_SIZE + encrypted.byteLength);
-        const dv = new DataView(out.buffer);
-        dv.setUint8(0, 0x4d);
-        dv.setUint8(1, 0x58);
-        dv.setUint8(2, 0x01);
-        dv.setUint32(3, counter - 1, false);
-        out.set(new Uint8Array(encrypted), FRAME_HEADER_SIZE);
+          const encrypted = await crypto.subtle.encrypt(
+            { name: 'AES-GCM', iv, tagLength: 128 },
+            encKey,
+            payload
+          );
+          const encBytes = new Uint8Array(encrypted);
 
-        frame.data = out.buffer;
-      } else if (op === 'decrypt' && decKey && salt) {
-        const bytes = new Uint8Array(frame.data);
-        if (bytes.length >= FRAME_HEADER_SIZE + 16 && bytes[0] === 0x4d && bytes[1] === 0x58) {
-          const type = bytes[2];
-          if (type === 0x01) {
-            const pktCounter = new DataView(bytes.buffer, bytes.byteOffset).getUint32(3, false);
-            const iv = new Uint8Array(12);
-            iv.set(salt, 0);
-            new DataView(iv.buffer).setUint32(8, pktCounter, false);
+          const out = new Uint8Array(unencryptedBytes + encBytes.length + 14);
+          out.set(raw.subarray(0, unencryptedBytes), 0);
+          out.set(encBytes, unencryptedBytes);
+          out.set(iv, unencryptedBytes + encBytes.length);
+          out[out.length - 2] = 0x0c;
+          out[out.length - 1] = 0x00;
 
-            const cipher = bytes.slice(FRAME_HEADER_SIZE);
-            const plain = await crypto.subtle.decrypt({ name: 'AES-GCM', iv, tagLength: 128 }, decKey, cipher);
-            frame.data = plain;
-          } else if (type === 0x02 || type === 0x03) {
-            const payload = bytes.slice(FRAME_HEADER_SIZE);
-            self.postMessage({ type: 'inbandHandshake', handshakeType: type, pubkey: Array.from(payload) });
-            frame.data = new ArrayBuffer(0);
-          }
+          frame.data = out.buffer;
+        }
+      } else if (op === 'decrypt' && decKey) {
+        const raw = new Uint8Array(frame.data);
+        const unencryptedBytes = kind === 'video' ? (frame.type === 'key' ? 10 : 3) : 1;
+
+        if (raw.length >= unencryptedBytes + 30 && raw[raw.length - 2] === 0x0c) {
+          const iv = raw.subarray(raw.length - 14, raw.length - 2);
+          const cipherWithTag = raw.subarray(unencryptedBytes, raw.length - 14);
+
+          const decrypted = await crypto.subtle.decrypt(
+            { name: 'AES-GCM', iv, tagLength: 128 },
+            decKey,
+            cipherWithTag
+          );
+          const decBytes = new Uint8Array(decrypted);
+
+          const out = new Uint8Array(unencryptedBytes + decBytes.length);
+          out.set(raw.subarray(0, unencryptedBytes), 0);
+          out.set(decBytes, unencryptedBytes);
+
+          frame.data = out.buffer;
         }
       }
     } catch {}

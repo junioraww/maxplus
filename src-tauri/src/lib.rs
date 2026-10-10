@@ -314,6 +314,7 @@ pub fn run() {
             webrtc_engine::commands::webrtc_listen_state,
             webrtc_engine::commands::webrtc_create_data_channel,
             webrtc_engine::commands::webrtc_close,
+            webrtc_engine::commands::webrtc_set_encryption_keys,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
