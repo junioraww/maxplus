@@ -40,11 +40,6 @@
   let contactSearchQuery = '';
   let availableContacts = [];
 
-  let targetPeerId = null;
-  let targetPeerName = null;
-  let targetPeerAvatar = null;
-  let targetCallType = 'audio';
-
   let swipeContainer;
   let isProgrammaticScroll = false;
   let scrollTimeout = null;
@@ -390,10 +385,6 @@
   }
 
   async function promptStartCall(peerId, name, avatar, type = 'audio') {
-    targetPeerId = peerId;
-    targetPeerName = name;
-    targetPeerAvatar = avatar;
-    targetCallType = type;
     if (type === 'video') {
       await CallService.placeVideoCall(peerId, name, avatar);
     } else {
@@ -1792,71 +1783,4 @@
     color: var(--text-muted, #8b929e);
   }
 
-  .mode-cards-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 12px;
-  }
-
-  .mode-card {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    text-align: center;
-    gap: 8px;
-    padding: 20px 12px;
-    border-radius: 18px;
-    background: rgba(255, 255, 255, 0.04);
-    border: 1.5px solid rgba(255, 255, 255, 0.07);
-    cursor: pointer;
-    transition: border-color 0.15s, background 0.15s, transform 0.12s;
-  }
-
-  .mode-card:hover {
-    border-color: rgba(255, 255, 255, 0.18);
-  }
-
-  .mode-card:active {
-    transform: scale(0.96);
-  }
-
-  .mode-card--secure {
-    background: rgba(74, 222, 128, 0.05);
-    border-color: rgba(74, 222, 128, 0.2);
-  }
-
-  .mode-card--secure:hover {
-    border-color: rgba(74, 222, 128, 0.45);
-  }
-
-  .mode-icon {
-    width: 52px;
-    height: 52px;
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
-
-  .mode-icon--standard {
-    background: rgba(36, 139, 254, 0.15);
-    color: #248bfe;
-  }
-
-  .mode-icon--shield {
-    background: rgba(74, 222, 128, 0.15);
-    color: #4ade80;
-  }
-
-  .mode-label {
-    font-size: 15px;
-    font-weight: 700;
-    color: #ffffff;
-  }
-
-  .mode-sub {
-    font-size: 11px;
-    color: var(--text-muted, #8b929e);
-    line-height: 1.3;
-  }
 </style>
