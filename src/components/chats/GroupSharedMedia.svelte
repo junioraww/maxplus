@@ -1,4 +1,5 @@
 <script>
+  import { Button, Tab } from "$components/ui";
   import { get } from "svelte/store";
   import { invoke } from "@tauri-apps/api/core";
   import { openUrl } from "@tauri-apps/plugin-opener";
@@ -691,14 +692,9 @@
 <div class="shared-media-block">
   <div class="media-tabs-bar">
     {#each TABS as tab}
-      <button
-        type="button"
-        class="media-tab-btn"
-        class:active={activeTab === tab.id}
-        on:click={() => (activeTab = tab.id)}
-      >
+      <Tab variant="underline" active={activeTab === tab.id} class="groupsharedmedia-media-tab-btn" onclick={() => (activeTab = tab.id)}>
         {tab.label}
-      </button>
+      </Tab>
     {/each}
   </div>
 
@@ -834,9 +830,9 @@
         <span>Загрузка...</span>
       </div>
     {:else if hasMore && items.length > 0}
-      <button type="button" class="btn-more" on:click={() => loadTabMedia(false)}>
+      <Button variant="ghost" class="groupsharedmedia-btn-more" onclick={() => loadTabMedia(false)}>
         Показать ещё
-      </button>
+      </Button>
     {/if}
   </div>
 </div>
@@ -871,24 +867,8 @@
     margin-bottom: 12px;
   }
 
-  .media-tab-btn {
-    flex: 1;
-    background: none;
-    border: none;
-    color: #8b98a5;
-    font-size: 13px;
-    font-weight: 500;
-    padding: 7px 8px;
-    border-radius: 7px;
-    cursor: pointer;
-    transition: 0.15s;
-  }
+  :global(.groupsharedmedia-media-tab-btn)  { flex: 1; }
 
-  .media-tab-btn.active {
-    background: rgba(255, 255, 255, 0.12);
-    color: #fff;
-    font-weight: 600;
-  }
 
   .media-content-container {
     display: flex;
@@ -898,7 +878,7 @@
   .media-group-header {
     font-size: 12px;
     font-weight: 600;
-    color: #8b98a5;
+    color: var(--text-muted);
     text-transform: uppercase;
     letter-spacing: 0.5px;
     padding: 8px 4px 6px;
@@ -935,17 +915,12 @@
     transform: scale(1.04);
   }
 
-  .media-tile-loader {
-    width: 100%;
-    height: 100%;
-    display: contents;
-  }
 
   .tile-spinner {
     width: 22px;
     height: 22px;
-    border: 2px solid rgba(255, 255, 255, 0.25);
-    border-top-color: #fff;
+    border: 2px solid var(--border-subtle);
+    border-top-color: var(--border-subtle);
     border-radius: 50%;
     animation: tileSpin 0.8s linear infinite;
   }
@@ -962,7 +937,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    color: #64748b;
+    color: var(--text-muted);
   }
 
   .video-pill {
@@ -975,7 +950,7 @@
     display: flex;
     align-items: center;
     gap: 4px;
-    color: #fff;
+    color: var(--text-primary);
   }
 
   .video-duration {
@@ -994,7 +969,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    color: #60a5fa;
+    color: var(--accent-primary);
   }
 
   .media-list {
@@ -1017,7 +992,7 @@
   }
 
   .media-list-row:hover {
-    background: rgba(255, 255, 255, 0.04);
+    background: var(--bg-surface);
   }
 
   .icon-bubble {
@@ -1025,7 +1000,7 @@
     height: 36px;
     border-radius: 9px;
     background: rgba(43, 130, 246, 0.12);
-    color: #3b82f6;
+    color: var(--accent-primary);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -1042,7 +1017,7 @@
   .row-title {
     font-size: 13.5px;
     font-weight: 500;
-    color: #f1f5f9;
+    color: var(--text-primary);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -1050,11 +1025,11 @@
 
   .row-meta {
     font-size: 12px;
-    color: #8b98a5;
+    color: var(--text-muted);
   }
 
   .row-enc-badge {
-    color: #60a5fa;
+    color: var(--accent-primary);
     display: flex;
     align-items: center;
     margin-left: 6px;
@@ -1063,33 +1038,19 @@
   .media-empty {
     padding: 32px 16px;
     text-align: center;
-    color: #64748b;
+    color: var(--text-muted);
     font-size: 13px;
   }
 
   .loading-bar {
     padding: 16px;
     text-align: center;
-    color: #8b98a5;
+    color: var(--text-muted);
     font-size: 13px;
   }
 
-  .btn-more {
-    margin: 10px auto;
-    background: rgba(255, 255, 255, 0.06);
-    border: none;
-    color: #3b82f6;
-    font-size: 13px;
-    font-weight: 500;
-    padding: 8px 16px;
-    border-radius: 8px;
-    cursor: pointer;
-    transition: background 0.15s;
-  }
+  :global(.groupsharedmedia-btn-more)  { margin: 10px auto; }
 
-  .btn-more:hover {
-    background: rgba(255, 255, 255, 0.12);
-  }
 
   .scroll-sentinel {
     width: 100%;

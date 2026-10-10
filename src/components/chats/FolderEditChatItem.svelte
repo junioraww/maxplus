@@ -61,20 +61,20 @@
     width: 20px;
     height: 20px;
     border-radius: 50%;
-    border: 2px solid #555;
+    border: 2px solid var(--border-subtle);
     display: flex;
     align-items: center;
     justify-content: center;
     font-size: 11px;
     font-weight: bold;
-    color: #fff;
+    color: var(--text-primary);
     flex-shrink: 0;
     transition: background 0.2s, border-color 0.2s;
   }
 
   .checkbox.checked {
-    background: #007afd;
-    border-color: #007afd;
+    background: var(--accent-primary);
+    border-color: var(--accent-primary);
   }
 
   .avatar-wrap {
@@ -92,7 +92,7 @@
   .chat-name {
     font-size: 14px;
     font-weight: 500;
-    color: #fff;
+    color: var(--text-primary);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -100,6 +100,6 @@
 
   .chat-type {
     font-size: 11px;
-    color: #888;
+    color: var(--text-muted);
   }
 </style>

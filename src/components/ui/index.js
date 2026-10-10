@@ -1,0 +1,15 @@
+// Единая точка импорта UI-компонентов: import { Button, Modal } from '$components/ui' / '../components/ui';
+export { default as Button } from './Button.svelte';
+export { default as IconButton } from './IconButton.svelte';
+export { default as RoundButton } from './RoundButton.svelte';
+export { default as Modal } from './Modal.svelte';
+export { default as Input } from './Input.svelte';
+export { default as Toggle } from './Toggle.svelte';
+export { default as ListItem } from './ListItem.svelte';
+export { default as Section } from './Section.svelte';
+export { default as PageHeader } from './PageHeader.svelte';
+export { default as EmptyState } from './EmptyState.svelte';
+export { default as Spinner } from './Spinner.svelte';
+export { default as Menu } from './Menu.svelte';
+export { default as MenuItem } from './MenuItem.svelte';
+export { default as Tab } from './Tab.svelte';

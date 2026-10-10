@@ -248,7 +248,7 @@
     border-radius: 50%;
     background: rgba(0, 0, 0, 0.75);
     border: none;
-    color: #fff;
+    color: var(--text-primary);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -260,7 +260,7 @@
     align-items: center;
     gap: 12px;
     padding: 8px 12px 10px;
-    background-color: #17191d;
+    background-color: var(--bg-surface);
     box-sizing: border-box;
   }
 

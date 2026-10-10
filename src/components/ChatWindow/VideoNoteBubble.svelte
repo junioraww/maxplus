@@ -569,7 +569,7 @@
     height: 48px;
     border-radius: 50%;
     background: rgba(0, 0, 0, 0.55);
-    color: white;
+    color: var(--text-primary);
     display: flex;
     align-items: center;
     justify-content: center;

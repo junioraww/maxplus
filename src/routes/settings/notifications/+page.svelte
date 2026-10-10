@@ -1,4 +1,6 @@
 <script>
+  import { Button, ListItem, Section, Tab } from "$components/ui";
+  import { Toggle } from "$components/ui";
   import { onMount } from "svelte";
   import { goto } from "$app/navigation";
   import { page } from "$app/stores";
@@ -103,99 +105,37 @@
   }
 </script>
 
-<SettingsPageWrapper title="Уведомления" {from} {isTab} {onClose}>
-  {#if isTab}
-    <header class="tab-header">
-      <h1>Уведомления</h1>
-    </header>
-  {/if}
-
+<SettingsPageWrapper tabHeader title="Уведомления" {from} {isTab} {onClose}>
   <div class="content-container">
-    <div class="settings-card">
-      <div class="toggle-row" on:click={toggleClientNotifications}>
-        <div class="toggle-info">
-          <span class="toggle-title">Все уведомления</span>
-          <span class="toggle-desc">Оповещения о входящих сообщениях и вызовах</span>
-        </div>
-        <div class="toggle-track" class:active={$clientNotificationsEnabled}>
-          <div class="toggle-thumb" class:active={$clientNotificationsEnabled}></div>
-        </div>
-      </div>
-    </div>
+    <Section>
+      <ListItem wrap title="Все уведомления" subtitle="Оповещения о входящих сообщениях и вызовах" onclick={toggleClientNotifications}>
+{#snippet trailing()}<Toggle readonly checked={$clientNotificationsEnabled} />{/snippet}
+</ListItem>
+    </Section>
 
-    <div class="section-header">
-      <h2>Сообщения</h2>
-    </div>
-
-    <div class="settings-card">
-      <div
-        class="toggle-row"
-        class:disabled={!$clientNotificationsEnabled}
-        on:click={() => {
+    <Section title="Сообщения">
+      <ListItem wrap title="Предпросмотр сообщений" subtitle="Показывать текст входящего сообщения" disabled={!$clientNotificationsEnabled} onclick={() => {
           if ($clientNotificationsEnabled) setMessagePreviewServer(!$messagePreviewEnabled);
-        }}
-      >
-        <div class="toggle-info">
-          <span class="toggle-title">Предпросмотр сообщений</span>
-          <span class="toggle-desc">Показывать текст входящего сообщения</span>
-        </div>
-        <div class="toggle-track" class:active={$messagePreviewEnabled && $clientNotificationsEnabled}>
-          <div class="toggle-thumb" class:active={$messagePreviewEnabled && $clientNotificationsEnabled}></div>
-        </div>
-      </div>
+        }}>
+{#snippet trailing()}<Toggle readonly checked={$messagePreviewEnabled && $clientNotificationsEnabled} />{/snippet}
+</ListItem>
 
-      <div class="card-divider"></div>
-
-      <div
-        class="toggle-row"
-        class:disabled={!$clientNotificationsEnabled}
-        on:click={() => {
+      <ListItem wrap title="Звук" subtitle="Звуковой сигнал при получении сообщения" disabled={!$clientNotificationsEnabled} onclick={() => {
           if ($clientNotificationsEnabled) setNotificationSoundServer(!$notificationSoundEnabled);
-        }}
-      >
-        <div class="toggle-info">
-          <span class="toggle-title">Звук</span>
-          <span class="toggle-desc">Звуковой сигнал при получении сообщения</span>
-        </div>
-        <div class="toggle-track" class:active={$notificationSoundEnabled && $clientNotificationsEnabled}>
-          <div class="toggle-thumb" class:active={$notificationSoundEnabled && $clientNotificationsEnabled}></div>
-        </div>
-      </div>
-    </div>
+        }}>
+{#snippet trailing()}<Toggle readonly checked={$notificationSoundEnabled && $clientNotificationsEnabled} />{/snippet}
+</ListItem>
+    </Section>
 
-    <div class="section-header">
-      <h2>Дополнительно</h2>
-    </div>
+    <Section title="Дополнительно">
+      <ListItem wrap title="Уведомления о звонках" subtitle="Оповещать о входящих аудио- и видеозвонках" onclick={() => setCallNotificationsServer(!$callNotificationsEnabled)}>
+{#snippet trailing()}<Toggle readonly checked={$callNotificationsEnabled} />{/snippet}
+</ListItem>
 
-    <div class="settings-card">
-      <div
-        class="toggle-row"
-        on:click={() => setCallNotificationsServer(!$callNotificationsEnabled)}
-      >
-        <div class="toggle-info">
-          <span class="toggle-title">Уведомления о звонках</span>
-          <span class="toggle-desc">Оповещать о входящих аудио- и видеозвонках</span>
-        </div>
-        <div class="toggle-track" class:active={$callNotificationsEnabled}>
-          <div class="toggle-thumb" class:active={$callNotificationsEnabled}></div>
-        </div>
-      </div>
-
-      <div class="card-divider"></div>
-
-      <div
-        class="toggle-row"
-        on:click={() => setNewContactsServer(!$newContactsNotificationsEnabled)}
-      >
-        <div class="toggle-info">
-          <span class="toggle-title">Новые контакты</span>
-          <span class="toggle-desc">Уведомлять, когда контакт присоединяется</span>
-        </div>
-        <div class="toggle-track" class:active={$newContactsNotificationsEnabled}>
-          <div class="toggle-thumb" class:active={$newContactsNotificationsEnabled}></div>
-        </div>
-      </div>
-    </div>
+      <ListItem wrap title="Новые контакты" subtitle="Уведомлять, когда контакт присоединяется" onclick={() => setNewContactsServer(!$newContactsNotificationsEnabled)}>
+{#snippet trailing()}<Toggle readonly checked={$newContactsNotificationsEnabled} />{/snippet}
+</ListItem>
+    </Section>
 
     <div class="section-header">
       <h2>Отключенные уведомления</h2>
@@ -203,27 +143,15 @@
     </div>
 
     <div class="filter-tabs">
-      <button
-        class="filter-tab"
-        class:active={activeTab === "all"}
-        on:click={() => activeTab = "all"}
-      >
+      <Tab variant="pill" active={activeTab === "all"} class="pg-notifications-filter-tab" onclick={() => activeTab = "all"}>
         Все ({mutedItems.length})
-      </button>
-      <button
-        class="filter-tab"
-        class:active={activeTab === "chats"}
-        on:click={() => activeTab = "chats"}
-      >
+      </Tab>
+      <Tab variant="pill" active={activeTab === "chats"} class="pg-notifications-filter-tab" onclick={() => activeTab = "chats"}>
         Чаты ({mutedChats.length})
-      </button>
-      <button
-        class="filter-tab"
-        class:active={activeTab === "contacts"}
-        on:click={() => activeTab = "contacts"}
-      >
+      </Tab>
+      <Tab variant="pill" active={activeTab === "contacts"} class="pg-notifications-filter-tab" onclick={() => activeTab = "contacts"}>
         Контакты ({mutedContacts.length})
-      </button>
+      </Tab>
     </div>
 
     <div class="muted-list">
@@ -266,17 +194,13 @@
                 {formatMuteDuration(chat.dontDisturbUntil)}
               </span>
             </div>
-            <button
-              class="unmute-btn"
-              disabled={unmutingIds.has(chat.id)}
-              on:click={() => handleUnmute(chat.id)}
-            >
+            <Button class="pg-notifications-unmute-btn" disabled={unmutingIds.has(chat.id)} onclick={() => handleUnmute(chat.id)}>
               {#if unmutingIds.has(chat.id)}
                 ...
               {:else}
                 Включить
               {/if}
-            </button>
+            </Button>
           </div>
         {/each}
       {/if}
@@ -286,21 +210,7 @@
 </SettingsPageWrapper>
 
 <style>
-  .tab-header {
-    display: flex;
-    align-items: center;
-    padding: 12px 16px;
-    background: #212126;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-    flex-shrink: 0;
-  }
 
-  .tab-header h1 {
-    margin: 0;
-    font-size: 1.15rem;
-    font-weight: 600;
-    color: #fff;
-  }
 
   .content-container {
     flex: 1;
@@ -311,80 +221,16 @@
     gap: 16px;
   }
 
-  .settings-card {
-    background: #26262e;
-    border-radius: 12px;
-    border: 1px solid #333;
-    padding: 16px;
-  }
 
-  .card-divider {
-    height: 1px;
-    background: rgba(255, 255, 255, 0.06);
-    margin: 14px 0;
-  }
 
-  .toggle-row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 16px;
-    cursor: pointer;
-    user-select: none;
-    transition: opacity 0.2s;
-  }
 
-  .toggle-row.disabled {
-    opacity: 0.4;
-    pointer-events: none;
-  }
 
-  .toggle-info {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-  }
 
-  .toggle-title {
-    font-size: 1rem;
-    font-weight: 500;
-    color: #fff;
-  }
 
-  .toggle-desc {
-    font-size: 0.82rem;
-    color: #888;
-  }
 
-  .toggle-track {
-    width: 44px;
-    height: 24px;
-    background: #333;
-    border-radius: 12px;
-    position: relative;
-    transition: background 0.2s;
-    cursor: pointer;
-    flex-shrink: 0;
-  }
 
-  .toggle-track.active {
-    background: #6366f1;
-  }
 
-  .toggle-thumb {
-    width: 18px;
-    height: 18px;
-    background: #fff;
-    border-radius: 50%;
-    position: absolute;
-    top: 3px;
-    left: 3px;
-    transition: transform 0.2s;
-  }
 
-  .toggle-thumb.active {
-    transform: translateX(20px);
-  }
 
   .section-header {
     display: flex;
@@ -397,17 +243,17 @@
     margin: 0;
     font-size: 0.95rem;
     font-weight: 600;
-    color: #aaa;
+    color: var(--text-muted);
     text-transform: uppercase;
     letter-spacing: 0.5px;
   }
 
   .badge-count {
     font-size: 0.75rem;
-    background: #333;
+    background: var(--bg-surface-2);
     padding: 2px 8px;
     border-radius: 10px;
-    color: #bbb;
+    color: var(--text-muted);
   }
 
   .filter-tabs {
@@ -418,24 +264,8 @@
     border-radius: 10px;
   }
 
-  .filter-tab {
-    flex: 1;
-    background: none;
-    border: none;
-    color: #888;
-    padding: 8px 12px;
-    border-radius: 8px;
-    font-size: 0.85rem;
-    font-weight: 500;
-    cursor: pointer;
-    transition: background 0.2s, color 0.2s;
-  }
+  :global(.pg-notifications-filter-tab)  { flex: 1; }
 
-  .filter-tab.active {
-    background: #2f2f3a;
-    color: #fff;
-    font-weight: 600;
-  }
 
   .muted-list {
     display: flex;
@@ -458,7 +288,7 @@
     margin: 0;
     font-size: 1rem;
     font-weight: 600;
-    color: #aaa;
+    color: var(--text-muted);
   }
 
   .empty-desc {
@@ -469,9 +299,9 @@
   }
 
   .muted-item {
-    background: #26262e;
+    background: var(--bg-surface-2);
     border-radius: 12px;
-    border: 1px solid #333;
+    border: 1px solid var(--border-subtle);
     padding: 10px 14px;
     display: flex;
     align-items: center;
@@ -480,7 +310,7 @@
   }
 
   .muted-item:hover {
-    border-color: #444;
+    border-color: var(--border-subtle);
   }
 
   .item-avatar {
@@ -504,7 +334,7 @@
   .item-title {
     font-size: 0.95rem;
     font-weight: 500;
-    color: #fff;
+    color: var(--text-primary);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -513,7 +343,7 @@
   .item-type-badge {
     font-size: 0.7rem;
     background: #33333d;
-    color: #999;
+    color: var(--text-muted);
     padding: 1px 6px;
     border-radius: 6px;
     flex-shrink: 0;
@@ -521,32 +351,14 @@
 
   .item-status {
     font-size: 0.8rem;
-    color: #8e8e93;
+    color: var(--text-muted);
     display: flex;
     align-items: center;
     gap: 4px;
   }
 
-  .unmute-btn {
-    background: #3a3a46;
-    color: #fff;
-    border: none;
-    padding: 7px 14px;
-    border-radius: 8px;
-    font-size: 0.82rem;
-    font-weight: 500;
-    cursor: pointer;
-    flex-shrink: 0;
-    transition: background 0.15s, opacity 0.15s;
-  }
+  :global(.pg-notifications-unmute-btn)  { flex-shrink: 0; }
 
-  .unmute-btn:hover {
-    background: #4f46e5;
-  }
 
-  .unmute-btn:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
 
 </style>

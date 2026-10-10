@@ -1,4 +1,5 @@
 <script>
+  import { Button, IconButton } from "$components/ui";
   import { onMount, onDestroy } from "svelte";
   import API, { currentUser, currentUserDetails } from "$lib/stores/api.js";
   import { openDigitalIdApp, openSferumApp, lastClosedMiniApp } from "$lib/stores/webapp.js";
@@ -155,12 +156,7 @@
   <header class="header">
     <div class="header-placeholder"></div>
     <h3>Цифровой ID</h3>
-    <button
-      class="icon-btn refresh-btn"
-      on:click={() => loadData(true)}
-      disabled={loading}
-      title="Обновить"
-    >
+    <IconButton class="pg-digital-id-icon-btn pg-digital-id-refresh-btn" onclick={() => loadData(true)} disabled={loading} title="Обновить">
       <svg
         class:spin={loading}
         width="18"
@@ -174,7 +170,7 @@
       >
         <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/>
       </svg>
-    </button>
+    </IconButton>
   </header>
 
   <div class="content-scroll">
@@ -213,23 +209,19 @@
       {/if}
 
       <div class="id-actions">
-        <button
-          class="primary-btn"
-          on:click={handleOpenDigitalId}
-          disabled={loading}
-        >
+        <Button variant="primary" class="pg-digital-id-primary-btn" onclick={handleOpenDigitalId} disabled={loading}>
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
             <line x1="8" y1="21" x2="16" y2="21"></line>
             <line x1="12" y1="17" x2="12" y2="21"></line>
           </svg>
           <span>{loading ? "Загрузка..." : isLinked ? "Открыть Цифровой ID" : "Привязать Госуслуги"}</span>
-        </button>
+        </Button>
 
         {#if isLinked}
-          <button class="secondary-btn danger-btn" on:click={handleUnbindDigitalId} disabled={loading}>
+          <Button variant="danger" class="pg-digital-id-secondary-btn" onclick={handleUnbindDigitalId} disabled={loading}>
             Отвязать Цифровой ID
-          </button>
+          </Button>
         {/if}
       </div>
     </div>
@@ -404,7 +396,7 @@
     width: 100%;
     height: 100%;
     background: #111214;
-    color: #e5e7eb;
+    color: var(--text-primary);
     display: flex;
     flex-direction: column;
     overflow: hidden;
@@ -428,32 +420,12 @@
     margin: 0;
     font-size: 17px;
     font-weight: 600;
-    color: #f3f4f6;
+    color: var(--text-primary);
   }
 
-  .icon-btn {
-    width: 32px;
-    height: 32px;
-    border-radius: 8px;
-    border: none;
-    background: transparent;
-    color: #9ca3af;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    transition: all 0.15s ease;
-  }
+  :global(.pg-digital-id-icon-btn)  { width: 32px; }
 
-  .icon-btn:hover:not(:disabled) {
-    background: rgba(255, 255, 255, 0.08);
-    color: #f3f4f6;
-  }
 
-  .icon-btn:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
 
   .spin {
     animation: rotate 1s linear infinite;
@@ -480,7 +452,7 @@
 
   .card {
     background: #1c1d21;
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    border: 1px solid var(--border-subtle);
     border-radius: 14px;
     padding: 16px;
   }
@@ -509,12 +481,12 @@
   .id-name {
     font-size: 16px;
     font-weight: 600;
-    color: #fff;
+    color: var(--text-primary);
   }
 
   .id-phone {
     font-size: 13px;
-    color: #9ca3af;
+    color: var(--text-muted);
   }
 
   .id-badge {
@@ -531,7 +503,7 @@
 
   .id-badge.linked {
     background: rgba(34, 197, 94, 0.15);
-    color: #4ade80;
+    color: var(--status-success);
   }
 
   .id-badge.unlinked {
@@ -541,10 +513,10 @@
 
   .error-banner {
     padding: 10px;
-    background: rgba(239, 68, 68, 0.15);
-    border: 1px solid rgba(239, 68, 68, 0.3);
+    background: var(--danger-subtle);
+    border: 1px solid var(--danger-subtle-strong);
     border-radius: 8px;
-    color: #f87171;
+    color: var(--status-danger);
     font-size: 12px;
   }
 
@@ -554,59 +526,20 @@
     gap: 8px;
   }
 
-  .primary-btn {
-    width: 100%;
-    padding: 12px;
-    background: #2563eb;
-    color: #fff;
-    border: none;
-    border-radius: 10px;
-    font-size: 14px;
-    font-weight: 600;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-    cursor: pointer;
-    transition: background 0.15s ease;
-  }
+  :global(.pg-digital-id-primary-btn)  { width: 100%; }
 
-  .primary-btn:hover:not(:disabled) {
-    background: #1d4ed8;
-  }
 
-  .primary-btn:disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
-  }
 
-  .secondary-btn {
-    width: 100%;
-    padding: 9px;
-    background: transparent;
-    border: 1px solid rgba(255, 255, 255, 0.12);
-    border-radius: 8px;
-    font-size: 13px;
-    color: #9ca3af;
-    cursor: pointer;
-    transition: all 0.15s ease;
-  }
+  :global(.pg-digital-id-secondary-btn)  { width: 100%; }
 
-  .secondary-btn.danger-btn {
-    border-color: rgba(239, 68, 68, 0.3);
-    color: #f87171;
-  }
 
-  .secondary-btn.danger-btn:hover:not(:disabled) {
-    background: rgba(239, 68, 68, 0.1);
-  }
 
   .section-title {
     font-size: 13px;
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.5px;
-    color: #6b7280;
+    color: var(--text-muted);
     margin-top: 6px;
     margin-left: 4px;
   }
@@ -626,12 +559,12 @@
   }
 
   .info-label {
-    color: #9ca3af;
+    color: var(--text-muted);
     min-width: 110px;
   }
 
   .info-value {
-    color: #e5e7eb;
+    color: var(--text-primary);
     text-align: right;
     word-break: break-word;
   }
@@ -660,7 +593,7 @@
 
   .sferum-icon {
     background: rgba(59, 130, 246, 0.18);
-    color: #60a5fa;
+    color: var(--accent-primary);
   }
 
   .service-content {
@@ -670,17 +603,17 @@
   .service-title {
     font-size: 14px;
     font-weight: 600;
-    color: #f3f4f6;
+    color: var(--text-primary);
   }
 
   .service-subtitle {
     font-size: 12px;
-    color: #9ca3af;
+    color: var(--text-muted);
     margin-top: 2px;
   }
 
   .service-arrow {
-    color: #6b7280;
+    color: var(--text-muted);
   }
 
   .docs-list {
@@ -700,7 +633,7 @@
     width: 36px;
     height: 36px;
     border-radius: 8px;
-    background: rgba(255, 255, 255, 0.06);
+    background: var(--bg-surface);
     color: #93c5fd;
     display: flex;
     align-items: center;
@@ -717,17 +650,17 @@
   .doc-name {
     font-size: 13px;
     font-weight: 500;
-    color: #e5e7eb;
+    color: var(--text-primary);
   }
 
   .doc-status {
     font-size: 11px;
-    color: #9ca3af;
+    color: var(--text-muted);
   }
 
   .doc-divider {
     height: 1px;
-    background: rgba(255, 255, 255, 0.06);
+    background: var(--bg-surface);
   }
 
   .passes-card {
@@ -752,12 +685,12 @@
   .pass-title {
     font-size: 13px;
     font-weight: 500;
-    color: #e5e7eb;
+    color: var(--text-primary);
   }
 
   .pass-subtitle {
     font-size: 11px;
-    color: #9ca3af;
+    color: var(--text-muted);
   }
 
   .pass-status-pill {
@@ -765,7 +698,7 @@
     padding: 2px 8px;
     border-radius: 12px;
     background: rgba(34, 197, 94, 0.15);
-    color: #4ade80;
+    color: var(--status-success);
   }
 
   .toast-popup {
@@ -774,8 +707,8 @@
     left: 50%;
     transform: translateX(-50%);
     background: rgba(24, 24, 27, 0.95);
-    border: 1px solid rgba(255, 255, 255, 0.15);
-    color: #f3f4f6;
+    border: 1px solid var(--border-subtle);
+    color: var(--text-primary);
     padding: 8px 16px;
     border-radius: 8px;
     font-size: 13px;

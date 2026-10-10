@@ -1,4 +1,5 @@
 <script>
+  import { IconButton } from "$components/ui";
   import { enablePlugin, disablePlugin, uninstallPlugin } from "$lib/plugins/runtime.js";
   import { PERMISSION_LABELS, CATEGORY_LABELS } from "$lib/plugins/manifest.js";
   import ConfirmModal from "$components/main/ConfirmModal.svelte";
@@ -98,11 +99,11 @@
     </div>
   {/if}
 
-  <button class="trash-btn" type="button" on:click={() => showConfirmDelete = true} title="Удалить плагин">
+  <IconButton class="plugincard-trash-btn" onclick={() => showConfirmDelete = true} title="Удалить плагин">
     <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
       <path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/>
     </svg>
-  </button>
+  </IconButton>
 
   {#if showConfirmDelete}
     <ConfirmModal
@@ -227,7 +228,7 @@
   }
 
   .expand-btn:hover {
-    background: rgba(255, 255, 255, 0.05);
+    background: var(--bg-surface);
     color: var(--text-primary);
   }
 
@@ -336,30 +337,7 @@
     border: 1px solid var(--border-subtle);
   }
 
-  .trash-btn {
-    position: absolute;
-    bottom: 12px;
-    right: 12px;
-    background: var(--bg-surface-2, rgba(255, 255, 255, 0.05));
-    color: var(--text-muted, #71717a);
-    border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.1));
-    padding: 6px 8px;
-    border-radius: 8px;
-    cursor: pointer;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    transition: background 150ms ease, color 150ms ease, border-color 150ms ease;
-    z-index: 2;
-  }
+  :global(.plugincard-trash-btn)  { position: absolute; bottom: 12px; right: 12px; z-index: 2; }
 
-  .trash-btn:hover {
-    background: rgba(255, 255, 255, 0.12);
-    color: var(--text-primary, #ffffff);
-    border-color: rgba(255, 255, 255, 0.25);
-  }
 
-  .trash-btn:active {
-    opacity: 0.8;
-  }
 </style>

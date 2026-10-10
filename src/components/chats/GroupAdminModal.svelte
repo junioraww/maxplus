@@ -1,4 +1,5 @@
 <script>
+  import { Button, IconButton, Modal } from "$components/ui";
   import { fade, scale } from "svelte/transition";
   import { createEventDispatcher, onMount } from "svelte";
   import API from "$lib/stores/api";
@@ -86,8 +87,8 @@
   }
 </script>
 
-<div class="modal-backdrop" transition:fade={{ duration: 180 }} on:click={close}>
-  <div class="modal-card" transition:scale={{ duration: 200, start: 0.94 }} on:click|stopPropagation>
+<Modal open={true} bare closeOnEsc={true} onclose={close}>
+  <div class="modal-card">
     <div class="modal-head">
       <div class="user-preview">
         <Avatar contactId={memberId} size={42} />
@@ -98,12 +99,12 @@
           </span>
         </div>
       </div>
-      <button type="button" class="btn-close" on:click={close} aria-label="Закрыть">
+      <IconButton class="groupadminmodal-btn-close" onclick={close} aria-label="Закрыть">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
           <line x1="18" y1="6" x2="6" y2="18"></line>
           <line x1="6" y1="6" x2="18" y2="18"></line>
         </svg>
-      </button>
+      </IconButton>
     </div>
 
     <div class="modal-scroll-body">
@@ -144,43 +145,23 @@
 
     <div class="modal-foot">
       {#if isExistingAdmin}
-        <button
-          type="button"
-          class="btn btn-danger-action"
-          disabled={isRevoking || isSaving}
-          on:click={handleRevoke}
-        >
+        <Button variant="danger" class="groupadminmodal-btn" disabled={isRevoking || isSaving} onclick={handleRevoke}>
           {isRevoking ? "Снятие..." : "Разжаловать"}
-        </button>
+        </Button>
       {/if}
-      <button type="button" class="btn btn-secondary" on:click={close}>Отмена</button>
-      <button
-        type="button"
-        class="btn btn-primary"
-        disabled={isSaving || isRevoking}
-        on:click={handleSave}
-      >
+      <Button class="groupadminmodal-btn groupadminmodal-btn-secondary" onclick={close}>Отмена</Button>
+      <Button variant="primary" class="groupadminmodal-btn" disabled={isSaving || isRevoking} onclick={handleSave}>
         {isSaving ? "Сохранение..." : "Сохранить"}
-      </button>
+      </Button>
     </div>
   </div>
-</div>
+</Modal>
 
 <style>
-  .modal-backdrop {
-    position: fixed;
-    inset: 0;
-    background: rgba(0, 0, 0, 0.75);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 1000;
-    padding: 16px;
-  }
 
   .modal-card {
-    background: #1e2025;
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: var(--bg-surface);
+    border: 1px solid var(--border-subtle);
     box-shadow: 0 20px 48px rgba(0, 0, 0, 0.65);
     border-radius: 18px;
     width: 100%;
@@ -189,7 +170,7 @@
     flex-direction: column;
     max-height: 85vh;
     overflow: hidden;
-    color: #edf0f5;
+    color: var(--text-primary);
   }
 
   .modal-head {
@@ -197,7 +178,7 @@
     align-items: center;
     justify-content: space-between;
     padding: 16px 20px;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    border-bottom: 1px solid var(--border-subtle);
   }
 
   .user-preview {
@@ -216,7 +197,7 @@
   .user-title {
     font-size: 16px;
     font-weight: 600;
-    color: #f8fafc;
+    color: var(--text-primary);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -224,27 +205,11 @@
 
   .user-subtitle {
     font-size: 12px;
-    color: #8b98a5;
+    color: var(--text-muted);
   }
 
-  .btn-close {
-    background: none;
-    border: none;
-    color: #8b98a5;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 32px;
-    height: 32px;
-    border-radius: 8px;
-    transition: 0.15s;
-  }
+  :global(.groupadminmodal-btn-close)  { width: 32px; }
 
-  .btn-close:hover {
-    color: #fff;
-    background: rgba(255, 255, 255, 0.08);
-  }
 
   .modal-scroll-body {
     flex: 1;
@@ -270,29 +235,29 @@
 
   .field-block input {
     background: rgba(0, 0, 0, 0.25);
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    border: 1px solid var(--border-subtle);
     border-radius: 10px;
     padding: 10px 14px;
-    color: #fff;
+    color: var(--text-primary);
     font-size: 14px;
     outline: none;
     transition: 0.15s;
   }
 
   .field-block input:focus {
-    border-color: #3b82f6;
+    border-color: var(--accent-primary);
   }
 
   .field-hint {
     font-size: 12px;
-    color: #64748b;
+    color: var(--text-muted);
   }
 
   .perms-header {
     font-size: 12px;
     text-transform: uppercase;
     font-weight: 600;
-    color: #8b98a5;
+    color: var(--text-muted);
     letter-spacing: 0.5px;
   }
 
@@ -300,7 +265,7 @@
     display: flex;
     flex-direction: column;
     background: rgba(0, 0, 0, 0.2);
-    border: 1px solid rgba(255, 255, 255, 0.06);
+    border: 1px solid var(--border-subtle);
     border-radius: 12px;
     overflow: hidden;
   }
@@ -321,7 +286,7 @@
   }
 
   .perm-row:hover {
-    background: rgba(255, 255, 255, 0.04);
+    background: var(--bg-surface);
   }
 
   .perm-info {
@@ -333,33 +298,33 @@
   .perm-label {
     font-size: 14px;
     font-weight: 500;
-    color: #f1f5f9;
+    color: var(--text-primary);
   }
 
   .perm-desc {
     font-size: 12px;
-    color: #8b98a5;
+    color: var(--text-muted);
   }
 
   .toggle-switch {
     width: 38px;
     height: 22px;
     border-radius: 11px;
-    background: rgba(255, 255, 255, 0.15);
+    background: var(--bg-surface-2);
     position: relative;
     transition: background 0.2s;
     flex-shrink: 0;
   }
 
   .toggle-switch.active {
-    background: #2563eb;
+    background: var(--accent-primary);
   }
 
   .toggle-thumb {
     width: 18px;
     height: 18px;
     border-radius: 50%;
-    background: #fff;
+    background: var(--bg-sheet);
     position: absolute;
     top: 2px;
     left: 2px;
@@ -372,10 +337,10 @@
 
   .error-banner {
     padding: 10px 14px;
-    background: rgba(239, 68, 68, 0.12);
-    border: 1px solid rgba(239, 68, 68, 0.25);
+    background: var(--danger-subtle);
+    border: 1px solid var(--danger-subtle-strong);
     border-radius: 10px;
-    color: #f87171;
+    color: var(--status-danger);
     font-size: 13px;
     text-align: center;
   }
@@ -387,31 +352,15 @@
     gap: 10px;
     padding: 14px 20px;
     background: rgba(0, 0, 0, 0.18);
-    border-top: 1px solid rgba(255, 255, 255, 0.05);
+    border-top: 1px solid var(--border-subtle);
   }
 
-  .btn {
-    padding: 9px 18px;
-    border-radius: 9px;
-    font-size: 14px;
-    font-weight: 500;
-    border: none;
-    cursor: pointer;
-    transition: 0.15s;
-  }
 
-  .btn-secondary {
-    background: rgba(255, 255, 255, 0.08);
-    color: #e2e8f0;
-  }
 
-  .btn-secondary:hover {
-    background: rgba(255, 255, 255, 0.12);
-  }
 
   .btn-primary {
-    background: #2563eb;
-    color: #fff;
+    background: var(--accent-primary);
+    color: var(--button-primary-contrast);
   }
 
   .btn-primary:hover:not(:disabled) {
@@ -425,9 +374,9 @@
 
   .btn-danger-action {
     margin-right: auto;
-    background: rgba(239, 68, 68, 0.12);
-    color: #f87171;
-    border: 1px solid rgba(239, 68, 68, 0.25);
+    background: var(--danger-subtle);
+    color: var(--status-danger);
+    border: 1px solid var(--danger-subtle-strong);
   }
 
   .btn-danger-action:hover:not(:disabled) {

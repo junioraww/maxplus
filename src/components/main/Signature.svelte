@@ -74,7 +74,6 @@
     const opts = c.options;
     if (opts.includes("SERVICE_ACCOUNT")) list.push("сервисный аккаунт");
     if (opts.includes("BOT")) list.push("бот");
-    if (opts.includes("OFFICIAL")) list.push("официальный");
     if (!list.length) list.push(`Был${c?.gender === 2 ? 'а' : ''} недавно`);
     const joined = list.join(", ");
     return joined.charAt(0).toUpperCase() + joined.slice(1);

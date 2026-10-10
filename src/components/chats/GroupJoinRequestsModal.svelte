@@ -1,4 +1,5 @@
 <script>
+  import { Button, IconButton, Modal } from "$components/ui";
   import { fade, scale } from "svelte/transition";
   import { createEventDispatcher, onMount } from "svelte";
   import API from "$lib/stores/api";
@@ -81,26 +82,26 @@
   }
 </script>
 
-<div class="modal-backdrop" transition:fade={{ duration: 180 }} on:click={close}>
-  <div class="modal-card" transition:scale={{ duration: 200, start: 0.94 }} on:click|stopPropagation>
+<Modal open={true} bare closeOnEsc={true} onclose={close}>
+  <div class="modal-card">
     <div class="modal-head">
       <div class="title-wrap">
         <h3>Заявки на вступление</h3>
         <span class="sub-label">{requests.length} ожидает подтверждения</span>
       </div>
-      <button type="button" class="btn-close" on:click={close} aria-label="Закрыть">
+      <IconButton class="groupjoinrequestsmodal-btn-close" onclick={close} aria-label="Закрыть">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
           <line x1="18" y1="6" x2="6" y2="18"></line>
           <line x1="6" y1="6" x2="18" y2="18"></line>
         </svg>
-      </button>
+      </IconButton>
     </div>
 
     {#if requests.length > 1}
       <div class="bulk-bar">
-        <button type="button" class="btn-bulk" on:click={acceptAll} disabled={isLoading}>
+        <Button class="groupjoinrequestsmodal-btn-bulk" onclick={acceptAll} disabled={isLoading}>
           Принять всех
-        </button>
+        </Button>
       </div>
     {/if}
 
@@ -120,29 +121,17 @@
               <span class="user-sub">ID: {uid}</span>
             </div>
             <div class="action-buttons">
-              <button
-                type="button"
-                class="btn-icon accept"
-                title="Принять"
-                disabled={processingIds.has(uid)}
-                on:click={() => handleAccept(uid)}
-              >
+              <IconButton class="groupjoinrequestsmodal-btn-icon groupjoinrequestsmodal-accept" title="Принять" disabled={processingIds.has(uid)} onclick={() => handleAccept(uid)}>
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                   <polyline points="20 6 9 17 4 12"/>
                 </svg>
-              </button>
-              <button
-                type="button"
-                class="btn-icon decline"
-                title="Отклонить"
-                disabled={processingIds.has(uid)}
-                on:click={() => handleDecline(uid)}
-              >
+              </IconButton>
+              <IconButton class="groupjoinrequestsmodal-btn-icon groupjoinrequestsmodal-decline" title="Отклонить" disabled={processingIds.has(uid)} onclick={() => handleDecline(uid)}>
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                   <line x1="18" y1="6" x2="6" y2="18"></line>
                   <line x1="6" y1="6" x2="18" y2="18"></line>
                 </svg>
-              </button>
+              </IconButton>
             </div>
           </div>
         {/each}
@@ -156,26 +145,16 @@
     {/if}
 
     <div class="modal-foot">
-      <button type="button" class="btn btn-secondary" on:click={close}>Закрыть</button>
+      <Button class="groupjoinrequestsmodal-btn groupjoinrequestsmodal-btn-secondary" onclick={close}>Закрыть</Button>
     </div>
   </div>
-</div>
+</Modal>
 
 <style>
-  .modal-backdrop {
-    position: fixed;
-    inset: 0;
-    background: rgba(0, 0, 0, 0.75);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 1000;
-    padding: 16px;
-  }
 
   .modal-card {
-    background: #1e2025;
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: var(--bg-surface);
+    border: 1px solid var(--border-subtle);
     box-shadow: 0 20px 48px rgba(0, 0, 0, 0.65);
     border-radius: 18px;
     width: 100%;
@@ -184,7 +163,7 @@
     flex-direction: column;
     max-height: 80vh;
     overflow: hidden;
-    color: #edf0f5;
+    color: var(--text-primary);
   }
 
   .modal-head {
@@ -192,39 +171,23 @@
     align-items: center;
     justify-content: space-between;
     padding: 16px 20px;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    border-bottom: 1px solid var(--border-subtle);
   }
 
   .title-wrap h3 {
     margin: 0;
     font-size: 17px;
     font-weight: 600;
-    color: #f8fafc;
+    color: var(--text-primary);
   }
 
   .sub-label {
     font-size: 12px;
-    color: #8b98a5;
+    color: var(--text-muted);
   }
 
-  .btn-close {
-    background: none;
-    border: none;
-    color: #8b98a5;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 32px;
-    height: 32px;
-    border-radius: 8px;
-    transition: 0.15s;
-  }
+  :global(.groupjoinrequestsmodal-btn-close)  { width: 32px; }
 
-  .btn-close:hover {
-    color: #fff;
-    background: rgba(255, 255, 255, 0.08);
-  }
 
   .bulk-bar {
     padding: 8px 16px;
@@ -234,21 +197,7 @@
     border-bottom: 1px solid rgba(255, 255, 255, 0.04);
   }
 
-  .btn-bulk {
-    background: rgba(43, 130, 246, 0.14);
-    color: #3b82f6;
-    border: none;
-    font-size: 13px;
-    font-weight: 500;
-    padding: 6px 12px;
-    border-radius: 7px;
-    cursor: pointer;
-    transition: 0.15s;
-  }
 
-  .btn-bulk:hover:not(:disabled) {
-    background: rgba(43, 130, 246, 0.25);
-  }
 
   .requests-scroll {
     overflow-y: auto;
@@ -262,7 +211,7 @@
   .state-msg {
     padding: 36px 16px;
     text-align: center;
-    color: #64748b;
+    color: var(--text-muted);
     font-size: 14px;
   }
 
@@ -272,7 +221,7 @@
     gap: 12px;
     padding: 10px 12px;
     background: rgba(0, 0, 0, 0.18);
-    border: 1px solid rgba(255, 255, 255, 0.05);
+    border: 1px solid var(--border-subtle);
     border-radius: 12px;
   }
 
@@ -286,7 +235,7 @@
   .user-title {
     font-size: 14px;
     font-weight: 500;
-    color: #f1f5f9;
+    color: var(--text-primary);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -294,7 +243,7 @@
 
   .user-sub {
     font-size: 12px;
-    color: #8b98a5;
+    color: var(--text-muted);
   }
 
   .action-buttons {
@@ -302,45 +251,17 @@
     gap: 6px;
   }
 
-  .btn-icon {
-    width: 34px;
-    height: 34px;
-    border-radius: 9px;
-    border: none;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: 0.15s;
-  }
+  :global(.groupjoinrequestsmodal-btn-icon)  { width: 34px; }
 
-  .btn-icon.accept {
-    background: rgba(34, 197, 94, 0.14);
-    color: #4ade80;
-  }
 
-  .btn-icon.accept:hover:not(:disabled) {
-    background: rgba(34, 197, 94, 0.28);
-  }
 
-  .btn-icon.decline {
-    background: rgba(239, 68, 68, 0.14);
-    color: #f87171;
-  }
 
-  .btn-icon.decline:hover:not(:disabled) {
-    background: rgba(239, 68, 68, 0.28);
-  }
 
-  .btn-icon:disabled {
-    opacity: 0.4;
-    cursor: not-allowed;
-  }
 
   .status-banner {
     margin: 4px 16px;
     font-size: 13px;
-    color: #f87171;
+    color: var(--status-danger);
     text-align: center;
   }
 
@@ -349,25 +270,9 @@
     justify-content: flex-end;
     padding: 12px 16px;
     background: rgba(0, 0, 0, 0.18);
-    border-top: 1px solid rgba(255, 255, 255, 0.05);
+    border-top: 1px solid var(--border-subtle);
   }
 
-  .btn {
-    padding: 8px 16px;
-    border-radius: 8px;
-    font-size: 13px;
-    font-weight: 500;
-    border: none;
-    cursor: pointer;
-    transition: 0.15s;
-  }
 
-  .btn-secondary {
-    background: rgba(255, 255, 255, 0.08);
-    color: #e2e8f0;
-  }
 
-  .btn-secondary:hover {
-    background: rgba(255, 255, 255, 0.12);
-  }
 </style>

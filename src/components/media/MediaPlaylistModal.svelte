@@ -1,4 +1,5 @@
 <script>
+  import { IconButton, Modal } from "$components/ui";
   import {
     mediaPlaylist,
     showPlaylistModal,
@@ -28,14 +29,14 @@
 </script>
 
 {#if $showPlaylistModal}
-  <div class="modal-backdrop" on:click|self={closeModal}>
+  <Modal open={true} bare zIndex={10000} closeOnEsc={true} onclose={closeModal}>
     <div class="modal-dialog">
       <div class="modal-header">
         <div class="modal-title-wrap">
           <span class="modal-title">Очередь воспроизведения</span>
           <span class="modal-count">{items.length} медиа</span>
         </div>
-        <button class="modal-close-btn" on:click={closeModal} title="Закрыть">✕</button>
+        <IconButton class="mediaplaylistmodal-modal-close-btn" onclick={closeModal} title="Закрыть">✕</IconButton>
       </div>
 
       <div class="modal-body">
@@ -84,25 +85,15 @@
         {/if}
       </div>
     </div>
-  </div>
+  </Modal>
 {/if}
 
 <style>
-  .modal-backdrop {
-    position: fixed;
-    inset: 0;
-    background: rgba(0, 0, 0, 0.75);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 10000;
-    padding: 16px;
-  }
   .modal-dialog {
     width: 100%;
     max-width: 420px;
     max-height: 80vh;
-    background: #1e2024;
+    background: var(--bg-surface);
     border-radius: 14px;
     box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
     border: 1px solid rgba(255, 255, 255, 0.08);
@@ -125,30 +116,13 @@
   .modal-title {
     font-size: 16px;
     font-weight: 600;
-    color: #ffffff;
+    color: var(--text-primary);
   }
   .modal-count {
     font-size: 12px;
     color: #8e9aa8;
   }
-  .modal-close-btn {
-    background: transparent;
-    border: none;
-    font-size: 16px;
-    color: #8e9aa8;
-    cursor: pointer;
-    border-radius: 50%;
-    width: 28px;
-    height: 28px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: background 0.15s, color 0.15s;
-  }
-  .modal-close-btn:hover {
-    background: rgba(255, 255, 255, 0.1);
-    color: #ffffff;
-  }
+  :global(.mediaplaylistmodal-modal-close-btn)  { width: 28px; }
   .modal-body {
     flex: 1;
     overflow-y: auto;
@@ -209,7 +183,7 @@
   .track-sender {
     font-size: 14px;
     font-weight: 500;
-    color: #ffffff;
+    color: var(--text-primary);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;

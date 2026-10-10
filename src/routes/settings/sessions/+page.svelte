@@ -1,4 +1,5 @@
 <script>
+  import { Button } from "$components/ui";
   import { onMount } from "svelte";
   import { slide, fly } from "svelte/transition";
   import { flip } from "svelte/animate";
@@ -117,9 +118,9 @@
   <svelte:fragment slot="footer">
     {#if sessions.length > 1}
       <div class="actions-panel">
-        <button class="terminate-btn" on:click|stopPropagation={handleTerminateAll}>
+        <Button class="pg-sessions-terminate-btn" onclick={(e) => { e.stopPropagation(); (handleTerminateAll)(e); }}>
           Завершить все другие сессии
-        </button>
+        </Button>
       </div>
     {/if}
   </svelte:fragment>
@@ -131,7 +132,7 @@
     background: #2c2c35;
     padding: 3px 9px;
     border-radius: 999px;
-    color: #bbb;
+    color: var(--text-muted);
     font-weight: 600;
   }
 
@@ -146,16 +147,16 @@
   }
 
   .session-card {
-    background: #24252a;
+    background: var(--bg-surface-2);
     border-radius: 14px;
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    border: 1px solid var(--border-subtle);
     cursor: pointer;
     transition: border-color 0.2s;
     flex-shrink: 0;
   }
 
   .session-card.expanded {
-    border-color: #3390ec;
+    border-color: var(--accent-primary);
   }
 
   .session-header {
@@ -173,13 +174,13 @@
 
   .client-name {
     font-weight: 600;
-    color: #fff;
+    color: var(--text-primary);
     font-size: 0.95rem;
   }
 
   .location-brief {
     font-size: 0.8rem;
-    color: #888;
+    color: var(--text-muted);
   }
 
   .time-badge {
@@ -189,7 +190,7 @@
 
   .session-details {
     padding: 0 16px 14px 16px;
-    border-top: 1px solid rgba(255, 255, 255, 0.06);
+    border-top: 1px solid var(--border-subtle);
     display: flex;
     flex-direction: column;
     gap: 8px;
@@ -213,7 +214,7 @@
 
   .val {
     font-size: 0.85rem;
-    color: #bbb;
+    color: var(--text-muted);
     line-height: 1.3;
     word-break: break-all;
   }
@@ -226,41 +227,22 @@
 
   .actions-panel {
     padding: 14px 16px;
-    background: #212126;
-    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    background: var(--bg-topbar);
+    border-top: 1px solid var(--border-subtle);
     flex-shrink: 0;
   }
 
-  .terminate-btn {
-    width: 100%;
-    height: 44px;
-    background: rgba(239, 68, 68, 0.15);
-    color: #ff595a;
-    border: 1px solid rgba(239, 68, 68, 0.25);
-    border-radius: 12px;
-    font-weight: 600;
-    cursor: pointer;
-    font-size: 0.92rem;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: transform 0.12s, opacity 0.15s, background 0.15s;
-  }
+  :global(.pg-sessions-terminate-btn)  { width: 100%; }
 
-  .terminate-btn:hover {
-    background: rgba(239, 68, 68, 0.25);
-  }
 
-  .terminate-btn:active {
-    transform: scale(0.98);
-  }
+  :global(.pg-sessions-terminate-btn):active  { transform: scale(0.98); }
 
   .sessions-container::-webkit-scrollbar {
     width: 4px;
   }
 
   .sessions-container::-webkit-scrollbar-thumb {
-    background: #333;
+    background: var(--bg-surface-2);
     border-radius: 10px;
   }
 </style>

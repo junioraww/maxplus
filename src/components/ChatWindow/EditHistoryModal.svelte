@@ -1,4 +1,5 @@
 <script>
+  import { IconButton, Modal } from "$components/ui";
   import { createEventDispatcher } from 'svelte';
   import { fade, scale } from 'svelte/transition';
   import { computeTextDiff } from '$lib/utils/diff.js';
@@ -46,10 +47,8 @@
   }
 </script>
 
-<svelte:window on:keydown={handleKeydown} />
 
-<div class="modal-backdrop" transition:fade={{ duration: 150 }} on:click={close}>
-  <div class="modal-box" transition:scale={{ start: 0.95, duration: 150 }} on:click|stopPropagation>
+<Modal open={true} size="lg" showClose={false} class="edit-history-modal" onclose={close}>
     <div class="modal-header">
       <div class="header-left">
         <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
@@ -57,7 +56,7 @@
         </svg>
         <h3>История изменений</h3>
       </div>
-      <button class="close-btn" type="button" on:click={close} title="Закрыть">✕</button>
+      <IconButton class="edithistorymodal-close-btn" onclick={close} title="Закрыть">✕</IconButton>
     </div>
 
     <div class="modal-body">
@@ -129,72 +128,35 @@
         </div>
       {/if}
     </div>
-  </div>
-</div>
+  </Modal>
 
 <style>
-  .modal-backdrop {
-    position: fixed;
-    inset: 0;
-    background: rgba(0, 0, 0, 0.75);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 1000;
-    padding: 16px;
-    box-sizing: border-box;
-  }
+  :global(.edit-history-modal .modal__body) { padding: 0; }
 
-  .modal-box {
-    background: #17191d;
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 16px;
-    width: 100%;
-    max-width: 520px;
-    max-height: 85vh;
-    display: flex;
-    flex-direction: column;
-    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.6);
-    overflow: hidden;
-  }
 
   .modal-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
     padding: 16px 20px;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    border-bottom: 1px solid var(--border-subtle);
   }
 
   .header-left {
     display: flex;
     align-items: center;
     gap: 10px;
-    color: #248bfe;
+    color: var(--accent-primary);
   }
 
   .header-left h3 {
     margin: 0;
     font-size: 16px;
     font-weight: 600;
-    color: #edf0f5;
+    color: var(--text-primary);
   }
 
-  .close-btn {
-    background: transparent;
-    border: none;
-    color: #8b929e;
-    font-size: 16px;
-    cursor: pointer;
-    padding: 4px 8px;
-    border-radius: 6px;
-    transition: all 0.15s ease;
-  }
 
-  .close-btn:hover {
-    color: #fff;
-    background: rgba(255, 255, 255, 0.08);
-  }
 
   .modal-body {
     padding: 16px 20px;
@@ -205,7 +167,7 @@
   }
 
   .version-card {
-    background: #1e2025;
+    background: var(--bg-surface);
     border-radius: 12px;
     padding: 12px 14px;
     border: 1px solid rgba(255, 255, 255, 0.04);
@@ -232,30 +194,30 @@
 
   .current-badge {
     background: rgba(36, 139, 254, 0.2);
-    color: #38bdf8;
+    color: var(--accent-primary);
   }
 
   .diff-badge {
-    background: rgba(255, 255, 255, 0.08);
-    color: #94a3b8;
+    background: var(--bg-surface);
+    color: var(--text-muted);
   }
 
   .version-time {
     font-size: 11px;
-    color: #64748b;
+    color: var(--text-muted);
   }
 
   .text-content {
     margin: 0;
     font-size: 14px;
     line-height: 20px;
-    color: #edf0f5;
+    color: var(--text-primary);
     white-space: pre-wrap;
     word-break: break-word;
   }
 
   .old-text {
-    color: #94a3b8;
+    color: var(--text-muted);
   }
 
   .diff-container {
@@ -270,15 +232,15 @@
 
   .chunk-add {
     background: rgba(34, 197, 94, 0.2);
-    color: #4ade80;
+    color: var(--status-success);
     text-decoration: none;
     border-radius: 2px;
     padding: 1px 2px;
   }
 
   .chunk-del {
-    background: rgba(239, 68, 68, 0.2);
-    color: #f87171;
+    background: var(--danger-subtle-strong);
+    color: var(--status-danger);
     text-decoration: line-through;
     border-radius: 2px;
     padding: 1px 2px;
@@ -291,7 +253,7 @@
   .attaches-summary {
     margin-top: 6px;
     font-size: 12px;
-    color: #94a3b8;
+    color: var(--text-muted);
   }
 
   .attaches-diff {
@@ -303,17 +265,17 @@
   }
 
   .attach-change.add {
-    color: #4ade80;
+    color: var(--status-success);
   }
 
   .attach-change.remove {
-    color: #f87171;
+    color: var(--status-danger);
   }
 
   .empty-state {
     text-align: center;
     padding: 24px;
-    color: #64748b;
+    color: var(--text-muted);
     font-size: 13px;
   }
 

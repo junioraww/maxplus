@@ -1,4 +1,5 @@
 <script>
+  import { IconButton, MenuItem } from "$components/ui";
   let { commands = [], filter = "", onSelect, onClose } = $props();
 
   let filtered = $derived(
@@ -17,20 +18,14 @@
   <div class="bot-commands-menu">
     <div class="menu-header">
       <span class="menu-title">Команды бота</span>
-      <button type="button" class="close-btn" onclick={onClose}>✕</button>
+      <IconButton class="botcommandsmenu-close-btn" onclick={onClose}>✕</IconButton>
     </div>
     <div class="commands-list">
       {#each filtered as cmd}
-        <button
-          type="button"
-          class="command-item"
-          onclick={() => onSelect(cmd)}
-        >
-          <span class="cmd-name">/{cmd.name.replace(/^\//, "")}</span>
+        <MenuItem class="botcommandsmenu-command-item" onclick={() => onSelect(cmd)}><span class="cmd-name">/{cmd.name.replace(/^\//, "")}</span>
           {#if cmd.description}
             <span class="cmd-desc">{cmd.description}</span>
-          {/if}
-        </button>
+          {/if}</MenuItem>
       {/each}
     </div>
   </div>
@@ -44,7 +39,7 @@
     right: 12px;
     max-height: 240px;
     background: #252830;
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    border: 1px solid var(--border-subtle);
     border-radius: 14px;
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
     overflow: hidden;
@@ -58,31 +53,18 @@
     align-items: center;
     justify-content: space-between;
     padding: 8px 14px;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    border-bottom: 1px solid var(--border-subtle);
   }
 
   .menu-title {
     font-size: 12px;
     font-weight: 600;
-    color: #8e8e93;
+    color: var(--text-muted);
     text-transform: uppercase;
     letter-spacing: 0.5px;
   }
 
-  .close-btn {
-    background: none;
-    border: none;
-    color: #8e8e93;
-    font-size: 14px;
-    cursor: pointer;
-    padding: 2px 6px;
-    border-radius: 4px;
-  }
 
-  .close-btn:hover {
-    color: #fff;
-    background: rgba(255, 255, 255, 0.08);
-  }
 
   .commands-list {
     overflow-y: auto;
@@ -90,34 +72,17 @@
     padding: 4px;
   }
 
-  .command-item {
-    width: 100%;
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    padding: 8px 10px;
-    background: none;
-    border: none;
-    border-radius: 8px;
-    color: #fff;
-    font-size: 14px;
-    cursor: pointer;
-    text-align: left;
-    transition: background-color 0.15s ease;
-  }
+  :global(.botcommandsmenu-command-item)  { width: 100%; }
 
-  .command-item:hover {
-    background: rgba(255, 255, 255, 0.08);
-  }
 
   .cmd-name {
     font-weight: 600;
-    color: #248bfe;
+    color: var(--accent-primary);
     flex-shrink: 0;
   }
 
   .cmd-desc {
-    color: #8e8e93;
+    color: var(--text-muted);
     font-size: 13px;
     overflow: hidden;
     text-overflow: ellipsis;

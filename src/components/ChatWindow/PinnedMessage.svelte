@@ -1,4 +1,5 @@
 <script>
+  import { IconButton } from "$components/ui";
   import { createEventDispatcher } from "svelte";
   import MessagePreview from "$components/main/MessagePreview.svelte";
 
@@ -23,7 +24,7 @@
     </div>
   </div>
 
-  <button class="unpin-btn" on:click={unpin}>✖</button>
+  <IconButton class="pinnedmessage-unpin-btn" onclick={unpin}>✖</IconButton>
 </div>
 
 <style>
@@ -36,7 +37,7 @@
     width: 100%;
     padding: 10px 12px;
     background: #161722;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    border-bottom: 1px solid var(--border-subtle);
     cursor: pointer;
   }
 
@@ -68,21 +69,6 @@
     max-width: 100%;
   }
 
-  .unpin-btn {
-    flex: 0 0 auto;
-    border: none;
-    background: transparent;
-    cursor: pointer;
-    font-size: 13px;
-    color: #ffffff;
-    opacity: 0.9;
-    padding: 4px 6px;
-    border-radius: 6px;
-  }
+  :global(.pinnedmessage-unpin-btn)  { flex: 0 0 auto; }
 
-  .unpin-btn:hover {
-    color: #ffffff;
-    opacity: 1;
-    background: rgba(255, 255, 255, 0.12);
-  }
 </style>

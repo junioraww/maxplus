@@ -1,4 +1,5 @@
 <script>
+  import { Button } from "$components/ui";
   import Avatar from "$components/main/Avatar.svelte";
 
   let { botInfo, contact, contactId, onStart, loading = false } = $props();
@@ -29,18 +30,13 @@
   </div>
 
   <div class="bot-start-footer">
-    <button
-      type="button"
-      class="bot-start-btn"
-      disabled={loading}
-      onclick={onStart}
-    >
+    <Button variant="primary" class="botstart-bot-start-btn" disabled={loading} onclick={onStart}>
       {#if loading}
         <span class="start-spinner"></span>
       {:else}
         Запустить
       {/if}
-    </button>
+    </Button>
   </div>
 </div>
 
@@ -63,7 +59,7 @@
 
   .bot-card {
     background: #242832;
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    border: 1px solid var(--border-subtle);
     border-radius: 20px;
     padding: 24px 20px;
     max-width: 320px;
@@ -78,20 +74,20 @@
 
   .bot-name {
     margin: 12px 0 6px;
-    color: #fff;
+    color: var(--text-primary);
     font-size: 18px;
     font-weight: 600;
   }
 
   .bot-desc-title {
-    color: #8e8e93;
+    color: var(--text-muted);
     font-size: 13px;
     font-weight: 500;
     margin-bottom: 8px;
   }
 
   .bot-desc-text {
-    color: #ddd;
+    color: var(--text-primary);
     font-size: 14px;
     line-height: 1.4;
     margin: 0;
@@ -108,42 +104,17 @@
     pointer-events: auto;
   }
 
-  .bot-start-btn {
-    width: 100%;
-    max-width: 480px;
-    height: 48px;
-    background: #248bfe;
-    border: none;
-    border-radius: 12px;
-    color: #fff;
-    font-size: 16px;
-    font-weight: 600;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: background-color 0.15s ease, transform 0.08s ease;
-    box-shadow: 0 4px 14px rgba(36, 139, 254, 0.35);
-  }
+  :global(.botstart-bot-start-btn)  { width: 100%; max-width: 480px; }
 
-  .bot-start-btn:hover {
-    background: #1b7ee8;
-  }
 
-  .bot-start-btn:active {
-    transform: scale(0.98);
-  }
+  :global(.botstart-bot-start-btn):active  { transform: scale(0.98); }
 
-  .bot-start-btn:disabled {
-    opacity: 0.7;
-    cursor: wait;
-  }
 
   .start-spinner {
     width: 20px;
     height: 20px;
     border: 2px solid rgba(255, 255, 255, 0.4);
-    border-top-color: #fff;
+    border-top-color: var(--border-subtle);
     border-radius: 50%;
     animation: start-spin 0.6s linear infinite;
   }

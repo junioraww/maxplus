@@ -269,9 +269,9 @@
     width: 36px;
     height: 36px;
     border-radius: 50%;
-    background: #3b82f6;
+    background: var(--accent-primary);
     border: none;
-    color: white;
+    color: var(--button-primary-contrast);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -281,7 +281,7 @@
   }
 
   .voice-play-btn:hover {
-    background: #2563eb;
+    background: var(--accent-primary);
     transform: scale(1.05);
   }
 
@@ -343,9 +343,9 @@
   }
 
   .voice-btn {
-    background: rgba(255, 255, 255, 0.1);
+    background: var(--bg-surface-2);
     border: none;
-    color: rgba(255, 255, 255, 0.85);
+    color: var(--text-secondary);
     border-radius: 12px;
     padding: 2px 6px;
     display: flex;
@@ -357,14 +357,14 @@
   }
 
   .voice-btn:hover {
-    background: rgba(255, 255, 255, 0.2);
+    background: var(--bg-surface-2);
   }
 
   .mini-spinner {
     width: 12px;
     height: 12px;
     border: 2px solid rgba(255, 255, 255, 0.3);
-    border-top-color: #38bdf8;
+    border-top-color: var(--accent-primary);
     border-radius: 50%;
     animation: spin 0.8s linear infinite;
   }

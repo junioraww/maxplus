@@ -1,3 +1,15 @@
+@import './styles/max-theme.css';
+:root {
+  /* Высота нижнего таббара (Panel.svelte): 10 + 56 + max(safe-area, 10) */
+  --panel-height: calc(66px + max(env(safe-area-inset-bottom, 0px), 10px));
+}
+
+html.ios-safe-area {
+  /* на iOS safe-area уже учтена отступами #app */
+  --panel-safe-bottom: 10px;
+  --panel-height: 76px;
+}
+
 @font-face {
   font-family: "Inter Medium";
   src: url("/fonts/Inter_18pt-Medium.ttf") format("truetype");
@@ -11,7 +23,8 @@
 
 body {
   margin: 0;
-  background-color: #17181c;
+  background-color: var(--bg-app, #ffffff);
+  color: var(--text-primary, #060708);
   overflow: hidden;
   padding-top: env(safe-area-inset-top, 10px);
   padding-bottom: env(safe-area-inset-bottom, 20px);
@@ -51,7 +64,7 @@ html.ios-safe-area #app .chat-window {
 
 html.ios-safe-area #app .page-card {
   width: 100%;
-  height: calc(100% - 60px);
+  height: calc(100% - var(--panel-height, 60px));
 }
 
 html.ios-safe-area #app .chat-window,
@@ -87,6 +100,279 @@ img {
   --safe-top: 24px;
   --safe-bottom: 0px;
 
+  /* Light theme (default) */
+  --bg-app: #ffffff;
+  --bg-chat: #edeef2;
+  --bg-surface: #f5f7fa;
+  --bg-surface-2: #e9ebf1;
+  --bg-sheet: #ffffff;
+  --bg-panel: #f5f7fa;
+  --bg-topbar: #ffffff;
+
+  --accent-primary: #007aff;
+  --accent-primary-hover: #006ee5;
+  --accent-subtle: rgba(0, 122, 255, 0.12);
+  --accent-subtle-hover: rgba(0, 122, 255, 0.2);
+
+  --bubble-outgoing: #d9f7be;
+  --bubble-incoming: #ffffff;
+
+  --text-primary: #060708;
+  --text-secondary: #3c4043;
+  --text-muted: #6b7280;
+  --text-subtle: #9da4ac;
+
+  --border-subtle: rgba(12, 13, 14, 0.08);
+  --border-card: rgba(12, 13, 14, 0.06);
+
+  --status-success: #1abe43;
+  --status-danger: #ff303c;
+  --danger-subtle: rgba(255, 48, 60, 0.1);
+  --danger-subtle-strong: rgba(255, 48, 60, 0.18);
+  --accent-violet: #6e4ce0;
+  --status-warning: #fc0;
+  --badge-unread: #007aff;
+  --read-tick: #007aff;
+  --online: #1abe43;
+
+  /* === Max official design tokens (light theme defaults) === */
+  --font: -apple-system, BlinkMacSystemFont, "Roboto", system-ui, Avenir, Helvetica, Arial, sans-serif;
+  --font-family-base: Roboto;
+  --font-family-headers: Roboto;
+  --font-family-monospace: Roboto Mono;
+  --font-weight-regular: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
+  --font-hero-weight: 600;
+  --font-header-weight: 600;
+  --font-subheader-weight: 600;
+  --font-title-weight: 600;
+  --font-body-weight: 400;
+  --font-body-strong-weight: 500;
+  --font-detail-weight: 400;
+  --font-detail-strong-weight: 500;
+  --font-description-weight: 400;
+  --font-description-strong-weight: 500;
+  --font-label-weight: 400;
+  --font-label-strong-weight: 500;
+  --font-tag-weight: 400;
+  --font-tag-strong-weight: 500;
+  --font-note-weight: 400;
+  --font-note-strong-weight: 500;
+  --font-action-large-weight: 500;
+  --font-action-medium-weight: 500;
+  --font-action-small-weight: 500;
+  --font-action-xsmall-weight: 500;
+  --font-hero-size: 28px;
+  --font-hero-line-height: 32px;
+  --font-hero-letter-spacing: 0px;
+  --font-header-size: 24px;
+  --font-header-line-height: 28px;
+  --font-header-letter-spacing: 0px;
+  --font-subheader-size: 20px;
+  --font-subheader-line-height: 24px;
+  --font-subheader-letter-spacing: 0px;
+  --font-title-size: 17px;
+  --font-title-line-height: 24px;
+  --font-title-letter-spacing: 0px;
+  --font-body-size: 16px;
+  --font-body-line-height: 20px;
+  --font-body-letter-spacing: .15px;
+  --font-body-strong-size: 16px;
+  --font-body-strong-line-height: 20px;
+  --font-body-strong-letter-spacing: .15px;
+  --font-detail-size: 15px;
+  --font-detail-line-height: 20px;
+  --font-detail-letter-spacing: .15px;
+  --font-detail-strong-size: 15px;
+  --font-detail-strong-line-height: 20px;
+  --font-detail-strong-letter-spacing: .15px;
+  --font-description-size: 13px;
+  --font-description-line-height: 16px;
+  --font-description-letter-spacing: .2px;
+  --font-description-strong-size: 13px;
+  --font-description-strong-line-height: 16px;
+  --font-description-strong-letter-spacing: .2px;
+  --font-label-size: 12px;
+  --font-label-line-height: 16px;
+  --font-label-letter-spacing: .3px;
+  --font-label-strong-size: 12px;
+  --font-label-strong-line-height: 16px;
+  --font-label-strong-letter-spacing: .3px;
+  --font-tag-size: 11px;
+  --font-tag-line-height: 16px;
+  --font-tag-letter-spacing: .3px;
+  --font-tag-strong-size: 11px;
+  --font-tag-strong-line-height: 16px;
+  --font-tag-strong-letter-spacing: .3px;
+  --font-note-size: 10px;
+  --font-note-line-height: 12px;
+  --font-note-letter-spacing: .3px;
+  --font-note-strong-size: 10px;
+  --font-note-strong-line-height: 12px;
+  --font-note-strong-letter-spacing: .3px;
+  --font-action-large-size: 17px;
+  --font-action-large-line-height: 20px;
+  --font-action-large-letter-spacing: .15px;
+  --font-action-medium-size: 16px;
+  --font-action-medium-line-height: 20px;
+  --font-action-medium-letter-spacing: .15px;
+  --font-action-small-size: 14px;
+  --font-action-small-line-height: 20px;
+  --font-action-small-letter-spacing: .15px;
+  --font-action-xsmall-size: 13px;
+  --font-action-xsmall-line-height: 16px;
+  --font-action-xsmall-letter-spacing: .15px;
+
+  --size-0: 0px;
+  --size-1: 1px;
+  --size-2: 2px;
+  --size-4: 4px;
+  --size-6: 6px;
+  --size-8: 8px;
+  --size-10: 10px;
+  --size-12: 12px;
+  --size-14: 14px;
+  --size-16: 16px;
+  --size-18: 18px;
+  --size-20: 20px;
+  --size-24: 24px;
+  --size-28: 28px;
+  --size-32: 32px;
+  --size-36: 36px;
+  --size-40: 40px;
+  --size-44: 44px;
+  --size-48: 48px;
+  --size-52: 52px;
+  --size-56: 56px;
+  --size-60: 60px;
+  --size-64: 64px;
+  --size-72: 72px;
+  --size-80: 80px;
+  --size-88: 88px;
+  --size-96: 96px;
+
+  --border-radius-common-zero: var(--size-0);
+  --border-radius-common-2xs: var(--size-2);
+  --border-radius-common-xs: var(--size-4);
+  --border-radius-common-s-half: var(--size-6);
+  --border-radius-common-s: var(--size-8);
+  --border-radius-common-m-half: var(--size-10);
+  --border-radius-common-m: var(--size-12);
+  --border-radius-common-l: var(--size-16);
+  --border-radius-common-xl: var(--size-20);
+  --border-radius-common-4xl: var(--size-48);
+  --border-radius-local-button-small: var(--border-radius-common-m-half);
+  --border-radius-local-button-medium: var(--border-radius-common-m);
+  --border-radius-local-button-large: var(--border-radius-common-l);
+  --border-radius-local-cell-chat: var(--border-radius-common-l);
+  --border-radius-local-writebar-input: var(--size-12);
+  --border-radius-local-bubble-regular: var(--border-radius-common-l);
+
+  --spacing-zero: 0px;
+  --spacing-2xs-half: 1px;
+  --spacing-2xs: 2px;
+  --spacing-xs: 4px;
+  --spacing-s-half: 6px;
+  --spacing-s: 8px;
+  --spacing-m-half: 10px;
+  --spacing-m: 12px;
+  --spacing-l: 16px;
+  --spacing-xl-half: 20px;
+  --spacing-xl: 24px;
+  --spacing-2xl: 32px;
+  --spacing-common-zero: var(--size-0);
+  --spacing-common-2xs-half: var(--size-1);
+  --spacing-common-2xs: var(--size-2);
+  --spacing-common-xs: var(--size-4);
+  --spacing-common-s-half: var(--size-6);
+  --spacing-common-s: var(--size-8);
+  --spacing-common-m-half: var(--size-10);
+  --spacing-common-m: var(--size-12);
+  --spacing-common-l: var(--size-16);
+  --spacing-common-xl-half: var(--size-20);
+  --spacing-common-xl: var(--size-24);
+  --spacing-common-2xl: var(--size-32);
+
+  --background-surface: #edeef2;
+  --background-primary: #fff;
+  --background-secondary: #f5f7fa;
+  --background-tertiary: #0909090d;
+  --background-card: #fff;
+  --background-overlay: #0c0d0e52;
+
+  --icon-primary: #060708d6;
+  --icon-secondary: #060708a3;
+  --icon-tertiary: #0607087a;
+  --icon-mute: #06070847;
+  --icon-themed: #007aff;
+  --icon-positive: #1abe43;
+  --icon-negative: #ff303c;
+  --icon-attention: #fc0;
+  --icon-primary-inverse: #fff;
+
+  --stroke-themed: #007aff;
+  --stroke-secondary: #0c0d0e85;
+  --stroke-tertiary: #9da4ac4d;
+
+  --divider-primary: #0c0d0e29;
+  --divider-secondary: #0c0d0e0f;
+
+  --button-primary: #007aff;
+  --button-secondary: #e9ebf1;
+  --button-primary-contrast: #fff;
+  --button-secondary-contrast: #20366e1a;
+  --button-negative: #ff303c;
+  --button-negative-fade: #ff303c29;
+  --button-positive: #1abe43;
+  --button-positive-fade: #1abe431a;
+  --button-bot: #00b60c99;
+  --button-ghost: #0000;
+  --button-overlay: #0c0d0e52;
+
+  --controls-active: #007aff;
+  --controls-inactive: #09090914;
+
+  --input-background: #09090914;
+
+  --counter-attention: #ff303c;
+  --counter-mute: #0607081f;
+  --counter-themed: #007aff;
+  --counter-default: #17181c;
+  --counter-contrast: #fff;
+
+  --float-primary-blur: #ffffffd6;
+  --float-primary-flat: #fff;
+  --float-surface-blur: #edeef2d6;
+  --float-surface-flat: #edeef2;
+  --float-stroke: #0c0d0e29;
+
+--outline-width: 2px;
+
+  --z-index-layer-calls: 101;
+  --z-index-layer-popover: 200;
+  --z-index-popover-noPopoverAPI: 1000;
+
+  /* Max icon inverse tokens (for light theme) */
+  --icon-primary-inverse-static: #060708d6;
+  --icon-secondary-inverse-static: #060708a3;
+
+  /* Max button state tokens */
+  --states-button-primary-hover: #479fff;
+  --states-button-primary-pressed: #006ee5;
+  --states-button-primary-disabled: #007aff7a;
+
+  /* Max text tokens */
+  --bubbles-text-action: var(--text-primary, #060708);
+
+  /* Max local spacing */
+  --spacing-local-padding-base-padding-vertical: var(--spacing-m);
+  --spacing-local-padding-base-padding-horizontal: var(--spacing-l);
+}
+
+/* === Dark theme === */
+[data-theme="dark"] {
   --bg-app: #17181c;
   --bg-chat: #161621;
   --bg-surface: #1e2025;
@@ -113,8 +399,74 @@ img {
 
   --status-success: #4ade80;
   --status-danger: #ef4444;
+  --danger-subtle: rgba(239, 68, 68, 0.15);
+  --danger-subtle-strong: rgba(239, 68, 68, 0.28);
+  --accent-violet: #8774e1;
   --status-warning: #fbbf24;
   --badge-unread: #3b82f6;
   --read-tick: #34b7f1;
   --online: #4fc3f7;
+
+  /* Max overrides for dark theme */
+  --background-surface: #1e2025;
+  --background-primary: #17181c;
+  --background-secondary: #1e2025;
+  --background-tertiary: rgba(255, 255, 255, 0.05);
+  --background-card: #1e2025;
+  --background-overlay: rgba(0, 0, 0, 0.4);
+
+  --icon-primary: #ffffffd6;
+  --icon-secondary: #ffffffa3;
+  --icon-tertiary: #ffffff7a;
+  --icon-mute: #ffffff47;
+  --icon-themed: #248bfe;
+  --icon-positive: #4ade80;
+  --icon-negative: #ff303c;
+  --icon-attention: #fbbf24;
+  --icon-primary-inverse: #060708;
+
+  --stroke-themed: #248bfe;
+  --stroke-secondary: rgba(255, 255, 255, 0.2);
+  --stroke-tertiary: rgba(255, 255, 255, 0.1);
+
+  --divider-primary: rgba(255, 255, 255, 0.16);
+  --divider-secondary: rgba(255, 255, 255, 0.06);
+
+  --button-primary: #248bfe;
+  --button-secondary: #26262e;
+  --button-primary-contrast: #fff;
+  --button-secondary-contrast: rgba(255, 255, 255, 0.1);
+  --button-negative: #ff303c;
+  --button-negative-fade: rgba(255, 48, 60, 0.16);
+  --button-positive: #4ade80;
+  --button-positive-fade: rgba(74, 222, 128, 0.1);
+  --button-bot: rgba(36, 139, 254, 0.6);
+  --button-ghost: transparent;
+  --button-overlay: rgba(0, 0, 0, 0.32);
+
+  --controls-active: #248bfe;
+  --controls-inactive: rgba(255, 255, 255, 0.08);
+
+  --input-background: rgba(255, 255, 255, 0.08);
+
+  --counter-attention: #ff303c;
+  --counter-mute: rgba(255, 255, 255, 0.12);
+  --counter-themed: #248bfe;
+  --counter-default: #ffffff;
+  --counter-contrast: #17181c;
+
+  --float-primary-blur: rgba(23, 24, 28, 0.84);
+  --float-primary-flat: #17181c;
+  --float-surface-blur: rgba(30, 32, 37, 0.84);
+  --float-surface-flat: #1e2025;
+  --float-stroke: rgba(255, 255, 255, 0.16);
+
+  --icon-primary-inverse-static: #fff;
+  --icon-secondary-inverse-static: #ffffffad;
+
+  --states-button-primary-hover: #479fff;
+  --states-button-primary-pressed: #006ee5;
+  --states-button-primary-disabled: rgba(0, 122, 255, 0.48);
+
+  --bubbles-text-action: var(--text-primary, #ffffff);
 }

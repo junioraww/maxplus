@@ -67,8 +67,8 @@
 
   .alert {
     pointer-events: auto;
-    background-color: #222222;
-    color: #ffffff;
+    background-color: var(--bg-surface);
+    color: var(--text-primary);
     padding: 14px 18px;
     border-radius: 14px;
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
@@ -89,7 +89,7 @@
 
   .alert.clickable:active {
     transform: scale(0.97);
-    background-color: #333333;
+    background-color: var(--bg-surface-2);
   }
 
   .text {

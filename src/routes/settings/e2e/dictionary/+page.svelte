@@ -1,4 +1,5 @@
 <script>
+  import { IconButton } from "$components/ui";
   import { appCacheDir, join } from "@tauri-apps/api/path";
   import { invoke, Channel } from "@tauri-apps/api/core";
   import { page } from "$app/stores";
@@ -88,10 +89,7 @@
   </div>
 
   <div class="actions-panel" slot="footer">
-    <button
-      class="download-btn"
-      on:click={download}
-      style="
+    <IconButton class="pg-dictionary-download-btn" onclick={download} style="
         background:
           linear-gradient(
             90deg,
@@ -100,14 +98,13 @@
             #3cb371 {status.perc}%,
             #3cb371 100%
           );
-      "
-    >
+      ">
       {#if downloading}
         Скачивание {status.perc}%
       {:else}
         Скачать текущий
       {/if}
-    </button>
+    </IconButton>
   </div>
 </SettingsPageWrapper>
 
@@ -123,11 +120,11 @@
   }
 
   .description-card {
-    background: #24252a;
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: var(--bg-surface-2);
+    border: 1px solid var(--border-subtle);
     border-radius: 14px;
     padding: 16px;
-    color: #aaa;
+    color: var(--text-muted);
     font-size: 0.92rem;
     line-height: 1.5;
   }
@@ -136,8 +133,8 @@
     display: flex;
     align-items: center;
     gap: 14px;
-    background: #24252a;
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: var(--bg-surface-2);
+    border: 1px solid var(--border-subtle);
     border-radius: 14px;
     padding: 16px;
   }
@@ -153,11 +150,11 @@
 
   .info-text {
     font-size: 0.95rem;
-    color: #ddd;
+    color: var(--text-primary);
   }
 
   .info-text b {
-    color: #fff;
+    color: var(--text-primary);
   }
 
   .input-card {
@@ -176,9 +173,9 @@
   input {
     width: 100%;
     background: #1f1f26;
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    border: 1px solid var(--border-subtle);
     border-radius: 12px;
-    color: white;
+    color: var(--text-primary);
     padding: 14px;
     box-sizing: border-box;
     font-size: 0.95rem;
@@ -187,32 +184,20 @@
   }
 
   input:focus {
-    border-color: #3390ec;
+    border-color: var(--accent-primary);
     background: #20202a;
   }
 
   .actions-panel {
     flex-shrink: 0;
     padding: 14px 16px;
-    background: #212126;
-    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    background: var(--bg-topbar);
+    border-top: 1px solid var(--border-subtle);
   }
 
-  .download-btn {
-    width: 100%;
-    height: 44px;
-    border: none;
-    border-radius: 12px;
-    font-size: 0.95rem;
-    font-weight: 600;
-    cursor: pointer;
-    color: white;
-    transition: transform 0.12s, opacity 0.15s;
-  }
+  :global(.pg-dictionary-download-btn)  { width: 100%; }
 
-  .download-btn:active {
-    transform: scale(0.98);
-  }
+  :global(.pg-dictionary-download-btn):active  { transform: scale(0.98); }
 
   @keyframes spin {
     from {

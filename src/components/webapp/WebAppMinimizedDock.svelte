@@ -1,4 +1,5 @@
 <script>
+  import { IconButton } from "$components/ui";
   import { onMount, onDestroy } from "svelte";
   import {
     minimizedWebApps,
@@ -216,16 +217,12 @@
           {(app.title || "W")[0].toUpperCase()}
         </div>
         <span class="pill-title">{app.title}</span>
-        <button
-          class="pill-close-btn"
-          on:click|stopPropagation={() => closeMiniApp(app.id)}
-          title="Закрыть"
-        >
+        <IconButton class="webappminimizeddock-pill-close-btn" onclick={(e) => { e.stopPropagation(); (() => closeMiniApp(app.id))(e); }} title="Закрыть">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
             <line x1="18" y1="6" x2="6" y2="18"></line>
             <line x1="6" y1="6" x2="18" y2="18"></line>
           </svg>
-        </button>
+        </IconButton>
       </div>
     {/each}
   </div>
@@ -290,7 +287,7 @@
     width: 22px;
     height: 22px;
     border-radius: 50%;
-    background: #3b82f6;
+    background: var(--accent-primary);
     color: #fff;
     font-size: 11px;
     font-weight: bold;
@@ -303,7 +300,7 @@
   .pill-title {
     font-size: 12px;
     font-weight: 500;
-    color: #e5e7eb;
+    color: var(--text-primary);
     max-width: 110px;
     white-space: nowrap;
     overflow: hidden;
@@ -311,23 +308,6 @@
     pointer-events: none;
   }
 
-  .pill-close-btn {
-    width: 18px;
-    height: 18px;
-    border-radius: 50%;
-    border: none;
-    background: transparent;
-    color: #9ca3af;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    padding: 0;
-    transition: color 0.15s ease, background 0.15s ease;
-  }
+  :global(.webappminimizeddock-pill-close-btn)  { width: 18px; }
 
-  .pill-close-btn:hover {
-    background: rgba(255, 255, 255, 0.1);
-    color: #fff;
-  }
 </style>

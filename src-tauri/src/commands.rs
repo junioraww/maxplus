@@ -21,6 +21,9 @@ macro_rules! delegate_cmd {
 
 delegate_cmd!(start_auth(phone: String) => start_auth(phone));
 delegate_cmd!(resend_auth(phone: String) => resend_auth(phone));
+delegate_cmd!(request_qr() => request_qr());
+delegate_cmd!(check_qr(track_id: String) => check_qr(track_id));
+delegate_cmd!(login_by_qr(track_id: String) => login_by_qr(track_id));
 delegate_cmd!(check_code(code: String) => check_code(code));
 delegate_cmd!(check_password(password: String, track_id: String) => check_password(password, track_id));
 delegate_cmd!(register(first_name: String) => submit_register(first_name, None));
@@ -178,9 +181,10 @@ pub async fn init(
         state.client.set_token(t).await;
     }
 
+    let is_mobile = !identity.user_agent.device_type.eq_ignore_ascii_case("web");
     let r = state
         .client
-        .connect(identity, true)
+        .connect(identity, is_mobile)
         .await
         .map_err(|e| e.to_json())?;
 

@@ -95,7 +95,7 @@
     display: flex;
     align-items: center;
     gap: 8px;
-    background-color: #1e2025;
+    background-color: var(--bg-surface);
     border-radius: 18px;
     flex: 1 1 0%;
     min-width: 0;
@@ -123,7 +123,7 @@
   .rec-timer {
     font-size: 14px;
     font-weight: 600;
-    color: #edf0f5;
+    color: var(--text-primary);
     font-variant-numeric: tabular-nums;
     flex-shrink: 0;
   }
@@ -139,7 +139,7 @@
 
   .rec-video-label {
     font-size: 13px;
-    color: #94a3b8;
+    color: var(--text-muted);
     flex: 1 1 0%;
     min-width: 0;
     overflow: hidden;
@@ -152,7 +152,7 @@
     align-items: center;
     gap: 4px;
     font-size: 12px;
-    color: #64748b;
+    color: var(--text-muted);
     white-space: nowrap;
     transition: transform 0.05s linear;
     flex-shrink: 1;
@@ -179,21 +179,21 @@
     width: 28px;
     height: 28px;
     border-radius: 50%;
-    background: rgba(255, 255, 255, 0.08);
-    color: #94a3b8;
+    background: var(--bg-surface);
+    color: var(--text-muted);
     transition: all 0.2s ease;
     flex-shrink: 0;
   }
 
   .rec-lock-slide.reached {
-    background: #248bfe;
-    color: #fff;
+    background: var(--accent-primary);
+    color: var(--button-primary-contrast);
   }
 
   .rec-trash-btn {
     background: transparent;
     border: none;
-    color: #ef4444;
+    color: var(--status-danger);
     cursor: pointer;
     padding: 6px;
     border-radius: 50%;
@@ -205,13 +205,13 @@
   }
 
   .rec-trash-btn:hover {
-    background: rgba(239, 68, 68, 0.15);
+    background: var(--danger-subtle);
   }
 
   .rec-stop-btn {
     background: transparent;
     border: none;
-    color: #edf0f5;
+    color: var(--text-primary);
     cursor: pointer;
     padding: 6px;
     border-radius: 50%;
@@ -223,7 +223,7 @@
   }
 
   .rec-stop-btn:hover {
-    background: rgba(255, 255, 255, 0.12);
+    background: var(--bg-surface-2);
   }
 
   .button {
@@ -237,23 +237,23 @@
     justify-content: center;
     cursor: pointer;
     background: transparent;
-    color: #8b929e;
+    color: var(--text-muted);
     transition: all 0.18s ease;
   }
 
   .send-button {
-    color: #248bfe;
+    color: var(--accent-primary);
     background: rgba(36, 139, 254, 0.12);
   }
 
   .send-button:hover {
-    color: #fff;
-    background: #248bfe;
+    color: var(--button-primary-contrast);
+    background: var(--accent-primary);
   }
 
   .recording-pulse-btn {
-    background: #248bfe;
-    color: #fff;
+    background: var(--accent-primary);
+    color: var(--button-primary-contrast);
     animation: rec-btn-pulse 1.5s infinite;
     flex-shrink: 0;
   }

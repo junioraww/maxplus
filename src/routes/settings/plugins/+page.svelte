@@ -1,4 +1,5 @@
 <script>
+  import { Button, Tab } from "$components/ui";
   import { onMount } from "svelte";
   import SettingsPageWrapper from "$components/settings/SettingsPageWrapper.svelte";
   import PluginCard from "$components/plugins/PluginCard.svelte";
@@ -129,20 +130,12 @@
 
 <SettingsPageWrapper title="Плагины" {onClose}>
   <div slot="header-extra" class="tabs-container">
-    <button 
-      class="tab-btn" 
-      class:active={activeTab === 'installed'} 
-      on:click={() => activeTab = 'installed'}
-    >
+    <Tab variant="underline" active={activeTab === 'installed'} class="pg-plugins-tab-btn" onclick={() => activeTab = 'installed'}>
       Установленные
-    </button>
-    <button 
-      class="tab-btn" 
-      class:active={activeTab === 'store'} 
-      on:click={() => activeTab = 'store'}
-    >
+    </Tab>
+    <Tab variant="underline" active={activeTab === 'store'} class="pg-plugins-tab-btn" onclick={() => activeTab = 'store'}>
       Каталог
-    </button>
+    </Tab>
   </div>
 
   <div class="content">
@@ -161,9 +154,9 @@
       {/if}
 
       <div class="import-container">
-        <button class="import-btn" on:click={handleImport}>
+        <Button class="pg-plugins-import-btn" onclick={handleImport}>
           Импортировать .mxp
-        </button>
+        </Button>
       </div>
     {:else}
       <div class="search-container">
@@ -232,26 +225,8 @@
     border-radius: 8px;
   }
 
-  .tab-btn {
-    background: transparent;
-    border: none;
-    color: var(--text-secondary);
-    padding: 6px 12px;
-    font-size: 13px;
-    font-weight: 500;
-    border-radius: 6px;
-    cursor: pointer;
-    transition: all 150ms ease;
-  }
 
-  .tab-btn:hover {
-    color: var(--text-primary);
-  }
 
-  .tab-btn.active {
-    background: var(--bg-surface-2);
-    color: var(--accent-primary);
-  }
 
   .content {
     flex: 1;
@@ -304,26 +279,9 @@
     padding-top: 16px;
   }
 
-  .import-btn {
-    width: 100%;
-    padding: 14px;
-    background: var(--bg-surface-2);
-    color: var(--text-primary);
-    border: 1px solid var(--border-card);
-    border-radius: 12px;
-    font-size: 15px;
-    font-weight: 600;
-    cursor: pointer;
-    transition: all 150ms ease;
-  }
+  :global(.pg-plugins-import-btn)  { width: 100%; }
 
-  .import-btn:hover {
-    background: var(--border-subtle);
-  }
 
-  .import-btn:active {
-    opacity: 0.8;
-  }
 
   .search-container {
     position: relative;

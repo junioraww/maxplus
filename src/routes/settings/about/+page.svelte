@@ -1,4 +1,5 @@
 <script>
+  import { Button } from "$components/ui";
   import { platform, version as getVersion } from "@tauri-apps/plugin-os";
   import { openUrl } from "@tauri-apps/plugin-opener";
   import { onMount } from "svelte";
@@ -155,9 +156,9 @@
   </div>
 
   <div class="actions-panel" slot="footer">
-    <button class="check-btn" on:click={checkUpdates} disabled={checking}>
+    <Button class="pg-about-check-btn" onclick={checkUpdates} disabled={checking}>
       Проверить обновления{doingStuff}
-    </button>
+    </Button>
   </div>
 </SettingsPageWrapper>
 
@@ -204,21 +205,21 @@
   }
 
   h1 {
-    color: #ffffff;
+    color: var(--text-primary);
     font-size: 24px;
     font-weight: 700;
     margin: 0;
   }
 
   .description {
-    color: #888;
+    color: var(--text-muted);
     margin: 6px 0 0;
     font-size: 0.95rem;
   }
 
   .card {
-    background: #24252a;
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: var(--bg-surface-2);
+    border: 1px solid var(--border-subtle);
     border-radius: 14px;
     overflow: hidden;
     flex-shrink: 0;
@@ -253,11 +254,11 @@
   }
 
   .source-item:hover {
-    background: rgba(255, 255, 255, 0.05);
+    background: var(--bg-surface);
   }
 
   .source-item:active {
-    background: rgba(255, 255, 255, 0.08);
+    background: var(--bg-surface);
   }
 
   .source-icon {
@@ -267,25 +268,25 @@
   }
 
   .github-icon {
-    background: #fff;
+    background: var(--bg-sheet);
     border-radius: 50%;
   }
 
   .source-name {
     flex: 1;
-    color: #fff;
+    color: var(--text-primary);
     font-size: 0.95rem;
     font-weight: 500;
   }
 
   .chevron {
-    color: #555;
+    color: var(--text-secondary);
     flex-shrink: 0;
   }
 
   .divider {
     height: 1px;
-    background: rgba(255, 255, 255, 0.06);
+    background: var(--bg-surface);
     margin: 0 16px;
     flex-shrink: 0;
   }
@@ -307,11 +308,11 @@
   }
 
   .info-row span {
-    color: #888;
+    color: var(--text-muted);
   }
 
   .info-row strong {
-    color: #fff;
+    color: var(--text-primary);
     font-weight: 500;
   }
 
@@ -319,42 +320,13 @@
     flex-shrink: 0;
     padding: 14px 16px;
     padding-bottom: max(14px, env(safe-area-inset-bottom, 14px));
-    background: #212126;
-    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    background: var(--bg-topbar);
+    border-top: 1px solid var(--border-subtle);
   }
 
-  .check-btn {
-    width: 100%;
-    height: 44px;
-    min-height: 44px;
-    flex-shrink: 0;
-    box-sizing: border-box;
-    background: #3390ec;
-    color: white;
-    border: none;
-    border-radius: 12px;
-    font-size: 0.95rem;
-    font-weight: 600;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: transform 0.12s, opacity 0.15s, background 0.15s;
-    user-select: none;
-    -webkit-tap-highlight-color: transparent;
-    touch-action: manipulation;
-  }
+  :global(.pg-about-check-btn)  { width: 100%; flex-shrink: 0; }
 
-  .check-btn:hover {
-    background: #2b7ecf;
-  }
 
-  .check-btn:active {
-    transform: scale(0.98);
-  }
+  :global(.pg-about-check-btn):active  { transform: scale(0.98); }
 
-  .check-btn:disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
-  }
 </style>

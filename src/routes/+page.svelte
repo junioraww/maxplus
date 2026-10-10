@@ -1,7 +1,5 @@
 <script>
   import { onMount } from "svelte";
-  import { listen } from "@tauri-apps/api/event";
-  import { invoke } from "@tauri-apps/api/core";
   import Chats from "./chats/+page.svelte";
   import DigitalId from "./digital_id/+page.svelte";
   import Calls from "./calls/+page.svelte";
@@ -134,6 +132,12 @@
 
     let unlisten;
     (async () => {
+      const isTauri = typeof window !== 'undefined' && !!window.__TAURI_INTERNALS__;
+      if (!isTauri) return;
+
+      const { listen } = await import("@tauri-apps/api/event");
+      const { invoke } = await import("@tauri-apps/api/core");
+
       try {
         unlisten = await listen("open_chat", (event) => {
           const chatId = event.payload;
@@ -149,6 +153,9 @@
 
     const handleVisibility = async () => {
       if (document.visibilityState === "visible") {
+        const isTauri = typeof window !== 'undefined' && !!window.__TAURI_INTERNALS__;
+        if (!isTauri) return;
+        const { invoke } = await import("@tauri-apps/api/core");
         try {
           const pending = await invoke("check_pending_open_chat");
           if (pending != null && pending !== 0) openChat(Number(pending));

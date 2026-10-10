@@ -66,7 +66,7 @@
     flex-shrink: 0;
     overflow-x: auto;
     z-index: 1;
-    background-color: #17191d;
+    background-color: var(--bg-surface);
     border-bottom: 1px solid rgba(255, 255, 255, 0.04);
   }
 
@@ -75,7 +75,7 @@
     width: 70px;
     height: 70px;
     border-radius: 12px;
-    background: rgba(255, 255, 255, 0.06);
+    background: var(--bg-surface);
     flex-shrink: 0;
     display: flex;
     align-items: center;
@@ -94,7 +94,7 @@
     top: 3px;
     right: 3px;
     background: rgba(0, 0, 0, 0.6);
-    color: #fff;
+    color: var(--text-primary);
     border: none;
     width: 20px;
     height: 20px;
@@ -140,8 +140,8 @@
   .upload-loader {
     width: 24px;
     height: 24px;
-    border: 2.5px solid rgba(255, 255, 255, 0.25);
-    border-top-color: #fff;
+    border: 2.5px solid var(--border-subtle);
+    border-top-color: var(--border-subtle);
     border-radius: 50%;
     animation: upload-spin 0.8s linear infinite;
   }
@@ -163,7 +163,7 @@
 
   .file-name {
     font-size: 10px;
-    color: #aaa;
+    color: var(--text-muted);
     max-width: 60px;
     white-space: nowrap;
     overflow: hidden;

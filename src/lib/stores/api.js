@@ -24,9 +24,18 @@ export default writable(API);
 export const currentRealChats = writable([]);
 export const currentRealContacts = writable([]);
 
+const isTauriEnv = typeof window !== "undefined" && !!window.__TAURI_INTERNALS__;
+
 currentUser.subscribe(async userId => {
+  if (!isTauriEnv) return;
   if (userId === undefined) {
-    const account = await Accounts.getCurrentAccount();
+    let account;
+    try {
+      account = await Accounts.getCurrentAccount();
+    } catch {
+      currentUser.set(null);
+      return;
+    }
     if (!account) return currentUser.set(null);
     const data = await Accounts.getAccount(account.id);
     console.log('Loaded current account =', data);

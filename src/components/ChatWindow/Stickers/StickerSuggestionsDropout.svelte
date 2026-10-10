@@ -46,7 +46,7 @@
     left: 8px;
     right: 8px;
     max-width: 600px;
-    background: #1e2025;
+    background: var(--bg-surface);
     border: none;
     border-radius: 14px;
     padding: 6px 10px 8px;
@@ -79,7 +79,7 @@
   .title {
     font-size: 12px;
     font-weight: 600;
-    color: #8b929e;
+    color: var(--text-muted);
     text-transform: uppercase;
     letter-spacing: 0.5px;
   }
@@ -106,7 +106,7 @@
   }
 
   .list::-webkit-scrollbar-thumb {
-    background: rgba(255, 255, 255, 0.2);
+    background: var(--bg-surface-2);
     border-radius: 2px;
   }
 
@@ -125,7 +125,7 @@
 
   .sticker-suggestion-item:hover {
     transform: scale(1.15);
-    background: rgba(255, 255, 255, 0.08);
+    background: var(--bg-surface);
   }
 
   .sticker-suggestion-item:active {

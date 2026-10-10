@@ -45,8 +45,8 @@
   }
 
   .reaction-bubble-chip {
-    background: rgba(255, 255, 255, 0.12);
-    border: 1px solid rgba(255, 255, 255, 0.15);
+    background: var(--bg-surface-2);
+    border: 1px solid var(--border-subtle);
     border-radius: 14px;
     padding: 2px 7px;
     display: inline-flex;
@@ -54,7 +54,7 @@
     font-size: 12px;
     gap: 4px;
     cursor: pointer;
-    color: #ffffff;
+    color: var(--text-primary);
     transition: transform 0.12s cubic-bezier(0.34, 1.56, 0.64, 1), background-color 0.15s ease, border-color 0.15s ease;
     outline: none;
     -webkit-tap-highlight-color: transparent;

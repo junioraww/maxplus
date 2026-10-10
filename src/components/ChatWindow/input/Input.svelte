@@ -1,4 +1,5 @@
 <script>
+  import { IconButton } from "$components/ui";
   import { invoke, convertFileSrc } from "@tauri-apps/api/core";
   import { platform } from "@tauri-apps/plugin-os";
   import { tick, onMount, onDestroy } from "svelte";
@@ -1688,7 +1689,7 @@
               class:has-formatting={hasFormatting}
               id="textarea-{chat.id}"
               rows="1"
-              placeholder="Сообщение"
+              placeholder="Message"
               bind:value={newMessage}
               on:focus={handleTextareaFocus}
               on:blur={() => { autoResize(); syncScroll(); }}
@@ -1778,15 +1779,9 @@
             </button>
           {/if}
 
-          <button
-            class="emoji-btn"
-            class:active={showStickerPanel}
-            type="button"
-            title="Эмодзи и стикеры"
-            on:click={toggleStickerPanel}
-          >
+          <IconButton active={showStickerPanel} class="input-emoji-btn" title="Эмодзи и стикеры" onclick={toggleStickerPanel}>
             <img src="icons/smile.svg" alt="smile" />
-          </button>
+          </IconButton>
         </div>
 
         {#if newMessage.length || attaches.length || ($forwardDraft && $forwardDraft.messages?.length > 0)}
@@ -1862,17 +1857,159 @@
 </div>
 
 <style>
+  /* === Screenshot #1 layout overrides: [clip] [white pill: Message] [mic] === */
+  .input-area :global(.input-controls) {
+    display: flex !important;
+    align-items: center !important;
+    gap: 10px !important;
+    padding: 8px 12px 12px !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    border: none !important;
+  }
+
+  /* Hide blue "apps" button and sticker/emoji button */
+  .input-area :global([class*="apps"]),
+  .input-area :global([class*="sticker"]),
+  .input-area :global([class*="emoji-btn"]),
+  .input-area :global([class*="emoji-button"]),
+  .input-area :global(button[aria-label*="Стикер"]),
+  .input-area :global(button[aria-label*="стикер"]),
+  .input-area :global(button[aria-label*="Sticker"]),
+  .input-area :global(button[aria-label*="Приложения"]),
+  .input-area :global(button[aria-label*="Apps"]) {
+    display: none !important;
+  }
+
+  /* Clip and mic: plain gray icons outside the field */
+  .input-area :global([class*="attach"]),
+  .input-area :global([class*="mic"]),
+  .input-area :global([class*="voice"]) {
+    flex: 0 0 auto !important;
+    width: 40px !important;
+    height: 40px !important;
+    padding: 0 !important;
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    color: #8a8f99 !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+  }
+  .input-area :global([class*="attach"] svg),
+  .input-area :global([class*="mic"] svg),
+  .input-area :global([class*="voice"] svg) {
+    width: 28px !important;
+    height: 28px !important;
+    color: #8a8f99 !important;
+  }
+
+  /* White pill text field */
+  .input-area :global(.input-wrapper) {
+    flex: 1 1 auto !important;
+    min-width: 0 !important;
+    min-height: 56px !important;
+    display: flex !important;
+    align-items: center !important;
+    padding: 0 20px !important;
+    background: #ffffff !important;
+    border: 1px solid rgba(0, 0, 0, 0.06) !important;
+    border-radius: 28px !important;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06) !important;
+    box-sizing: border-box !important;
+  }
+  .input-area :global(.input-wrapper [contenteditable]),
+  .input-area :global(.input-wrapper textarea) {
+    font-size: 17px !important;
+    line-height: 22px !important;
+    color: #000 !important;
+    background: transparent !important;
+    border: none !important;
+    outline: none !important;
+  }
+  .input-area :global(.input-wrapper [data-placeholder]::before),
+  .input-area :global(.input-wrapper textarea::placeholder),
+  .input-area :global([class*="placeholder"]) {
+    color: #9aa0a8 !important;
+    font-size: 17px !important;
+  }
+
   .input-area {
     position: relative;
     padding: 0;
     flex-shrink: 0;
-    background: var(--bg-app);
-    border-top: 1px solid var(--border-card);
+    background: transparent;
+    border-top: none;
     z-index: 10;
     width: 100%;
     max-width: 100%;
     min-width: 0;
     box-sizing: border-box;
+  }
+
+  /* MAX-like layout: clip | white pill field | mic */
+  .input-area .input-controls {
+    gap: 10px !important;
+    padding: 8px 12px 12px !important;
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+  }
+
+  .input-area :global(.input-wrapper),
+  .input-area :global(.input-field),
+  .input-area :global(.editor-wrapper) {
+    flex: 1 1 auto;
+    min-width: 0;
+    min-height: 56px;
+    display: flex;
+    align-items: center;
+    padding: 0 20px;
+    background: #ffffff;
+    border-radius: 28px;
+    border: none;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+    box-sizing: border-box;
+  }
+
+  .input-area :global(.input-wrapper .input-field),
+  .input-area :global(.input-wrapper .editor-wrapper) {
+    min-height: 0;
+    padding: 0;
+    background: transparent;
+    box-shadow: none;
+    border-radius: 0;
+  }
+
+  .input-area :global([contenteditable]),
+  .input-area :global(textarea) {
+    font-size: 17px;
+    line-height: 22px;
+    background: transparent;
+    border: none;
+    outline: none;
+  }
+
+  .input-area :global(.attach-toggle-btn),
+  .input-area :global(.mic-btn),
+  .input-area :global(.record-btn),
+  .input-area :global(.voice-btn) {
+    flex: 0 0 auto;
+    width: 40px;
+    height: 40px;
+    background: transparent !important;
+    border: none;
+    box-shadow: none;
+    color: #8a96a3;
+  }
+
+  .input-area :global(.apps-btn),
+  .input-area :global(.app-launcher-btn),
+  .input-area :global(.menu-btn),
+  .input-area :global(.sticker-btn),
+  .input-area :global(.emoji-btn) {
+    display: none !important;
   }
 
   .input-controls {
@@ -1891,17 +2028,24 @@
     display: flex;
     align-items: flex-end;
     background-color: var(--bg-surface);
-    border-radius: 18px;
+    border-radius: 28px;
     flex-grow: 1;
     min-height: 48px;
     box-sizing: border-box;
     border: none;
     transition: background-color 0.15s ease;
-  }
+
+    background: #ffffff;
+    box-shadow: none;
+    padding: 6px 8px;}
 
   .input-container:focus-within {
-    background-color: #23262d;
-  }
+    background-color: var(--bg-surface-2);
+
+    background: #ffffff;
+    border-radius: 28px;
+    box-shadow: none;
+    padding: 6px 8px;}
 
   .textarea-wrapper {
     position: relative;
@@ -1936,7 +2080,7 @@
 
   .backdrop-span.bold-text {
     font-weight: 700;
-    color: #ffffff;
+    color: var(--text-primary);
   }
 
   .backdrop-span.italic-text {
@@ -1957,7 +2101,7 @@
   }
 
   .backdrop-span.code-text {
-    background: rgba(255, 255, 255, 0.12);
+    background: var(--bg-surface-2);
     color: #f59e0b;
     border-radius: 3px;
   }
@@ -1984,7 +2128,7 @@
     flex-grow: 1;
     background-color: transparent;
     color: var(--text-secondary);
-    border: none;
+    border: 0;
     resize: none;
     overflow-y: auto;
     min-height: 44px;
@@ -2000,16 +2144,23 @@
     outline: none;
     font-family: inherit;
     width: 0;
-  }
+
+    box-shadow: none;
+    background: transparent;
+    border-radius: 0;}
 
   textarea.has-formatting {
     color: transparent !important;
     caret-color: var(--text-color, #ffffff) !important;
-  }
+
+    border: 0;
+    box-shadow: none;
+    background: transparent;
+    border-radius: 0;}
 
   textarea.has-formatting::selection {
     background: rgba(59, 130, 246, 0.4);
-    color: #ffffff !important;
+    color: var(--text-primary) !important;
   }
 
   textarea::placeholder {
@@ -2032,8 +2183,8 @@
   }
 
   .button:hover {
-    color: #fff;
-    background: rgba(255, 255, 255, 0.06);
+    color: var(--text-primary);
+    background: var(--bg-surface);
   }
 
   .button:active {
@@ -2051,42 +2202,15 @@
   }
 
   .send-button:hover {
-    color: #fff;
+    color: var(--button-primary-contrast);
     background: var(--accent-primary);
   }
 
-  .emoji-btn {
-    background: none;
-    border: none;
-    cursor: pointer;
-    width: 38px;
-    height: 38px;
-    margin-right: 5px;
-    margin-bottom: 5px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    opacity: 0.65;
-    border-radius: 50%;
-    transition: all 0.18s ease;
-    flex-shrink: 0;
-  }
+  :global(.input-emoji-btn)  { width: 38px; margin-right: 5px; margin-bottom: 5px; flex-shrink: 0; }
 
-  .emoji-btn img {
-    width: 22px;
-    height: 22px;
-  }
+  :global(.input-emoji-btn) img  { width: 22px; }
 
-  .emoji-btn:hover {
-    opacity: 1;
-    background: rgba(255, 255, 255, 0.08);
-  }
 
-  .emoji-btn.active {
-    opacity: 1;
-    background: var(--accent-subtle-hover);
-    filter: brightness(1.2);
-  }
 
   .bot-cmd-btn {
     background: none;
@@ -2109,8 +2233,8 @@
 
   .bot-cmd-btn:hover {
     opacity: 1;
-    color: #fff;
-    background: rgba(255, 255, 255, 0.08);
+    color: var(--text-primary);
+    background: var(--bg-surface);
   }
 
   .bot-cmd-btn.active {
@@ -2127,5 +2251,39 @@
     display: flex;
     align-items: center;
     justify-content: center;
+  }
+  input:not([type]),
+  input[type="text"],
+  textarea,
+  [contenteditable="true"] {
+    box-sizing: border-box;
+    min-width: 0;
+    min-height: 46px;
+    max-height: 160px;
+    padding: 11px 16px;
+    border: 0;
+    border-radius: 0;
+    background-color: var(--bg-surface, #ffffff);
+    color: var(--text-primary, #111111);
+    font-family: inherit;
+    font-size: 16px;
+    line-height: 22px;
+    overflow-wrap: anywhere;
+    box-shadow: none;
+
+    background: transparent;}
+
+  textarea {
+    resize: none;
+
+    border: 0;
+    box-shadow: none;
+    background: transparent;
+    border-radius: 0;}
+
+  input::placeholder,
+  textarea::placeholder {
+    color: var(--text-secondary, #858585);
+    opacity: 1;
   }
 </style>

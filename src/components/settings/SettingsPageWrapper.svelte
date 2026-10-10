@@ -1,4 +1,5 @@
 <script>
+  import { IconButton } from "$components/ui";
   import { goto } from "$app/navigation";
   import { onMount, createEventDispatcher } from "svelte";
   import { swipeToClose } from "$components/ChatWindow/swipeToClose.js";
@@ -7,6 +8,7 @@
   export let title = "";
   export let from = "/?card=settings";
   export let isTab = false;
+  export let tabHeader = false;
   export let canSwipe = () => true;
   export let onBeforeClose = null;
   export let onClose = null;
@@ -73,6 +75,7 @@
 
 {#if isTab}
   <div class="settings-page-tab">
+    {#if tabHeader && title}<header class="tab-header"><h1>{title}</h1></header>{/if}
     <slot {close} />
   </div>
 {:else}
@@ -94,12 +97,12 @@
     }}
   >
     <div class="settings-topbar">
-      <button class="settings-back-btn" on:click={close} aria-label="Назад">
+      <IconButton class="settingspagewrapper-settings-back-btn" onclick={close} aria-label="Назад">
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
           <line x1="19" y1="12" x2="5" y2="12"></line>
           <polyline points="12 19 5 12 12 5"></polyline>
         </svg>
-      </button>
+      </IconButton>
 
       {#if title}
         <div class="settings-topbar-title">{title}</div>
@@ -180,29 +183,10 @@
     z-index: 10;
   }
 
-  .settings-back-btn {
-    width: 36px;
-    height: 36px;
-    border: none;
-    border-radius: 50%;
-    background: transparent;
-    color: var(--text-muted);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    transition: background 0.15s, color 0.15s, transform 0.12s;
-    flex-shrink: 0;
-  }
+  :global(.settingspagewrapper-settings-back-btn)  { width: 36px; flex-shrink: 0; }
 
-  .settings-back-btn:hover {
-    background: rgba(255, 255, 255, 0.08);
-    color: var(--text-primary);
-  }
 
-  .settings-back-btn:active {
-    transform: scale(0.92);
-  }
+  :global(.settingspagewrapper-settings-back-btn):active  { transform: scale(0.92); }
 
   .settings-topbar-title {
     color: var(--text-primary);
@@ -240,4 +224,6 @@
       transform: translate3d(0, 0, 0);
     }
   }
+  .tab-header { display: flex; align-items: center; padding: 12px 16px; background: var(--bg-topbar); border-bottom: 1px solid var(--border-subtle); flex-shrink: 0; }
+  .tab-header h1 { margin: 0; font-size: 1.15rem; font-weight: 600; color: var(--text-primary); }
 </style>

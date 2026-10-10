@@ -17,65 +17,84 @@
   }
 </script>
 
-<div class="search-block" class:active={focused}>
-  <img src="icons/search.svg" />
-  {#if !query.length}
-    <a>{placeholder}</a>
-  {/if}
-  <input
-    type="text"
-    placeholder=""
-    bind:value={query}
-    on:focus={() => (focused = true)}
-    on:focusout={() => (focused = false)}
-  />
+<div class="input input--secondary input--neutral input--compact">
+  <div class="search-block" class:active={focused}>
+    <svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="11" cy="11" r="8"></circle>
+      <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+    </svg>
+    {#if !query.length}
+      <span class="placeholder-text">{placeholder}</span>
+    {/if}
+    <input
+      class="field"
+      type="text"
+      placeholder=""
+      bind:value={query}
+      on:focus={() => (focused = true)}
+      on:focusout={() => (focused = false)}
+    />
+  </div>
 </div>
 
 <style>
+  .input {
+    width: 100%;
+  }
+
   .search-block {
-    background-color: #2c2d31;
-    color: #999;
-    width: calc(100% - 25px);
-    height: 30px;
-    border-radius: 9px;
+    background-color: rgba(118, 118, 128, 0.12);
+    color: var(--text-muted);
+    width: 100%;
+    height: 36px;
+    border-radius: 10px;
     display: flex;
     align-items: center;
-    align-self: center;
     position: relative;
-    font-size: 14px;
+    font-size: 15px;
     cursor: pointer;
+    padding: 0 10px;
+    box-sizing: border-box;
+    transition: background-color 0.15s;
   }
 
   .search-block.active {
     cursor: text;
+    background-color: rgba(118, 118, 128, 0.18);
   }
 
-  .search-block img {
-    height: 20px;
-    margin: 0 5px;
-    filter: invert(40%);
+  .search-icon {
+    flex-shrink: 0;
+    color: var(--text-muted);
+    margin-right: 8px;
   }
 
-  .search-block a {
+  .placeholder-text {
     position: absolute;
-    margin-left: 30px;
+    left: 34px;
     pointer-events: none;
+    color: var(--text-muted);
+    font-size: 15px;
     opacity: 1;
     transition: opacity 0.1s;
   }
 
-  .search-block.active a {
+  .search-block.active .placeholder-text {
     opacity: 0;
   }
 
-  .search-block input {
+  .field {
     width: 100%;
     outline: none;
     border: none;
     background: none;
-    font-size: 14px;
+    font-size: 15px;
     display: flex;
-    transition: all 0.2s ease-in-out;
-    color: #ccc;
+    color: var(--text-primary);
+    padding: 0;
+  }
+
+  .field::placeholder {
+    color: var(--text-muted);
   }
 </style>

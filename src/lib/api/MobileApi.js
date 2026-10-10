@@ -1,4 +1,3 @@
-import { listen } from "@tauri-apps/api/event";
 import { goto } from "$app/navigation";
 import { get } from "svelte/store";
 import { pluginEmit } from "$lib/plugins/events.js";
@@ -160,6 +159,9 @@ export default class MobileApi extends BaseAPI {
   }
 
   async startListener() {
+    const isTauri = typeof window !== "undefined" && !!window.__TAURI_INTERNALS__;
+    if (!isTauri) return;
+    const { listen } = await import("@tauri-apps/api/event");
     this.unlisten = await listen("max", async (event) => {
       const { payload } = event;
 
@@ -1677,7 +1679,7 @@ export default class MobileApi extends BaseAPI {
     currentSessionChats.update(chats => {
       if (!chats) return;
       const updated = chats.find(x => x.id === chatId);
-      if (updated) updated.newMessages = response.unread;
+      if (updated) updated.newMessages = Number(response?.unread ?? response?.payload?.unread ?? 0) || 0;
       return chats;
     });
 

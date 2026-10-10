@@ -68,7 +68,7 @@
           fill="none"
           stroke-linecap="round"
           stroke-linejoin="round"
-          color="white"><polyline points="20 6 9 17 4 12"></polyline></svg
+          style="color: var(--text-primary)"><polyline points="20 6 9 17 4 12"></polyline></svg
         >
       {/if}
     </div>
@@ -116,7 +116,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    color: white;
+    color: var(--text-primary);
     font-weight: 600;
   }
 

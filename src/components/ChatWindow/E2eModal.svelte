@@ -1,4 +1,5 @@
 <script>
+  import { Modal, Button } from "$components/ui";
   import { fade, scale } from "svelte/transition";
   import { handleEnc, dismissRequest } from "$components/ChatWindow/e2e.js";
 
@@ -28,11 +29,9 @@
   }
 </script>
 
-<svelte:window on:keydown={handleKeydown} />
 
 {#if gotSecretChatRequest}
-  <div class="modal-backdrop" transition:fade={{ duration: 150 }} on:click={closeModal}>
-    <div class="modal-content" transition:scale={{ start: 0.95, duration: 150 }} on:click|stopPropagation>
+  <Modal open={true} size="sm" showClose={false} class="e2e-modal" onclose={closeModal}>
       <div class="modal-header">
         <div class="icon-wrap">
           <svg
@@ -83,54 +82,24 @@
 
       <div class="modal-actions">
         <div class="main-actions">
-          <button on:click={() => action("agree")} class="btn btn-primary"
-            >Согласиться</button
-          >
-          <button on:click={() => action("deny")} class="btn btn-secondary"
-            >Отказаться</button
-          >
+          <Button variant="primary" full onclick={() => action("agree")}>Согласиться</Button>
+          <Button variant="secondary" full onclick={() => action("deny")}>Отказаться</Button>
         </div>
-        <button on:click={() => action("block")} class="btn btn-link"
-          >Не показывать 5 минут</button
-        >
+        <Button variant="ghost" full onclick={() => action("block")}>Не показывать 5 минут</Button>
       </div>
-    </div>
-  </div>
+    </Modal>
 {/if}
 
 <style>
-  .modal-backdrop {
-    position: fixed;
-    inset: 0;
-    background-color: rgba(0, 0, 0, 0.72);
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    z-index: 100;
-    padding: 16px;
-  }
+  :global(.e2e-modal .modal__body) { padding: 0; }
 
-  .modal-content {
-    background-color: #1e2025;
-    color: #edf0f5;
-    border-radius: 16px;
-    padding: 24px;
-    width: 100%;
-    max-width: 400px;
-    text-align: center;
-    display: flex;
-    flex-direction: column;
-    gap: 16px;
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    box-shadow: 0 20px 48px rgba(0, 0, 0, 0.65);
-  }
 
   .modal-header {
     display: flex;
     flex-direction: column;
     align-items: center;
     gap: 10px;
-    color: #edf0f5;
+    color: var(--text-primary);
   }
 
   .icon-wrap {
@@ -141,21 +110,21 @@
     height: 52px;
     border-radius: 50%;
     background: rgba(34, 197, 94, 0.12);
-    color: #4ade80;
+    color: var(--status-success);
   }
 
   .modal-header h2 {
     margin: 0;
     font-size: 20px;
     font-weight: 600;
-    color: #f8fafc;
+    color: var(--text-primary);
   }
 
   .modal-body p {
     margin: 0;
     font-size: 15px;
     line-height: 1.5;
-    color: #94a3b8;
+    color: var(--text-muted);
   }
 
   .warning-box {
@@ -197,56 +166,12 @@
     gap: 12px;
   }
 
-  .btn {
-    width: 100%;
-    padding: 12px 16px;
-    font-size: 15px;
-    font-weight: 600;
-    border-radius: 10px;
-    border: none;
-    cursor: pointer;
-    transition: all 0.15s ease;
-    -webkit-tap-highlight-color: transparent;
-  }
 
-  .btn:hover {
-    transform: translateY(-1px);
-  }
 
-  .btn:active {
-    transform: translateY(0);
-  }
 
-  .btn.btn-primary {
-    background-color: #22c55e;
-    color: #ffffff;
-  }
 
-  .btn.btn-primary:hover {
-    background-color: #16a34a;
-  }
 
-  .btn.btn-secondary {
-    background-color: rgba(255, 255, 255, 0.08);
-    color: #e2e8f0;
-    border: 1px solid rgba(255, 255, 255, 0.06);
-  }
 
-  .btn.btn-secondary:hover {
-    background-color: rgba(255, 255, 255, 0.12);
-  }
 
-  .btn.btn-link {
-    background: none;
-    color: #64748b;
-    font-weight: 500;
-    font-size: 13px;
-    padding: 6px;
-  }
 
-  .btn.btn-link:hover {
-    color: #94a3b8;
-    text-decoration: underline;
-    transform: none;
-  }
 </style>

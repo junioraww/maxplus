@@ -1,4 +1,5 @@
 <script>
+  import { IconButton } from "$components/ui";
   import { getAttachText } from "$lib/utils/attachs.js";
   import { getContact } from "$lib/stores/contacts";
 
@@ -28,7 +29,7 @@
     </div>
   </div>
 
-  <button class="reply-close" on:click={() => (replyTo = null)}> ✕ </button>
+  <IconButton class="reply-reply-close" onclick={() => (replyTo = null)}> ✕ </IconButton>
 </div>
 
 <style>
@@ -36,7 +37,7 @@
     display: flex;
     align-items: center;
     gap: 10px;
-    background: #17191d;
+    background: var(--bg-surface);
     border-radius: 10px;
     padding: 8px 10px;
     margin: 0 8px 6px 8px;
@@ -59,30 +60,18 @@
 
   .reply-author {
     font-size: 13px;
-    color: #4a90e2;
+    color: var(--accent-primary);
     font-weight: 500;
   }
 
   .reply-text {
     margin-top: 2px;
     font-size: 14px;
-    color: #ccc;
+    color: var(--text-primary);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
   }
 
-  .reply-close {
-    background: none;
-    border: none;
-    color: #aaa;
-    cursor: pointer;
-    font-size: 18px;
-    opacity: 0.6;
-    transition: 0.2s;
-  }
 
-  .reply-close:hover {
-    opacity: 1;
-  }
 </style>

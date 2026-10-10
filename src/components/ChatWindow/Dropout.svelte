@@ -1,4 +1,5 @@
 <script>
+  import { IconButton, MenuItem } from "$components/ui";
   import { createEventDispatcher, onDestroy } from "svelte";
   import { fade, scale, fly } from "svelte/transition";
   import { tick } from "svelte";
@@ -132,8 +133,6 @@
     dispatch("close", { action: "reaction", msg: targetMsg });
     cleanupBack();
   };
-
-
 
   function handleSetReply() {
     const targetMsg = activeAt?.msg;
@@ -318,25 +317,15 @@
       {#if reactionsExpanded}
         <div class="reactions-picker-view">
           <div class="reactions-picker-header">
-            <button
-              type="button"
-              class="picker-back-btn"
-              on:click|stopPropagation={() => { reactionsExpanded = false; }}
-              title="Назад"
-            >
+            <IconButton class="dropout-picker-back-btn" onclick={(e) => { e.stopPropagation(); (() => { reactionsExpanded = false; })(e); }} title="Назад">
               <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
                 <path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/>
               </svg>
-            </button>
+            </IconButton>
             <span class="picker-title">Реакции</span>
-            <button
-              type="button"
-              class="picker-close-btn"
-              on:click|stopPropagation={() => dispatch("close", {})}
-              title="Закрыть"
-            >
+            <IconButton class="dropout-picker-close-btn" onclick={(e) => { e.stopPropagation(); (() => dispatch("close", {}))(e); }} title="Закрыть">
               ✕
-            </button>
+            </IconButton>
           </div>
           <div class="reactions-picker-grid">
             {#each $reactionEmojis as emoji, i (emoji + '_' + i)}
@@ -356,63 +345,36 @@
       {:else}
         <div class="actions-group">
           {#if !isChannel}
-            <button type="button" class="action-row" on:click={() => handleSetReply()}>
-              <svg viewBox="0 0 24 24" class="action-icon"><path d="M10 9V5l-7 7 7 7v-4.1c5 0 8.5 1.6 11 5.1-1-5-4-10-11-11z" fill="currentColor"/></svg>
-              <span class="action-label">Ответить</span>
-            </button>
+            <MenuItem class="dropout-action-row" onclick={() => handleSetReply()}>{#snippet icon()}<svg viewBox="0 0 24 24" class="action-icon"><path d="M10 9V5l-7 7 7 7v-4.1c5 0 8.5 1.6 11 5.1-1-5-4-10-11-11z" fill="currentColor"/></svg>{/snippet}<span class="action-label">Ответить</span></MenuItem>
           {/if}
 
           {#if hasText}
-            <button type="button" class="action-row" on:click={handleCopy}>
-              <svg viewBox="0 0 24 24" class="action-icon"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z" fill="currentColor"/></svg>
-              <span class="action-label">Скопировать текст</span>
-            </button>
+            <MenuItem class="dropout-action-row" onclick={handleCopy}>{#snippet icon()}<svg viewBox="0 0 24 24" class="action-icon"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z" fill="currentColor"/></svg>{/snippet}<span class="action-label">Скопировать текст</span></MenuItem>
           {/if}
 
-          <button type="button" class="action-row" on:click={handleForward}>
-            <svg viewBox="0 0 24 24" class="action-icon"><path d="M14 9V5l7 7-7 7v-4.1c-5 0-8.5 1.6-11 5.1 1-5 4-10 11-11z" fill="currentColor"/></svg>
-            <span class="action-label">Переслать</span>
-          </button>
+          <MenuItem class="dropout-action-row" onclick={handleForward}>{#snippet icon()}<svg viewBox="0 0 24 24" class="action-icon"><path d="M14 9V5l7 7-7 7v-4.1c-5 0-8.5 1.6-11 5.1 1-5 4-10 11-11z" fill="currentColor"/></svg>{/snippet}<span class="action-label">Переслать</span></MenuItem>
 
           {#if canEdit}
-            <button type="button" class="action-row" on:click={handleEditMessage}>
-              <svg viewBox="0 0 24 24" class="action-icon"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z" fill="currentColor"/></svg>
-              <span class="action-label">Изменить</span>
-            </button>
+            <MenuItem class="dropout-action-row" onclick={handleEditMessage}>{#snippet icon()}<svg viewBox="0 0 24 24" class="action-icon"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z" fill="currentColor"/></svg>{/snippet}<span class="action-label">Изменить</span></MenuItem>
           {/if}
 
           {#if canPin}
-            <button type="button" class="action-row" on:click={() => handlePinMessage()}>
-              <svg viewBox="0 0 24 24" class="action-icon"><path d="M16 12V4h1V2H7v2h1v8l-2 2v2h5.2v6h1.6v-6H18v-2l-2-2z" fill="currentColor"/></svg>
-              <span class="action-label">Закрепить</span>
-            </button>
+            <MenuItem class="dropout-action-row" onclick={() => handlePinMessage()}>{#snippet icon()}<svg viewBox="0 0 24 24" class="action-icon"><path d="M16 12V4h1V2H7v2h1v8l-2 2v2h5.2v6h1.6v-6H18v-2l-2-2z" fill="currentColor"/></svg>{/snippet}<span class="action-label">Закрепить</span></MenuItem>
           {/if}
 
-          <button type="button" class="action-row" on:click={handleSelect}>
-            <svg viewBox="0 0 24 24" class="action-icon"><path d="M18 7l-1.41-1.41-6.34 6.34 1.41 1.41L18 7zm4.24-1.41L11.66 16.17 7.41 11.93l-1.41 1.41 5.66 5.66 12-12-1.42-1.41zM.41 13.34l5.66 5.66 1.41-1.41-5.66-5.66L.41 13.34z" fill="currentColor"/></svg>
-            <span class="action-label">Выбрать</span>
-          </button>
+          <MenuItem class="dropout-action-row" onclick={handleSelect}>{#snippet icon()}<svg viewBox="0 0 24 24" class="action-icon"><path d="M18 7l-1.41-1.41-6.34 6.34 1.41 1.41L18 7zm4.24-1.41L11.66 16.17 7.41 11.93l-1.41 1.41 5.66 5.66 12-12-1.42-1.41zM.41 13.34l5.66 5.66 1.41-1.41-5.66-5.66L.41 13.34z" fill="currentColor"/></svg>{/snippet}<span class="action-label">Выбрать</span></MenuItem>
 
           {#if hasHistory}
-            <button type="button" class="action-row" on:click={handleHistoryMessage}>
-              <svg viewBox="0 0 24 24" class="action-icon"><path d="M13 3c-4.97 0-9 4.03-9 9H1l3.89 3.89.07.14L9 12H6c0-3.87 3.13-7 7-7s7 3.13 7 7-3.13 7-7 7c-1.93 0-3.68-.79-4.94-2.06l-1.42 1.42C8.27 19.99 10.51 21 13 21c4.97 0 9-4.03 9-9s-4.03-9-9-9zm-1 5v5l4.28 2.54.72-1.21-3.5-2.08V8H12z" fill="currentColor"/></svg>
-              <span class="action-label">История изменений</span>
-            </button>
+            <MenuItem class="dropout-action-row" onclick={handleHistoryMessage}>{#snippet icon()}<svg viewBox="0 0 24 24" class="action-icon"><path d="M13 3c-4.97 0-9 4.03-9 9H1l3.89 3.89.07.14L9 12H6c0-3.87 3.13-7 7-7s7 3.13 7 7-3.13 7-7 7c-1.93 0-3.68-.79-4.94-2.06l-1.42 1.42C8.27 19.99 10.51 21 13 21c4.97 0 9-4.03 9-9s-4.03-9-9-9zm-1 5v5l4.28 2.54.72-1.21-3.5-2.08V8H12z" fill="currentColor"/></svg>{/snippet}<span class="action-label">История изменений</span></MenuItem>
           {/if}
 
           {#if !isMe}
-            <button type="button" class="action-row report-row" on:click={handleReportMessage}>
-              <svg viewBox="0 0 24 24" class="action-icon"><path d="M14.4 6L14 4H5v17h2v-7h5.6l.4 2h7V6h-5.6z" fill="currentColor"/></svg>
-              <span class="action-label">Пожаловаться</span>
-            </button>
+            <MenuItem class="dropout-action-row dropout-report-row" onclick={handleReportMessage}>{#snippet icon()}<svg viewBox="0 0 24 24" class="action-icon"><path d="M14.4 6L14 4H5v17h2v-7h5.6l.4 2h7V6h-5.6z" fill="currentColor"/></svg>{/snippet}<span class="action-label">Пожаловаться</span></MenuItem>
           {/if}
 
           {#if isMe || !isChannel}
             <div class="divider" />
-            <button type="button" class="action-row delete-row" on:click={handleDeleteMessage}>
-              <svg viewBox="0 0 24 24" class="action-icon"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z" fill="currentColor"/></svg>
-              <span class="action-label">Удалить</span>
-            </button>
+            <MenuItem danger class="dropout-action-row" onclick={handleDeleteMessage}>{#snippet icon()}<svg viewBox="0 0 24 24" class="action-icon"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z" fill="currentColor"/></svg>{/snippet}<span class="action-label">Удалить</span></MenuItem>
           {/if}
         </div>
       {/if}
@@ -446,7 +408,7 @@
     left: 0;
     width: 196px;
     background: #1c1e2a;
-    border: 1px solid rgba(255, 255, 255, 0.12);
+    border: 1px solid var(--border-subtle);
     border-radius: 20px;
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
     padding: 5px 6px;
@@ -488,7 +450,7 @@
 
   .reaction-pill:hover {
     transform: scale(1.22);
-    background: rgba(255, 255, 255, 0.12);
+    background: var(--bg-surface-2);
   }
 
   .reaction-pill:active {
@@ -503,15 +465,15 @@
   .expand-btn {
     width: 26px;
     height: 26px;
-    background: rgba(255, 255, 255, 0.08);
-    color: rgba(255, 255, 255, 0.8);
+    background: var(--bg-surface);
+    color: var(--text-secondary);
     flex-shrink: 0;
     white-space: nowrap;
   }
 
   .expand-btn:hover {
     background: rgba(255, 255, 255, 0.16);
-    color: #ffffff;
+    color: var(--text-primary);
   }
 
   .expand-icon {
@@ -524,7 +486,7 @@
     flex-direction: column;
     width: 196px;
     background: #1c1e2a;
-    border: 1px solid rgba(255, 255, 255, 0.12);
+    border: 1px solid var(--border-subtle);
     border-radius: 14px;
     box-shadow: 0 12px 36px rgba(0, 0, 0, 0.55), 0 2px 10px rgba(0, 0, 0, 0.3);
     overflow: hidden;
@@ -547,36 +509,17 @@
     align-items: center;
     justify-content: space-between;
     padding: 8px 10px;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    border-bottom: 1px solid var(--border-subtle);
     flex-shrink: 0;
   }
 
-  .picker-back-btn,
-  .picker-close-btn {
-    background: transparent;
-    border: none;
-    color: rgba(255, 255, 255, 0.7);
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 28px;
-    height: 28px;
-    border-radius: 6px;
-    padding: 0;
-    transition: background 0.12s ease, color 0.12s ease;
-  }
-
-  .picker-back-btn:hover,
-  .picker-close-btn:hover {
-    background: rgba(255, 255, 255, 0.1);
-    color: #ffffff;
-  }
+  :global(.dropout-picker-back-btn),
+  :global(.dropout-picker-close-btn)  { width: 28px; }
 
   .picker-title {
     font-size: 13px;
     font-weight: 600;
-    color: #ffffff;
+    color: var(--text-primary);
   }
 
   .reactions-picker-grid {
@@ -602,29 +545,7 @@
     padding: 6px 0;
   }
 
-  .action-row {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    width: 100%;
-    padding: 8px 14px;
-    border: none;
-    background: transparent;
-    color: #ffffff;
-    font-size: 13.5px;
-    font-weight: 450;
-    cursor: pointer;
-    text-align: left;
-    transition: background 0.12s ease;
-  }
-
-  .action-row:hover {
-    background: rgba(255, 255, 255, 0.08);
-  }
-
-  .action-row:active {
-    background: rgba(255, 255, 255, 0.14);
-  }
+  :global(.dropout-action-row)  { width: 100%; }
 
   .action-icon {
     width: 18px;
@@ -642,23 +563,7 @@
 
   .divider {
     height: 1px;
-    background: rgba(255, 255, 255, 0.08);
+    background: var(--bg-surface);
     margin: 4px 0;
-  }
-
-  .report-row:hover {
-    background: rgba(251, 146, 60, 0.12);
-  }
-
-  .delete-row {
-    color: #f87171;
-  }
-
-  .delete-row .action-icon {
-    color: #f87171;
-  }
-
-  .delete-row:hover {
-    background: rgba(239, 68, 68, 0.12);
   }
 </style>

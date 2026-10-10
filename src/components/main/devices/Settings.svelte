@@ -1,4 +1,5 @@
 <script>
+  import { Button, IconButton } from "$components/ui";
   import { save } from "@tauri-apps/plugin-dialog";
   import { join, appDataDir } from '@tauri-apps/api/path';
   import { invoke } from "@tauri-apps/api/core";
@@ -160,18 +161,18 @@
       <div class="title">Устройство</div>
 
       <div class="buttons">
-        <button class="reroll" on:click={rerollDevice}>
+        <Button variant="ghost" class="settings-reroll" onclick={rerollDevice}>
           <img src="/icons/reload.svg">
-        </button>
-        <button class="export" on:click={exportDevice}>
+        </Button>
+        <Button class="settings-export" onclick={exportDevice}>
           <img src="/icons/export.svg">
-        </button>
-        <button class="import" on:click={importDevice}>
+        </Button>
+        <Button class="settings-import" onclick={importDevice}>
           <img src="/icons/import.svg">
-        </button>
-        <button class="close" on:click={close}>
+        </Button>
+        <IconButton class="settings-close" onclick={close}>
           ✕
-        </button>
+        </IconButton>
       </div>
     </div>
 
@@ -210,12 +211,12 @@
     max-height: 80vh;
     overflow-y: auto;
 
-    background: #1f1f23;
+    background: var(--bg-surface);
     border-radius: 14px 14px 0 0;
 
     margin-top: auto;
     padding: 0 20px 20px 20px;
-    color: white;
+    color: var(--text-primary);
   }
 
   @media(max-height: 600px) {
@@ -233,7 +234,7 @@
     position: sticky;
     top: 0;
     padding: 14px 0;
-    background: #1f1f23;
+    background: var(--bg-surface);
   }
 
   .title {
@@ -254,7 +255,7 @@
     padding: 8px;
 
     background: transparent;
-    color: #aaa;
+    color: var(--text-muted);
     font-size: 20px;
 
     display: flex;
@@ -270,10 +271,7 @@
     padding: 8px;
   }
 
-  .buttons .import {
-    position: relative;
-    top: 1px;
-  }
+  .buttons :global(.settings-import)  { position: relative; top: 1px; }
 
   .buttons *:active {
     color: white;
@@ -292,12 +290,12 @@
     justify-content: space-between;
 
     padding: 6px 0;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    border-bottom: 1px solid var(--border-subtle);
   }
 
   .label {
     font-size: 13px;
-    color: #9ca3af;
+    color: var(--text-muted);
     flex: 1;
   }
 

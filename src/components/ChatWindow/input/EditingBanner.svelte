@@ -1,4 +1,5 @@
 <script>
+  import { IconButton } from "$components/ui";
   import { createEventDispatcher } from "svelte";
 
   export let editingMessage = null;
@@ -21,7 +22,7 @@
       <div class="editing-title">Редактирование сообщения</div>
       <div class="editing-snippet">{editingMessage.text || 'Вложения'}</div>
     </div>
-    <button class="editing-cancel-btn" type="button" on:click={cancel} title="Отменить">✕</button>
+    <IconButton class="editingbanner-editing-cancel-btn" onclick={cancel} title="Отменить">✕</IconButton>
   </div>
 {/if}
 
@@ -31,13 +32,13 @@
     align-items: center;
     gap: 10px;
     padding: 8px 14px;
-    background: #17191d;
-    border-top: 1px solid rgba(255, 255, 255, 0.06);
-    border-left: 3px solid #248bfe;
+    background: var(--bg-surface);
+    border-top: 1px solid var(--border-subtle);
+    border-left: 3px solid var(--accent-primary);
   }
 
   .editing-icon {
-    color: #248bfe;
+    color: var(--accent-primary);
     display: flex;
     align-items: center;
     flex-shrink: 0;
@@ -51,33 +52,17 @@
   .editing-title {
     font-size: 13px;
     font-weight: 600;
-    color: #248bfe;
+    color: var(--accent-primary);
   }
 
   .editing-snippet {
     font-size: 12px;
-    color: #94a3b8;
+    color: var(--text-muted);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
   }
 
-  .editing-cancel-btn {
-    background: transparent;
-    border: none;
-    color: #8b929e;
-    cursor: pointer;
-    font-size: 14px;
-    padding: 4px;
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex-shrink: 0;
-    transition: color 0.15s ease;
-  }
+  :global(.editingbanner-editing-cancel-btn)  { flex-shrink: 0; }
 
-  .editing-cancel-btn:hover {
-    color: #fff;
-  }
 </style>

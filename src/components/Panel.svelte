@@ -1,4 +1,5 @@
 <script>
+  import { Button, IconButton, Modal } from "$components/ui";
   import { createEventDispatcher } from "svelte";
   import { flip } from "svelte/animate";
   import { quintOut, cubicOut } from "svelte/easing";
@@ -158,23 +159,19 @@
 <div class="panel-container" class:editing={isEditing}>
   {#if isEditing}
     <div class="edit-toolbar" transition:fly={{ y: 20, duration: 200, easing: cubicOut }}>
-      <button
-        class="toolbar-btn add-btn"
-        disabled={availableCatalogItems.length === 0}
-        on:click|stopPropagation={() => (showAddModal = true)}
-      >
+      <Button variant="ghost" class="panel-toolbar-btn panel-add-btn" disabled={availableCatalogItems.length === 0} onclick={(e) => { e.stopPropagation(); (() => (showAddModal = true))(e); }}>
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
           <line x1="12" y1="5" x2="12" y2="19"></line>
           <line x1="5" y1="12" x2="19" y2="12"></line>
         </svg>
         <span>Добавить</span>
-      </button>
+      </Button>
 
       <span class="toolbar-hint">Зажмите и тяните</span>
 
-      <button class="toolbar-btn done-btn" on:click|stopPropagation={exitEditing}>
+      <Button variant="ghost" class="panel-toolbar-btn panel-done-btn" onclick={(e) => { e.stopPropagation(); (exitEditing)(e); }}>
         <span>Готово</span>
-      </button>
+      </Button>
     </div>
   {/if}
 
@@ -238,7 +235,14 @@
           {/if}
 
           <div class="icon-box">
-            <img src={"icons/" + page.icon + ".svg"} alt={page.name} />
+            <span
+              class="icon-mask"
+              aria-hidden="true"
+              style="--icon-url: url('icons/{page.icon}.svg')"
+            ></span>
+            {#if page.dot}
+              <span class="dot" aria-hidden="true"></span>
+            {/if}
           </div>
           <span class="label">{page.name}</span>
         </div>
@@ -248,16 +252,16 @@
 </div>
 
 {#if showAddModal}
-  <div class="modal-backdrop" on:click={() => (showAddModal = false)} transition:fade={{ duration: 180 }}>
-    <div class="modal-sheet" on:click|stopPropagation transition:fly={{ y: 260, duration: 240, easing: cubicOut }}>
+  <Modal open={true} bare closeOnEsc={true} position="bottom" zIndex={1100} onclose={() => (showAddModal = false)}>
+    <div class="modal-sheet">
       <div class="sheet-top">
         <span class="sheet-title">Добавить в меню</span>
-        <button class="sheet-close" on:click={() => (showAddModal = false)}>
+        <IconButton class="panel-sheet-close" onclick={() => (showAddModal = false)}>
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
             <line x1="18" y1="6" x2="6" y2="18"></line>
             <line x1="6" y1="6" x2="18" y2="18"></line>
           </svg>
-        </button>
+        </IconButton>
       </div>
 
       <div class="catalog-list">
@@ -269,12 +273,12 @@
             <div class="catalog-info">
               <span class="catalog-name">{item.name}</span>
             </div>
-            <button class="add-action-btn">
+            <IconButton class="panel-add-action-btn">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
                 <line x1="12" y1="5" x2="12" y2="19"></line>
                 <line x1="5" y1="12" x2="19" y2="12"></line>
               </svg>
-            </button>
+            </IconButton>
           </div>
         {/each}
         {#if availableCatalogItems.length === 0}
@@ -282,7 +286,7 @@
         {/if}
       </div>
     </div>
-  </div>
+  </Modal>
 {/if}
 
 <style>
@@ -325,78 +329,47 @@
 
   .toolbar-hint {
     font-size: 12px;
-    color: #9ca3af;
+    color: var(--text-muted);
   }
 
-  .toolbar-btn {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    padding: 6px 12px;
-    border-radius: 8px;
-    border: none;
-    font-size: 13px;
-    font-weight: 500;
-    cursor: pointer;
-    transition: background 0.15s;
-  }
 
-  .add-btn {
-    background: #374151;
-    color: #f3f4f6;
-  }
 
-  .add-btn:hover:not(:disabled) {
-    background: #4b5563;
-  }
 
-  .add-btn:disabled {
-    opacity: 0.4;
-    cursor: not-allowed;
-  }
 
-  .done-btn {
-    background: var(--accent-primary);
-    color: #fff;
-    font-weight: 600;
-  }
 
-  .done-btn:hover {
-    background: var(--accent-primary-hover);
-  }
 
+  /* === Tabbar — ported from Max (svelte-1wa3uxr / svelte-xwrwgf) === */
   .panel {
-    background-color: var(--bg-panel);
-    height: 60px;
     width: 100%;
     display: flex;
     justify-content: center;
-    align-items: center;
-    color: #999;
-    padding-top: env(safe-area-inset-top, 4px);
-    padding-bottom: env(safe-area-inset-bottom, 14px);
-    border-top: 1px solid var(--border-subtle);
+    align-items: stretch;
+    gap: 8px;
+    padding-left: 12px;
+    padding-right: 12px;
+    background: var(--float-primary-flat, var(--bg-panel));
+    box-shadow: 0 -1px 24px var(--shadow-tabbar-color, #0000001a);
+    color: var(--tabbar-inactive, #969699);
     box-sizing: border-box;
+    touch-action: none;
     user-select: none;
     -webkit-user-select: none;
   }
 
   .panel-container.editing .panel {
-    background-color: var(--bg-panel);
-    border-top: 1px solid var(--border-subtle);
+    background: var(--float-primary-flat, var(--bg-panel));
   }
 
   .option-wrapper {
     flex: 1 1 0;
     min-width: 0;
-    max-width: 110px;
-    height: 100%;
+    height: 56px;
+    box-sizing: content-box;
+    padding: 10px 0 var(--panel-safe-bottom, max(env(safe-area-inset-bottom, 0px), 10px));
     display: flex;
-    align-items: center;
+    align-items: stretch;
     justify-content: center;
     position: relative;
-    box-sizing: border-box;
-    padding: 2px 4px;
     touch-action: pan-y;
     transform-origin: 50% 50%;
   }
@@ -435,28 +408,36 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    justify-content: center;
+    justify-content: flex-start;
     width: 100%;
     height: 100%;
-    font-size: 11px;
-    gap: 3px;
+    padding: 8px 2px;
+    gap: 2px;
+    font: 400 var(--font-tag-size, 11px) / var(--font-tag-line-height, 16px) var(--font, -apple-system, BlinkMacSystemFont, "Roboto", system-ui, sans-serif);
+    letter-spacing: var(--font-tag-letter-spacing, 0.3px);
+    color: var(--tabbar-inactive, #969699);
+    text-align: center;
     cursor: pointer;
     position: relative;
     box-sizing: border-box;
     border-radius: 12px;
     border: 1px solid transparent;
-    transition: background 0.15s, border-color 0.15s, transform 0.1s;
+    transition: color 0.15s, background 0.15s, border-color 0.15s, transform 0.1s;
     transform-origin: 50% 50%;
   }
 
+  .option.active {
+    color: var(--tabbar-active, var(--accent-primary));
+  }
+
   .option.editing-item {
-    background: rgba(255, 255, 255, 0.08);
+    background: var(--bg-surface);
     border: 1px solid rgba(255, 255, 255, 0.16);
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.08);
   }
 
   .option.editing-item:hover {
-    background: rgba(255, 255, 255, 0.12);
+    background: var(--bg-surface-2);
     border-color: rgba(255, 255, 255, 0.26);
   }
 
@@ -547,7 +528,7 @@
     height: 20px;
     border-radius: 50%;
     background: #374151;
-    color: #9ca3af;
+    color: var(--text-muted);
     border: 1px solid #4b5563;
     display: flex;
     align-items: center;
@@ -567,18 +548,38 @@
   }
 
   .icon-box {
-    display: flex;
+    position: relative;
+    display: inline-flex;
     align-items: center;
     justify-content: center;
+    width: 24px;
     height: 24px;
+    flex-shrink: 0;
   }
 
-  .icon-box img {
-    height: 22px;
-    max-width: 24px;
-    filter: invert(50%);
+  /* SVG из static/icons красится в currentColor через маску */
+  .icon-mask {
+    display: block;
+    width: 24px;
+    height: 24px;
+    background-color: currentColor;
+    -webkit-mask: var(--icon-url) center / contain no-repeat;
+    mask: var(--icon-url) center / contain no-repeat;
     pointer-events: none;
   }
+
+  .dot {
+    position: absolute;
+    top: -6px;
+    right: -6px;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--counter-attention, #ff303c);
+    outline: 2px solid var(--float-primary-flat, var(--bg-panel, #fff));
+    pointer-events: none;
+  }
+
 
   .label {
     white-space: nowrap;
@@ -588,28 +589,11 @@
     padding: 0 4px;
     box-sizing: border-box;
     text-align: center;
-    font-size: 11px;
-    line-height: 1.2;
-    color: #999;
+    color: inherit;
   }
 
-  .option.active .label {
-    color: #09f;
-  }
 
-  .option.active .icon-box img {
-    filter: invert(50%) sepia(100%) saturate(5000%) hue-rotate(200deg);
-  }
 
-  .modal-backdrop {
-    position: fixed;
-    inset: 0;
-    background: rgba(0, 0, 0, 0.65);
-    z-index: 1100;
-    display: flex;
-    align-items: flex-end;
-    justify-content: center;
-  }
 
   .modal-sheet {
     background: var(--bg-sheet);
@@ -637,20 +621,9 @@
   .sheet-title {
     font-size: 16px;
     font-weight: 600;
-    color: #fff;
+    color: var(--text-primary);
   }
 
-  .sheet-close {
-    background: transparent;
-    border: none;
-    color: #9ca3af;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 4px;
-    border-radius: 50%;
-  }
 
   .catalog-list {
     padding: 12px 16px;
@@ -681,7 +654,7 @@
     width: 36px;
     height: 36px;
     border-radius: 10px;
-    background: rgba(255, 255, 255, 0.06);
+    background: var(--bg-surface);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -702,26 +675,15 @@
   .catalog-name {
     font-size: 14px;
     font-weight: 500;
-    color: #fff;
+    color: var(--text-primary);
   }
 
-  .add-action-btn {
-    width: 32px;
-    height: 32px;
-    border-radius: 50%;
-    background: var(--accent-primary);
-    color: #fff;
-    border: none;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-  }
+  :global(.panel-add-action-btn)  { width: 32px; }
 
   .empty-hint {
     padding: 24px;
     text-align: center;
-    color: #9ca3af;
+    color: var(--text-muted);
     font-size: 14px;
   }
 </style>

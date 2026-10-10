@@ -1,4 +1,5 @@
 <script>
+  import { Button, IconButton, Modal, Tab } from "$components/ui";
   import { createEventDispatcher } from "svelte";
   import { fly, fade } from "svelte/transition";
   import { cubicOut } from "svelte/easing";
@@ -52,8 +53,8 @@
 
 <svelte:window on:keydown={handleKeydown} />
 
-<div class="modal-backdrop" on:click={close} transition:fade={{ duration: 150 }}>
-  <div class="modal-card" on:click|stopPropagation transition:fly={{ y: 20, duration: 200, easing: cubicOut }}>
+<Modal open={true} bare zIndex={1100} closeOnEsc={false} onclose={close}>
+  <div class="modal-card">
     <div class="modal-header">
       <div class="modal-title">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2.5" stroke-linecap="round">
@@ -62,12 +63,12 @@
         </svg>
         <span>{initialRule ? "Редактировать правило" : "Новое правило блокировки"}</span>
       </div>
-      <button class="icon-close" on:click={close}>
+      <IconButton class="filterrulesmodal-icon-close" onclick={close}>
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
           <line x1="18" y1="6" x2="6" y2="18"></line>
           <line x1="6" y1="6" x2="18" y2="18"></line>
         </svg>
-      </button>
+      </IconButton>
     </div>
 
     <div class="modal-body">
@@ -90,30 +91,15 @@
       <div class="field">
         <label for="rule-target">Область проверки</label>
         <div class="target-toggle">
-          <button
-            type="button"
-            class="toggle-btn"
-            class:active={target === "url"}
-            on:click={() => (target = "url")}
-          >
+          <Tab variant="pill" active={target === "url"} class="filterrulesmodal-toggle-btn" onclick={() => (target = "url")}>
             Весь URL
-          </button>
-          <button
-            type="button"
-            class="toggle-btn"
-            class:active={target === "host"}
-            on:click={() => (target = "host")}
-          >
+          </Tab>
+          <Tab variant="pill" active={target === "host"} class="filterrulesmodal-toggle-btn" onclick={() => (target = "host")}>
             Host / Домен
-          </button>
-          <button
-            type="button"
-            class="toggle-btn"
-            class:active={target === "ip"}
-            on:click={() => (target = "ip")}
-          >
+          </Tab>
+          <Tab variant="pill" active={target === "ip"} class="filterrulesmodal-toggle-btn" onclick={() => (target = "ip")}>
             IP / Хост
-          </button>
+          </Tab>
         </div>
       </div>
 
@@ -144,26 +130,15 @@
     </div>
 
     <div class="modal-actions">
-      <button class="btn-cancel" on:click={close}>Отмена</button>
-      <button class="btn-save" on:click={handleSave}>
+      <Button class="filterrulesmodal-btn-cancel" onclick={close}>Отмена</Button>
+      <Button variant="primary" class="filterrulesmodal-btn-save" onclick={handleSave}>
         {initialRule ? "Сохранить" : "Добавить правило"}
-      </button>
+      </Button>
     </div>
   </div>
-</div>
+</Modal>
 
 <style>
-  .modal-backdrop {
-    position: fixed;
-    inset: 0;
-    z-index: 1100;
-    background: rgba(0, 0, 0, 0.65);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 16px;
-    box-sizing: border-box;
-  }
 
   .modal-card {
     background: #1e1f26;
@@ -182,7 +157,7 @@
     align-items: center;
     justify-content: space-between;
     padding: 14px 18px;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    border-bottom: 1px solid var(--border-subtle);
   }
 
   .modal-title {
@@ -191,23 +166,10 @@
     gap: 8px;
     font-size: 15px;
     font-weight: 600;
-    color: #f3f4f6;
+    color: var(--text-primary);
   }
 
-  .icon-close {
-    background: none;
-    border: none;
-    color: #9ca3af;
-    cursor: pointer;
-    padding: 4px;
-    border-radius: 6px;
-    display: flex;
-  }
 
-  .icon-close:hover {
-    color: #fff;
-    background: rgba(255, 255, 255, 0.08);
-  }
 
   .modal-body {
     padding: 18px;
@@ -217,7 +179,7 @@
   }
 
   .error-banner {
-    background: rgba(239, 68, 68, 0.15);
+    background: var(--danger-subtle);
     border: 1px solid rgba(239, 68, 68, 0.35);
     color: #fca5a5;
     padding: 8px 12px;
@@ -234,7 +196,7 @@
   .field label {
     font-size: 12px;
     font-weight: 500;
-    color: #9ca3af;
+    color: var(--text-muted);
   }
 
   .field input {
@@ -242,7 +204,7 @@
     border: 1px solid #333645;
     border-radius: 8px;
     padding: 10px 12px;
-    color: #f3f4f6;
+    color: var(--text-primary);
     font-size: 13px;
     outline: none;
     transition: border-color 0.15s;
@@ -266,24 +228,8 @@
     gap: 2px;
   }
 
-  .toggle-btn {
-    flex: 1;
-    background: none;
-    border: none;
-    color: #9ca3af;
-    font-size: 12px;
-    font-weight: 500;
-    padding: 7px 0;
-    border-radius: 6px;
-    cursor: pointer;
-    transition: background 0.15s, color 0.15s;
-  }
+  :global(.filterrulesmodal-toggle-btn)  { flex: 1; }
 
-  .toggle-btn.active {
-    background: #2b2e3b;
-    color: #fff;
-    font-weight: 600;
-  }
 
   .field-checkbox {
     margin-top: -4px;
@@ -319,7 +265,7 @@
   }
 
   .checkbox-container input:checked ~ .custom-checkbox {
-    background: #0077ff;
+    background: var(--accent-primary);
     border-color: #0077ff;
   }
 
@@ -334,7 +280,7 @@
 
   .checkbox-label {
     font-size: 12.5px;
-    color: #d1d5db;
+    color: var(--text-primary);
   }
 
   .hint-box {
@@ -354,38 +300,10 @@
     gap: 10px;
     padding: 12px 18px;
     background: #17181d;
-    border-top: 1px solid rgba(255, 255, 255, 0.06);
+    border-top: 1px solid var(--border-subtle);
   }
 
-  .btn-cancel {
-    background: #252732;
-    border: 1px solid #363948;
-    color: #d1d5db;
-    padding: 8px 16px;
-    border-radius: 8px;
-    font-size: 13px;
-    font-weight: 500;
-    cursor: pointer;
-  }
 
-  .btn-cancel:hover {
-    background: #2e303d;
-    color: #fff;
-  }
 
-  .btn-save {
-    background: #0077ff;
-    border: none;
-    color: #fff;
-    padding: 8px 18px;
-    border-radius: 8px;
-    font-size: 13px;
-    font-weight: 600;
-    cursor: pointer;
-    transition: background 0.15s;
-  }
 
-  .btn-save:hover {
-    background: #0066dd;
-  }
 </style>

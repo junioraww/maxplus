@@ -1,4 +1,5 @@
 <script>
+  import { Button, Modal } from "$components/ui";
   import { pluginImportModal, closePluginImportModal } from "$lib/stores/plugins.js";
   import { installPlugin } from "$lib/plugins/runtime.js";
   import { PERMISSION_LABELS, CATEGORY_LABELS } from "$lib/plugins/manifest.js";
@@ -33,8 +34,8 @@
 </script>
 
 {#if $pluginImportModal}
-  <div class="modal-backdrop" on:click={handleCancel}>
-    <div class="modal-sheet" on:click|stopPropagation>
+  <Modal open={true} bare position="bottom" closeOnEsc={true} onclose={handleCancel}>
+    <div class="modal-sheet">
       <div class="modal-header">
         <h2>Установить плагин</h2>
       </div>
@@ -90,30 +91,17 @@
       </div>
 
       <div class="modal-actions">
-        <button class="btn cancel" on:click={handleCancel} disabled={isInstalling}>Отмена</button>
-        <button class="btn install" on:click={handleInstall} disabled={isInstalling}>
+        <Button class="pluginimportmodal-btn pluginimportmodal-cancel" onclick={handleCancel} disabled={isInstalling}>Отмена</Button>
+        <Button class="pluginimportmodal-btn pluginimportmodal-install" onclick={handleInstall} disabled={isInstalling}>
           {isInstalling ? 'Установка...' : 'Установить'}
-        </button>
+        </Button>
       </div>
     </div>
-  </div>
+  </Modal>
 {/if}
 
 
 <style>
-  .modal-backdrop {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background: rgba(0, 0, 0, 0.6);
-    display: flex;
-    align-items: flex-end;
-    justify-content: center;
-    z-index: 1000;
-    animation: fadeIn 150ms ease;
-  }
 
   .modal-sheet {
     background: var(--bg-surface);
@@ -291,33 +279,9 @@
     margin-top: 4px;
   }
 
-  .btn {
-    flex: 1;
-    padding: 14px;
-    border-radius: 12px;
-    font-size: 16px;
-    font-weight: 600;
-    cursor: pointer;
-    border: none;
-    transition: opacity 150ms ease;
-  }
+  :global(.pluginimportmodal-btn)  { flex: 1; }
 
-  .btn:active {
-    opacity: 0.8;
-  }
 
-  .btn:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
 
-  .btn.cancel {
-    background: var(--bg-surface-2);
-    color: var(--text-primary);
-  }
 
-  .btn.install {
-    background: var(--accent-primary);
-    color: #fff;
-  }
 </style

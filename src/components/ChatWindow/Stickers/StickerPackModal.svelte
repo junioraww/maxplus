@@ -1,4 +1,5 @@
 <script>
+  import { IconButton, Modal } from "$components/ui";
   import { onMount, createEventDispatcher } from "svelte";
   import { fade, scale } from "svelte/transition";
   import {
@@ -97,8 +98,8 @@
   }
 </script>
 
-<div class="modal-backdrop" transition:fade={{ duration: 180 }} on:click|self={close}>
-  <div class="modal-card" transition:scale={{ start: 0.95, duration: 200 }}>
+<Modal open={true} bare closeOnEsc={true} onclose={close}>
+  <div class="modal-card">
     <div class="modal-header">
       <div class="info-group">
         {#if pack?.iconUrl}
@@ -113,11 +114,11 @@
           {/if}
         </div>
       </div>
-      <button class="close-btn" type="button" on:click={close}>
+      <IconButton class="stickerpackmodal-close-btn" onclick={close}>
         <svg viewBox="0 0 24 24" width="20" height="20">
           <path fill="currentColor" d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
         </svg>
-      </button>
+      </IconButton>
     </div>
 
     <div class="modal-body">
@@ -169,32 +170,22 @@
         </button>
 
         {#if pack.link}
-          <button type="button" class="btn-copy" on:click={copyLink} title="Скопировать ссылку">
+          <IconButton class="stickerpackmodal-btn-copy" onclick={copyLink} title="Скопировать ссылку">
             <svg viewBox="0 0 24 24" width="20" height="20">
               <path fill="currentColor" d="M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H7c-2.76 0-5 2.24-5 5s2.24 5 5 5h4v-1.9H7c-1.71 0-3.1-1.39-3.1-3.1zM8 13h8v-2H8v2zm9-6h-4v1.9h4c1.71 0 3.1 1.39 3.1 3.1s-1.39 3.1-3.1 3.1h-4V17h4c2.76 0 5-2.24 5-5s-2.24-5-5-5z"/>
             </svg>
-          </button>
+          </IconButton>
         {/if}
       </div>
     {/if}
   </div>
-</div>
+</Modal>
 
 <style>
-  .modal-backdrop {
-    position: fixed;
-    inset: 0;
-    background: rgba(0, 0, 0, 0.75);
-    z-index: 1000;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 16px;
-  }
 
   .modal-card {
     background: #1e2126;
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    border: 1px solid var(--border-subtle);
     border-radius: 20px;
     width: 100%;
     max-width: 480px;
@@ -210,7 +201,7 @@
     align-items: center;
     justify-content: space-between;
     padding: 12px 20px;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    border-bottom: 1px solid var(--border-subtle);
   }
 
   .info-group {
@@ -225,7 +216,7 @@
     height: 44px;
     border-radius: 10px;
     object-fit: contain;
-    background: rgba(255, 255, 255, 0.04);
+    background: var(--bg-surface);
     flex-shrink: 0;
   }
 
@@ -238,7 +229,7 @@
   .pack-title {
     font-size: 17px;
     font-weight: 700;
-    color: #fff;
+    color: var(--text-primary);
     margin: 0;
     white-space: nowrap;
     overflow: hidden;
@@ -247,29 +238,12 @@
 
   .pack-count {
     font-size: 13px;
-    color: #8b929e;
+    color: var(--text-muted);
     margin-top: 2px;
   }
 
-  .close-btn {
-    background: rgba(255, 255, 255, 0.06);
-    border: none;
-    color: #8b929e;
-    width: 34px;
-    height: 34px;
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    transition: background-color 0.15s, color 0.15s;
-    flex-shrink: 0;
-  }
+  :global(.stickerpackmodal-close-btn)  { width: 34px; flex-shrink: 0; }
 
-  .close-btn:hover {
-    background: rgba(255, 255, 255, 0.12);
-    color: #fff;
-  }
 
   .modal-body {
     flex: 1;
@@ -305,7 +279,7 @@
   }
 
   .sticker-grid-item:hover {
-    background: rgba(255, 255, 255, 0.06);
+    background: var(--bg-surface);
     transform: scale(1.08);
   }
 
@@ -321,15 +295,15 @@
     justify-content: center;
     gap: 12px;
     padding: 40px 0;
-    color: #8b929e;
+    color: var(--text-muted);
     font-size: 14px;
   }
 
   .spinner {
     width: 28px;
     height: 28px;
-    border: 3px solid rgba(255, 255, 255, 0.1);
-    border-top-color: #248bfe;
+    border: 3px solid var(--border-subtle);
+    border-top-color: var(--accent-primary);
     border-radius: 50%;
     animation: spin 0.8s linear infinite;
   }
@@ -345,14 +319,14 @@
     align-items: center;
     gap: 10px;
     padding: 14px 20px;
-    border-top: 1px solid rgba(255, 255, 255, 0.06);
+    border-top: 1px solid var(--border-subtle);
   }
 
   .btn-fav {
     flex: 1;
     height: 44px;
-    background: #248bfe;
-    color: #fff;
+    background: var(--accent-primary);
+    color: var(--button-primary-contrast);
     border: none;
     border-radius: 12px;
     font-size: 15px;
@@ -377,28 +351,10 @@
     background: rgba(255, 75, 75, 0.25);
   }
 
-  .btn-copy {
-    width: 44px;
-    height: 44px;
-    background: rgba(255, 255, 255, 0.06);
-    border: none;
-    border-radius: 12px;
-    color: #fff;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    transition: background-color 0.15s;
-  }
+  :global(.stickerpackmodal-btn-copy)  { width: 44px; }
 
-  .btn-copy:hover {
-    background: rgba(255, 255, 255, 0.12);
-  }
 
   @media (max-width: 480px) {
-    .modal-backdrop {
-      padding: 8px;
-    }
     .modal-card {
       border-radius: 16px;
       max-height: 88vh;

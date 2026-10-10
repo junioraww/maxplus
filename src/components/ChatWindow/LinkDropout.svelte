@@ -1,4 +1,5 @@
 <script>
+  import { Button } from "$components/ui";
   import { createEventDispatcher, onMount, onDestroy, tick } from "svelte";
   import { fade } from "svelte/transition";
   import { openUrl } from "@tauri-apps/plugin-opener";
@@ -130,14 +131,14 @@
   <div class="divider"></div>
 
   <div class="actions-container">
-    <button type="button" class="action-btn" on:click={handleOpen}>
+    <Button class="linkdropout-action-btn" onclick={handleOpen}>
       <span class="btn-icon">
         <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
           <path d="M19 19H5V5h7V3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7h-2v7zM14 3v2h3.59l-9.83 9.83 1.41 1.41L19 6.41V10h2V3h-7z"/>
         </svg>
       </span>
       <span class="btn-label">Открыть</span>
-    </button>
+    </Button>
 
     <button type="button" class="action-btn" class:is-copied={copied} on:click={handleCopy}>
       <span class="btn-icon">
@@ -170,7 +171,7 @@
     max-width: 290px;
     min-width: 220px;
     background: #1c1e2a;
-    border: 1px solid rgba(255, 255, 255, 0.12);
+    border: 1px solid var(--border-subtle);
     border-radius: 12px;
     box-shadow: 0 12px 36px rgba(0, 0, 0, 0.6), 0 2px 10px rgba(0, 0, 0, 0.3);
     padding: 8px 0 6px;
@@ -195,21 +196,21 @@
   }
 
   .url-scroll-container::-webkit-scrollbar-thumb {
-    background: rgba(255, 255, 255, 0.2);
+    background: var(--bg-surface-2);
     border-radius: 2px;
   }
 
   .url-text {
     font-size: 12.5px;
     line-height: 18px;
-    color: #60a5fa;
+    color: var(--accent-primary);
     user-select: text;
     display: inline-block;
   }
 
   .divider {
     height: 1px;
-    background: rgba(255, 255, 255, 0.08);
+    background: var(--bg-surface);
     margin: 4px 0 2px;
   }
 
@@ -226,23 +227,24 @@
     padding: 8px 12px;
     border: none;
     background: transparent;
-    color: #ffffff;
+    color: var(--text-primary);
     font-size: 13px;
     cursor: pointer;
     text-align: left;
     transition: background 0.12s ease;
   }
+  :global(.linkdropout-action-btn)  { width: 100%; }
 
   .action-btn:hover {
     background: rgba(255, 255, 255, 0.09);
   }
 
   .action-btn:active {
-    background: rgba(255, 255, 255, 0.15);
+    background: var(--bg-surface-2);
   }
 
   .action-btn.is-copied {
-    color: #4ade80;
+    color: var(--status-success);
   }
 
   .btn-icon {
@@ -251,12 +253,12 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    color: rgba(255, 255, 255, 0.8);
+    color: var(--text-secondary);
     flex-shrink: 0;
   }
 
   .action-btn.is-copied .btn-icon {
-    color: #4ade80;
+    color: var(--status-success);
   }
 
   .btn-label {

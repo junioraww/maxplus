@@ -20,7 +20,7 @@
     top: 0;
     left: 0;
     width: 100%;
-    height: calc(100% - 60px);
+    height: calc(100% - var(--panel-height, 60px));
     transition: transform 0.22s ease-out;
     display: flex;
     flex-direction: column;

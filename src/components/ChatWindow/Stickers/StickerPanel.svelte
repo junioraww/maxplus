@@ -1,4 +1,5 @@
 <script>
+  import { IconButton, Tab } from "$components/ui";
   import { onMount, onDestroy, tick, createEventDispatcher } from "svelte";
   import { registerBackHandler } from "$lib/utils/backButton.js";
   import {
@@ -423,12 +424,7 @@
 
 <div class="sticker-panel-wrapper">
   <div class="panel-mode-toggle" on:click={handleModeToggleClick}>
-    <button
-      type="button"
-      class="mode-btn"
-      class:active={activeTab === "emoji"}
-      on:click={() => (activeTab = "emoji")}
-    >
+    <Tab variant="segment" active={activeTab === "emoji"} class="stickerpanel-mode-btn" onclick={() => (activeTab = "emoji")}>
       <svg
         class="mode-icon-svg"
         viewBox="0 0 24 24"
@@ -446,13 +442,8 @@
         <line x1="15" y1="9" x2="15.01" y2="9" />
       </svg>
       <span class="mode-text">Эмодзи</span>
-    </button>
-    <button
-      type="button"
-      class="mode-btn"
-      class:active={activeTab === "stickers"}
-      on:click={() => (activeTab = "stickers")}
-    >
+    </Tab>
+    <Tab variant="segment" active={activeTab === "stickers"} class="stickerpanel-mode-btn" onclick={() => (activeTab = "stickers")}>
       <svg
         class="mode-icon-svg"
         viewBox="0 0 24 24"
@@ -468,7 +459,7 @@
         <path d="M14 2v6h6" />
       </svg>
       <span class="mode-text">Стикеры</span>
-    </button>
+    </Tab>
     {#each $pluginTabs as item (item.id)}
       <div class="plugin-tab-btn-wrap" class:active={isPluginActive(item, activeTab)} data-plugin-tab={item.pluginId || item.id}>
         {@html item.html}
@@ -528,14 +519,14 @@
             on:input={handleQueryChange}
           />
           {#if query}
-            <button type="button" class="clear-btn" on:click={clearSearch}>
+            <IconButton class="stickerpanel-clear-btn" onclick={clearSearch}>
               <svg viewBox="0 0 24 24" width="14" height="14">
                 <path
                   fill="currentColor"
                   d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"
                 />
               </svg>
-            </button>
+            </IconButton>
           {/if}
         </div>
       </div>
@@ -543,53 +534,36 @@
       {#if !query}
         <div class="pack-tabs-bar">
           {#if recentsSection}
-            <button
-              type="button"
-              class="pack-tab-item"
-              class:selected={selectedSetId === "recents"}
-              on:click={() => scrollToSection("recents")}
-              title="Недавние"
-            >
+            <Tab variant="pill" active={selectedSetId === "recents"} class="stickerpanel-pack-tab-item" onclick={() => scrollToSection("recents")} title="Недавние">
               <svg viewBox="0 0 24 24" width="20" height="20">
                 <path
                   fill="currentColor"
                   d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67z"
                 />
               </svg>
-            </button>
+            </Tab>
           {/if}
 
           {#each favoriteSections as sec (sec.id)}
-            <button
-              type="button"
-              class="pack-tab-item"
-              class:selected={selectedSetId === sec.id}
-              on:click={() => scrollToSection(sec.id)}
-              title={sec.name}
-            >
+            <Tab variant="pill" active={selectedSetId === sec.id} class="stickerpanel-pack-tab-item" onclick={() => scrollToSection(sec.id)} title={sec.name}>
               {#if sec.iconUrl}
                 <img src={sec.iconUrl} alt="" class="tab-pack-img" />
               {:else}
                 <div class="tab-placeholder">{sec.name.slice(0, 1)}</div>
               {/if}
-            </button>
+            </Tab>
           {/each}
 
-          <button
-            type="button"
-            class="pack-tab-item add-pack-tab"
-            on:click={() => {
+          <Tab variant="pill" class="stickerpanel-pack-tab-item stickerpanel-add-pack-tab" onclick={() => {
               showCatalogModal = true;
-            }}
-            title="Каталог стикеров"
-          >
+            }} title="Каталог стикеров">
             <svg viewBox="0 0 24 24" width="20" height="20">
               <path
                 fill="currentColor"
                 d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"
               />
             </svg>
-          </button>
+          </Tab>
         </div>
       {/if}
 
@@ -798,7 +772,7 @@
     }
 
     .panel-mode-toggle::-webkit-scrollbar-thumb {
-      background: rgba(255, 255, 255, 0.2);
+      background: var(--bg-surface-2);
       border-radius: 4px;
     }
   }
@@ -811,42 +785,14 @@
     overflow-y: auto;
   }
 
-  .mode-btn {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 6px;
-    padding: 8px 16px;
-    min-height: 36px;
-    background: transparent;
-    border: none;
-    border-radius: 20px;
-    color: var(--text-muted);
-    font-size: 14px;
-    font-weight: 600;
-    cursor: pointer;
-    transition: all 0.15s ease;
-    box-sizing: border-box;
-    flex-shrink: 0;
-    scroll-snap-align: start;
-    white-space: nowrap;
-  }
+  :global(.stickerpanel-mode-btn)  { flex-shrink: 0; }
 
   .plugin-tab-btn-wrap {
     flex-shrink: 0;
     scroll-snap-align: start;
   }
 
-  .mode-btn:hover {
-    color: #fff;
-    background: rgba(255, 255, 255, 0.04);
-  }
 
-  .mode-btn.active,
-  :global(.plugin-tab-btn-wrap.active .mode-btn) {
-    color: #fff;
-    background: var(--accent-subtle-hover);
-  }
 
   .mode-icon-svg {
     flex-shrink: 0;
@@ -891,12 +837,12 @@
   }
 
   .emoji-tab-item:hover {
-    background: rgba(255, 255, 255, 0.06);
+    background: var(--bg-surface);
     transform: scale(1.1);
   }
 
   .emoji-tab-item.selected {
-    background: rgba(255, 255, 255, 0.14);
+    background: var(--bg-surface-2);
   }
 
   .emoji-scroll-area {
@@ -939,7 +885,7 @@
   }
 
   .emoji-item:hover {
-    background: rgba(255, 255, 255, 0.08);
+    background: var(--bg-surface);
     transform: scale(1.2);
   }
 
@@ -961,7 +907,7 @@
   .search-input-box {
     display: flex;
     align-items: center;
-    background: rgba(255, 255, 255, 0.06);
+    background: var(--bg-surface);
     border-radius: 20px;
     padding: 8px 12px;
     gap: 8px;
@@ -976,7 +922,7 @@
     flex: 1;
     background: transparent;
     border: none;
-    color: #fff;
+    color: var(--text-primary);
     font-size: 13px;
     outline: none;
   }
@@ -985,16 +931,6 @@
     color: #636b77;
   }
 
-  .clear-btn {
-    background: none;
-    border: none;
-    color: var(--text-muted);
-    cursor: pointer;
-    padding: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
 
   .pack-tabs-bar {
     display: flex;
@@ -1011,41 +947,12 @@
     display: none;
   }
 
-  .pack-tab-item {
-    background: none;
-    border: none;
-    width: 36px;
-    height: 36px;
-    border-radius: 10px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    color: var(--text-muted);
-    transition: background-color 0.15s, color 0.15s;
-    flex-shrink: 0;
-  }
+  :global(.stickerpanel-pack-tab-item)  { width: 36px; flex-shrink: 0; }
 
-  .pack-tab-item:hover {
-    background: rgba(255, 255, 255, 0.06);
-    color: #fff;
-  }
 
-  .pack-tab-item.selected {
-    background: rgba(255, 255, 255, 0.12);
-    color: #fff;
-  }
 
-  .add-pack-tab {
-    color: #248bfe;
-    background: rgba(36, 139, 254, 0.08);
-    margin-left: auto;
-  }
+  :global(.stickerpanel-add-pack-tab)  { margin-left: auto; }
 
-  .add-pack-tab:hover {
-    background: rgba(36, 139, 254, 0.18);
-    color: #fff;
-  }
 
   .tab-pack-img {
     width: 24px;
@@ -1112,7 +1019,7 @@
   }
 
   .sticker-cell:hover {
-    background: rgba(255, 255, 255, 0.06);
+    background: var(--bg-surface);
     transform: scale(1.05);
   }
 
@@ -1135,8 +1042,8 @@
   .spinner {
     width: 24px;
     height: 24px;
-    border: 2px solid rgba(255, 255, 255, 0.1);
-    border-top-color: #248bfe;
+    border: 2px solid var(--border-subtle);
+    border-top-color: var(--accent-primary);
     border-radius: 50%;
     animation: spin 0.8s linear infinite;
   }

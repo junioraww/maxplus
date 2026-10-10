@@ -49,11 +49,12 @@
     position: fixed;
     bottom: 80px;
     right: 10px;
-    width: 55px;
-    height: 55px;
+    width: 56px;
+    height: 56px;
     z-index: 100;
     transition: bottom 0.2s ease;
-  }
+
+    border-radius: 50%;}
 
   .scroll-down-container.nije {
     bottom: 20px;
@@ -74,9 +75,9 @@
   .scroll-down-btn {
     width: 55px;
     height: 55px;
-    background: #1e2024;
+    background: var(--bg-surface);
     opacity: 0.9;
-    color: white;
+    color: var(--text-primary);
     border: none;
     border-radius: 50%;
     cursor: pointer;
@@ -100,19 +101,21 @@
     top: -5px;
     left: -5px;
     min-width: 22px;
-    height: 22px;
+    height: 56px;
     box-sizing: border-box;
     padding: 0 5px;
     background: #2b7fc3;
-    color: #ffffff;
+    color: var(--text-primary);
     font-size: 12px;
     font-weight: 600;
     line-height: 22px;
     text-align: center;
-    border-radius: 11px;
+    border-radius: 50%;
     box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
     pointer-events: auto;
     cursor: pointer;
     user-select: none;
-  }
+
+    width: 56px;
+    right: 10px;}
 </style>

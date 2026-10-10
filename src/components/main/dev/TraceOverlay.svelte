@@ -154,7 +154,7 @@
   .stop-icon {
     width: 14px;
     height: 14px;
-    background: white;
+    background: var(--bg-surface);
     border-radius: 3px;
   }
 
@@ -170,12 +170,12 @@
   .timer {
     font-size: 13px;
     font-weight: 700;
-    color: #f87171;
+    color: var(--status-danger);
   }
 
   .badge {
     font-size: 11px;
-    color: #9ca3af;
+    color: var(--text-muted);
   }
 
   @keyframes pulse-opacity {

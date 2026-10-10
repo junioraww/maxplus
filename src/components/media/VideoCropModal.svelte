@@ -1,4 +1,5 @@
 <script>
+  import { Button, IconButton } from "$components/ui";
   import { onMount, onDestroy, tick } from 'svelte';
   import { invoke } from '@tauri-apps/api/core';
   import { cropVideoToMp4 } from '$lib/utils/videoEncoder.js';
@@ -375,7 +376,7 @@
     <div class="crop-modal-container">
       <div class="header-bar">
         <span class="header-title">Видеосообщение</span>
-        <button type="button" class="close-btn" on:click={handleClose} disabled={isProcessing}>✕</button>
+        <IconButton class="videocropmodal-close-btn" onclick={handleClose} disabled={isProcessing}>✕</IconButton>
       </div>
 
       <div
@@ -417,7 +418,7 @@
               cy={circlePx.cy}
               r={circlePx.r}
               fill="none"
-              stroke="#ffffff"
+              stroke="var(--icon-primary)"
               stroke-width="2"
               class="crop-circle-ring"
             />
@@ -494,10 +495,10 @@
         {/if}
 
         <div class="action-buttons-row">
-          <button type="button" class="action-btn cancel-btn" on:click={handleClose} disabled={isProcessing}>
+          <Button class="videocropmodal-action-btn videocropmodal-cancel-btn" onclick={handleClose} disabled={isProcessing}>
             Отмена
-          </button>
-          <button type="button" class="action-btn confirm-btn" on:click={handleConfirm} disabled={isProcessing}>
+          </Button>
+          <Button class="videocropmodal-action-btn videocropmodal-confirm-btn" onclick={handleConfirm} disabled={isProcessing}>
             {#if isProcessing}
               <div class="spinner"></div>
               <span>Обработка...</span>
@@ -508,7 +509,7 @@
               </svg>
               <span>Отправить</span>
             {/if}
-          </button>
+          </Button>
         </div>
       </div>
     </div>
@@ -558,21 +559,7 @@
     color: #f0f2f5;
   }
 
-  .close-btn {
-    background: transparent;
-    border: none;
-    color: rgba(255, 255, 255, 0.6);
-    font-size: 18px;
-    cursor: pointer;
-    padding: 6px 10px;
-    border-radius: 8px;
-    transition: background 0.15s, color 0.15s;
-  }
 
-  .close-btn:hover {
-    background: rgba(255, 255, 255, 0.1);
-    color: #fff;
-  }
 
   .crop-viewport {
     position: relative;
@@ -619,7 +606,7 @@
     border-radius: 50%;
     background: rgba(0, 0, 0, 0.75);
     border: 1px solid rgba(255, 255, 255, 0.2);
-    color: #fff;
+    color: var(--text-primary);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -764,42 +751,13 @@
     margin-top: 6px;
   }
 
-  .action-btn {
-    flex: 1;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-    padding: 12px 18px;
-    border-radius: 12px;
-    font-size: 14px;
-    font-weight: 600;
-    cursor: pointer;
-    border: none;
-    transition: background 0.15s, transform 0.1s;
-  }
+  :global(.videocropmodal-action-btn)  { flex: 1; }
 
-  .action-btn:active {
-    transform: scale(0.98);
-  }
+  :global(.videocropmodal-action-btn):active  { transform: scale(0.98); }
 
-  .cancel-btn {
-    background: rgba(255, 255, 255, 0.08);
-    color: rgba(255, 255, 255, 0.85);
-  }
 
-  .cancel-btn:hover {
-    background: rgba(255, 255, 255, 0.14);
-  }
 
-  .confirm-btn {
-    background: #0077ff;
-    color: #ffffff;
-  }
 
-  .confirm-btn:hover {
-    background: #006ae6;
-  }
 
   .spinner {
     width: 16px;

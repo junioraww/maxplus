@@ -1,14 +1,12 @@
 <script>
   import '../app.css';
 
-  import { onBackButtonPress } from "@tauri-apps/api/app";
-  import { listen } from "@tauri-apps/api/event";
-  import { invoke } from "@tauri-apps/api/core";
   import { onMount, onDestroy, setContext } from "svelte";
   import { browser } from '$app/environment';
   import { fade } from "svelte/transition";
   import { page } from "$app/stores";
-  import { type } from "@tauri-apps/plugin-os";
+  import { goto } from "$app/navigation";
+  import { get } from "svelte/store";
 
   import API from '$lib/stores/api';
   import { add as addLog } from '$lib/stores/logs';
@@ -24,10 +22,9 @@
   import VideoCropModal from "$components/media/VideoCropModal.svelte";
   import TraceOverlay from "$components/main/dev/TraceOverlay.svelte";
   import { videoCropState, closeVideoCropModal } from "$lib/stores/videoCrop.js";
+  import { theme } from "$lib/stores/theme.js";
 
   import Session, { closeAvatarGallery } from "$lib/stores/session";
-  import { initDeepLink } from "$lib/utils/deepLink.js";
-  import { initProxyConfig } from "$lib/utils/proxyConfig.js";
   import { handleBackButton, registerBackHandler } from "$lib/utils/backButton.js";
 
   let settings;
@@ -63,12 +60,49 @@
   onMount(async () => {
     unmountLoader();
 
-    await initProxyConfig();
-    cleanupDeepLink = await initDeepLink();
+    const isTauri = typeof window !== 'undefined' && !!window.__TAURI_INTERNALS__;
 
-    listen("max", async (event) => {
-      addLog(event.payload);
-    });
+    if (isTauri) {
+      const [{ initProxyConfig }] = await Promise.all([
+        import("$lib/utils/proxyConfig.js"),
+      ]);
+      await initProxyConfig();
+
+      const { initDeepLink } = await import("$lib/utils/deepLink.js");
+      cleanupDeepLink = await initDeepLink();
+
+      const { listen } = await import("@tauri-apps/api/event");
+      listen("max", async (event) => {
+        addLog(event.payload);
+      });
+
+      const { type: osType } = await import("@tauri-apps/plugin-os");
+      const system = osType();
+
+      if (system === "ios") {
+        const { invoke } = await import("@tauri-apps/api/core");
+        try {
+          const [{ inset: top }, { inset: bottom }] = await Promise.all([
+            invoke("plugin:safe-area-insets-css|get_top_inset"),
+            invoke("plugin:safe-area-insets-css|get_bottom_inset"),
+          ]);
+          document.documentElement.style.setProperty("--safe-area-top", `${top}px`);
+          document.documentElement.style.setProperty("--safe-area-bottom", `${bottom}px`);
+          document.documentElement.classList.add("ios-safe-area");
+        } catch (error) {
+          console.warn("Native safe-area insets are unavailable", error);
+        }
+      }
+
+      if (system === "android" || system === "ios") {
+        const { onBackButtonPress } = await import("@tauri-apps/api/app");
+        try {
+          unlistenBackButton = await onBackButtonPress(handleBackButton);
+        } catch (e) {
+          console.warn("BackButton listener unavailable", e);
+        }
+      }
+    }
 
     handleKeydown = (e) => {
       if (e.key === "Escape") {
@@ -76,31 +110,6 @@
       }
     };
     window.addEventListener("keydown", handleKeydown);
-
-    const system = type();
-
-    if (system === "ios") {
-      try {
-        const [{ inset: top }, { inset: bottom }] = await Promise.all([
-          invoke("plugin:safe-area-insets-css|get_top_inset"),
-          invoke("plugin:safe-area-insets-css|get_bottom_inset"),
-        ]);
-
-        document.documentElement.style.setProperty("--safe-area-top", `${top}px`);
-        document.documentElement.style.setProperty("--safe-area-bottom", `${bottom}px`);
-        document.documentElement.classList.add("ios-safe-area");
-      } catch (error) {
-        console.warn("Native safe-area insets are unavailable", error);
-      }
-    }
-
-    if (system === "android" || system === "ios") {
-      try {
-        unlistenBackButton = await onBackButtonPress(handleBackButton);
-      } catch (e) {
-        console.warn("BackButton listener unavailable", e);
-      }
-    }
   });
 
   function unmountLoader() {
@@ -125,6 +134,11 @@
   });
 
   if (browser) window.alert = showAlert;
+
+  $: if (browser && $theme) {
+    document.documentElement.setAttribute('data-theme', $theme === 'dark' ? 'dark' : '');
+    if ($theme !== 'dark') document.documentElement.removeAttribute('data-theme');
+  }
 
   $: if (browser && $Session?.loaded) {
     const el = document.getElementById("initial-loader");

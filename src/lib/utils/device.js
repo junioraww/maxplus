@@ -91,3 +91,17 @@ const LOCALE_TIMEZONES = [
   ["ru", "Asia/Yakutsk"],
   ["ru", "Asia/Vladivostok"],
 ];
+
+export const generateWebDevice = () => {
+  const [ locale, timezone ] = pick(LOCALE_TIMEZONES);
+  return {
+    mtInstance: crypto.randomUUID(),
+    deviceId: crypto.randomUUID(),
+    userAgent: {
+      deviceType: "WEB", appVersion: "26.8.4", osVersion: "Linux",
+      timezone, screen: "1080x1920 1.0x", locale, deviceLocale: locale,
+      deviceName: "Chrome", buildNumber: 0,
+      headerUserAgent: "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36",
+    },
+  };
+};

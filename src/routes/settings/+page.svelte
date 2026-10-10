@@ -1,4 +1,5 @@
 <script>
+  import { Toggle } from "$components/ui";
 import { goto } from "$app/navigation";
   import {
     onMount,
@@ -311,18 +312,24 @@ import { goto } from "$app/navigation";
 </script>
 
 <div class="settings">
-  <img on:click={scanner} src={"icons/qr.svg"} class="scanner-icon icon" />
+  <header class="settings-head">
+    <h1>Настройки</h1>
+    <button class="head-btn" aria-label="Сканировать QR-код" on:click={scanner}>
+      <img src={"icons/qr.svg"} class="icon" alt="" />
+    </button>
+  </header>
 
-  <div class="info">
-    <div
-      class="self-avatar-wrap"
-      bind:this={selfAvatarWrapEl}
-      on:click={openSelfAvatar}
-    >
-      <Avatar size={85} isSelf={true} contactId={contact?.id}/>
+  <div class="profile-row" on:click={(e) => buttons.flat().find((b) => b.icon === "profile.svg")?.action?.(e)}>
+    <div class="self-avatar-wrap" bind:this={selfAvatarWrapEl} on:click|stopPropagation={openSelfAvatar}>
+      <Avatar size={64} isSelf={true} contactId={contact?.id}/>
     </div>
-    <a class="name">{name}</a>
-    <a class="phone">{phone}</a>
+    <div class="profile-text">
+      <span class="name">{name}</span>
+      <span class="phone">{phone}</span>
+    </div>
+    <svg class="chevron" width="10" height="18" viewBox="0 0 10 18" fill="none" aria-hidden="true">
+      <path d="M1.5 1.5L8.5 9l-7 7.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
   </div>
 
   <div class="buttons">
@@ -330,25 +337,13 @@ import { goto } from "$app/navigation";
       <div class="group">
         {#each group as btn}
           <div on:click={btn.action} class="button">
-            <img src={"icons/" + btn.icon} class="icon" />
-            <a>{btn.text}</a>
+            <img src={"icons/" + btn.icon} class="icon" alt="" />
+            <span class="label">{btn.text}</span>
             {#if btn.isToggle}
-              <div class="toggle-track" class:active={btn.toggleValue}>
-                <div class="toggle-thumb" class:active={btn.toggleValue}></div>
-              </div>
+              <Toggle readonly checked={btn.toggleValue} />
             {:else}
-              <svg
-                width="40"
-                height="20"
-                viewBox="0 0 40 20"
-                xmlns="http://www.w3.org/2000/svg"
-              >
-                <polyline
-                  points="30,3 38,10 30,17"
-                  stroke="#999"
-                  fill="none"
-                  stroke-width="3"
-                />
+              <svg class="chevron" width="10" height="18" viewBox="0 0 10 18" fill="none" aria-hidden="true">
+                <path d="M1.5 1.5L8.5 9l-7 7.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
               </svg>
             {/if}
           </div>
@@ -360,122 +355,138 @@ import { goto } from "$app/navigation";
 
 <style>
   .settings {
+    --s-text: var(--max-text, #060708);
+    --s-muted: var(--max-text-3, #7a7d82);
+    --s-chevron: #b0b3b8;
+    --s-divider: rgba(0, 0, 0, 0.1);
     position: relative;
-    width: 100vw;
-    color: #bbb;
-    overflow-y: auto;
+    box-sizing: border-box;
+    width: 100%;
     flex-grow: 1;
     min-height: 0;
+    overflow-y: auto;
+    padding: env(safe-area-inset-top, 0px) 0 calc(90px + env(safe-area-inset-bottom));
+    background: var(--max-surface, #fff);
+    color: var(--s-text);
   }
+  /* Иконки в static/icons нарисованы белым: на светлом фоне делаем их чёрными */
+  .settings { --s-icon-filter: brightness(0); }
+  @media (prefers-color-scheme: dark) {
+    .settings { --s-divider: rgba(255, 255, 255, 0.12); --s-chevron: #6b6e73; --s-icon-filter: none; }
+  }
+  .settings .icon { filter: var(--s-icon-filter); }
 
-  .info {
-    margin-top: 20px;
-    top: 0;
-    width: 100vw;
+  .settings-head {
     display: flex;
-    flex-direction: column;
     align-items: center;
+    justify-content: space-between;
+    padding: 14px 16px 6px;
   }
+  .settings-head h1 {
+    margin: 0;
+    font-size: 26px;
+    line-height: 32px;
+    font-weight: 700;
+    color: var(--s-text);
+  }
+  .head-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    background: transparent;
+    cursor: pointer;
+  }
+  .head-btn .icon { width: 24px; height: 24px; object-fit: contain; }
 
+  .profile-row {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 12px 16px 12px 16px;
+    cursor: pointer;
+  }
   .self-avatar-wrap {
+    flex: 0 0 auto;
     cursor: pointer;
     transition: transform 0.14s;
   }
-
-  .self-avatar-wrap:active {
-    transform: scale(0.96);
+  .self-avatar-wrap:active { transform: scale(0.96); }
+  .profile-text {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .profile-text .name {
+    font-size: 18px;
+    line-height: 24px;
+    font-weight: 600;
+    color: var(--s-text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .profile-text .phone {
+    font-size: 15px;
+    line-height: 20px;
+    color: var(--s-muted);
   }
 
-  .info .name {
-    margin-top: 15px;
-    font-size: 20px;
-    font-weight: 800;
-    color: #bbb;
-  }
-
-  .info .phone {
-    color: #3ff;
-    font-size: 13px;
+  .chevron {
+    flex: 0 0 auto;
+    margin-left: auto;
+    color: var(--s-chevron);
   }
 
   .buttons {
-    margin: 20px 10px;
     display: flex;
     flex-direction: column;
-    gap: 20px;
-    font-size: 14px;
   }
-
   .buttons .group {
-    background-color: #26262e;
-    border-radius: 15px;
+    position: relative;
+    padding: 4px 0;
   }
-
+  .buttons .group::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 16px;
+    right: 16px;
+    height: 1px;
+    background: var(--s-divider);
+  }
   .buttons .group .button {
-    padding: 12px 15px;
     display: flex;
-    flex-direction: row;
-    cursor: pointer;
     align-items: center;
+    gap: 20px;
+    min-height: 52px;
+    padding: 4px 16px 4px 20px;
+    cursor: pointer;
   }
-
+  .buttons .group .button:active { background: rgba(0, 0, 0, 0.04); }
   .buttons .group .icon {
+    flex: 0 0 24px;
     width: 24px;
     height: 24px;
-    margin-right: 15px;
     object-fit: contain;
     display: block;
-    flex-shrink: 0;
   }
-
-  .buttons .group .button a {
-    line-height: 1;
-    letter-spacing: 0.5px;
-  }
-
-  .buttons .group .button svg {
-    margin-left: auto;
-  }
-
-  .scanner-icon {
-    position: absolute;
-    width: 45px;
-    cursor: pointer;
-    opacity: 0.8;
-    transition: opacity 0.1s;
-  }
-
-  .scanner-icon:hover {
-    opacity: 1;
-  }
-
-  .toggle-track {
-    margin-left: auto;
-    width: 44px;
-    height: 24px;
-    background: #3a3a3c;
-    border-radius: 12px;
-    position: relative;
-    transition: background-color 0.2s ease;
-    flex-shrink: 0;
-  }
-
-  .toggle-track.active {
-    background: #248bfe;
-  }
-
-  .toggle-thumb {
-    width: 20px;
-    height: 20px;
-    background: white;
-    border-radius: 50%;
-    position: absolute;
-    top: 2px;
-    left: 2px;
-    transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-  }
-
-  .toggle-thumb.active {
-    transform: translateX(20px);
+  .buttons .group .label {
+    flex: 1;
+    min-width: 0;
+    font-size: 17px;
+    line-height: 22px;
+    font-weight: 500;
+    color: var(--s-text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 </style>
+

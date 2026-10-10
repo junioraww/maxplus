@@ -1,10 +1,12 @@
 <script>
-  import { createEventDispatcher } from "svelte";
+  import { IconButton } from "$components/ui";
+  import { createEventDispatcher, onMount, onDestroy, tick } from "svelte";
   import { flip } from "svelte/animate";
   import { quintOut } from "svelte/easing";
 
   export let folders = [];
   export let activeFolder = null;
+  export let counts = new Map();
 
   const dispatch = createEventDispatcher();
 
@@ -12,7 +14,39 @@
   let draggingIndex = null;
 
   let lastReorderTime = 0;
-  const REORDER_COOLDOWN = 250; // должно быть близко к duration анимации
+  const REORDER_COOLDOWN = 250;
+
+  let tabElements = [];
+
+  $: activeIndex = folders.findIndex(f => f === activeFolder);
+  $: if (activeIndex === -1) activeIndex = 0;
+
+  let tabsEl;
+  let slideLeft = 0;
+  let slideWidth = 0;
+  let slideTransition = false;
+  let resizeObserver;
+
+  async function updateSlide() {
+    await tick();
+    const el = tabElements[activeIndex];
+    if (!el) return;
+    slideLeft = el.offsetLeft;
+    slideWidth = el.offsetWidth;
+    if (!slideTransition) requestAnimationFrame(() => (slideTransition = true));
+  }
+
+  $: activeIndex, folders, isEditing, updateSlide();
+
+  onMount(() => {
+    if (typeof ResizeObserver !== "undefined" && tabsEl) {
+      resizeObserver = new ResizeObserver(() => updateSlide());
+      resizeObserver.observe(tabsEl);
+    }
+    document.fonts?.ready?.then(updateSlide);
+  });
+
+  onDestroy(() => resizeObserver?.disconnect());
 
   function selectFolder(folder) {
     if (isEditing) return;
@@ -47,12 +81,11 @@
     }
 
     const elementUnderCursor = document.elementFromPoint(clientX, clientY);
-    const tabWrapper = elementUnderCursor?.closest(".tab-wrapper");
+    const tabEl = elementUnderCursor?.closest(".tab-item");
 
-    if (tabWrapper && tabWrapper.dataset.index) {
-      const hoverIndex = parseInt(tabWrapper.dataset.index);
+    if (tabEl && tabEl.dataset.index) {
+      const hoverIndex = parseInt(tabEl.dataset.index);
 
-      // наехали на другой элемент
       if (hoverIndex !== draggingIndex) {
         const newFolders = [...folders];
         const [movedItem] = newFolders.splice(draggingIndex, 1);
@@ -81,23 +114,37 @@
 />
 
 <div class="tabs-container">
-  <div class="tabs">
+  <div
+    class="tabs"
+    class:tabs--transition={slideTransition}
+    role="tablist"
+    bind:this={tabsEl}
+    style="--active-tab-width: {slideWidth}px; --active-tab-left: {slideLeft}px;"
+  >
     {#each folders as folder, index (folder.id)}
       <div
         animate:flip={{ duration: 250, easing: quintOut }}
-        class="tab-wrapper"
+        class="tab-item"
         class:shaking={isEditing}
         class:dragging={draggingIndex === index}
         data-index={index}
         on:mousedown={(e) => handleStart(index, e)}
         on:touchstart|passive={(e) => handleStart(index, e)}
+        bind:this={tabElements[index]}
       >
         <button
           class="tab"
-          class:active={activeFolder === folder && !isEditing}
+          class:tab--active={activeFolder === folder && !isEditing}
+          type="button"
+          role="tab"
+          aria-selected={activeFolder === folder}
+          tabindex={activeFolder === folder ? 0 : -1}
           on:click={() => selectFolder(folder)}
         >
-          <span>{folder.title}</span>
+          {folder.title}
+          {#if !isEditing && (counts.get(folder.id) || 0) > 0}
+            <span class="tab-badge">{counts.get(folder.id) > 99 ? "99+" : counts.get(folder.id)}</span>
+          {/if}
         </button>
 
         {#if isEditing && folder.id !== 0 && folder.id !== "all.chat.folder"}
@@ -116,31 +163,25 @@
               fill="none"
               stroke-linecap="round"
               stroke-linejoin="round"
-              ><path
-                d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"
-              ></path><path
-                d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"
-              ></path></svg
             >
+              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+            </svg>
           </button>
         {/if}
       </div>
     {/each}
 
+    {#if !isEditing && slideWidth > 0}
+      <div class="active-slide" aria-hidden="true"></div>
+    {/if}
+
     {#if isEditing}
-      <button
-        class="add-tab-btn"
-        title="Добавить папку"
-        on:click|stopPropagation={() => dispatch("addFolder")}
-      >
+      <IconButton class="foldertabs-add-tab-btn" title="Добавить папку" onclick={(e) => { e.stopPropagation(); (() => dispatch("addFolder"))(e); }}>
         +
-      </button>
+      </IconButton>
     {/if}
   </div>
-
-  <button class="edit-btn" class:active={isEditing} on:click={toggleEditMode}>
-    {isEditing ? "Готово" : "Изм."}
-  </button>
 </div>
 
 <style>
@@ -148,8 +189,7 @@
     display: flex;
     width: 100%;
     align-items: center;
-    border-bottom: 1px solid #333;
-    background: #1e1e1e;
+    background: var(--bg-topbar);
     position: relative;
     z-index: 10;
     user-select: none;
@@ -162,48 +202,57 @@
     overflow-y: hidden;
     flex: 1 1 auto;
     min-width: 0;
-    padding-left: 5px;
-    padding-right: 8px;
+    padding: 0 var(--size-4, 4px);
     scrollbar-width: none;
     -ms-overflow-style: none;
+    position: relative;
   }
 
   .tabs::-webkit-scrollbar {
     display: none;
   }
 
-  .tab-wrapper {
+  /* === Active indicator — ported from Max === */
+  .active-slide {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    display: block;
+    height: var(--size-2, 2px);
+    width: calc(var(--active-tab-width) - var(--size-12, 12px) * 2);
+    border-top-left-radius: var(--border-radius-common-xs, 4px);
+    border-top-right-radius: var(--border-radius-common-xs, 4px);
+    background: var(--icon-themed, var(--accent-primary));
+    transform: translateX(calc(var(--active-tab-left) + var(--size-12, 12px)));
+    pointer-events: none;
+  }
+
+  .tabs--transition .active-slide {
+    transition: transform 0.25s ease-out, width 0.25s ease-out;
+  }
+
+  .tab-item {
     position: relative;
     display: flex;
     align-items: center;
-    margin-right: 4px;
+    margin: 0;
     touch-action: pan-x;
-    padding: 2px 0;
+    padding: 0;
     flex-shrink: 0;
   }
 
-  .tab-wrapper.dragging {
+  .tab-item.dragging {
     opacity: 0.5;
     z-index: 100;
     pointer-events: none;
   }
 
   @keyframes shake {
-    0% {
-      transform: rotate(0deg);
-    }
-    25% {
-      transform: rotate(1.5deg) translateY(-1px);
-    }
-    50% {
-      transform: rotate(0deg);
-    }
-    75% {
-      transform: rotate(-1.5deg) translateY(1px);
-    }
-    100% {
-      transform: rotate(0deg);
-    }
+    0% { transform: rotate(0deg); }
+    25% { transform: rotate(1.5deg) translateY(-1px); }
+    50% { transform: rotate(0deg); }
+    75% { transform: rotate(-1.5deg) translateY(1px); }
+    100% { transform: rotate(0deg); }
   }
 
   .shaking {
@@ -220,8 +269,8 @@
     position: absolute;
     top: -4px;
     right: -4px;
-    background: #007afd;
-    border: 2px solid #1e1e1e;
+    background: var(--accent-primary);
+    border: 2px solid var(--bg-topbar);
     border-radius: 50%;
     width: 20px;
     height: 20px;
@@ -237,78 +286,54 @@
 
   .tab {
     position: relative;
-    padding: 10px 16px;
-    background: none;
+    display: inline-flex;
+    justify-content: center;
+    align-items: center;
+    gap: var(--size-4, 4px);
+    flex-shrink: 0;
+    min-width: var(--size-40, 40px);
+    min-height: var(--size-40, 40px);
+    margin: 0;
+    padding: 0 var(--size-12, 12px);
     border: none;
-    font-size: 15px;
-    font-weight: 500;
+    border-radius: var(--border-radius-common-m, 12px);
+    background: none;
     cursor: pointer;
-    color: #999;
     white-space: nowrap;
-    border-radius: 8px;
-    transition:
-      background 0.2s,
-      color 0.2s;
+    font: var(--font-body-strong-weight, 500) var(--font-body-strong-size, 16px) / var(--font-body-strong-line-height, 20px) var(--font, -apple-system, BlinkMacSystemFont, "Roboto", system-ui, sans-serif);
+    letter-spacing: var(--font-body-strong-letter-spacing, 0.15px);
+    color: var(--text-tertiary, #06070885);
+    transition: color 0.2s, background-color 0.15s;
   }
 
   .shaking .tab {
-    background: #2a2a2a;
-    color: #ddd;
-    border: 1px solid #444;
-    padding: 9px 15px;
+    background: var(--bg-surface);
+    color: var(--text-primary);
+    border: 1px solid var(--border-subtle);
+    padding: 5px 11px;
   }
 
-  .tab:hover {
-    color: #ccc;
-  }
-  .tab.active {
-    color: #fff;
-  }
-
-  .tab.active:not(.shaking .tab)::after {
-    content: "";
-    position: absolute;
-    bottom: 0;
-    left: 50%;
-    transform: translateX(-50%) scaleX(1);
-    width: 80%;
-    height: 3px;
-    background-color: #007afd;
-    border-radius: 3px 3px 0 0;
+  @media (hover: hover) {
+    .tab:hover {
+      background-color: var(--states-button-ghost-hover, #0d0d0d0a);
+    }
   }
 
-  .edit-btn {
-    padding: 0 15px;
-    background: none;
-    border: none;
-    cursor: pointer;
-    color: #007afd;
-    font-weight: bold;
-    font-size: 14px;
-    flex-shrink: 0;
-    white-space: nowrap;
+  .tab:active {
+    background-color: var(--states-button-ghost-pressed, #0d0d0d14);
   }
 
-  .add-tab-btn {
-    background: #282830;
-    border: 1px dashed #555;
-    color: #bbb;
-    padding: 6px 14px;
-    margin: 4px;
-    border-radius: 8px;
-    font-size: 18px;
-    line-height: 1;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex-shrink: 0;
-    transition: background 0.15s, color 0.15s, border-color 0.15s;
+  .tab--active {
+    color: var(--text-themed, var(--accent-primary));
   }
 
-  .add-tab-btn:hover {
-    background: #363642;
-    color: #fff;
-    border-color: #777;
+  :global(.foldertabs-add-tab-btn)  { margin: 4px; flex-shrink: 0; }
+
+  .tab-badge {
+    display: inline-flex; align-items: center; justify-content: center; vertical-align: middle;
+    min-width: 20px; height: 20px; margin-left: 6px; padding: 0 6px; box-sizing: border-box;
+    border-radius: 10px; font-size: 13px; font-weight: 600; line-height: 1; color: #fff;
+    background: var(--text-secondary, #8a8a93);
   }
+  .tab--active .tab-badge { background: var(--accent-primary); }
 </style>

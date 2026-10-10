@@ -1,4 +1,5 @@
 <script>
+  import { IconButton } from "$components/ui";
   import { onMount, onDestroy } from 'svelte';
   import {
     activeMedia,
@@ -285,12 +286,7 @@
     </div>
 
     <div class="playback-content">
-      <button
-        type="button"
-        class="hdr-btn play-btn"
-        on:click|stopPropagation={togglePlayPause}
-        title={isPlaying ? 'Пауза' : 'Продолжить'}
-      >
+      <IconButton class="mediaplaybackheader-hdr-btn mediaplaybackheader-play-btn" onclick={(e) => { e.stopPropagation(); (togglePlayPause)(e); }} title={isPlaying ? 'Пауза' : 'Продолжить'}>
         {#if isPlaying}
           <svg viewBox="0 0 24 24" width="20" height="20">
             <path fill="currentColor" d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>
@@ -300,7 +296,7 @@
             <path fill="currentColor" d="M8 5v14l11-7z"/>
           </svg>
         {/if}
-      </button>
+      </IconButton>
 
       <div class="media-info" on:click|stopPropagation={openPlaylist} role="button" tabindex="0">
         <div class="media-title-row">
@@ -378,25 +374,15 @@
           {/if}
         </div>
 
-        <button
-          type="button"
-          class="hdr-btn playlist-btn"
-          on:click|stopPropagation={openPlaylist}
-          title="Очередь воспроизведения"
-        >
+        <IconButton class="mediaplaybackheader-hdr-btn mediaplaybackheader-playlist-btn" onclick={(e) => { e.stopPropagation(); (openPlaylist)(e); }} title="Очередь воспроизведения">
           <svg viewBox="0 0 24 24" width="16" height="16">
             <path fill="currentColor" d="M4 10h12v2H4zm0-4h12v2H4zm0 8h8v2H4zm10 0v6l5-3-5-3z"/>
           </svg>
-        </button>
+        </IconButton>
 
-        <button
-          type="button"
-          class="hdr-btn close-btn"
-          on:click|stopPropagation={stopCurrentMedia}
-          title="Закрыть"
-        >
+        <IconButton class="mediaplaybackheader-hdr-btn mediaplaybackheader-close-btn" onclick={(e) => { e.stopPropagation(); (stopCurrentMedia)(e); }} title="Закрыть">
           ✕
-        </button>
+        </IconButton>
       </div>
     </div>
   </div>
@@ -405,8 +391,8 @@
 <style>
   .media-playback-header {
     width: 100%;
-    background: #1e2024;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    background: var(--bg-surface);
+    border-bottom: 1px solid var(--border-subtle);
     display: flex;
     flex-direction: column;
     position: relative;
@@ -416,7 +402,7 @@
     flex-shrink: 0;
   }
   .media-playback-header.chat-header {
-    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    border-bottom: 1px solid var(--border-subtle);
   }
   .timeline-track-container {
     width: 100%;
@@ -433,7 +419,7 @@
     left: 0;
     width: 100%;
     height: 3px;
-    background: rgba(255, 255, 255, 0.15);
+    background: var(--bg-surface-2);
     border-radius: 3px;
   }
   .timeline-bar-played {
@@ -441,7 +427,7 @@
     top: 3px;
     left: 0;
     height: 3px;
-    background: #2b82d9;
+    background: var(--accent-primary);
     border-radius: 3px;
     pointer-events: none;
   }
@@ -451,7 +437,7 @@
     width: 11px;
     height: 11px;
     border-radius: 50%;
-    background: #2b82d9;
+    background: var(--accent-primary);
     transform: translate(-50%, -50%);
     box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
     pointer-events: none;
@@ -473,7 +459,7 @@
     justify-content: center;
     background: transparent;
     border: none;
-    color: #8e9aa8;
+    color: var(--text-muted);
     cursor: pointer;
     border-radius: 6px;
     padding: 4px;
@@ -490,17 +476,8 @@
     pointer-events: none;
   }
   .hdr-btn:hover {
-    background: rgba(255, 255, 255, 0.1);
-    color: #ffffff;
-  }
-  .play-btn {
-    color: #2b82d9;
-    padding: 6px;
-    border-radius: 50%;
-  }
-  .play-btn:hover {
-    background: rgba(43, 130, 217, 0.15);
-    color: #2b82d9;
+    background: var(--bg-surface-2);
+    color: var(--text-primary);
   }
   .media-info {
     flex: 1;
@@ -513,7 +490,7 @@
     transition: background 0.15s;
   }
   .media-info:hover {
-    background: rgba(255, 255, 255, 0.06);
+    background: var(--bg-surface);
   }
   .media-title-row {
     display: flex;
@@ -521,14 +498,14 @@
     gap: 5px;
     font-size: 13px;
     font-weight: 500;
-    color: #ffffff;
+    color: var(--text-primary);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
   }
   .media-type-icon {
     display: inline-flex;
-    color: #2b82d9;
+    color: var(--accent-primary);
   }
   .media-title {
     overflow: hidden;
@@ -540,14 +517,14 @@
     padding: 1px 5px;
     border-radius: 10px;
     background: rgba(43, 130, 217, 0.2);
-    color: #2b82d9;
+    color: var(--accent-primary);
   }
   .media-sub-row {
     display: flex;
     align-items: center;
     gap: 4px;
     font-size: 11px;
-    color: #8e9aa8;
+    color: var(--text-muted);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -573,8 +550,8 @@
     letter-spacing: -0.2px;
     padding: 3px 6px;
     border-radius: 12px;
-    background: rgba(255, 255, 255, 0.08);
-    color: #ffffff;
+    background: var(--bg-surface);
+    color: var(--text-primary);
   }
   .speed-tooltip, .vol-tooltip {
     position: absolute;
@@ -582,7 +559,7 @@
     left: 50%;
     transform: translateX(-50%);
     background: #111316;
-    color: #fff;
+    color: var(--text-primary);
     padding: 2px 7px;
     border-radius: 4px;
     font-size: 11px;
@@ -590,11 +567,6 @@
     pointer-events: none;
     z-index: 100;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-  }
-  .close-btn {
-    font-size: 13px;
-    font-weight: 700;
-    padding: 5px 7px;
+    border: 1px solid var(--border-subtle);
   }
 </style>

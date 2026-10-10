@@ -1,4 +1,5 @@
 <script>
+  import { Button, IconButton, MenuItem, Modal } from "$components/ui";
   import { onMount, onDestroy } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
   import { openUrl } from "@tauri-apps/plugin-opener";
@@ -565,11 +566,7 @@
 
       <div class="header-bar">
         <div class="header-left">
-          <button
-            class="header-btn"
-            on:click|stopPropagation={handleLeftBtnClick}
-            title={currentInnerUrl ? "Назад" : (app.customBackButton ? "Назад" : "Закрыть")}
-          >
+          <IconButton class="webappsheet-header-btn" onclick={(e) => { e.stopPropagation(); (handleLeftBtnClick)(e); }} title={currentInnerUrl ? "Назад" : (app.customBackButton ? "Назад" : "Закрыть")}>
             {#if currentInnerUrl || app.customBackButton}
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
                 <line x1="19" y1="12" x2="5" y2="12"></line>
@@ -581,107 +578,74 @@
                 <line x1="6" y1="6" x2="18" y2="18"></line>
               </svg>
             {/if}
-          </button>
+          </IconButton>
           <span class="sheet-title" title={currentInnerUrl || app.title}>
             {currentInnerUrl ? (innerUrlHostname || currentInnerUrl) : app.title}
           </span>
         </div>
 
         <div class="header-right">
-          <button
-            class="header-btn"
-            on:click|stopPropagation={handleOpenPageInBrowser}
-            title="Открыть в браузере"
-          >
+          <IconButton class="webappsheet-header-btn" onclick={(e) => { e.stopPropagation(); (handleOpenPageInBrowser)(e); }} title="Открыть в браузере">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
               <polyline points="15 3 21 3 21 9"></polyline>
               <line x1="10" y1="14" x2="21" y2="3"></line>
             </svg>
-          </button>
+          </IconButton>
 
-          <button
-            class="header-btn"
-            on:click|stopPropagation={triggerMinimize}
-            title="Свернуть"
-          >
+          <IconButton class="webappsheet-header-btn" onclick={(e) => { e.stopPropagation(); (triggerMinimize)(e); }} title="Свернуть">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
               <line x1="5" y1="12" x2="19" y2="12"></line>
             </svg>
-          </button>
+          </IconButton>
 
           <div class="menu-container">
-            <button
-              class="header-btn"
-              on:click|stopPropagation={() => (showMenu = !showMenu)}
-              title="Меню"
-            >
+            <IconButton class="webappsheet-header-btn" onclick={(e) => { e.stopPropagation(); (() => (showMenu = !showMenu))(e); }} title="Меню">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
                 <circle cx="12" cy="5" r="2"></circle>
                 <circle cx="12" cy="12" r="2"></circle>
                 <circle cx="12" cy="19" r="2"></circle>
               </svg>
-            </button>
+            </IconButton>
 
             {#if showMenu}
               <div class="dropdown-menu">
-                <button class="menu-item" on:click|stopPropagation={() => { showMenu = false; handleOpenPageInBrowser(); }}>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <MenuItem class="webappsheet-menu-item" onclick={(e) => { e.stopPropagation(); (() => { showMenu = false; handleOpenPageInBrowser(); })(e); }}>{#snippet icon()}<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
                     <polyline points="15 3 21 3 21 9"></polyline>
                     <line x1="10" y1="14" x2="21" y2="3"></line>
-                  </svg>
-                  <span>Открыть в браузере</span>
-                </button>
-                <button class="menu-item" on:click|stopPropagation={handleShowBot}>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  </svg>{/snippet}<span>Открыть в браузере</span></MenuItem>
+                <MenuItem class="webappsheet-menu-item" onclick={(e) => { e.stopPropagation(); (handleShowBot)(e); }}>{#snippet icon()}<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
-                  </svg>
-                  <span>Открыть бота</span>
-                </button>
-                <button class="menu-item" on:click|stopPropagation={handleOpenSettings}>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  </svg>{/snippet}<span>Открыть бота</span></MenuItem>
+                <MenuItem class="webappsheet-menu-item" onclick={(e) => { e.stopPropagation(); (handleOpenSettings)(e); }}>{#snippet icon()}<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <circle cx="12" cy="12" r="3"></circle>
                     <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
-                  </svg>
-                  <span>Настройки</span>
-                </button>
-                <button class="menu-item" on:click|stopPropagation={handleRefresh}>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  </svg>{/snippet}<span>Настройки</span></MenuItem>
+                <MenuItem class="webappsheet-menu-item" onclick={(e) => { e.stopPropagation(); (handleRefresh)(e); }}>{#snippet icon()}<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <polyline points="23 4 23 10 17 10"></polyline>
                     <polyline points="1 20 1 14 7 14"></polyline>
                     <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
-                  </svg>
-                  <span>Обновить страницу</span>
-                </button>
-                <button class="menu-item" on:click|stopPropagation={handleOpenShortcutModal}>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  </svg>{/snippet}<span>Обновить страницу</span></MenuItem>
+                <MenuItem class="webappsheet-menu-item" onclick={(e) => { e.stopPropagation(); (handleOpenShortcutModal)(e); }}>{#snippet icon()}<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
                     <line x1="12" y1="8" x2="12" y2="16"></line>
                     <line x1="8" y1="12" x2="16" y2="12"></line>
-                  </svg>
-                  <span>Добавить ярлык</span>
-                </button>
+                  </svg>{/snippet}<span>Добавить ярлык</span></MenuItem>
                 {#if app.termsUrl}
-                  <button class="menu-item" on:click|stopPropagation={handleTerms}>
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <MenuItem class="webappsheet-menu-item" onclick={(e) => { e.stopPropagation(); (handleTerms)(e); }}>{#snippet icon()}<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                       <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
                       <polyline points="14 2 14 8 20 8"></polyline>
                       <line x1="16" y1="13" x2="8" y2="13"></line>
                       <line x1="16" y1="17" x2="8" y2="17"></line>
                       <polyline points="10 9 9 9 8 9"></polyline>
-                    </svg>
-                    <span>Условия использования</span>
-                  </button>
+                    </svg>{/snippet}<span>Условия использования</span></MenuItem>
                 {/if}
-                <button class="menu-item danger" on:click|stopPropagation={handleOpenReport}>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <MenuItem danger class="webappsheet-menu-item" onclick={(e) => { e.stopPropagation(); (handleOpenReport)(e); }}>{#snippet icon()}<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
                     <line x1="12" y1="9" x2="12" y2="13"></line>
                     <line x1="12" y1="17" x2="12.01" y2="17"></line>
-                  </svg>
-                  <span>Пожаловаться</span>
-                </button>
+                  </svg>{/snippet}<span>Пожаловаться</span></MenuItem>
               </div>
             {/if}
           </div>
@@ -701,7 +665,7 @@
       {:else if app.error}
         <div class="error-view">
           <span class="error-msg">{app.error}</span>
-          <button class="retry-btn" on:click={handleRefresh}>Повторить</button>
+          <Button class="webappsheet-retry-btn" onclick={handleRefresh}>Повторить</Button>
         </div>
       {:else if app.url}
         {#key app.reloadKey}
@@ -755,53 +719,50 @@
 {/if}
 
 {#if showSettingsModal}
-  <div class="modal-backdrop" on:click={() => (showSettingsModal = false)}>
-    <div class="modal-card" on:click|stopPropagation>
+  <Modal open={true} bare closeOnEsc={true} zIndex={1500} onclose={() => (showSettingsModal = false)}>
+    <div class="modal-card">
       <h4>Настройки приложения</h4>
       <p class="modal-subtext">ID бота: {app.botId}</p>
       <div class="modal-actions-col">
-        <button
-          class="modal-btn danger"
-          on:click={() => {
+        <Button variant="danger" class="webappsheet-modal-btn" onclick={() => {
             bridge?.handleIncomingMessage("WebAppDeviceStorageClear", {});
             bridge?.handleIncomingMessage("WebAppSecureStorageClear", {});
             showSettingsModal = false;
             alert("Данные приложения очищены");
-          }}
-        >
+          }}>
           Очистить память приложения
-        </button>
-        <button class="modal-btn" on:click={() => (showSettingsModal = false)}>
+        </Button>
+        <Button class="webappsheet-modal-btn" onclick={() => (showSettingsModal = false)}>
           Закрыть
-        </button>
+        </Button>
       </div>
     </div>
-  </div>
+  </Modal>
 {/if}
 
 {#if showShortcutModal}
-  <div class="modal-backdrop" on:click={() => (showShortcutModal = false)}>
-    <div class="modal-card" on:click|stopPropagation>
+  <Modal open={true} bare closeOnEsc={true} zIndex={1500} onclose={() => (showShortcutModal = false)}>
+    <div class="modal-card">
       <h4>Добавить ярлык</h4>
       <p class="modal-subtext">{app.title}</p>
       <div class="modal-actions-col">
-        <button class="modal-btn primary" on:click={handleDownloadDesktopShortcut}>
+        <Button variant="primary" class="webappsheet-modal-btn" onclick={handleDownloadDesktopShortcut}>
           Скачать файл ярлыка (.desktop)
-        </button>
-        <button class="modal-btn" on:click={handleCopyLink}>
+        </Button>
+        <Button class="webappsheet-modal-btn" onclick={handleCopyLink}>
           Скопировать ссылку
-        </button>
-        <button class="modal-btn" on:click={() => (showShortcutModal = false)}>
+        </Button>
+        <Button class="webappsheet-modal-btn" onclick={() => (showShortcutModal = false)}>
           Отмена
-        </button>
+        </Button>
       </div>
     </div>
-  </div>
+  </Modal>
 {/if}
 
 {#if showReportModal}
-  <div class="modal-backdrop" on:click={() => (showReportModal = false)}>
-    <div class="modal-card" on:click|stopPropagation>
+  <Modal open={true} bare closeOnEsc={true} zIndex={1500} onclose={() => (showReportModal = false)}>
+    <div class="modal-card">
       <h4>Пожаловаться на приложение</h4>
       <p class="modal-subtext">Выберите причину жалобы:</p>
       <div class="report-reasons">
@@ -835,15 +796,15 @@
       ></textarea>
 
       <div class="modal-actions-row">
-        <button class="modal-btn" on:click={() => (showReportModal = false)}>
+        <Button class="webappsheet-modal-btn" onclick={() => (showReportModal = false)}>
           Отмена
-        </button>
-        <button class="modal-btn danger-filled" on:click={handleSubmitReport}>
+        </Button>
+        <Button variant="danger" class="webappsheet-modal-btn" onclick={handleSubmitReport}>
           Пожаловаться
-        </button>
+        </Button>
       </div>
     </div>
-  </div>
+  </Modal>
 {/if}
 
 <style>
@@ -905,7 +866,7 @@
     height: 48px;
     width: 100%;
     background: #202225;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    border-bottom: 1px solid var(--border-subtle);
     touch-action: none;
     user-select: none;
   }
@@ -950,25 +911,8 @@
     line-height: 1;
   }
 
-  .header-btn {
-    width: 34px;
-    height: 34px;
-    border-radius: 50%;
-    border: none;
-    background: transparent;
-    color: #a0a4aa;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    transition: background 0.15s ease, color 0.15s ease;
-    padding: 0;
-  }
+  :global(.webappsheet-header-btn)  { width: 34px; }
 
-  .header-btn:hover {
-    background: rgba(255, 255, 255, 0.1);
-    color: #fff;
-  }
 
   .menu-container {
     position: relative;
@@ -983,39 +927,16 @@
     border-radius: 12px;
     padding: 6px;
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    border: 1px solid var(--border-subtle);
     display: flex;
     flex-direction: column;
     gap: 2px;
     z-index: 20;
   }
 
-  .menu-item {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 10px 12px;
-    border: none;
-    background: transparent;
-    color: #e0e3e8;
-    font-size: 13px;
-    border-radius: 8px;
-    cursor: pointer;
-    text-align: left;
-    transition: background 0.15s ease;
-  }
 
-  .menu-item:hover {
-    background: rgba(255, 255, 255, 0.08);
-  }
 
-  .menu-item.danger {
-    color: #ff5c5c;
-  }
 
-  .menu-item.danger:hover {
-    background: rgba(255, 92, 92, 0.12);
-  }
 
   .frame-container {
     flex: 1;
@@ -1049,8 +970,8 @@
   .spinner {
     width: 32px;
     height: 32px;
-    border: 3px solid rgba(255, 255, 255, 0.15);
-    border-top-color: #3b82f6;
+    border: 3px solid var(--border-subtle);
+    border-top-color: var(--accent-primary);
     border-radius: 50%;
     animation: spin 0.8s linear infinite;
   }
@@ -1061,26 +982,7 @@
     }
   }
 
-  .retry-btn {
-    padding: 8px 20px;
-    background: #2563eb;
-    color: #fff;
-    border: none;
-    border-radius: 8px;
-    font-size: 13px;
-    cursor: pointer;
-  }
 
-  .modal-backdrop {
-    position: fixed;
-    inset: 0;
-    background: rgba(0, 0, 0, 0.65);
-    z-index: 1500;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 16px;
-  }
 
   .modal-card {
     width: 100%;
@@ -1088,9 +990,9 @@
     background: #202225;
     border-radius: 14px;
     padding: 20px;
-    color: #fff;
+    color: var(--text-primary);
     box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    border: 1px solid var(--border-subtle);
   }
 
   .modal-card h4 {
@@ -1099,7 +1001,7 @@
   }
 
   .modal-subtext {
-    color: #9ca3af;
+    color: var(--text-muted);
     font-size: 13px;
     margin: 0 0 16px 0;
   }
@@ -1117,48 +1019,13 @@
     margin-top: 16px;
   }
 
-  .modal-btn {
-    padding: 10px 16px;
-    background: rgba(255, 255, 255, 0.08);
-    color: #e5e7eb;
-    border: none;
-    border-radius: 8px;
-    font-size: 13px;
-    font-weight: 500;
-    cursor: pointer;
-    transition: background 0.15s ease;
-  }
 
-  .modal-btn:hover {
-    background: rgba(255, 255, 255, 0.14);
-  }
 
-  .modal-btn.primary {
-    background: #2563eb;
-    color: #fff;
-  }
 
-  .modal-btn.primary:hover {
-    background: #1d4ed8;
-  }
 
-  .modal-btn.danger {
-    background: rgba(239, 68, 68, 0.15);
-    color: #f87171;
-  }
 
-  .modal-btn.danger:hover {
-    background: rgba(239, 68, 68, 0.25);
-  }
 
-  .modal-btn.danger-filled {
-    background: #dc2626;
-    color: #fff;
-  }
 
-  .modal-btn.danger-filled:hover {
-    background: #b91c1c;
-  }
 
   .report-reasons {
     display: flex;
@@ -1172,7 +1039,7 @@
     align-items: center;
     gap: 10px;
     font-size: 13px;
-    color: #d1d5db;
+    color: var(--text-primary);
     cursor: pointer;
     padding: 4px 0;
   }
@@ -1180,10 +1047,10 @@
   .report-textarea {
     width: 100%;
     background: #16181a;
-    border: 1px solid rgba(255, 255, 255, 0.12);
+    border: 1px solid var(--border-subtle);
     border-radius: 8px;
     padding: 8px 10px;
-    color: #fff;
+    color: var(--text-primary);
     font-size: 13px;
     resize: none;
     box-sizing: border-box;
@@ -1191,7 +1058,7 @@
   }
 
   .report-textarea:focus {
-    border-color: #3b82f6;
+    border-color: var(--accent-primary);
   }
 
   .drag-shield {

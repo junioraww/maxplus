@@ -73,7 +73,7 @@
 
   $: timeDisplay = (() => {
     if (!shownMessage?.time) return "";
-    const msgDate = new Date(shownMessage.time + sessionGet("drift"));
+    const msgDate = new Date(Number(shownMessage.time) + (Number(sessionGet("drift")) || 0));
     const now = new Date();
     const isToday =
       msgDate.getDate() === now.getDate() &&
@@ -86,8 +86,14 @@
       });
     const yesterday = new Date(now);
     yesterday.setDate(now.getDate() - 1);
-    if (msgDate.getDate() === yesterday.getDate()) return "Вчера";
-    return msgDate.toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit" });
+    if (
+      msgDate.getDate() === yesterday.getDate() &&
+      msgDate.getMonth() === yesterday.getMonth() &&
+      msgDate.getFullYear() === yesterday.getFullYear()
+    ) return "Вчера";
+    if (msgDate.getFullYear() !== now.getFullYear())
+      return msgDate.toLocaleDateString("ru-RU", { day: "numeric", month: "short", year: "numeric" });
+    return msgDate.toLocaleDateString("ru-RU", { day: "numeric", month: "short" });
   })();
 
   $: isMe = String(shownMessage?.sender) === String($currentUser) || String(shownMessage?.from) === String($currentUser);
@@ -124,219 +130,360 @@
   }
 </script>
 
-<div
-  class="chat-item"
-  class:selected={isSelected}
-  on:mousedown={handleStart}
-  on:touchstart|passive={handleStart}
-  on:mouseup={handleEnd}
-  on:touchend={handleEnd}
-  on:touchmove|passive={handleMove}
-  on:click={handleClick}
-  on:contextmenu|preventDefault={() => dispatch("longpress", chat)}
->
+<div class="item">
   <div
-    class="avatar-click-area"
-    on:click|stopPropagation={() => {
-      if (selectionMode) {
-        handleClick();
-        return;
-      }
-      if (chat.id === 0) {
-        $Session.profile = { userId: $currentUser, chatId: 0 };
-      } else if (chat.type === "DIALOG") {
-        $Session.profile = { userId: peerId, chatId: chat.id };
-      } else {
-        $Session.profile = { chatId: chat.id };
-      }
-    }}
+    role="presentation"
+    class="wrapper"
+    class:wrapper--withActions={!selectionMode}
+    class:selected={isSelected}
+    on:mousedown={handleStart}
+    on:touchstart|passive={handleStart}
+    on:mouseup={handleEnd}
+    on:touchend={handleEnd}
+    on:touchmove|passive={handleMove}
+    on:contextmenu|preventDefault={() => dispatch("longpress", chat)}
   >
-    <Avatar
-      {chat}
-      contactId={peerId}
-      {selectionMode}
-      {isSelected}
-    />
-  </div>
+    <button class="cell" on:click={handleClick}>
+      <div
+        class="avatar"
+        on:click|stopPropagation={() => {
+          if (selectionMode) {
+            handleClick();
+            return;
+          }
+          if (chat.id === 0) {
+            $Session.profile = { userId: $currentUser, chatId: 0 };
+          } else if (chat.type === "DIALOG") {
+            $Session.profile = { userId: peerId, chatId: chat.id };
+          } else {
+            $Session.profile = { chatId: chat.id };
+          }
+        }}
+      >
+        <Avatar
+          {chat}
+          contactId={peerId}
+          size={64}
+          {selectionMode}
+          {isSelected}
+        />
+      </div>
 
-  <div class="content">
-    <div class="row top">
-      <span class="name">
-        {#if isBot}
-          <img src="icons/bot.svg" class="bot-badge-icon" alt="" />
-        {/if}
-        {title}
-      </span>
-      <div class="meta">
+      <h3 class="title">
+        <span class="name">
+          {#if isBot}
+            <svg class="bot-badge-icon" aria-hidden="true" width="16" height="16"><use href="#icon_bot_mini"></use></svg>
+          {/if}
+          <span class="name-text">{title}</span>
+        </span>
+      </h3>
+
+      <div class="icons">
         {#if muted}
-          <svg class="muted-icon" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="#8e8e93" stroke-width="2">
+          <svg class="muted-icon" aria-label="Без звука" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
             <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
             <line x1="2" y1="2" x2="22" y2="22"></line>
           </svg>
         {/if}
+      </div>
+
+      <div class="meta">
         {#if isMe}
-          <span class="status-icon" class:read={isRead}>
-            {isRead ? "✓✓" : "✓"}
+          <span class="readMarker" class:unread={!isRead} aria-label={isRead ? "Прочитано" : "Отправлено"}>
+            <svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+              {#if isRead}
+                <path d="M1.5 8.5l3 3 6-7"></path>
+                <path d="M7.5 11.5l6-7"></path>
+              {:else}
+                <path d="M3.5 8.5l3 3 6-7"></path>
+              {/if}
+            </svg>
           </span>
         {/if}
         <span class="time">{timeDisplay}</span>
       </div>
-    </div>
 
-    <div class="row bottom">
-      <p class="preview">
-        {#if isMe}<span class="you-prefix">Вы:</span>{/if}
+      <span class="text">
         {#if attaches}
-          <b>{attaches}</b>{#if shownMessage?.text},
-          {/if}
+          <span class="attach">{attaches}</span>{#if shownMessage?.text}, {/if}
         {/if}
         {#if replace}
           {@html replace.text}
         {:else}
           {(shownMessage?.text || getSystemText(shownMessage, false) || "").replace(/<[^>]*>/g, "")}
         {/if}
-      </p>
-      {#if unread > 0}
-        <div class="badge" class:muted style={unread >= 99 ? "width: 26px;" : ""}>
-          {unread > 99 ? "99+" : unread}
-        </div>
-      {/if}
-    </div>
+      </span>
+
+      <div class="indicators">
+        {#if unread > 0}
+          <div class="badge" class:muted>
+            {unread > 99 ? "99+" : unread}
+          </div>
+        {/if}
+      </div>
+    </button>
+
+    {#if !selectionMode}
+      <div class="actions">
+        <button
+          class="menuButton"
+          aria-label="Действия с чатом"
+          aria-haspopup="dialog"
+          on:click|stopPropagation={() => dispatch("longpress", chat)}
+          on:mousedown|stopPropagation
+          on:touchstart|stopPropagation|passive
+        >
+          <svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+            <circle cx="3" cy="8" r="1.5"></circle>
+            <circle cx="8" cy="8" r="1.5"></circle>
+            <circle cx="13" cy="8" r="1.5"></circle>
+          </svg>
+        </button>
+      </div>
+    {/if}
   </div>
 </div>
 
 <style>
-  .chat-item {
-    display: flex;
-    padding: 8px 10px;
-    cursor: pointer;
-    transition: background-color 0.2s;
-    gap: 12px;
-    user-select: none;
+  /* === Chat cell — ported from Max (svelte-q2jdqb) === */
+  .item {
     position: relative;
+    width: 100%;
   }
 
-  .chat-item:hover {
-    background-color: rgba(255, 255, 255, 0.03);
-  }
-
-  .chat-item.selected {
-    background-color: rgba(59, 130, 246, 0.15);
-  }
-
-  /*.online-badge {
-        position: absolute; bottom: 2px; right: 2px;
-        width: 12px; height: 12px;
-        background-color: var(--status-success);
-        border: 2px solid #1e1e1e;
-        border-radius: 50%;
-        z-index: 1;
-    }*/
-
-  .content {
-    flex: 1;
+  .wrapper {
+    position: relative;
     display: flex;
-    flex-direction: column;
-    justify-content: center;
+    overflow: hidden;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+
+  .cell {
+    --cell-bg: var(--background-primary, transparent);
+    flex: 1 1 auto;
+    width: 100%;
     min-width: 0;
-    gap: 4px;
+    display: grid;
+    grid-template-columns: auto auto 1fr auto auto;
+    grid-template-areas:
+      "avatar title icons meta meta"
+      "avatar text text text indicators";
+    padding: 9px 16px;
+    border: 0;
+    margin: 0;
+    text-align: left;
+    color: var(--text-primary);
+    font: inherit;
+    background: var(--cell-bg);
+    cursor: pointer;
+    outline-offset: calc(-1px - var(--outline-width, 2px));
+    transition: background-color 0.15s;
   }
 
-  .row {
+  @media (hover: hover) {
+    .wrapper:hover .cell {
+      background: var(--states-background-card-hover, #0d0d0d0a);
+    }
+  }
+
+  .cell:focus-visible {
+    background: var(--states-background-card-hover, #0d0d0d0a);
+  }
+
+  .cell:active {
+    background: var(--states-background-card-pressed, #0d0d0d14);
+  }
+
+  .wrapper.selected .cell {
+    background: var(--background-themed-fade, #007aff29);
+  }
+
+  .avatar {
+    grid-area: avatar;
     display: flex;
-    justify-content: space-between;
     align-items: center;
+    height: 100%;
+    margin-right: var(--spacing-m, 12px);
+    cursor: pointer;
+  }
+
+  .title {
+    grid-area: title;
+    align-self: center;
+    min-width: 0;
+    margin: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    font: 500 var(--font-detail-size, 15px) / var(--font-detail-line-height, 20px) var(--font, -apple-system, BlinkMacSystemFont, "Roboto", system-ui, sans-serif);
+    letter-spacing: var(--font-detail-letter-spacing, 0.15px);
+    color: var(--text-primary);
   }
 
   .name {
-    font-weight: 500;
-    font-size: 16px;
-    color: var(--text-primary);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-
-  .meta {
-    display: flex;
+    display: inline-flex;
     align-items: center;
-    gap: 5px;
-    flex-shrink: 0;
+    gap: var(--spacing-xs, 4px);
+    max-width: 100%;
   }
 
-  .time {
-    font-size: 12px;
-    color: #888;
-  }
-
-  .status-icon {
-    font-size: 12px;
-    color: #888;
-  }
-
-  .status-icon.read {
-    color: var(--status-success);
-  }
-
-  .preview {
-    margin: 0;
-    font-size: 14px;
-    color: #aaa;
-    white-space: nowrap;
+  .name-text {
+    flex: 1 1 0%;
     overflow: hidden;
+    white-space: nowrap;
     text-overflow: ellipsis;
-    flex: 1;
-  }
-
-  .you-prefix {
-    color: #fff;
-  }
-
-  .badge {
-    background-color: var(--badge-unread);
-    color: white;
-    font-size: 11px;
-    font-weight: bold;
-    width: 20px;
-    height: 20px;
-    border-radius: 16px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    margin-left: 8px;
-    flex-shrink: 0;
-  }
-
-  .badge.muted {
-    background-color: #4b4b56;
-    color: #bbb;
   }
 
   .bot-badge-icon {
-    width: 14px;
-    height: 14px;
-    margin-right: 4px;
-    vertical-align: -2px;
-    display: inline-block;
-    opacity: 0.85;
+    flex-shrink: 0;
+    width: 16px;
+    height: 16px;
+    color: var(--icon-tertiary, #0607087a);
+  }
+
+  .icons {
+    grid-area: icons;
+    display: flex;
+    align-items: center;
+    height: 100%;
+    margin-left: var(--spacing-2xs, 2px);
+    color: var(--icon-mute, #06070847);
+  }
+
+  .meta {
+    grid-area: meta;
+    justify-self: flex-end;
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-xs, 4px);
+    height: 100%;
+    margin-left: var(--spacing-m, 12px);
+  }
+
+  .time {
+    white-space: nowrap;
+    font: 400 var(--font-description-size, 13px) / var(--font-description-line-height, 16px) var(--font, -apple-system, BlinkMacSystemFont, "Roboto", system-ui, sans-serif);
+    letter-spacing: var(--font-description-letter-spacing, 0.2px);
+    color: var(--text-tertiary, #06070885);
+  }
+
+  .readMarker {
+    display: flex;
+    color: var(--icon-themed, var(--accent-primary));
+  }
+
+  .readMarker.unread {
+    color: var(--icon-tertiary, #0607087a);
+  }
+
+  .text {
+    grid-area: text;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    word-break: break-word;
+    min-height: calc(2 * var(--font-detail-line-height, 20px) + var(--spacing-2xs, 2px));
+    max-height: calc(2 * var(--font-detail-line-height, 20px) + var(--spacing-2xs, 2px));
+    padding-top: var(--spacing-2xs, 2px);
+    font: 400 var(--font-detail-size, 15px) / var(--font-detail-line-height, 20px) var(--font, -apple-system, BlinkMacSystemFont, "Roboto", system-ui, sans-serif);
+    letter-spacing: var(--font-detail-letter-spacing, 0.15px);
+    color: var(--text-tertiary, #06070885);
+  }
+
+  .attach {
+    color: var(--text-secondary, #060708ad);
+  }
+
+  .indicators {
+    grid-area: indicators;
+    position: relative;
+    display: flex;
+    justify-content: flex-end;
+    height: 32px;
+    margin-top: 2px;
+    margin-left: var(--spacing-m, 12px);
+  }
+
+  .badge {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 20px;
+    height: 20px;
+    padding: 0 6px;
+    border-radius: 10px;
+    background: var(--counter-themed, var(--accent-primary));
+    color: var(--counter-contrast, #fff);
+    font: 500 var(--font-label-size, 12px) / 16px var(--font, -apple-system, BlinkMacSystemFont, "Roboto", system-ui, sans-serif);
+    letter-spacing: var(--font-label-letter-spacing, 0.3px);
+    font-variant-numeric: tabular-nums;
+    box-sizing: border-box;
+  }
+
+  .badge.muted {
+    background: var(--counter-mute, #0607081f);
+    color: var(--text-secondary, #060708ad);
   }
 
   .muted-icon {
-    opacity: 0.85;
-    margin-right: 2px;
-    display: inline-block;
-    vertical-align: -1px;
+    display: block;
   }
 
-  .avatar-click-area {
+  /* "⋯" button on hover — Max .actions/.menuButton */
+  .actions {
+    position: absolute;
+    top: 7px;
+    right: 16px;
+    display: flex;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.12s;
+  }
+
+  .menuButton {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    border: none;
+    background: none;
+    color: var(--icon-tertiary, #0607087a);
     cursor: pointer;
-    flex-shrink: 0;
-    border-radius: 50%;
-    transition: opacity 0.15s ease;
   }
 
-  .avatar-click-area:hover {
-    opacity: 0.88;
+  .menuButton:hover {
+    color: var(--icon-secondary, #060708ad);
   }
+
+  .meta {
+    transition: opacity 0.12s;
+  }
+
+  @media (hover: hover) {
+    .wrapper--withActions:hover .actions {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    .wrapper--withActions:hover .meta {
+      opacity: 0;
+    }
+  }
+
+  .wrapper--withActions:focus-within .actions {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  .wrapper--withActions:focus-within .meta {
+    opacity: 0;
+  }
+
 </style>

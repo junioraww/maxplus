@@ -14,12 +14,12 @@
   .open-dev {
     position: absolute;
     z-index: 100;
-    color: white;
+    color: var(--text-primary);
     width: 50px;
     height: 40px;
     top: 70px;
     right: 0;
-    background: linear-gradient(270deg, #333, #444), #333;
+    background: linear-gradient(270deg, var(--bg-surface-2), #444), var(--bg-surface-2);
     display: flex;
     align-items: center;
     justify-content: center;

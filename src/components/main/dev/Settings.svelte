@@ -88,11 +88,11 @@
     left: 0;
     width: 100vw;
     height: 100vh;
-    background-color: #202025ee;
+    background-color: var(--bg-surface);
     z-index: 200;
     display: flex;
     align-items: center;
-    color: white;
+    color: var(--text-primary);
     font-size: 24px;
     font-weight: 600;
     padding-top: 24px;
@@ -106,7 +106,7 @@
     display: flex;
     align-items: center;
     gap: 8px;
-    background: #6366f1;
+    background: var(--accent-violet);
     color: white;
     border: none;
     padding: 8px 20px;
@@ -131,7 +131,7 @@
   }
 
   .buttons .group {
-    background-color: #26262e;
+    background-color: var(--bg-surface-2);
     border-radius: 15px;
   }
 

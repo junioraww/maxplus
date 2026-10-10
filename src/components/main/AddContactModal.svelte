@@ -1,4 +1,5 @@
 <script>
+  import { Button, IconButton } from "$components/ui";
   import { fade, scale, fly } from "svelte/transition";
   import { createEventDispatcher, onDestroy } from "svelte";
   import API from "$lib/stores/api.js";
@@ -125,7 +126,7 @@
   >
     <div class="header">
       <h3>{ mode === "contact" ? "Новый контакт" : "Новая группа" }</h3>
-      <button class="close-btn" on:click={close}>&times;</button>
+      <IconButton class="addcontactmodal-close-btn" onclick={close}>&times;</IconButton>
     </div>
 
     <div class="content">
@@ -174,14 +175,14 @@
     </div>
 
     <div class="footer">
-      <button class="btn cancel" on:click={close}>Отмена</button>
-      <button class="btn save" on:click={submitHandler} disabled={isLoading}>
+      <Button class="addcontactmodal-btn addcontactmodal-cancel" onclick={close}>Отмена</Button>
+      <Button class="addcontactmodal-btn addcontactmodal-save" onclick={submitHandler} disabled={isLoading}>
         {#if isLoading}
           ...
         {:else}
           {mode === "contact" ? "Добавить контакт" : "Создать группу"}
         {/if}
-      </button>
+      </Button>
     </div>
   </div>
 </div>
@@ -203,15 +204,15 @@
   }
 
   .modal {
-    background: #252525;
+    background: var(--bg-surface);
     width: 90%;
     max-width: 350px;
     border-radius: 14px;
     display: flex;
     flex-direction: column;
-    color: #fff;
+    color: var(--text-primary);
     box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6);
-    border: 1px solid #333;
+    border: 1px solid var(--border-subtle);
   }
 
   .tabs {
@@ -226,21 +227,21 @@
     flex: 1;
     background: #1a1a1a;
     border: none;
-    color: #aaa;
+    color: var(--text-muted);
     padding: 8px 6px;
     border-radius: 12px;
     cursor: pointer;
   }
 
   .tabs button.active {
-    background: #007afd;
-    color: white;
-    border-color: #007afd;
+    background: var(--accent-primary);
+    color: var(--button-primary-contrast);
+    border-color: var(--accent-primary);
   }
 
   .header {
     padding: 15px 20px;
-    border-bottom: 1px solid #333;
+    border-bottom: 1px solid var(--border-subtle);
     display: flex;
     justify-content: space-between;
     align-items: center;
@@ -252,19 +253,7 @@
     font-weight: 600;
   }
 
-  .close-btn {
-    background: none;
-    border: none;
-    color: #888;
-    font-size: 24px;
-    cursor: pointer;
-    padding: 0;
-    line-height: 1;
-  }
 
-  .close-btn:hover {
-    color: #fff;
-  }
 
   .content {
     padding: 20px;
@@ -276,19 +265,19 @@
   .input-group label {
     display: block;
     margin-bottom: 8px;
-    color: #aaa;
+    color: var(--text-muted);
     font-size: 13px;
     font-weight: 500;
   }
 
   .input-wrapper {
     background: #1a1a1a;
-    border: 1px solid #444;
+    border: 1px solid var(--border-subtle);
     border-radius: 8px;
     transition: 0.2s;
   }
   .input-wrapper:focus-within {
-    border-color: #007afd;
+    border-color: var(--accent-primary);
     background: #151515;
   }
   .input-wrapper.has-error {
@@ -300,12 +289,12 @@
     padding: 10px 12px;
     background: transparent;
     border: none;
-    color: #fff;
+    color: var(--text-primary);
     font-size: 15px;
     outline: none;
   }
   input::placeholder {
-    color: #555;
+    color: var(--text-secondary);
   }
 
   .error-msg {
@@ -318,40 +307,13 @@
 
   .footer {
     padding: 15px 20px;
-    border-top: 1px solid #333;
+    border-top: 1px solid var(--border-subtle);
     display: flex;
     justify-content: flex-end;
     gap: 10px;
-    background: #222;
+    background: var(--bg-sheet);
     border-radius: 0 0 14px 14px;
   }
 
-  .btn {
-    padding: 8px 18px;
-    border-radius: 8px;
-    border: none;
-    cursor: pointer;
-    font-weight: 500;
-    font-size: 14px;
-    transition: 0.2s;
-  }
-  .btn.cancel {
-    background: transparent;
-    color: #007afd;
-  }
-  .btn.cancel:hover {
-    background: rgba(0, 122, 253, 0.1);
-  }
 
-  .btn.save {
-    background: #007afd;
-    color: #fff;
-  }
-  .btn.save:hover {
-    background: #006ce0;
-  }
-  .btn.save:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
 </style>

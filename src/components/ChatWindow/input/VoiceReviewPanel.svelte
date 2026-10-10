@@ -160,7 +160,7 @@
       </div>
       <div class="review-trim-times" style="font-size:10px;display:flex;justify-content:space-between;color:rgba(255,255,255,0.5);margin-top:2px;">
         <span>{formatSeconds(reviewAudioTrimStart)}</span>
-        <span style="color:#248bfe;font-weight:600;">{(reviewAudioTrimEnd - reviewAudioTrimStart).toFixed(1)}s</span>
+        <span style="color:var(--accent-primary);font-weight:600;">{(reviewAudioTrimEnd - reviewAudioTrimStart).toFixed(1)}s</span>
         <span>{formatSeconds(reviewAudioTrimEnd)}</span>
       </div>
     </div>
@@ -195,7 +195,7 @@
     width: 32px;
     height: 32px;
     border-radius: 50%;
-    background: #3b82f6;
+    background: var(--accent-primary);
     border: none;
     color: white;
     display: flex;
@@ -234,16 +234,16 @@
   }
 
   .review-action-btn.trash {
-    background: rgba(239, 68, 68, 0.15);
-    color: #ef4444;
+    background: var(--danger-subtle);
+    color: var(--status-danger);
   }
 
   .review-action-btn.trash:hover {
-    background: rgba(239, 68, 68, 0.3);
+    background: var(--danger-subtle-strong);
   }
 
   .review-action-btn.send {
-    background: #248bfe;
+    background: var(--accent-primary);
     color: #fff;
   }
 
@@ -271,7 +271,7 @@
 
   .trim-slider::-webkit-slider-runnable-track {
     height: 6px;
-    background: rgba(255, 255, 255, 0.15);
+    background: var(--bg-surface-2);
     border-radius: 3px;
   }
 
@@ -282,7 +282,7 @@
     width: 16px;
     height: 16px;
     border-radius: 50%;
-    background: #248bfe;
+    background: var(--accent-primary);
     cursor: ew-resize;
     box-shadow: 0 0 6px rgba(0, 0, 0, 0.4);
     margin-top: -5px;
@@ -300,7 +300,7 @@
     display: flex;
     justify-content: space-between;
     font-size: 11px;
-    color: #94a3b8;
+    color: var(--text-muted);
     font-variant-numeric: tabular-nums;
   }
 </style>

@@ -227,10 +227,10 @@
     min-width: 0;
     min-height: 34px;
     padding: 6px 10px;
-    background: rgba(255, 255, 255, 0.12);
+    background: var(--bg-surface-2);
     border: none;
     border-radius: 8px;
-    color: #ffffff;
+    color: var(--text-primary);
     font-size: 13px;
     font-weight: 500;
     cursor: pointer;
@@ -244,7 +244,7 @@
   }
 
   .inline-btn:hover {
-    background: rgba(255, 255, 255, 0.15);
+    background: var(--bg-surface-2);
   }
 
   .inline-btn:active {

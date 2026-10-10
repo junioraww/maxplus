@@ -1,4 +1,5 @@
 <script>
+  import { IconButton } from "$components/ui";
   import { fade } from "svelte/transition";
   import { createEventDispatcher, onMount, onDestroy, tick } from "svelte";
   import { invoke as tauriInvoke, Channel } from "@tauri-apps/api/core";
@@ -862,59 +863,36 @@
 
     <div class="ag-actions">
       {#if canUpload}
-        <button
-          type="button"
-          class="ag-icon-btn"
-          title="Загрузить новое фото"
-          disabled={isUploading}
-          on:click|stopPropagation={handleUploadClick}
-        >
+        <IconButton variant="overlay" class="avatargallerymodal-ag-icon-btn" title="Загрузить новое фото" disabled={isUploading} onclick={(e) => { e.stopPropagation(); (handleUploadClick)(e); }}>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
             <line x1="12" y1="5" x2="12" y2="19" />
             <line x1="5" y1="12" x2="19" y2="12" />
           </svg>
-        </button>
+        </IconButton>
       {/if}
 
       {#if canDeleteActiveSlide}
-        <button
-          type="button"
-          class="ag-icon-btn danger"
-          title="Удалить это фото"
-          disabled={isDeleting}
-          on:click|stopPropagation={handleDeleteClick}
-        >
+        <IconButton variant="overlay" danger class="avatargallerymodal-ag-icon-btn" title="Удалить это фото" disabled={isDeleting} onclick={(e) => { e.stopPropagation(); (handleDeleteClick)(e); }}>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <polyline points="3 6 5 6 21 6"/>
             <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
           </svg>
-        </button>
+        </IconButton>
       {/if}
 
       {#if currentUrl}
-        <button
-          type="button"
-          class="ag-icon-btn"
-          title="Скачать фото"
-          disabled={isDownloading}
-          on:click|stopPropagation={downloadCurrent}
-        >
+        <IconButton variant="overlay" class="avatargallerymodal-ag-icon-btn" title="Скачать фото" disabled={isDownloading} onclick={(e) => { e.stopPropagation(); (downloadCurrent)(e); }}>
           <svg viewBox="0 0 24 24" fill="currentColor">
             <path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z" />
           </svg>
-        </button>
+        </IconButton>
       {/if}
 
-      <button
-        type="button"
-        class="ag-icon-btn"
-        title="Закрыть"
-        on:click|stopPropagation={requestClose}
-      >
+      <IconButton variant="overlay" class="avatargallerymodal-ag-icon-btn" title="Закрыть" onclick={(e) => { e.stopPropagation(); (requestClose)(e); }}>
         <svg viewBox="0 0 24 24" fill="currentColor">
           <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z" />
         </svg>
-      </button>
+      </IconButton>
     </div>
   </div>
 
@@ -1031,7 +1009,7 @@
     justify-content: space-between;
     align-items: center;
     padding: calc(12px + env(safe-area-inset-top, 0px)) 18px 12px;
-    color: #ffffff;
+    color: var(--text-primary);
     z-index: 20;
     transition: opacity 180ms ease-out;
   }
@@ -1048,46 +1026,15 @@
     gap: 8px;
   }
 
-  .ag-icon-btn {
-    width: 38px;
-    height: 38px;
-    border: none;
-    border-radius: 50%;
-    background: rgba(255, 255, 255, 0.08);
-    color: #ffffff;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: background 0.15s, opacity 0.15s, transform 0.12s;
-  }
+  :global(.avatargallerymodal-ag-icon-btn)  { width: 38px; }
 
-  .ag-icon-btn:hover {
-    background: rgba(255, 255, 255, 0.18);
-  }
 
-  .ag-icon-btn:active {
-    transform: scale(0.92);
-  }
+  :global(.avatargallerymodal-ag-icon-btn):active  { transform: scale(0.92); }
 
-  .ag-icon-btn:disabled {
-    opacity: 0.4;
-    cursor: not-allowed;
-  }
 
-  .ag-icon-btn.danger {
-    color: #ff595a;
-    background: rgba(255, 89, 90, 0.14);
-  }
 
-  .ag-icon-btn.danger:hover {
-    background: rgba(255, 89, 90, 0.25);
-  }
 
-  .ag-icon-btn svg {
-    width: 22px;
-    height: 22px;
-  }
+  :global(.avatargallerymodal-ag-icon-btn) svg  { width: 22px; }
 
   .ag-dots-bar {
     display: flex;
@@ -1109,7 +1056,7 @@
   }
 
   .ag-dot.active {
-    background: #ffffff;
+    background: var(--bg-sheet);
   }
 
   .ag-body {
@@ -1172,7 +1119,7 @@
     border-radius: 50%;
     background: rgba(255, 255, 255, 0.12);
     border: none;
-    color: #ffffff;
+    color: var(--text-primary);
     cursor: pointer;
     display: flex;
     align-items: center;

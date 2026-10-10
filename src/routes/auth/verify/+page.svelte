@@ -1,4 +1,5 @@
 <script>
+  import { Button } from "$components/ui";
   import { onDestroy, onMount } from "svelte";
   import { goto } from "$app/navigation";
   import {
@@ -175,14 +176,9 @@
       {#if timerSeconds > 0}
         <span class="timer-label">Отправить повторно через {timerSeconds} сек</span>
       {:else}
-        <button
-          type="button"
-          class="resend-action"
-          on:click={resendCode}
-          disabled={resending}
-        >
+        <Button variant="ghost" class="pg-verify-resend-action" onclick={resendCode} disabled={resending}>
           {resending ? "Отправка..." : "Отправить код по SMS"}
-        </button>
+        </Button>
       {/if}
     </div>
   </div>
@@ -197,7 +193,7 @@
     align-items: center;
     min-height: 100vh;
     text-align: center;
-    color: #ddd;
+    color: var(--text-primary);
     max-width: min(340px, 92%);
     margin: 0 auto;
     padding: 20px 0;
@@ -214,7 +210,7 @@
     margin-top: 8px;
     font-size: 16px;
     font-weight: 500;
-    color: #4a90e2;
+    color: var(--accent-primary);
     letter-spacing: 0.5px;
   }
 
@@ -235,10 +231,10 @@
   input {
     padding: 0.75rem;
     border-radius: 8px;
-    border: 1px solid #333;
+    border: 1px solid var(--border-subtle);
     font-size: 1.25rem;
-    background-color: #26262e;
-    color: #ccc;
+    background-color: var(--bg-surface-2);
+    color: var(--text-primary);
     outline: none;
     text-align: center;
     letter-spacing: 4px;
@@ -259,29 +255,11 @@
 
   .timer-label {
     font-size: 13.5px;
-    color: #777;
+    color: var(--text-muted);
   }
 
-  .resend-action {
-    background: transparent;
-    border: none;
-    color: #4a90e2;
-    font-size: 14px;
-    cursor: pointer;
-    text-decoration: underline;
-    text-underline-offset: 3px;
-    padding: 4px 8px;
-    transition: color 0.15s, opacity 0.15s;
-  }
 
-  .resend-action:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
 
-  .resend-action:hover:not(:disabled) {
-    color: #6ba6ec;
-  }
 
   .error {
     color: #ff5555;

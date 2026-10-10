@@ -51,7 +51,8 @@ export const CATALOG = {
   },
 };
 
-const DEFAULT_ITEMS = ["digital_id", "calls", "chats", "settings"];
+const DEFAULT_ITEMS = ["contacts", "calls", "chats", "settings"];
+const MIGRATION_KEY = "max_panel_contacts_migrated";
 const DEFAULT_MAIN = "chats";
 const STORAGE_KEY = "max_panel_config";
 
@@ -68,6 +69,16 @@ function loadInitialConfig() {
       : DEFAULT_ITEMS;
     if (!items.includes("settings")) {
       items.push("settings");
+    }
+    // одноразово: «Цифровой ID» → «Контакты» (как в Max)
+    if (!localStorage.getItem(MIGRATION_KEY)) {
+      localStorage.setItem(MIGRATION_KEY, "1");
+      const di = items.indexOf("digital_id");
+      if (di !== -1) {
+        if (items.includes("contacts")) items.splice(di, 1);
+        else items[di] = "contacts";
+        localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...parsed, items }));
+      }
     }
     if (items.length === 0) {
       items = DEFAULT_ITEMS;

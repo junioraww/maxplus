@@ -57,6 +57,6 @@
   }
 
   .video-wrapper:hover .overlay {
-    color: #fff;
+    color: var(--text-primary);
   }
 </style>

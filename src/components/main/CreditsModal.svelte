@@ -1,4 +1,5 @@
 <script>
+  import IconButton from "$components/ui/IconButton.svelte";
   import { onMount, onDestroy, createEventDispatcher } from "svelte";
   import { fade } from "svelte/transition";
   import { getCreditsGrouped } from "$lib/services/credits";
@@ -675,18 +676,18 @@
   <div class="top-nav">
     <div class="nav-cluster left">
       {#if stage === "intro"}
-        <button class="icon-btn action-text-btn" on:click={skipIntro}>
+        <IconButton class="creditsmodal-icon-btn creditsmodal-action-text-btn" onclick={skipIntro}>
           <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
             <polygon points="5 4 15 12 5 20 5 4"></polygon>
             <line x1="19" y1="5" x2="19" y2="19"></line>
           </svg>
           <span>Пропустить</span>
-        </button>
+        </IconButton>
       {/if}
     </div>
 
     <div class="nav-cluster right">
-      <button class="icon-btn" on:click={toggleMute} aria-label="Звук">
+      <IconButton variant="outline" onclick={toggleMute} aria-label="Звук">
         {#if isMuted}
           <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
             <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
@@ -700,10 +701,10 @@
             <path d="M19.07 4.93a10 10 0 0 1 0 14.14"></path>
           </svg>
         {/if}
-      </button>
+      </IconButton>
 
       {#if stage === "crawl"}
-        <button class="icon-btn" on:click={togglePause} aria-label="Пауза">
+        <IconButton variant="outline" onclick={togglePause} aria-label="Пауза">
           {#if isPaused}
             <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
               <polygon points="5 3 19 12 5 21 5 3"></polygon>
@@ -714,22 +715,22 @@
               <rect x="14" y="4" width="4" height="16"></rect>
             </svg>
           {/if}
-        </button>
+        </IconButton>
 
-        <button class="icon-btn" on:click={restart} aria-label="Сначала">
+        <IconButton variant="outline" onclick={restart} aria-label="Сначала">
           <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
             <polyline points="1 4 1 10 7 10"></polyline>
             <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path>
           </svg>
-        </button>
+        </IconButton>
       {/if}
 
-      <button class="icon-btn close-btn" on:click={close} aria-label="Закрыть">
+      <IconButton class="creditsmodal-icon-btn creditsmodal-close-btn" onclick={close} aria-label="Закрыть">
         <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
           <line x1="18" y1="6" x2="6" y2="18"></line>
           <line x1="6" y1="6" x2="18" y2="18"></line>
         </svg>
-      </button>
+      </IconButton>
     </div>
   </div>
 
@@ -827,44 +828,14 @@
     gap: 12px;
   }
 
-  .icon-btn {
-    background: rgba(255, 255, 255, 0.08);
-    border: 1px solid rgba(255, 255, 255, 0.15);
-    color: #e4e6eb;
-    border-radius: 50%;
-    width: 40px;
-    height: 40px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    transition: background 0.15s, transform 0.15s, color 0.15s;
-  }
+  :global(.creditsmodal-icon-btn)  { width: 40px; }
 
-  .icon-btn:hover {
-    background: rgba(255, 255, 255, 0.2);
-    color: #ffffff;
-    transform: scale(1.05);
-  }
+  :global(.creditsmodal-icon-btn):hover  { transform: scale(1.05); }
 
-  .icon-btn:active {
-    transform: scale(0.96);
-  }
+  :global(.creditsmodal-icon-btn):active  { transform: scale(0.96); }
 
-  .action-text-btn {
-    width: auto;
-    border-radius: 20px;
-    padding: 0 16px;
-    gap: 8px;
-    font-size: 0.85rem;
-    font-weight: 500;
-    letter-spacing: 0.02em;
-  }
+  :global(.creditsmodal-action-text-btn)  { width: auto; }
 
-  .close-btn:hover {
-    background: rgba(239, 68, 68, 0.35);
-    border-color: rgba(239, 68, 68, 0.5);
-  }
 
   .loader-backdrop {
     position: absolute;

@@ -16,3 +16,5 @@ test-results
 playwright-report
 
 /plugins
+
+.veyra/

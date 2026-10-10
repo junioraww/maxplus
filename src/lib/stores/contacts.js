@@ -1,9 +1,14 @@
-import { invoke } from "@tauri-apps/api/core";
 import { writable, get } from "svelte/store";
 
 import {
   getCurrentAccount
 } from "$lib/stores/accounts";
+
+const isTauri = typeof window !== "undefined" && !!window.__TAURI_INTERNALS__;
+let _invoke = async () => null;
+if (isTauri) {
+  import("@tauri-apps/api/core").then(m => { _invoke = m.invoke; }).catch(() => {});
+}
 
 const cache = {};
 
@@ -14,8 +19,11 @@ export const getContact = contactId => {
   const store = writable(undefined);
   cache[contactId] = { store };
 
+  if (!isTauri) return store;
+
   getCurrentAccount().then(async account => {
-    const cached = await invoke("get_contact", { account: +account.id, contactId });
+    if (!account?.id) return;
+    const cached = await _invoke("get_contact", { account: +account.id, contactId });
     if (cached) store.set(cached);
 
     let initial = true;
@@ -26,7 +34,8 @@ export const getContact = contactId => {
       }
       if (data !== undefined) {
         const _account = await getCurrentAccount();
-        invoke("set_contact", { account: +_account.id, contactId, data });
+        if (!_account?.id) return;
+        _invoke("set_contact", { account: +_account.id, contactId, data });
       }
     });
   });
@@ -41,10 +50,11 @@ export const getContactDirect = async contactId => {
     const val = get(cache[id].store);
     if (val !== undefined && val !== null) return val;
   }
+  if (!isTauri) return null;
   try {
     const account = await getCurrentAccount();
     if (!account?.id) return null;
-    const cached = await invoke("get_contact", { account: +account.id, contactId: id });
+    const cached = await _invoke("get_contact", { account: +account.id, contactId: id });
     if (cached) {
       if (cache[id]) {
         cache[id].store.set(cached);
@@ -78,11 +88,16 @@ export const getCachedContacts = async () => {
   }
   if (cachedContactsPromise) return cachedContactsPromise;
 
+  if (!isTauri) {
+    contactsLoaded = true;
+    return cachedContacts;
+  }
+
   cachedContactsPromise = (async () => {
     try {
       const account = await getCurrentAccount();
       if (!account?.id) return [];
-      const res = await invoke("get_contacts", { account: +account.id });
+      const res = await _invoke("get_contacts", { account: +account.id });
       if (Array.isArray(res)) {
         cachedContacts = res;
         contactsLoaded = true;

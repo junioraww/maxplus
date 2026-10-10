@@ -1,4 +1,5 @@
 <script>
+  import { Button } from "$components/ui";
   import { onMount } from "svelte";
   import { goto } from "$app/navigation";
   import { page } from "$app/stores";
@@ -38,9 +39,9 @@
           </div>
         {/if}
 
-        <button class="primary-btn" on:click={() => goto("/auth/lock?mode=create")}>
+        <Button variant="primary" class="pg-lock-primary-btn" onclick={() => goto("/auth/lock?mode=create")}>
           Установить PIN
-        </button>
+        </Button>
       </div>
     {:else}
       <div class="card">
@@ -58,9 +59,9 @@
           </div>
         {/if}
 
-        <button class="danger-btn" on:click={() => goto("/auth/lock?mode=disable")}>
+        <Button variant="danger" class="pg-lock-danger-btn" onclick={() => goto("/auth/lock?mode=disable")}>
           Отключить
-        </button>
+        </Button>
       </div>
     {/if}
   </div>
@@ -79,9 +80,9 @@
   .card {
     width: 100%;
     max-width: 380px;
-    background: #24252a;
+    background: var(--bg-surface-2);
     border-radius: 16px;
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    border: 1px solid var(--border-subtle);
     padding: 24px;
     display: flex;
     flex-direction: column;
@@ -104,7 +105,7 @@
 
   .description {
     margin: 0;
-    color: #9ca3af;
+    color: var(--text-muted);
     line-height: 1.5;
     font-size: 0.92rem;
   }
@@ -114,18 +115,18 @@
     justify-content: space-between;
     align-items: center;
     background: #1b1c21;
-    border: 1px solid rgba(255, 255, 255, 0.06);
+    border: 1px solid var(--border-subtle);
     border-radius: 12px;
     padding: 14px 16px;
   }
 
   .info-row span {
-    color: #888;
+    color: var(--text-muted);
     font-size: 0.9rem;
   }
 
   .info-row strong {
-    color: white;
+    color: var(--text-primary);
     font-size: 0.95rem;
   }
 
@@ -147,27 +148,12 @@
     transform: scale(0.98);
   }
 
-  .primary-btn {
-    background: #3390ec;
-    color: white;
-  }
 
-  .primary-btn:hover {
-    background: #2b7ecf;
-  }
 
-  .danger-btn {
-    background: rgba(239, 68, 68, 0.15);
-    color: #ff595a;
-    border: 1px solid rgba(239, 68, 68, 0.25);
-  }
 
-  .danger-btn:hover {
-    background: rgba(239, 68, 68, 0.25);
-  }
 
   .status-msg {
-    color: #888;
+    color: var(--text-muted);
     font-size: 0.95rem;
   }
 </style>

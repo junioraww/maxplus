@@ -1,0 +1,251 @@
+/* MAX design tokens (web.max.ru, тема space) */
+:root {
+  --max-bg-step-1: #99d5d7; --max-bg-step-2: #80bcff; --max-pattern-color: #007aff4d;
+  --max-surface: #fff; --max-text: #060708; --max-text-2: #060708ad; --max-text-3: #06070885;
+  --max-icon: #060708d6; --max-icon-3: #0607087a; --max-accent: #007aff; --max-accent-hover: #479fff;
+  --max-out-bubble: #e3f2ff; --max-in-bubble: #fff; --max-capsule: #0f8ec285;
+  --max-action: #0f8ec2a3; --max-action-hover: #0f8ec266; --max-writebar: #fff; --max-writebar-stroke: #0c0d0e0f;
+  --max-pattern: url('/patterns/space.svg');
+}
+@media (prefers-color-scheme: dark) { :root {
+  --max-bg-step-1: #141414; --max-bg-step-2: #141414; --max-pattern-color: #505bc74d;
+  --max-surface: #17181c; --max-text: #fff; --max-text-2: #fffc; --max-text-3: #ffffffa3;
+  --max-icon: #fff; --max-icon-3: #ffffff85; --max-out-bubble: #2b5aa8; --max-in-bubble: #1e1f24;
+  --max-capsule: #282c42b2; --max-action: #4f529db2; --max-action-hover: #4f529d80;
+  --max-writebar: #1e1f24; --max-writebar-stroke: #e7e7e700; } }
+.max-chat-bg {
+  position: relative;
+  isolation: isolate;
+  background: linear-gradient(
+    180deg,
+    var(--max-bg-step-2) 0%,
+    var(--max-bg-step-1) 100%
+  ) !important;
+}
+.max-chat-bg::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background-color: var(--max-pattern-color);
+  -webkit-mask-image: var(--max-pattern);
+  mask-image: var(--max-pattern);
+  -webkit-mask-repeat: repeat;
+  mask-repeat: repeat;
+  -webkit-mask-position: center top;
+  mask-position: center top;
+  -webkit-mask-size: 360px auto;
+  mask-size: 360px auto;
+}
+
+/* ===== Экран открытого чата в стиле MAX ===== */
+.chat-window {
+  position: relative;
+  isolation: isolate;
+  background: linear-gradient(
+    180deg,
+    var(--max-bg-step-2) 0%,
+    var(--max-bg-step-1) 100%
+  ) !important;
+}
+
+/* Космический узор из первого референса, без фоновых кругов. */
+.chat-window:not(.max-chat-bg)::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background-color: var(--max-pattern-color);
+  -webkit-mask-image: var(--max-pattern);
+  mask-image: var(--max-pattern);
+  -webkit-mask-repeat: repeat;
+  mask-repeat: repeat;
+  -webkit-mask-position: center top;
+  mask-position: center top;
+  -webkit-mask-size: 360px auto;
+  mask-size: 360px auto;
+}
+
+.chat-window .message-list-container,
+.chat-window .message-list-inner {
+  background: transparent !important;
+}
+
+/* Шапка */
+.chat-window .chat-header-container { background: var(--max-surface) !important; color: var(--max-text);
+  border-bottom: none !important; box-shadow: none !important; }
+.chat-window .chat-header-container .title { font-size: 17px; line-height: 24px; font-weight: 600; color: var(--max-text); }
+.chat-window .chat-header-container .presence { font-size: 13px; line-height: 16px; letter-spacing: .2px; color: var(--max-text-3) !important; }
+.chat-window .chatheader-icon-button { width: 40px; height: 40px; border-radius: 50%; color: var(--max-icon) !important; background: transparent; }
+.chat-window .chatheader-icon-button:hover { background: #0d0d0d0a; }
+
+/* Пузыри */
+.chat-window .message-bubble:not(.sticker-bubble) { background: var(--max-in-bubble) !important; color: var(--max-text) !important;
+  max-width: 384px;
+  font-size: 16px; line-height: 20px; letter-spacing: .15px; box-shadow: none !important; }
+.chat-window .is-me .message-bubble:not(.sticker-bubble), .chat-window .message-bubble.is-me:not(.sticker-bubble) {
+  background: var(--max-out-bubble) !important; }
+.chat-window .message-bubble .status-meta, .chat-window .message-status { color: var(--max-text-3) !important; font-size: 12px; line-height: 16px; }
+.chat-window .is-me .status-meta, .chat-window .is-me .message-status, .chat-window .is-me .status-ticks { color: var(--max-accent) !important; }
+.chat-window .message-bubble a { color: var(--max-accent); text-decoration: underline; }
+.chat-window .bold-text { font-weight: 600; }
+
+/* Плашка даты */
+.chat-window .date-separator > * { background: var(--max-capsule) !important; color: #fff !important; border-radius: 10px !important;
+  padding: 2px 8px; font-size: 13px; line-height: 16px; font-weight: 500; backdrop-filter: blur(10px); }
+
+/* Кнопки бота */
+.chat-window .inline-keyboard { max-width: 384px; gap: 4px; margin-top: 4px; }
+.chat-window .keyboard-row { gap: 4px; }
+.chat-window .inline-btn { position: relative; min-height: 40px; border: none !important; border-radius: 6px !important;
+  background: var(--max-action) !important; color: #fff !important; font-size: 16px; font-weight: 500;
+  backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); box-shadow: none !important; }
+.chat-window .inline-btn:hover { background: var(--max-action-hover) !important; }
+.chat-window .inline-btn .btn-icon { position: absolute; top: 6px; right: 6px; width: 16px; height: 16px; color: #fff; }
+
+/* Панель ввода */
+.chat-window .input-area { background: transparent !important; border-top: none !important; }
+.chat-window .input-container { background: var(--max-writebar) !important; border: 1px solid var(--max-writebar-stroke) !important;
+  border-radius: 20px !important; box-shadow: 0 2px 12px #0000000f; }
+.chat-window .textarea-wrapper, .chat-window .textarea-wrapper textarea { font-size: 16px; line-height: 20px; color: var(--max-text); background: transparent !important; }
+.chat-window .textarea-wrapper textarea::placeholder { color: var(--max-text-3); }
+.chat-window .attach-toggle-btn, .chat-window .input-emoji-btn, .chat-window .voice-button { color: var(--max-icon-3) !important; background: transparent !important; width: 32px; height: 32px; border-radius: 50%; }
+.chat-window .bot-cmd-btn { background: var(--max-accent) !important; color: #fff !important; width: 32px; height: 32px; border-radius: 8px !important; }
+.chat-window .send-button { background: var(--max-accent) !important; color: #fff !important; border-radius: 50%; }
+
+/* media-top: фото сверху на всю ширину пузыря, текст и время ниже (как в MAX) */
+.chat-window .message-bubble:has(> .direction > .text > .media-grid) {
+  padding: 0 !important; width: 100%; }
+.chat-window .message-bubble:has(> .direction > .text > .media-grid) > .direction {
+  display: flex !important; flex-direction: column !important; }
+.chat-window .message-bubble:has(> .direction > .text > .media-grid) .text {
+  display: flex; flex-direction: column; padding: 0 !important; }
+.chat-window .message-bubble .text > .media-grid {
+  order: -1; width: 100% !important; max-width: none !important;
+  margin: 0 0 8px 0 !important; border-radius: 16px 16px 0 0 !important; }
+.chat-window .message-bubble .text > .media-grid:only-child { margin-bottom: 0 !important; }
+.chat-window .message-bubble:has(> .direction > .text > .media-grid) .text > :not(.media-grid) {
+  padding-left: 12px; padding-right: 12px; }
+.chat-window .message-bubble:has(> .direction > .text > .media-grid) .bottom {
+  align-self: flex-end; padding: 0 10px 6px 12px; }
+
+
+/* msg-typography: стили блока сообщения из MAX (svelte-1htnb3l / 13lobfv / 1koyg29 / 72tvea) */
+.chat-window {
+  font-family: -apple-system, BlinkMacSystemFont, Roboto, system-ui, Avenir, Helvetica, Arial, sans-serif;
+  -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale;
+  font-synthesis-weight: none; text-rendering: optimizeLegibility; }
+/* текст: 400 16/20, letter-spacing 0, #060708 */
+.chat-window .message-bubble:not(.sticker-bubble),
+.chat-window .message-bubble .text,
+.chat-window .message-bubble .text .line,
+.chat-window .message-bubble .text p,
+.chat-window .message-bubble .text span:not(.bold-text) {
+  font-weight: 400 !important; font-size: 16px !important; line-height: 20px !important;
+  letter-spacing: 0 !important; color: #060708; }
+.chat-window .message-bubble .text { white-space: pre-wrap; overflow-wrap: break-word; word-break: break-word; }
+/* жирный в MAX = 600, а не 700 */
+.chat-window .message-bubble .bold-text, .chat-window .message-bubble b, .chat-window .message-bubble strong { font-weight: 600 !important; }
+/* ссылки */
+.chat-window .message-bubble a { color: #0784b8 !important; text-decoration: none !important; }
+/* отступы текста в пузыре: 8px сверху, 10px по бокам */
+.chat-window .message-bubble:not(.sticker-bubble):not(:has(> .direction > .text > .media-grid)) { padding: 8px 10px 6px 10px !important; }
+.chat-window .message-bubble:has(> .direction > .text > .media-grid) .text > :not(.media-grid) { padding-left: 10px !important; padding-right: 10px !important; }
+.chat-window .message-bubble.column .text { padding-right: 0 !important; }
+/* время: 400 11/14, .3px, #06070885 */
+.chat-window .message-bubble .status-meta, .chat-window .message-bubble .status-meta * , .chat-window .message-bubble .bottom {
+  font-weight: 400 !important; font-size: 11px !important; line-height: 14px !important; letter-spacing: .3px !important; }
+.chat-window .message-row:not(.is-me) .message-bubble .status-meta { color: #06070885 !important; }
+/* кнопки бота: 500 16/20 .15px, радиус 6px, зазор 2px, иконка 4px от угла */
+.chat-window .inline-keyboard { gap: 2px !important; padding-top: 2px; margin-top: 0 !important; width: 384px; max-width: min(384px, 100%); }
+.chat-window .keyboard-row { gap: 2px !important; }
+.chat-window .inline-btn { padding: 8px 10px !important; min-height: 36px;
+  font-weight: 500 !important; font-size: 16px !important; line-height: 20px !important; letter-spacing: .15px !important; }
+.chat-window .inline-btn .btn-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chat-window .inline-btn .btn-icon { top: 4px !important; right: 4px !important; }
+.chat-window .keyboard-row:last-child .inline-btn:first-child { border-bottom-left-radius: 16px !important; }
+.chat-window .keyboard-row:last-child .inline-btn:last-child { border-bottom-right-radius: 16px !important; }
+/* пузырь с кнопками: нижние углы 6px, без хвостика (как стек в MAX) */
+.chat-window .message-bubble-container:has(.inline-keyboard) .message-bubble { border-radius: 16px 16px 6px 6px !important; }
+.chat-window .message-bubble-container:has(.inline-keyboard) .message-bubble::before { display: none !important; }
+
+/* Outgoing text bubbles: reference typography and a separate metadata row.
+   Keep this beside the theme's !important rules so they cannot override it. */
+.chat-window .message-row.is-me:not(.is-system):not(.is-sticker):not(.is-video-note) .message-bubble:not(:has(.media-grid)) {
+  --outgoing-text-size: 16px;
+  --outgoing-text-line: 20px;
+  background: var(--max-out-bubble) !important;
+  border-radius: 18px 18px 6px 18px !important;
+  padding: 8px 10px 6px !important;
+  min-width: 100px;
+  min-height: 0;
+  height: auto;
+}
+.chat-window .message-row.is-me:not(.is-system):not(.is-sticker):not(.is-video-note) .message-bubble:not(:has(.media-grid)) > .direction {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+.chat-window .message-row.is-me:not(.is-system):not(.is-sticker):not(.is-video-note) .message-bubble:not(:has(.media-grid)) .text {
+  white-space: normal;
+  padding: 0 !important;
+  margin: 0;
+}
+.chat-window .message-row.is-me:not(.is-system):not(.is-sticker):not(.is-video-note) .message-bubble:not(:has(.media-grid)) :is(.text, .text .rich-content, .text .line, .text p, .text span:not(.bold-text)) {
+  font-size: var(--outgoing-text-size) !important;
+  line-height: var(--outgoing-text-line) !important;
+}
+.chat-window .message-row.is-me:not(.is-system):not(.is-sticker):not(.is-video-note) .message-bubble:not(:has(.media-grid)) .text :is(.paragraph-container, .line) {
+  white-space: pre-wrap;
+}
+.chat-window .message-row.is-me:not(.is-system):not(.is-sticker):not(.is-video-note) .message-bubble:not(:has(.media-grid)) .bottom {
+  position: static !important;
+  flex: 0 0 auto;
+  align-self: stretch;
+  justify-content: space-between;
+  margin: 2px 0 0 !important;
+  padding: 0 !important;
+}
+.chat-window .message-row.is-me:not(.is-system):not(.is-sticker):not(.is-video-note) .message-bubble:not(:has(.media-grid)) .message-status {
+  margin: 0 0 0 auto;
+  padding: 0;
+}
+.chat-window .message-row.is-me:not(.is-system):not(.is-sticker):not(.is-video-note) .message-bubble:not(:has(.media-grid)) .timestamp {
+  color: #8fb1dc !important;
+  opacity: 1;
+  font-size: 12px !important;
+  line-height: 16px !important;
+}
+.chat-window .message-row.is-me:not(.is-system):not(.is-sticker):not(.is-video-note) .message-bubble:not(:has(.media-grid)) .status-icon {
+  color: #6b7280 !important;
+}
+
+.chat-window .message-row.is-me:not(.is-system):not(.is-sticker):not(.is-video-note) .message-bubble:not(:has(.media-grid)) .status-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.chat-window .message-row.is-me:not(.is-system):not(.is-sticker):not(.is-video-note) .message-bubble:not(:has(.media-grid)) .status-ticks {
+  color: #6b7280 !important;
+}
+
+/* incoming-spacing: отступы входящего сообщения из MAX (.block / .messageWrapper / .bubble / .meta) */
+.chat-window .message-row:not(.is-me):not(.is-system) {
+  padding: 0 56px 0 6px !important; margin: 1px 0 !important; box-sizing: border-box; }
+.chat-window .message-row:not(.is-me):not(.is-system) .message-bubble-container {
+  max-width: 384px !important; min-width: 0; }
+.chat-window .message-row:not(.is-me):not(.is-system) .message-bubble:not(.sticker-bubble) {
+  width: fit-content !important; max-width: 100% !important; min-width: 72px !important;
+  border-radius: 16px !important; position: relative; }
+.chat-window .message-row:not(.is-me):not(.is-system) .message-bubble:not(.sticker-bubble):not(:has(> .direction > .text > .media-grid)) {
+  padding: 8px 10px 10px 10px !important; }
+.chat-window .message-row:not(.is-me):not(.is-system) .message-bubble:has(> .direction > .text > .media-grid) .text > :last-child:not(.media-grid) {
+  padding-bottom: 10px; }
+/* время: absolute, 4px снизу и 10px справа; в конце текста резерв metaWidth+4px */
+.chat-window .message-row:not(.is-me):not(.is-system) .message-bubble:not(.sticker-bubble) .bottom {
+  position: absolute !important; right: 10px !important; bottom: 4px !important;
+  padding: 0 !important; margin: 0 !important; }
+.chat-window .message-row:not(.is-me):not(.is-system) .message-bubble:not(.sticker-bubble) .text > :not(.media-grid):last-child::after {
+  content: ""; display: inline-block; width: 36px; height: 16px; vertical-align: bottom; }

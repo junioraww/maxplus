@@ -1,4 +1,5 @@
 <script>
+  import { Button } from "$components/ui";
   import { fly, slide, fade } from "svelte/transition";
   import { page } from "$app/stores";
   import SettingsPageWrapper from "$components/settings/SettingsPageWrapper.svelte";
@@ -173,23 +174,13 @@
       </div>
 
       <div class="avatar-buttons">
-        <button
-          type="button"
-          class="avatar-action-btn primary"
-          disabled={avatarBusy}
-          on:click={handleUploadAvatar}
-        >
+        <Button variant="primary" class="pg-profile-avatar-action-btn" disabled={avatarBusy} onclick={handleUploadAvatar}>
           {avatarBusy ? "Загрузка..." : "Загрузить фото"}
-        </button>
+        </Button>
         {#if canDeleteSelfAvatar}
-          <button
-            type="button"
-            class="avatar-action-btn danger"
-            disabled={avatarBusy}
-            on:click={() => handleDeleteAvatar()}
-          >
+          <Button variant="danger" class="pg-profile-avatar-action-btn" disabled={avatarBusy} onclick={() => handleDeleteAvatar()}>
             Удалить
-          </button>
+          </Button>
         {/if}
       </div>
     </div>
@@ -258,7 +249,7 @@
     padding: 4px 10px;
     border-radius: 999px;
     background: #2c2c35;
-    color: #888;
+    color: var(--text-muted);
   }
 
   .content {
@@ -276,14 +267,14 @@
   }
 
   .content::-webkit-scrollbar-thumb {
-    background: #333;
+    background: var(--bg-surface-2);
     border-radius: 999px;
   }
 
   .avatar-section {
-    background: #26262e;
+    background: var(--bg-surface-2);
     border-radius: 16px;
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    border: 1px solid var(--border-subtle);
     padding: 18px 16px;
     display: flex;
     flex-direction: column;
@@ -309,8 +300,8 @@
     height: 30px;
     border-radius: 50%;
     border: 2px solid #26262e;
-    background: #3390ec;
-    color: #ffffff;
+    background: var(--accent-primary);
+    color: var(--button-primary-contrast);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -334,48 +325,18 @@
     gap: 10px;
   }
 
-  .avatar-action-btn {
-    height: 36px;
-    padding: 0 14px;
-    border-radius: 10px;
-    border: none;
-    font-size: 0.85rem;
-    font-weight: 600;
-    cursor: pointer;
-    transition: background 0.15s, opacity 0.15s, transform 0.12s;
-  }
 
-  .avatar-action-btn:active {
-    transform: scale(0.96);
-  }
+  :global(.pg-profile-avatar-action-btn):active  { transform: scale(0.96); }
 
-  .avatar-action-btn:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
 
-  .avatar-action-btn.primary {
-    background: rgba(51, 144, 236, 0.18);
-    color: #4ea4f6;
-  }
 
-  .avatar-action-btn.primary:hover {
-    background: rgba(51, 144, 236, 0.28);
-  }
 
-  .avatar-action-btn.danger {
-    background: rgba(255, 89, 90, 0.15);
-    color: #ff595a;
-  }
 
-  .avatar-action-btn.danger:hover {
-    background: rgba(255, 89, 90, 0.25);
-  }
 
   .profile-card {
-    background: #26262e;
+    background: var(--bg-surface-2);
     border-radius: 16px;
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    border: 1px solid var(--border-subtle);
     padding: 16px;
     display: flex;
     flex-direction: column;
@@ -401,7 +362,7 @@
     background: #1f1f26;
     border: 1px solid transparent;
     border-radius: 12px;
-    color: white;
+    color: var(--text-primary);
     padding: 14px;
     box-sizing: border-box;
     font-size: 0.95rem;
@@ -413,7 +374,7 @@
 
   input:focus,
   textarea:focus {
-    border-color: #3390ec;
+    border-color: var(--accent-primary);
     background: #20202a;
   }
 
@@ -426,8 +387,8 @@
   .notice-pill {
     align-self: center;
     background: rgba(30, 30, 38, 0.95);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    color: #ffffff;
+    border: 1px solid var(--border-subtle);
+    color: var(--text-primary);
     font-size: 0.85rem;
     padding: 8px 16px;
     border-radius: 999px;
@@ -437,8 +398,8 @@
     flex-shrink: 0;
     display: flex;
     padding: 14px 16px;
-    background: #212126;
-    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    background: var(--bg-topbar);
+    border-top: 1px solid var(--border-subtle);
   }
 
   .save-btn {
@@ -449,8 +410,8 @@
     font-size: 0.95rem;
     font-weight: 600;
     cursor: pointer;
-    background: #3390ec;
-    color: white;
+    background: var(--accent-primary);
+    color: var(--button-primary-contrast);
     transition:
       transform 0.12s,
       opacity 0.15s,

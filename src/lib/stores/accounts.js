@@ -1,30 +1,41 @@
-import { invoke } from "@tauri-apps/api/core";
+const _invoke = async (...args) => {
+  if (typeof window === "undefined" || !window.__TAURI_INTERNALS__) {
+    console.warn("[browser-mode] invoke called but Tauri unavailable:", args[0]);
+    return null;
+  }
 
-export const addAccount = (token, device) => invoke("accounts_add", { token, device });
-export const saveDataEntry = (id, file, value) => invoke("data_save", { id, file, value });
-export const getAccounts = () => invoke("accounts_get");
+  // Wait for the bridge module on every call, including startup and login.
+  // Never silently skip account initialization or persistence while it loads.
+  const { invoke } = await import("@tauri-apps/api/core");
+  return invoke(...args);
+};
+
+export const addAccount = (token, device) => _invoke("accounts_add", { token, device });
+export const saveDataEntry = (id, file, value) => _invoke("data_save", { id, file, value });
+export const getAccounts = () => _invoke("accounts_get");
 export const loadAccount = async () => {
-  const current = await invoke("current_get");
+  // The shared wrapper waits for the native bridge module before invoking.
+  const current = await _invoke("current_get");
   if (!current) return null;
-  const accounts = await invoke("accounts_get");
+  const accounts = await _invoke("accounts_get");
   const acc = Array.isArray(accounts) ? accounts.find(x => x.id === current) : null;
   return acc ? { id: acc.id, encryption: acc.encryption } : null;
 };
-export const getCurrentAccount = () => invoke("current_account_meta");
-export const getAccount = id => invoke("account_get", { id });
-export const setCurrentAccount = id => invoke("current_set", { id });
-export const init = () => invoke("accounts_init");
-export const getAccountMeta = id => invoke("account_get", { id });
-export const getAccountContact = id => invoke("account_contact", { id });
-export const setAccountContact = (id, data) => invoke("account_contact", { id, data });
-export const removeAccount = id => invoke("account_delete", { id });
+export const getCurrentAccount = () => _invoke("current_account_meta");
+export const getAccount = id => _invoke("account_get", { id });
+export const setCurrentAccount = id => _invoke("current_set", { id });
+export const init = () => _invoke("accounts_init");
+export const getAccountMeta = id => _invoke("account_get", { id });
+export const getAccountContact = id => _invoke("account_contact", { id });
+export const setAccountContact = (id, data) => _invoke("account_contact", { id, data });
+export const removeAccount = id => _invoke("account_delete", { id });
 export const removeAccountByUserId = async uid => {
-  const accounts = await invoke("accounts_get");
+  const accounts = await _invoke("accounts_get");
   const acc = Array.isArray(accounts) ? accounts.find(x => x.uid === uid) : null;
-  if (acc?.id) return invoke("account_delete", { id: acc.id });
+  if (acc?.id) return _invoke("account_delete", { id: acc.id });
 };
-export const setEncryption = (account, key, enabled) => invoke("set_encryption", { account, key, enabled });
-export const getDatabaseFilesCount = account => invoke("get_database_files_count", { account });
-export const decrypt = (account, key) => invoke("decrypt_account", { account, key });
-export const getDevice = () => invoke("common_store_load", { store: "device" });
-export const saveDevice = device => invoke("common_store_save", { store: "device", data: device });
+export const setEncryption = (account, key, enabled) => _invoke("set_encryption", { account, key, enabled });
+export const getDatabaseFilesCount = account => _invoke("get_database_files_count", { account });
+export const decrypt = (account, key) => _invoke("decrypt_account", { account, key });
+export const getDevice = () => _invoke("common_store_load", { store: "device" });
+export const saveDevice = device => _invoke("common_store_save", { store: "device", data: device });

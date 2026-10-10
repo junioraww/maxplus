@@ -1,4 +1,5 @@
 <script>
+  import { IconButton } from "$components/ui";
   import { forwardDraft, clearForwardDraft } from "$lib/stores/forwardDraft.js";
   import { getContact } from "$lib/stores/contacts";
   import { currentUser, currentUserDetails, currentSessionChats } from "$lib/stores/api";
@@ -53,9 +54,9 @@
         {firstMsg?.text || (firstMsg?.attaches?.length ? "Вложение" : "")}
       </div>
     </div>
-    <button type="button" class="forward-close" on:click={clearForwardDraft} aria-label="Отменить">
+    <IconButton class="forwardpreview-forward-close" onclick={clearForwardDraft} aria-label="Отменить">
       ✕
-    </button>
+    </IconButton>
   </div>
 {/if}
 
@@ -64,7 +65,7 @@
     display: flex;
     align-items: center;
     gap: 10px;
-    background: #17191d;
+    background: var(--bg-surface);
     border-radius: 10px;
     padding: 8px 10px;
     margin: 0 8px 6px 8px;
@@ -97,7 +98,7 @@
 
   .forward-header {
     font-size: 13px;
-    color: #a78bfa;
+    color: var(--accent-violet);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -105,28 +106,12 @@
 
   .forward-text {
     font-size: 13px;
-    color: rgba(255, 255, 255, 0.7);
+    color: var(--text-secondary);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
   }
 
-  .forward-close {
-    background: none;
-    border: none;
-    color: #888;
-    cursor: pointer;
-    font-size: 16px;
-    padding: 4px 8px;
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex-shrink: 0;
-  }
+  :global(.forwardpreview-forward-close)  { flex-shrink: 0; }
 
-  .forward-close:hover {
-    color: #fff;
-    background: rgba(255, 255, 255, 0.1);
-  }
 </style>

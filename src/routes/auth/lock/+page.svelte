@@ -343,7 +343,7 @@
     justify-content: center;
     align-items: center;
     gap: 25px;
-    color: #ddd;
+    color: var(--text-primary);
     user-select: none;
     text-align: center;
   }
@@ -376,14 +376,14 @@
 
   .draw-line {
     fill: none;
-    stroke: white;
+    stroke: var(--icon-primary);
     stroke-width: 10;
     stroke-linecap: round;
     stroke-linejoin: round;
   }
 
   .cursor-line {
-    stroke: white;
+    stroke: var(--icon-primary);
     stroke-width: 10;
     opacity: .5;
   }
@@ -395,13 +395,13 @@
     margin-left: -13px;
     margin-top: -13px;
     border-radius: 50%;
-    background: #555;
+    background: var(--bg-surface-2);
     z-index: 1;
     pointer-events: none;
   }
 
   .point.selected {
-    background: white;
+    background: var(--bg-sheet);
   }
 
   .text {
@@ -432,12 +432,12 @@
     margin: 0;
     font-size: 1.15rem;
     font-weight: 600;
-    color: #fff;
+    color: var(--text-primary);
   }
 
   .migration-subtitle {
     margin: 0;
-    color: #9ca3af;
+    color: var(--text-muted);
     font-size: 0.92rem;
   }
 
@@ -451,7 +451,7 @@
 
   .progress-bar {
     height: 100%;
-    background: #6366f1;
+    background: var(--accent-violet);
     border-radius: 999px;
     transition: width 0.15s ease-out;
   }

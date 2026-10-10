@@ -1,4 +1,3 @@
-import { invoke as tauriInvoke, Channel } from "@tauri-apps/api/core";
 import { get } from "svelte/store";
 import { goto } from "$app/navigation";
 
@@ -14,9 +13,27 @@ import {
 } from "$lib/stores/accounts";
 import { get as sessionGet } from "$lib/stores/session";
 
+const isTauri = typeof window !== "undefined" && !!window.__TAURI_INTERNALS__;
+let tauriInvoke = null;
+let Channel = class { constructor() {} };
+let initPromise = null;
+
+async function ensureTauri() {
+  if (tauriInvoke || !isTauri) return;
+  if (!initPromise) {
+    initPromise = import("@tauri-apps/api/core").then(mod => {
+      tauriInvoke = mod.invoke;
+      Channel = mod.Channel;
+    }).catch(() => {});
+  }
+  await initPromise;
+}
+
 const inflightRetries = new Map();
 
 export const invoke = async (command, args) => {
+  await ensureTauri();
+  if (!isTauri || !tauriInvoke) return null;
   if (command === "download_to_path" && args && !args.onProgress) {
     args = { ...args, onProgress: new Channel() };
   }

@@ -1,4 +1,5 @@
 <script>
+  import { IconButton } from "$components/ui";
   import { createEventDispatcher } from "svelte";
   import { currentSessionChats } from "$lib/stores/api.js";
   import ChatItem from "$components/chats/ChatItem.svelte";
@@ -38,9 +39,9 @@
 <div class="selector-layout">
   <header>
     <div class="row">
-      <button class="icon-btn" on:click={() => dispatch("cancel")}>✕</button>
+      <IconButton class="chatselector-icon-btn" onclick={() => dispatch("cancel")}>✕</IconButton>
       <h3>{actionTitle}</h3>
-      <button class="icon-btn check" on:click={handleDone}>OK</button>
+      <IconButton class="chatselector-icon-btn chatselector-check" onclick={handleDone}>OK</IconButton>
     </div>
     <Search bind:search={searchQuery} placeholder="Поиск чатов..." />
   </header>
@@ -73,7 +74,7 @@
   }
   header {
     padding: 10px;
-    background: #252525;
+    background: var(--bg-surface);
   }
   .row {
     display: flex;
@@ -83,20 +84,8 @@
   }
   h3 {
     margin: 0;
-    color: #fff;
+    color: var(--text-primary);
     font-size: 18px;
-  }
-  .icon-btn {
-    background: none;
-    border: none;
-    color: #999;
-    font-size: 18px;
-    cursor: pointer;
-    padding: 10px;
-  }
-  .icon-btn.check {
-    color: #4ade80;
-    font-weight: bold;
   }
 
   .list {
@@ -120,7 +109,7 @@
     width: 24px;
     height: 24px;
     border-radius: 50%;
-    border: 2px solid #555;
+    border: 2px solid var(--border-subtle);
     margin-left: 10px;
     display: flex;
     align-items: center;

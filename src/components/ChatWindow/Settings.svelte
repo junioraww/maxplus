@@ -1,4 +1,5 @@
 <script>
+  import { Button, IconButton, Tab } from "$components/ui";
   import { switchEnc } from "$components/ChatWindow/e2e";
   import { fade, fly, scale } from "svelte/transition";
   import { dict } from '$lib/crypto/text-codec';
@@ -105,12 +106,12 @@
           <div class="tg-chat-name">{chat.title}</div>
         {/if}
       </div>
-      <button class="tg-close-btn" on:click={close} aria-label="Закрыть">
+      <IconButton class="settings-tg-close-btn" onclick={close} aria-label="Закрыть">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
           <line x1="18" y1="6" x2="6" y2="18"></line>
           <line x1="6" y1="6" x2="18" y2="18"></line>
         </svg>
-      </button>
+      </IconButton>
     </div>
 
     <div class="tg-body">
@@ -135,13 +136,9 @@
                 {/if}
               </div>
             </div>
-            <button
-              class="tg-btn-action"
-              class:danger={$chatSettings.keys?.current || $chatSettings.session}
-              on:click={() => switchEnc(chat, chatSettings, messages)}
-            >
+            <Button danger={$chatSettings.keys?.current || $chatSettings.session} class="settings-tg-btn-action" onclick={() => switchEnc(chat, chatSettings, messages)}>
               { !($chatSettings.keys?.current || $chatSettings.session) ? "Новая сессия" : "Отключить" }
-            </button>
+            </Button>
           </div>
 
           {#if $chatSettings.session?.fingerprint}
@@ -158,12 +155,12 @@
                   {$chatSettings.session.fingerprint}
                 </div>
               </div>
-              <button class="tg-copy-btn" title="Скопировать ключ">
+              <IconButton class="settings-tg-copy-btn" title="Скопировать ключ">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                   <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
                   <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
                 </svg>
-              </button>
+              </IconButton>
             </div>
           {/if}
         </div>
@@ -196,11 +193,7 @@
               placeholder="Введите общий секрет чата"
             />
           </div>
-          <button
-            class="tg-eye-btn"
-            on:click={() => (showPassword = !showPassword)}
-            aria-label="Показать пароль"
-          >
+          <IconButton class="settings-tg-eye-btn" onclick={() => (showPassword = !showPassword)} aria-label="Показать пароль">
             {#if showPassword}
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/>
@@ -212,39 +205,27 @@
                 <circle cx="12" cy="12" r="3"/>
               </svg>
             {/if}
-          </button>
+          </IconButton>
         </div>
       </div>
       <div class="tg-caption">Дополнительный общий пароль для симметричного шифрования.</div>
 
       <div class="tg-section-header">Обфускация трафика</div>
       <div class="tg-segmented">
-        <button
-          class="tg-seg-btn"
-          class:active={!$chatSettings.obfuscation}
-          on:click={() => setObfuscation(null)}
-        >
+        <Tab variant="segment" active={!$chatSettings.obfuscation} class="settings-tg-seg-btn" onclick={() => setObfuscation(null)}>
           <span class="tg-seg-title">Без маскировки</span>
           <span class="tg-seg-sub">OFF</span>
-        </button>
+        </Tab>
 
-        <button
-          class="tg-seg-btn"
-          class:active={$chatSettings.obfuscation === "zh"}
-          on:click={() => setObfuscation("zh")}
-        >
+        <Tab variant="segment" active={$chatSettings.obfuscation === "zh"} class="settings-tg-seg-btn" onclick={() => setObfuscation("zh")}>
           <span class="tg-seg-title">Китайский</span>
           <span class="tg-seg-sub">Zh</span>
-        </button>
+        </Tab>
 
-        <button
-          class="tg-seg-btn"
-          class:active={$chatSettings.obfuscation === "words"}
-          on:click={() => setObfuscation("words")}
-        >
+        <Tab variant="segment" active={$chatSettings.obfuscation === "words"} class="settings-tg-seg-btn" onclick={() => setObfuscation("words")}>
           <span class="tg-seg-title">Книжные слова</span>
           <span class="tg-seg-sub">Tol</span>
-        </button>
+        </Tab>
       </div>
 
       <div class="tg-caption">
@@ -369,9 +350,9 @@
     position: relative;
     width: 100%;
     max-width: 500px;
-    background: #212121;
+    background: var(--bg-surface-2);
     border-radius: 20px 20px 0 0;
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    border: 1px solid var(--border-subtle);
     border-bottom: none;
     padding: 0 16px calc(24px + env(safe-area-inset-bottom));
     box-sizing: border-box;
@@ -386,7 +367,7 @@
     width: 38px;
     height: 4px;
     border-radius: 999px;
-    background: rgba(255, 255, 255, 0.2);
+    background: var(--bg-surface-2);
     margin: 8px auto 4px auto;
     flex-shrink: 0;
   }
@@ -396,7 +377,7 @@
     align-items: center;
     justify-content: space-between;
     padding: 12px 4px 14px;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    border-bottom: 1px solid var(--border-subtle);
     flex-shrink: 0;
   }
 
@@ -408,40 +389,22 @@
 
   .tg-title {
     margin: 0;
-    color: #ffffff;
+    color: var(--text-primary);
     font-size: 20px;
     font-weight: 600;
     letter-spacing: -0.2px;
   }
 
   .tg-chat-name {
-    color: #8774e1;
+    color: var(--accent-violet);
     font-size: 13px;
     font-weight: 500;
   }
 
-  .tg-close-btn {
-    width: 32px;
-    height: 32px;
-    border: none;
-    border-radius: 50%;
-    background: rgba(255, 255, 255, 0.08);
-    color: #aaaaaa;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    transition: background 0.15s, color 0.15s, transform 0.12s;
-  }
+  :global(.settings-tg-close-btn)  { width: 32px; }
 
-  .tg-close-btn:hover {
-    background: rgba(255, 255, 255, 0.14);
-    color: #ffffff;
-  }
 
-  .tg-close-btn:active {
-    transform: scale(0.92);
-  }
+  :global(.settings-tg-close-btn):active  { transform: scale(0.92); }
 
   .tg-body {
     flex: 1;
@@ -455,7 +418,7 @@
 
   .tg-section-header {
     flex-shrink: 0;
-    color: #707579;
+    color: var(--text-muted);
     font-size: 13px;
     font-weight: 600;
     text-transform: uppercase;
@@ -471,7 +434,7 @@
     flex-shrink: 0;
     background: #2b2b2b;
     border-radius: 14px;
-    border: 1px solid rgba(255, 255, 255, 0.05);
+    border: 1px solid var(--border-subtle);
     overflow: hidden;
   }
 
@@ -482,7 +445,7 @@
     gap: 14px;
     padding: 12px 14px;
     min-height: 52px;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    border-bottom: 1px solid var(--border-subtle);
     box-sizing: border-box;
   }
 
@@ -497,7 +460,7 @@
   }
 
   .tg-toggle-row:hover {
-    background: rgba(255, 255, 255, 0.03);
+    background: var(--bg-surface);
   }
 
   .tg-row-icon {
@@ -512,7 +475,7 @@
 
   .tg-icon-shield {
     background: rgba(51, 144, 236, 0.15);
-    color: #3390ec;
+    color: var(--accent-primary);
   }
 
   .tg-icon-key {
@@ -522,7 +485,7 @@
 
   .tg-icon-lock {
     background: rgba(135, 116, 225, 0.15);
-    color: #8774e1;
+    color: var(--accent-violet);
   }
 
   .tg-icon-bell {
@@ -532,7 +495,7 @@
 
   .tg-icon-check {
     background: rgba(46, 201, 113, 0.15);
-    color: #2ecc71;
+    color: var(--status-success);
   }
 
   .tg-icon-download {
@@ -554,7 +517,7 @@
   }
 
   .tg-row-title {
-    color: #ffffff;
+    color: var(--text-primary);
     font-size: 15px;
     font-weight: 500;
     line-height: 1.35;
@@ -562,7 +525,7 @@
   }
 
   .tg-row-subtitle {
-    color: #707579;
+    color: var(--text-muted);
     font-size: 13px;
     line-height: 1.3;
     word-break: break-word;
@@ -579,7 +542,7 @@
 
   .tg-badge-success {
     background: rgba(46, 201, 113, 0.18);
-    color: #2ecc71;
+    color: var(--status-success);
   }
 
   .tg-badge-warning {
@@ -588,47 +551,24 @@
   }
 
   .tg-badge-muted {
-    background: rgba(255, 255, 255, 0.08);
-    color: #aaaaaa;
+    background: var(--bg-surface);
+    color: var(--text-muted);
   }
 
   .tg-badge-soon {
-    background: rgba(255, 255, 255, 0.08);
-    color: #707579;
+    background: var(--bg-surface);
+    color: var(--text-muted);
     font-size: 11px;
     letter-spacing: 0.5px;
     text-transform: uppercase;
   }
 
-  .tg-btn-action {
-    border: none;
-    border-radius: 8px;
-    padding: 7px 14px;
-    background: #3390ec;
-    color: #ffffff;
-    font-size: 13px;
-    font-weight: 500;
-    cursor: pointer;
-    transition: background 0.15s, transform 0.12s, opacity 0.15s;
-    flex-shrink: 0;
-  }
+  :global(.settings-tg-btn-action)  { flex-shrink: 0; }
 
-  .tg-btn-action:hover {
-    background: #4ea4f6;
-  }
 
-  .tg-btn-action:active {
-    transform: scale(0.96);
-  }
+  :global(.settings-tg-btn-action):active  { transform: scale(0.96); }
 
-  .tg-btn-action.danger {
-    background: rgba(229, 57, 53, 0.18);
-    color: #ff595a;
-  }
 
-  .tg-btn-action.danger:hover {
-    background: rgba(229, 57, 53, 0.28);
-  }
 
   .tg-fingerprint-row {
     cursor: pointer;
@@ -636,7 +576,7 @@
   }
 
   .tg-fingerprint-row:hover {
-    background: rgba(255, 255, 255, 0.03);
+    background: var(--bg-surface);
   }
 
   .tg-fingerprint-emojis {
@@ -645,40 +585,24 @@
     margin-top: 2px;
   }
 
-  .tg-copy-btn {
-    border: none;
-    background: transparent;
-    color: #707579;
-    padding: 6px;
-    border-radius: 6px;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: color 0.15s, background 0.15s;
-  }
 
-  .tg-copy-btn:hover {
-    color: #3390ec;
-    background: rgba(51, 144, 236, 0.1);
-  }
 
   .tg-caption {
     flex-shrink: 0;
-    color: #707579;
+    color: var(--text-muted);
     font-size: 13px;
     line-height: 1.4;
     margin: 8px 10px 4px;
   }
 
   .tg-caption-tag {
-    color: #3390ec;
+    color: var(--accent-primary);
     margin-top: 4px;
     font-size: 12px;
   }
 
   .tg-warn-text {
-    color: #ff595a;
+    color: var(--status-danger);
   }
 
   .tg-input-row {
@@ -689,33 +613,17 @@
     width: 100%;
     border: none;
     background: transparent;
-    color: #ffffff;
+    color: var(--text-primary);
     font-size: 15px;
     outline: none;
     padding: 0;
   }
 
   .tg-input::placeholder {
-    color: #707579;
+    color: var(--text-muted);
   }
 
-  .tg-eye-btn {
-    border: none;
-    background: transparent;
-    color: #707579;
-    padding: 8px;
-    border-radius: 8px;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: color 0.15s, background 0.15s;
-  }
 
-  .tg-eye-btn:hover {
-    color: #ffffff;
-    background: rgba(255, 255, 255, 0.06);
-  }
 
   .tg-segmented {
     flex-shrink: 0;
@@ -724,48 +632,26 @@
     background: #2b2b2b;
     border-radius: 12px;
     padding: 4px;
-    border: 1px solid rgba(255, 255, 255, 0.05);
+    border: 1px solid var(--border-subtle);
   }
 
-  .tg-seg-btn {
-    flex: 1;
-    border: none;
-    background: transparent;
-    border-radius: 8px;
-    padding: 8px 4px;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 2px;
-    cursor: pointer;
-    transition: background 0.18s, color 0.18s, transform 0.12s;
-  }
+  :global(.settings-tg-seg-btn)  { flex: 1; }
 
-  .tg-seg-btn:active {
-    transform: scale(0.97);
-  }
+  :global(.settings-tg-seg-btn):active  { transform: scale(0.97); }
 
   .tg-seg-title {
-    color: #aaaaaa;
+    color: var(--text-muted);
     font-size: 13px;
     font-weight: 500;
   }
 
   .tg-seg-sub {
-    color: #707579;
+    color: var(--text-muted);
     font-size: 11px;
     font-weight: 700;
   }
 
-  .tg-seg-btn.active {
-    background: #3390ec;
-    box-shadow: 0 2px 8px rgba(51, 144, 236, 0.4);
-  }
 
-  .tg-seg-btn.active .tg-seg-title,
-  .tg-seg-btn.active .tg-seg-sub {
-    color: #ffffff;
-  }
 
   .tg-switch {
     width: 44px;
@@ -778,7 +664,7 @@
   }
 
   .tg-switch.active {
-    background: #3390ec;
+    background: var(--accent-primary);
   }
 
   .tg-switch-thumb {
@@ -808,8 +694,8 @@
     left: 50%;
     transform: translateX(-50%);
     background: rgba(30, 30, 30, 0.95);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    color: #ffffff;
+    border: 1px solid var(--border-subtle);
+    color: var(--text-primary);
     font-size: 13px;
     font-weight: 500;
     padding: 8px 16px;
@@ -823,6 +709,6 @@
   }
 
   .tg-toast svg {
-    color: #2ecc71;
+    color: var(--status-success);
   }
 </style>

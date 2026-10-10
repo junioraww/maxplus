@@ -1,4 +1,5 @@
 <script>
+  import { IconButton } from "$components/ui";
   import { fade, scale as scaleTransition } from "svelte/transition";
   import { invoke as tauriInvoke, Channel } from "@tauri-apps/api/core";
   import { save } from "@tauri-apps/plugin-dialog";
@@ -1170,23 +1171,18 @@
       </div>
     </div>
     <div class="header-actions">
-      <button
-        class="viewer-icon-btn download"
-        on:click|stopPropagation={downloadCurrentMedia}
-        title={currentMedia?._type === "PHOTO" ? "Скачать фото" : "Скачать видео"}
-        disabled={isDownloadingMedia}
-      >
+      <IconButton variant="overlay" class="mediaviewer-viewer-icon-btn mediaviewer-download" onclick={(e) => { e.stopPropagation(); (downloadCurrentMedia)(e); }} title={currentMedia?._type === "PHOTO" ? "Скачать фото" : "Скачать видео"} disabled={isDownloadingMedia}>
         <svg viewBox="0 0 24 24">
           <path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z" />
         </svg>
-      </button>
-      <button class="viewer-icon-btn close" on:click={() => requestClose()}>
+      </IconButton>
+      <IconButton variant="overlay" class="mediaviewer-viewer-icon-btn mediaviewer-close" onclick={() => requestClose()}>
         <svg viewBox="0 0 24 24"
           ><path
             d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"
           /></svg
         >
-      </button>
+      </IconButton>
     </div>
   </div>
 
@@ -1353,10 +1349,7 @@
 
                 <div class="controls-main">
                   <div class="controls-left">
-                    <button
-                      class="icon-btn play-pause"
-                      on:click|stopPropagation={togglePlay}
-                    >
+                    <IconButton class="mediaviewer-icon-btn mediaviewer-play-pause" onclick={(e) => { e.stopPropagation(); (togglePlay)(e); }}>
                       {#if paused}
                         <svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg
                         >
@@ -1365,25 +1358,20 @@
                           ><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" /></svg
                         >
                       {/if}
-                    </button>
+                    </IconButton>
                     <span class="time-text">
                       {formatTime(currentTime)} / {formatTime(duration)}
                     </span>
                   </div>
 
                   <div class="controls-right">
-                    <button
-                      class="icon-btn loop-btn"
-                      class:active={loop}
-                      on:click={toggleLoop}
-                      title="Повтор"
-                    >
+                    <IconButton active={loop} class="mediaviewer-icon-btn mediaviewer-loop-btn" onclick={toggleLoop} title="Повтор">
                       <svg viewBox="0 0 24 24"
                         ><path
                           d="M7 7h10v3l4-4-4-4v3H5v6h2V7zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2v4z"
                         /></svg
                       >
-                    </button>
+                    </IconButton>
                     <div
                       class="volume-group"
                       on:pointerdown|stopPropagation
@@ -1487,7 +1475,7 @@
     justify-content: space-between;
     align-items: center;
     padding: calc(env(safe-area-inset-top, 12px) + 6px) 20px 15px 20px;
-    color: white;
+    color: var(--text-primary);
     z-index: 10;
     transition: opacity 200ms ease;
     gap: 16px;
@@ -1632,30 +1620,7 @@
     gap: 8px;
   }
 
-  .viewer-icon-btn {
-    background: none;
-    border: none;
-    color: white;
-    cursor: pointer;
-    padding: 6px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: 50%;
-    transition: background 0.15s, opacity 0.15s;
-  }
-  .viewer-icon-btn:hover {
-    background: rgba(255, 255, 255, 0.12);
-  }
-  .viewer-icon-btn:disabled {
-    opacity: 0.4;
-    cursor: not-allowed;
-  }
-  .viewer-icon-btn svg {
-    width: 26px;
-    height: 26px;
-    fill: currentColor;
-  }
+  :global(.mediaviewer-viewer-icon-btn) svg  { width: 26px; }
 
   .media-shimmer {
     background: linear-gradient(
@@ -1709,7 +1674,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    color: white;
+    color: var(--text-primary);
     transition: transform 0.2s;
   }
   .play-button svg {
@@ -1723,7 +1688,7 @@
     height: 50px;
     border: 3px solid rgba(255, 255, 255, 0.3);
     border-radius: 50%;
-    border-top-color: #fff;
+    border-top-color: var(--border-subtle);
     animation: spin 1s ease-in-out infinite;
   }
   @keyframes spin {
@@ -1781,33 +1746,10 @@
     display: flex;
     align-items: center;
     gap: 12px;
-    color: white;
+    color: var(--text-primary);
   }
 
-  .icon-btn {
-    background: none;
-    border: none;
-    color: white;
-    cursor: pointer;
-    padding: 0;
-    display: flex;
-    opacity: 0.8;
-    transition:
-      opacity 0.2s,
-      color 0.2s;
-  }
-  .icon-btn:hover {
-    opacity: 1;
-  }
-  .icon-btn.active {
-    color: #3390ec;
-    opacity: 1;
-  }
-  .icon-btn svg {
-    width: 28px;
-    height: 28px;
-    fill: currentColor;
-  }
+  :global(.mediaviewer-icon-btn) svg  { width: 28px; }
 
   .time-text {
     font-size: 13px;
@@ -1842,7 +1784,7 @@
     height: 12px;
     width: 12px;
     border-radius: 50%;
-    background: #fff;
+    background: var(--bg-sheet);
     box-shadow: 0 0 4px rgba(0, 0, 0, 0.4);
   }
   input[type="range"]:disabled {
@@ -1880,7 +1822,7 @@
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    color: white;
+    color: var(--text-primary);
     z-index: 15;
     pointer-events: none;
   }
@@ -1905,7 +1847,7 @@
     left: 50%;
     transform: translateX(-50%);
     background: rgba(0, 0, 0, 0.7);
-    color: white;
+    color: var(--text-primary);
     padding: 4px 10px;
     border-radius: 12px;
     font-size: 12px;

@@ -1,4 +1,5 @@
 <script>
+  import { Button, IconButton, Modal, Tab } from "$components/ui";
   import { fade, scale, fly } from "svelte/transition";
   import { createEventDispatcher, onMount } from "svelte";
   import API, { currentRealContacts, currentUser } from "$lib/stores/api";
@@ -107,19 +108,19 @@
   }
 </script>
 
-<div class="modal-backdrop" transition:fade={{ duration: 180 }} on:click={close}>
-  <div class="modal-card" transition:scale={{ duration: 200, start: 0.94 }} on:click|stopPropagation>
+<Modal open={true} bare closeOnEsc={true} onclose={close}>
+  <div class="modal-card">
     <div class="modal-head">
       <div class="title-wrap">
         <h3>Добавить участников</h3>
         <span class="chat-sub">{chat?.title || "Группа"}</span>
       </div>
-      <button type="button" class="btn-close" on:click={close} aria-label="Закрыть">
+      <IconButton class="groupaddmembersmodal-btn-close" onclick={close} aria-label="Закрыть">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
           <line x1="18" y1="6" x2="6" y2="18"></line>
           <line x1="6" y1="6" x2="18" y2="18"></line>
         </svg>
-      </button>
+      </IconButton>
     </div>
 
     {#if chat?.link}
@@ -128,32 +129,22 @@
           <span class="invite-label">Ссылка приглашения</span>
           <span class="invite-url">{chat.link}</span>
         </div>
-        <button type="button" class="btn-copy-invite" on:click={copyInvite} title="Скопировать">
+        <Button class="groupaddmembersmodal-btn-copy-invite" onclick={copyInvite} title="Скопировать">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
             <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
           </svg>
-        </button>
+        </Button>
       </div>
     {/if}
 
     <div class="mode-switcher">
-      <button
-        type="button"
-        class="mode-btn"
-        class:active={mode === "contacts"}
-        on:click={() => (mode = "contacts")}
-      >
+      <Tab variant="segment" active={mode === "contacts"} class="groupaddmembersmodal-mode-btn" onclick={() => (mode = "contacts")}>
         Из контактов
-      </button>
-      <button
-        type="button"
-        class="mode-btn"
-        class:active={mode === "manual"}
-        on:click={() => (mode = "manual")}
-      >
+      </Tab>
+      <Tab variant="segment" active={mode === "manual"} class="groupaddmembersmodal-mode-btn" onclick={() => (mode = "manual")}>
         По ID / Номеру
-      </button>
+      </Tab>
     </div>
 
     {#if mode === "contacts"}
@@ -168,7 +159,7 @@
           placeholder="Поиск по контактам..."
         />
         {#if searchFilter}
-          <button type="button" class="btn-clear" on:click={() => (searchFilter = "")}>&times;</button>
+          <Button variant="ghost" class="groupaddmembersmodal-btn-clear" onclick={() => (searchFilter = "")}>&times;</Button>
         {/if}
       </div>
 
@@ -230,14 +221,9 @@
     {/if}
 
     <div class="modal-foot">
-      <button type="button" class="btn btn-secondary" on:click={close}>Отмена</button>
+      <Button class="groupaddmembersmodal-btn groupaddmembersmodal-btn-secondary" onclick={close}>Отмена</Button>
       {#if mode === "contacts"}
-        <button
-          type="button"
-          class="btn btn-primary"
-          disabled={selectedUserIds.size === 0 || isSubmitting}
-          on:click={submitContacts}
-        >
+        <Button variant="primary" class="groupaddmembersmodal-btn" disabled={selectedUserIds.size === 0 || isSubmitting} onclick={submitContacts}>
           {#if isSubmitting}
             Добавление...
           {:else if selectedUserIds.size > 0}
@@ -245,36 +231,21 @@
           {:else}
             Добавить
           {/if}
-        </button>
+        </Button>
       {:else}
-        <button
-          type="button"
-          class="btn btn-primary"
-          disabled={!manualInput.trim() || isSubmitting}
-          on:click={submitManual}
-        >
+        <Button variant="primary" class="groupaddmembersmodal-btn" disabled={!manualInput.trim() || isSubmitting} onclick={submitManual}>
           {isSubmitting ? "Добавление..." : "Добавить"}
-        </button>
+        </Button>
       {/if}
     </div>
   </div>
-</div>
+</Modal>
 
 <style>
-  .modal-backdrop {
-    position: fixed;
-    inset: 0;
-    background: rgba(0, 0, 0, 0.75);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 1000;
-    padding: 16px;
-  }
 
   .modal-card {
-    background: #1e2025;
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: var(--bg-surface);
+    border: 1px solid var(--border-subtle);
     box-shadow: 0 20px 48px rgba(0, 0, 0, 0.65);
     border-radius: 18px;
     width: 100%;
@@ -282,7 +253,7 @@
     display: flex;
     flex-direction: column;
     overflow: hidden;
-    color: #edf0f5;
+    color: var(--text-primary);
   }
 
   .modal-head {
@@ -290,39 +261,23 @@
     align-items: center;
     justify-content: space-between;
     padding: 18px 20px 14px;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    border-bottom: 1px solid var(--border-subtle);
   }
 
   .title-wrap h3 {
     margin: 0;
     font-size: 18px;
     font-weight: 600;
-    color: #f8fafc;
+    color: var(--text-primary);
   }
 
   .chat-sub {
     font-size: 13px;
-    color: #8b98a5;
+    color: var(--text-muted);
   }
 
-  .btn-close {
-    background: none;
-    border: none;
-    color: #8b98a5;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 32px;
-    height: 32px;
-    border-radius: 8px;
-    transition: 0.15s;
-  }
+  :global(.groupaddmembersmodal-btn-close)  { width: 32px; }
 
-  .btn-close:hover {
-    color: #fff;
-    background: rgba(255, 255, 255, 0.08);
-  }
 
   .invite-banner {
     display: flex;
@@ -346,34 +301,19 @@
     font-size: 11px;
     text-transform: uppercase;
     font-weight: 600;
-    color: #3b82f6;
+    color: var(--accent-primary);
     letter-spacing: 0.5px;
   }
 
   .invite-url {
     font-size: 13px;
-    color: #edf0f5;
+    color: var(--text-primary);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
 
-  .btn-copy-invite {
-    background: none;
-    border: none;
-    color: #3b82f6;
-    cursor: pointer;
-    padding: 6px;
-    border-radius: 6px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: 0.15s;
-  }
 
-  .btn-copy-invite:hover {
-    background: rgba(43, 130, 246, 0.18);
-  }
 
   .mode-switcher {
     display: flex;
@@ -384,24 +324,8 @@
     margin: 12px 16px;
   }
 
-  .mode-btn {
-    flex: 1;
-    background: none;
-    border: none;
-    color: #8b98a5;
-    font-size: 13px;
-    font-weight: 500;
-    padding: 8px 12px;
-    border-radius: 8px;
-    cursor: pointer;
-    transition: 0.15s;
-  }
+  :global(.groupaddmembersmodal-mode-btn)  { flex: 1; }
 
-  .mode-btn.active {
-    background: rgba(255, 255, 255, 0.12);
-    color: #fff;
-    font-weight: 600;
-  }
 
   .search-box {
     display: flex;
@@ -409,29 +333,21 @@
     gap: 8px;
     margin: 0 16px 10px;
     background: rgba(0, 0, 0, 0.2);
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    border: 1px solid var(--border-subtle);
     border-radius: 10px;
     padding: 8px 12px;
-    color: #8b98a5;
+    color: var(--text-muted);
   }
 
   .search-box input {
     flex: 1;
     background: transparent;
     border: none;
-    color: #fff;
+    color: var(--text-primary);
     font-size: 14px;
     outline: none;
   }
 
-  .btn-clear {
-    background: none;
-    border: none;
-    color: #8b98a5;
-    font-size: 16px;
-    cursor: pointer;
-    line-height: 1;
-  }
 
   .contacts-scroll {
     max-height: 280px;
@@ -445,7 +361,7 @@
   .empty-state {
     padding: 36px 16px;
     text-align: center;
-    color: #64748b;
+    color: var(--text-muted);
     font-size: 14px;
   }
 
@@ -460,7 +376,7 @@
   }
 
   .contact-row:hover {
-    background: rgba(255, 255, 255, 0.04);
+    background: var(--bg-surface);
   }
 
   .contact-row.selected {
@@ -477,7 +393,7 @@
   .user-name {
     font-size: 14px;
     font-weight: 500;
-    color: #f1f5f9;
+    color: var(--text-primary);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -485,24 +401,24 @@
 
   .user-sub {
     font-size: 12px;
-    color: #8b98a5;
+    color: var(--text-muted);
   }
 
   .checkbox-cell {
     width: 20px;
     height: 20px;
     border-radius: 6px;
-    border: 1.5px solid rgba(255, 255, 255, 0.25);
+    border: 1.5px solid var(--border-subtle);
     display: flex;
     align-items: center;
     justify-content: center;
-    color: #fff;
+    color: var(--text-primary);
     transition: 0.15s;
   }
 
   .checkbox-cell.checked {
-    background: #2563eb;
-    border-color: #2563eb;
+    background: var(--accent-primary);
+    border-color: var(--accent-primary);
   }
 
   .manual-box {
@@ -514,33 +430,33 @@
 
   .manual-box label {
     font-size: 13px;
-    color: #8b98a5;
+    color: var(--text-muted);
   }
 
   .manual-box input {
     background: rgba(0, 0, 0, 0.25);
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    border: 1px solid var(--border-subtle);
     border-radius: 10px;
     padding: 10px 14px;
-    color: #fff;
+    color: var(--text-primary);
     font-size: 15px;
     outline: none;
     transition: 0.15s;
   }
 
   .manual-box input:focus {
-    border-color: #3b82f6;
+    border-color: var(--accent-primary);
   }
 
   .input-hint {
     font-size: 12px;
-    color: #64748b;
+    color: var(--text-muted);
   }
 
   .status-msg {
     margin: 4px 16px;
     font-size: 13px;
-    color: #38bdf8;
+    color: var(--accent-primary);
     text-align: center;
   }
 
@@ -550,31 +466,15 @@
     gap: 10px;
     padding: 14px 16px;
     background: rgba(0, 0, 0, 0.18);
-    border-top: 1px solid rgba(255, 255, 255, 0.05);
+    border-top: 1px solid var(--border-subtle);
   }
 
-  .btn {
-    padding: 9px 18px;
-    border-radius: 9px;
-    font-size: 14px;
-    font-weight: 500;
-    border: none;
-    cursor: pointer;
-    transition: 0.15s;
-  }
 
-  .btn-secondary {
-    background: rgba(255, 255, 255, 0.08);
-    color: #e2e8f0;
-  }
 
-  .btn-secondary:hover {
-    background: rgba(255, 255, 255, 0.12);
-  }
 
   .btn-primary {
-    background: #2563eb;
-    color: #fff;
+    background: var(--accent-primary);
+    color: var(--button-primary-contrast);
   }
 
   .btn-primary:hover:not(:disabled) {

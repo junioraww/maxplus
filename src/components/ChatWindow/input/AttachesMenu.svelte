@@ -1,4 +1,5 @@
 <script>
+  import { MenuItem } from "$components/ui";
   import { createEventDispatcher, onDestroy } from "svelte";
   import { fade } from "svelte/transition";
   import { registerBackHandler } from "$lib/utils/backButton.js";
@@ -29,43 +30,28 @@
 ></div>
 
 <div class="attaches-dropout" transition:fade={{ duration: 150 }}>
-  <button type="button" class="dropout-item" on:click={() => selectFile("PHOTO")}>
-    <svg class="dropout-svg" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <MenuItem class="attachesmenu-dropout-item" onclick={() => selectFile("PHOTO")}>{#snippet icon()}<svg class="dropout-svg" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
       <rect x="3" y="3" width="18" height="18" rx="3" ry="3"/>
       <circle cx="8.5" cy="8.5" r="1.5"/>
       <polyline points="21 15 16 10 5 21"/>
-    </svg>
-    <span>Изображение</span>
-  </button>
-  <button type="button" class="dropout-item" on:click={() => selectFile("VIDEO")}>
-    <svg class="dropout-svg" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    </svg>{/snippet}<span>Изображение</span></MenuItem>
+  <MenuItem class="attachesmenu-dropout-item" onclick={() => selectFile("VIDEO")}>{#snippet icon()}<svg class="dropout-svg" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
       <polygon points="23 7 16 12 23 17 23 7"/>
       <rect x="1" y="5" width="15" height="14" rx="2" ry="2"/>
-    </svg>
-    <span>Видео</span>
-  </button>
-  <button type="button" class="dropout-item" on:click={() => selectFile("VOICE_NOTE")}>
-    <svg class="dropout-svg" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    </svg>{/snippet}<span>Видео</span></MenuItem>
+  <MenuItem class="attachesmenu-dropout-item" onclick={() => selectFile("VOICE_NOTE")}>{#snippet icon()}<svg class="dropout-svg" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
       <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/>
       <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
       <line x1="12" y1="19" x2="12" y2="22"/>
-    </svg>
-    <span>Голосовое из файла</span>
-  </button>
-  <button type="button" class="dropout-item" on:click={() => selectFile("VIDEO_NOTE")}>
-    <svg class="dropout-svg" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    </svg>{/snippet}<span>Голосовое из файла</span></MenuItem>
+  <MenuItem class="attachesmenu-dropout-item" onclick={() => selectFile("VIDEO_NOTE")}>{#snippet icon()}<svg class="dropout-svg" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
       <circle cx="12" cy="12" r="9"/>
       <polygon points="10 8 16 12 10 16 10 8" fill="currentColor"/>
-    </svg>
-    <span>Кружок из файла</span>
-  </button>
-  <button type="button" class="dropout-item" on:click={() => selectFile("FILE")}>
-    <svg class="dropout-svg" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    </svg>{/snippet}<span>Кружок из файла</span></MenuItem>
+  <MenuItem class="attachesmenu-dropout-item" onclick={() => selectFile("FILE")}>{#snippet icon()}<svg class="dropout-svg" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
       <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/>
       <polyline points="13 2 13 9 20 9"/>
-    </svg>
-    <span>Файл</span>
-  </button>
+    </svg>{/snippet}<span>Файл</span></MenuItem>
 </div>
 
 <style>
@@ -83,7 +69,7 @@
     position: absolute;
     bottom: 54px;
     left: 0;
-    background: #1e2025;
+    background: var(--bg-surface);
     border: none;
     border-radius: 14px;
     padding: 6px;
@@ -106,25 +92,7 @@
     }
   }
 
-  .dropout-item {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    background: transparent;
-    border: none;
-    color: #e1e4ea;
-    padding: 9px 12px;
-    border-radius: 10px;
-    text-align: left;
-    cursor: pointer;
-    font-size: 14px;
-    font-weight: 500;
-    transition: background-color 0.12s ease;
-  }
 
-  .dropout-item:hover {
-    background: rgba(255, 255, 255, 0.08);
-  }
 
   .dropout-svg {
     color: #e1e4ea;

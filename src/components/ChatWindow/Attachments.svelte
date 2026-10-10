@@ -672,7 +672,7 @@
     border-radius: 50%;
     background: rgba(0, 0, 0, 0.65);
     border: none;
-    color: #fff;
+    color: var(--text-primary);
     cursor: pointer;
     display: flex;
     align-items: center;
@@ -686,7 +686,7 @@
   .media-download-badge svg {
     width: 16px;
     height: 16px;
-    fill: #ffffff;
+    fill: var(--icon-primary);
   }
 
   .grid-item:hover .media-download-badge {
@@ -718,7 +718,7 @@
     top: 50%; left: 50%;
     transform: translate(-50%, -50%);
     background: rgba(0,0,0,0.6);
-    color: white;
+    color: var(--text-primary);
     width: 40px; height: 40px;
     border-radius: 50%;
     display: flex;
@@ -745,7 +745,7 @@
     max-width: 36px;
     height: 36px;
     border-radius: 50%;
-    background: rgba(255, 255, 255, 0.1);
+    background: var(--bg-surface-2);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -774,7 +774,7 @@
     font-size: 11px;
     opacity: 0.5;
     margin-top: 5px;
-    border-top: 1px solid rgba(255, 255, 255, 0.1);
+    border-top: 1px solid var(--border-subtle);
     padding-top: 3px;
   }
 
@@ -801,7 +801,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    color: #fff;
+    color: var(--text-primary);
     margin-bottom: 6px;
     transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
   }

@@ -36,6 +36,7 @@
 </script>
 
 <script>
+  import { Button } from "$components/ui";
   import { onMount, onDestroy, createEventDispatcher } from "svelte";
   import { stickersById, favoriteSetIds, ensureStickers, favoriteSet, unfavoriteSet } from "$lib/stores/stickers";
   import { showAlert } from "$lib/utils/alert";
@@ -179,31 +180,19 @@
     {#if section.id !== "recents"}
       <div class="header-actions">
         {#if isFav}
-          <button
-            type="button"
-            class="action-btn remove-btn"
-            disabled={busy}
-            on:click={handleToggleFavorite}
-            title="Удалить из моих"
-          >
+          <Button class="stickersection-action-btn stickersection-remove-btn" disabled={busy} onclick={handleToggleFavorite} title="Удалить из моих">
             <svg viewBox="0 0 24 24" width="16" height="16">
               <path fill="currentColor" d="M19 13H5v-2h14v2z"/>
             </svg>
             <span class="action-text">Удалить</span>
-          </button>
+          </Button>
         {:else}
-          <button
-            type="button"
-            class="action-btn add-btn"
-            disabled={busy}
-            on:click={handleToggleFavorite}
-            title="Добавить в мои стикеры"
-          >
+          <Button class="stickersection-action-btn stickersection-add-btn" disabled={busy} onclick={handleToggleFavorite} title="Добавить в мои стикеры">
             <svg viewBox="0 0 24 24" width="16" height="16">
               <path fill="currentColor" d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/>
             </svg>
             <span class="action-text">Добавить</span>
-          </button>
+          </Button>
         {/if}
       </div>
     {/if}
@@ -249,10 +238,10 @@
   }
 
   .sticker-section.is-favorite-card {
-    background: rgba(255, 255, 255, 0.04);
+    background: var(--bg-surface);
     border-radius: 14px;
     padding: 8px;
-    border: 1px solid rgba(255, 255, 255, 0.05);
+    border: 1px solid var(--border-subtle);
   }
 
   .section-header {
@@ -285,7 +274,7 @@
   .sec-name {
     font-size: 13px;
     font-weight: 600;
-    color: #8b929e;
+    color: var(--text-muted);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -293,7 +282,7 @@
   }
 
   .header-info-btn:hover .sec-name {
-    color: #fff;
+    color: var(--text-primary);
   }
 
   .header-actions {
@@ -301,38 +290,10 @@
     align-items: center;
   }
 
-  .action-btn {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    background: none;
-    border: none;
-    padding: 4px 8px;
-    border-radius: 8px;
-    font-size: 12px;
-    font-weight: 500;
-    cursor: pointer;
-    transition: background-color 0.15s, color 0.15s;
-  }
 
-  .add-btn {
-    color: #248bfe;
-    background: rgba(36, 139, 254, 0.1);
-  }
 
-  .add-btn:hover {
-    background: rgba(36, 139, 254, 0.2);
-  }
 
-  .remove-btn {
-    color: #8b929e;
-    background: rgba(255, 255, 255, 0.05);
-  }
 
-  .remove-btn:hover {
-    color: #ff5e5e;
-    background: rgba(255, 75, 75, 0.12);
-  }
 
   .action-text {
     line-height: 1;
@@ -376,7 +337,7 @@
   }
 
   .sticker-cell:hover {
-    background: rgba(255, 255, 255, 0.06);
+    background: var(--bg-surface);
     transform: scale(1.05);
   }
 

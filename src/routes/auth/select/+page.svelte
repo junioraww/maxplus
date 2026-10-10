@@ -1,4 +1,5 @@
 <script>
+  import { Button } from "$components/ui";
   import { save } from "@tauri-apps/plugin-dialog";
   import { invoke } from "@tauri-apps/api/core";
   import {
@@ -233,12 +234,9 @@
       Экспортировать
     </button>
 
-    <button
-      class="danger"
-      on:click={() => deleteAccount(menu.account)}
-    >
+    <Button variant="danger" class="pg-select-danger" onclick={() => deleteAccount(menu.account)}>
       Удалить
-    </button>
+    </Button>
   </div>
 {/if}
 </div>
@@ -253,7 +251,7 @@
     align-items: center;
     min-height: 98vh;
     text-align: center;
-    color: #ddd;
+    color: var(--text-primary);
   }
 
   h1 {
@@ -263,31 +261,24 @@
 
   .hint {
     font-size: 14px;
-    color: #777;
+    color: var(--text-muted);
     margin: 5px 0 20px 0;
   }
 
-  form {
-    display: flex;
-    flex-direction: column;
-    gap: 0.75rem;
-    width: 100%;
-    max-width: 300px;
-  }
 
   input,
   button {
     padding: 0.75rem;
     border-radius: 8px;
-    border: 1px solid #333;
+    border: 1px solid var(--border-subtle);
     font-size: 1rem;
-    background-color: #26262e;
-    color: #ccc;
+    background-color: var(--bg-surface-2);
+    color: var(--text-primary);
     outline: none;
   }
 
   button {
-    color: white;
+    color: var(--text-primary);
     border: none;
     cursor: pointer;
   }
@@ -304,7 +295,7 @@
     display: flex;
     flex-direction: column;
     gap: 10px;
-    color: white;
+    color: var(--text-primary);
     font-weight: 300;
     opacity: 0.8;
     transition: opacity 0.1s;
@@ -335,25 +326,8 @@
     bottom: 4px;
   }
 
-  .link {
-    margin-top: 2rem;
-    font-size: 0.9rem;
-    color: #4a90e2;
-    text-decoration: none;
-  }
 
-  .link:hover {
-    text-decoration: underline;
-  }
 
-  .error {
-    color: red;
-    font-size: 0.9rem;
-    height: auto;
-    word-break: break-all;
-    white-space: nowrap;
-    text-align: center;
-  }
 
   .context-menu {
     position: fixed;
@@ -381,7 +355,7 @@
     border: none;
     background: transparent;
 
-    color: #eee;
+    color: var(--text-primary);
 
     padding: 13px 16px;
 
@@ -401,9 +375,6 @@
     background: rgba(255,255,255,.1);
   }
 
-  .context-menu .danger {
-    color: #ff5b5b;
-  }
 
   @keyframes menuAppear {
     from {

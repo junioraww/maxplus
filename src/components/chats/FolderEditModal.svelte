@@ -1,4 +1,5 @@
 <script>
+  import { Button, IconButton, Modal, Tab } from "$components/ui";
   import { createEventDispatcher } from "svelte";
   import FolderEditChatItem from "$components/chats/FolderEditChatItem.svelte";
 
@@ -91,11 +92,11 @@
   });
 </script>
 
-<div class="modal-backdrop" on:click={close}>
-  <div class="modal" on:click|stopPropagation>
+<Modal open={true} bare closeOnEsc={true} onclose={close}>
+  <div class="modal">
     <div class="header">
       <h3>{isNew ? "Новая папка" : "Редактирование папки"}</h3>
-      <button class="close-btn" on:click={close}>&times;</button>
+      <IconButton class="foldereditmodal-close-btn" onclick={close}>&times;</IconButton>
     </div>
 
     <div class="content">
@@ -113,13 +114,9 @@
         <label>Фильтры</label>
         <div class="filters-grid">
           {#each filterOptions as opt}
-            <button
-              class="filter-chip"
-              class:active={filters.includes(opt.id)}
-              on:click={() => toggleFilter(opt.id)}
-            >
+            <Tab variant="pill" active={filters.includes(opt.id)} class="foldereditmodal-filter-chip" onclick={() => toggleFilter(opt.id)}>
               {opt.label}
-            </button>
+            </Tab>
           {/each}
         </div>
       </div>
@@ -148,35 +145,21 @@
 
     <div class="footer">
       {#if !isNew}
-        <button class="btn delete-btn" on:click={handleDelete}>
+        <Button variant="danger" class="foldereditmodal-btn" onclick={handleDelete}>
           Удалить
-        </button>
+        </Button>
       {/if}
       <div class="footer-actions">
-        <button class="btn cancel" on:click={close}>Отмена</button>
-        <button class="btn save" on:click={save}>
+        <Button class="foldereditmodal-btn foldereditmodal-cancel" onclick={close}>Отмена</Button>
+        <Button class="foldereditmodal-btn foldereditmodal-save" onclick={save}>
           {isNew ? "Создать" : "Сохранить"}
-        </button>
+        </Button>
       </div>
     </div>
   </div>
-</div>
+</Modal>
 
 <style>
-  .modal-backdrop {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background: rgba(0, 0, 0, 0.7);
-    z-index: 1000;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    padding: 16px;
-    box-sizing: border-box;
-  }
 
   .modal {
     background: #22222a;
@@ -186,7 +169,7 @@
     border-radius: 14px;
     display: flex;
     flex-direction: column;
-    color: #fff;
+    color: var(--text-primary);
     border: 1px solid #33333d;
     box-shadow: 0 16px 40px rgba(0, 0, 0, 0.6);
     overflow: hidden;
@@ -207,21 +190,7 @@
     font-weight: 600;
   }
 
-  .close-btn {
-    background: none;
-    border: none;
-    color: #999;
-    font-size: 24px;
-    line-height: 1;
-    cursor: pointer;
-    padding: 2px 6px;
-    border-radius: 6px;
-  }
 
-  .close-btn:hover {
-    color: #fff;
-    background: #333;
-  }
 
   .content {
     padding: 16px 20px;
@@ -239,7 +208,7 @@
   }
 
   .form-group label {
-    color: #aaa;
+    color: var(--text-muted);
     font-size: 13px;
     font-weight: 500;
     text-transform: uppercase;
@@ -252,7 +221,7 @@
     border-radius: 8px;
     border: 1px solid #3a3a46;
     background: #18181f;
-    color: #fff;
+    color: var(--text-primary);
     font-size: 14px;
     box-sizing: border-box;
     outline: none;
@@ -260,7 +229,7 @@
   }
 
   input[type="text"]:focus {
-    border-color: #6366f1;
+    border-color: var(--accent-violet);
   }
 
   .filters-grid {
@@ -269,28 +238,8 @@
     gap: 8px;
   }
 
-  .filter-chip {
-    background: #2a2a34;
-    border: 1px solid #3a3a48;
-    color: #ccc;
-    padding: 6px 14px;
-    border-radius: 20px;
-    font-size: 13px;
-    cursor: pointer;
-    transition: all 0.15s ease;
-  }
 
-  .filter-chip:hover {
-    background: #343442;
-    color: #fff;
-  }
 
-  .filter-chip.active {
-    background: #4f46e5;
-    border-color: #6366f1;
-    color: #fff;
-    font-weight: 500;
-  }
 
   .chat-section-header {
     display: flex;
@@ -327,43 +276,10 @@
     margin-left: auto;
   }
 
-  .btn {
-    padding: 8px 18px;
-    border-radius: 8px;
-    border: none;
-    cursor: pointer;
-    font-size: 14px;
-    font-weight: 500;
-    transition: background 0.15s;
-  }
 
-  .btn.cancel {
-    background: #2a2a34;
-    color: #aaa;
-  }
 
-  .btn.cancel:hover {
-    background: #363644;
-    color: #fff;
-  }
 
-  .btn.save {
-    background: #4f46e5;
-    color: #fff;
-  }
 
-  .btn.save:hover {
-    background: #4338ca;
-  }
 
-  .btn.delete-btn {
-    background: #dc262622;
-    color: #ef4444;
-    border: 1px solid #dc262644;
-  }
 
-  .btn.delete-btn:hover {
-    background: #dc2626;
-    color: #fff;
-  }
 </style>
