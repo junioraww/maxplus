@@ -59,6 +59,7 @@ const INITIAL_STATE = {
   cameraLoading: false,
   peerVideoOn: false,
   peerScreenOn: false,
+  incomingSecureRequest: null,
   useStubs: initialStubs,
 };
 

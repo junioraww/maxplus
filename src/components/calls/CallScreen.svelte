@@ -31,7 +31,7 @@
 
   let phase, callType, mode, peerName, peerAvatar, muted, videoOn, screenOn, speakerOn, isGroup, roomName;
   let remoteStream, localCameraStream, localScreenStream;
-  let startedAt, secureKeyFingerprint, secureStatus;
+  let startedAt, secureKeyFingerprint, secureStatus, incomingSecureRequest;
   let errorText, connectionStatus, serverTopology, conversationId, cameraLoading, peerVideoOn, peerScreenOn;
   let showDebug = false;
 
@@ -39,7 +39,7 @@
     phase, callType, mode, peerName, peerAvatar,
     muted, videoOn, screenOn, speakerOn, isGroup, roomName,
     remoteStream, localCameraStream, localScreenStream,
-    startedAt, secureKeyFingerprint, secureStatus,
+    startedAt, secureKeyFingerprint, secureStatus, incomingSecureRequest,
     errorText, connectionStatus, serverTopology, conversationId, cameraLoading,
     peerVideoOn, peerScreenOn,
   } = $activeCall);
@@ -164,6 +164,15 @@
   async function onToggleSecure() {
     await CallService.toggleSecure();
   }
+
+  async function handleAgreeSecureRequest() {
+    await CallService.acceptSecureRequest();
+  }
+
+  function handleDenySecureRequest() {
+    CallService.denySecureRequest();
+  }
+
 
   function toggleSwap() {
     patchCallState({ swapped: !isSwapped });
@@ -405,11 +414,19 @@
     </div>
 
     <div class="top-bar-right">
-      {#if mode === CALL_MODE.SECURE}
-        <button type="button" class="secure-badge secure-badge--{secureStatus}" on:click={() => CallService.toggleSecure()} title={secureKeyFingerprint ? `Код: ${secureKeyFingerprint}` : 'E2E шифрование'}>
+      {#if mode === CALL_MODE.SECURE || secureStatus === 'active' || secureStatus === 'pending'}
+        <button type="button" class="secure-badge secure-badge--{secureStatus}" on:click={() => CallService.toggleSecure()} title={secureKeyFingerprint ? `Ключ: ${secureKeyFingerprint}` : 'E2E шифрование'}>
           {#if secureStatus === 'active'}
-            <img src="/icons/lock-green.svg" alt="" width="13" height="13" class="lock-icon" />
-            <span class="secure-text">Защищено</span>
+            {#if secureKeyFingerprint}
+              <div class="call-fingerprint-grid">
+                {#each String(secureKeyFingerprint).trim().split(/\s+/) as emoji}
+                  <span>{emoji}</span>
+                {/each}
+              </div>
+            {:else}
+              <img src="/icons/lock-green.svg" alt="" width="13" height="13" class="lock-icon" />
+              <span class="secure-text">Защищено</span>
+            {/if}
           {:else if secureStatus === 'unsupported'}
             <img src="/icons/warning.svg" alt="" width="13" height="13" class="lock-icon" />
             <span class="secure-text">Без E2E</span>
@@ -587,6 +604,25 @@
         <button class="ctrl-btn ctrl-btn--hangup" on:click={onHangup} aria-label="Hang up">
           <img src="/icons/call-end.svg" alt="" width="28" height="28" />
         </button>
+      </div>
+    </div>
+  {/if}
+
+  {#if incomingSecureRequest}
+    <div class="secure-req-backdrop" transition:fade={{ duration: 150 }} on:click={handleDenySecureRequest} role="presentation">
+      <div class="secure-req-card" transition:scale={{ start: 0.95, duration: 150 }} on:click|stopPropagation role="dialog">
+        <div class="secure-req-icon">
+          <svg xmlns="http://www.w3.org/2000/svg" width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#22c55e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+            <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+          </svg>
+        </div>
+        <h3 class="secure-req-title">Сквозное шифрование</h3>
+        <p class="secure-req-desc">{peerName || 'Собеседник'} предлагает включить сквозное шифрование (E2E) для этого звонка</p>
+        <div class="secure-req-actions">
+          <button type="button" class="btn-secure-agree" on:click={handleAgreeSecureRequest}>Принять</button>
+          <button type="button" class="btn-secure-deny" on:click={handleDenySecureRequest}>Отклонить</button>
+        </div>
       </div>
     </div>
   {/if}
@@ -972,6 +1008,29 @@
 
   .lock-icon { width: 13px; height: 13px; object-fit: contain; }
 
+  .call-fingerprint-grid {
+    display: grid;
+    grid-template-columns: 10px 10px;
+    grid-template-rows: 10px 10px;
+    gap: 1.5px;
+    width: 22px;
+    height: 22px;
+    box-sizing: border-box;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .call-fingerprint-grid span {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 10px;
+    height: 10px;
+    font-size: 8.5px;
+    line-height: 1;
+    overflow: hidden;
+  }
+
   .secure-text {
     font-size: 11px;
     font-weight: 600;
@@ -1205,7 +1264,91 @@
     animation: spin 0.8s linear infinite;
   }
 
-  @keyframes spin {
-    to { transform: rotate(360deg); }
+  .secure-req-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 2000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.65);
+    backdrop-filter: blur(8px);
+    padding: 20px;
+  }
+
+  .secure-req-card {
+    background: #181824;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 20px;
+    padding: 24px 20px 20px;
+    width: 100%;
+    max-width: 320px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6);
+  }
+
+  .secure-req-icon {
+    width: 56px;
+    height: 56px;
+    border-radius: 50%;
+    background: rgba(34, 197, 94, 0.15);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 16px;
+  }
+
+  .secure-req-title {
+    font-size: 17px;
+    font-weight: 600;
+    color: #fff;
+    margin: 0 0 8px;
+  }
+
+  .secure-req-desc {
+    font-size: 13px;
+    line-height: 1.4;
+    color: rgba(255, 255, 255, 0.65);
+    margin: 0 0 20px;
+  }
+
+  .secure-req-actions {
+    display: flex;
+    gap: 10px;
+    width: 100%;
+  }
+
+  .btn-secure-agree,
+  .btn-secure-deny {
+    flex: 1;
+    height: 42px;
+    border-radius: 12px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    border: none;
+    transition: all 0.15s ease;
+  }
+
+  .btn-secure-agree {
+    background: #22c55e;
+    color: #fff;
+  }
+
+  .btn-secure-agree:hover {
+    background: #16a34a;
+  }
+
+  .btn-secure-deny {
+    background: rgba(255, 255, 255, 0.08);
+    color: rgba(255, 255, 255, 0.8);
+  }
+
+  .btn-secure-deny:hover {
+    background: rgba(255, 255, 255, 0.14);
+    color: #fff;
   }
 </style>

@@ -26,7 +26,6 @@
   let showCreateModal = false;
   let showJoinModal = false;
   let showNewCallModal = false;
-  let showModeSelectModal = false;
   let activeMenuCallId = null;
 
   let createdRoomLink = '';
@@ -390,22 +389,15 @@
     setTab(targetIndex === 0 ? 'all' : 'missed');
   }
 
-  function promptStartCall(peerId, name, avatar, type = 'audio') {
+  async function promptStartCall(peerId, name, avatar, type = 'audio') {
     targetPeerId = peerId;
     targetPeerName = name;
     targetPeerAvatar = avatar;
     targetCallType = type;
-    showModeSelectModal = true;
-  }
-
-  async function executeCall(mode) {
-    showModeSelectModal = false;
-    if (!targetPeerId) return;
-
-    if (targetCallType === 'video') {
-      await CallService.placeVideoCall(targetPeerId, targetPeerName, targetPeerAvatar, mode);
+    if (type === 'video') {
+      await CallService.placeVideoCall(peerId, name, avatar);
     } else {
-      await CallService.placeAudioCall(targetPeerId, targetPeerName, targetPeerAvatar, mode);
+      await CallService.placeAudioCall(peerId, name, avatar);
     }
   }
 
@@ -972,42 +964,6 @@
               </div>
             {/each}
           {/if}
-        </div>
-      </div>
-    </div>
-  {/if}
-
-  {#if showModeSelectModal}
-    <div
-      class="sheet-backdrop"
-      on:click={() => { showModeSelectModal = false; }}
-      role="presentation"
-      transition:fade={{ duration: 180 }}
-    >
-      <div
-        class="sheet-panel"
-        on:click|stopPropagation
-        transition:fly={{ y: 80, duration: 240, easing: cubicOut }}
-      >
-        <h3 class="sheet-title">{targetPeerName || 'Звонок'}</h3>
-        <p class="sheet-desc">Выберите режим соединения для вызова</p>
-
-        <div class="mode-cards-grid">
-          <div class="mode-card" on:click={() => executeCall(CALL_MODE.PLAIN)} role="button" tabindex="0">
-            <div class="mode-icon mode-icon--standard">
-              <img src="/icons/call-accept.svg" alt="" width="28" height="28" />
-            </div>
-            <span class="mode-label">Обычный</span>
-            <span class="mode-sub">Быстрое P2P/SFU соединение</span>
-          </div>
-
-          <div class="mode-card mode-card--secure" on:click={() => executeCall(CALL_MODE.SECURE)} role="button" tabindex="0">
-            <div class="mode-icon mode-icon--shield">
-              <img src="/icons/shield.svg" alt="" width="28" height="28" />
-            </div>
-            <span class="mode-label">Безопасный E2E</span>
-            <span class="mode-sub">Сквозное шифрование медиа</span>
-          </div>
         </div>
       </div>
     </div>

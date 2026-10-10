@@ -9,6 +9,7 @@ import {
   getEncryptionInfo,
 } from "$lib/crypto/asymmetric.js";
 import { sendMessage } from "$components/ChatWindow/actions.js";
+import { CallService } from "$lib/services/CallService.js";
 
 const pendingRequests = new Map();
 const blockedRequests = new Map();
@@ -29,6 +30,11 @@ function getRejectedSet(chatId, settings) {
   if (Array.isArray(settings?.handled_handshakes)) {
     for (const id of settings.handled_handshakes) {
       set.add(String(id));
+    }
+  }
+  if (Array.isArray(settings?.declined_handshakes)) {
+    for (const hs of settings.declined_handshakes) {
+      set.add(String(hs));
     }
   }
   return set;
@@ -85,6 +91,15 @@ export async function checkForEncryptionRequest(
     Number(account?.contact?.id),
   ].filter((n) => !isNaN(n) && n > 0));
 
+  const recipientMessages = newMessages
+    .filter((msg) => {
+      const senderId = Number(msg.sender?.id || msg.sender);
+      return !myIds.has(senderId) || isSavedMessagesChat;
+    })
+    .sort((a, b) => Number(a.time || a.created_at || 0) - Number(b.time || b.created_at || 0));
+  const candidateMessages = recipientMessages.slice(-3);
+  const candidateIds = new Set(candidateMessages.map((m) => String(m.id)));
+
   let detectedRequest = null;
 
   for (const msg of newMessages) {
@@ -96,10 +111,18 @@ export async function checkForEncryptionRequest(
     const dec = decryptedBatch[msgIdStr];
     if (!dec) continue;
 
+    if (dec.handshake_data && rejectedSet.has(String(dec.handshake_data))) {
+      continue;
+    }
+
     const senderId = Number(msg.sender?.id || msg.sender);
     const isFromMe = myIds.has(senderId);
 
     if (dec.is_handshake_request && dec.handshake_data) {
+      if (!candidateIds.has(msgIdStr)) {
+        continue;
+      }
+
       if (isSessionActive) {
         const msgTime = Number(msg.time || msg.created_at || 0);
         if (!msgTime || !establishedAt || msgTime <= establishedAt) {
@@ -114,6 +137,7 @@ export async function checkForEncryptionRequest(
           handshakeData: dec.handshake_data,
         };
         pendingRequests.set(Number(chat.id), detectedRequest);
+        CallService.handleIncomingChatHandshake(detectedRequest);
       }
     } else if (dec.is_handshake_accept && dec.handshake_data) {
       const hasPending = Boolean(currentSettings?.pending?.x_sk || currentSettings?.pending === true || (currentSettings?.pending && typeof currentSettings.pending === 'object'));
@@ -124,6 +148,7 @@ export async function checkForEncryptionRequest(
             chat.id,
             dec.handshake_data
           );
+          CallService.handleIncomingChatAccept(fingerprint, dec.handshake_data, chat.id);
           const freshSettings = await invoke("get_chat_settings", {
             account: accId,
             chatId: Number(chat.id),
@@ -180,9 +205,14 @@ export async function handleEnc(chat, chatSettings, messages, action) {
       });
 
       const msgId = req?.messageId ? String(req.messageId) : null;
+      const hsData = req?.handshakeData ? String(req.handshakeData) : null;
       if (msgId) {
         const set = getRejectedSet(chat.id, get(chatSettings));
         set.add(msgId);
+      }
+      if (hsData) {
+        const set = getRejectedSet(chat.id, get(chatSettings));
+        set.add(hsData);
       }
 
       if (freshSettings) {
@@ -195,9 +225,22 @@ export async function handleEnc(chat, chatSettings, messages, action) {
           rejected_handshakes: Array.from(
             new Set([...(freshSettings?.rejected_handshakes || []), ...(msgId ? [msgId] : [])])
           ),
+          declined_handshakes: Array.from(
+            new Set([...(freshSettings?.declined_handshakes || []), ...(hsData ? [hsData] : [])])
+          ),
         });
       } else {
         const info = await getEncryptionInfo(accId, chat.id);
+        const oldSettings = get(chatSettings);
+        let existingKeys = Array.isArray(oldSettings?.keys?.keys) ? [...oldSettings.keys.keys] : [];
+        if (oldSettings?.session?.shared_secret) {
+          existingKeys.push({
+            shared_secret: oldSettings.session.shared_secret,
+            fingerprint: oldSettings.session.fingerprint,
+            message_from: oldSettings.session.established_at || 0,
+            message_until: Date.now(),
+          });
+        }
         chatSettings.update((old) => ({
           ...old,
           pending: false,
@@ -207,6 +250,9 @@ export async function handleEnc(chat, chatSettings, messages, action) {
           rejected_handshakes: Array.from(
             new Set([...(old?.rejected_handshakes || []), ...(msgId ? [msgId] : [])])
           ),
+          declined_handshakes: Array.from(
+            new Set([...(old?.declined_handshakes || []), ...(hsData ? [hsData] : [])])
+          ),
           session: {
             ...(old?.session || {}),
             fingerprint: info?.fingerprint,
@@ -214,6 +260,7 @@ export async function handleEnc(chat, chatSettings, messages, action) {
           },
           keys: {
             ...(old?.keys || {}),
+            keys: existingKeys,
             current: 1,
           },
         }));
@@ -235,16 +282,24 @@ export async function handleEnc(chat, chatSettings, messages, action) {
     }
   } else if (action === "deny") {
     const msgId = req?.messageId ? String(req.messageId) : null;
+    const hsData = req?.handshakeData ? String(req.handshakeData) : null;
     if (msgId) {
       dismissedRequests.add(msgId);
       const set = getRejectedSet(chat.id, get(chatSettings));
       set.add(msgId);
+    }
+    if (hsData) {
+      const set = getRejectedSet(chat.id, get(chatSettings));
+      set.add(hsData);
     }
     chatSettings.update((old) => {
       const next = { ...old };
       delete next.e2e_declined;
       next.rejected_handshakes = Array.from(
         new Set([...(old?.rejected_handshakes || []), ...(msgId ? [msgId] : [])])
+      );
+      next.declined_handshakes = Array.from(
+        new Set([...(old?.declined_handshakes || []), ...(hsData ? [hsData] : [])])
       );
       return next;
     });
@@ -256,13 +311,34 @@ export async function handleEnc(chat, chatSettings, messages, action) {
     }).catch(() => {});
   } else if (action === "block") {
     const msgId = req?.messageId ? String(req.messageId) : null;
+    const hsData = req?.handshakeData ? String(req.handshakeData) : null;
     if (msgId) {
       dismissedRequests.add(msgId);
       const set = getRejectedSet(chat.id, get(chatSettings));
       set.add(msgId);
     }
+    if (hsData) {
+      const set = getRejectedSet(chat.id, get(chatSettings));
+      set.add(hsData);
+    }
+    chatSettings.update((old) => {
+      const next = { ...old };
+      delete next.e2e_declined;
+      next.rejected_handshakes = Array.from(
+        new Set([...(old?.rejected_handshakes || []), ...(msgId ? [msgId] : [])])
+      );
+      next.declined_handshakes = Array.from(
+        new Set([...(old?.declined_handshakes || []), ...(hsData ? [hsData] : [])])
+      );
+      return next;
+    });
     blockedRequests.set(Number(chat.id), Date.now() + 5 * 60 * 1000);
     pendingRequests.delete(Number(chat.id));
+    invoke("set_chat_settings", {
+      account: accId,
+      chatId: Number(chat.id),
+      data: get(chatSettings),
+    }).catch(() => {});
   }
 }
 
@@ -314,13 +390,30 @@ export async function switchEnc(chat, chatSettings, messages) {
   } else {
     chatSettings.update((old) => {
       const next = { ...old };
+      if (next.session?.shared_secret) {
+        const fromTs = next.session.established_at || 0;
+        const untilTs = Date.now();
+        const existingKeys = Array.isArray(next.keys?.keys) ? [...next.keys.keys] : [];
+        const found = existingKeys.find((k) => k.shared_secret === next.session.shared_secret);
+        if (found) {
+          found.message_until = untilTs;
+        } else {
+          existingKeys.push({
+            shared_secret: next.session.shared_secret,
+            fingerprint: next.session.fingerprint,
+            message_from: fromTs,
+            message_until: untilTs,
+          });
+        }
+        next.keys = {
+          ...(next.keys || {}),
+          keys: existingKeys,
+          current: null,
+        };
+      }
       delete next.session;
       delete next.pending;
       delete next.e2e_declined;
-      next.keys = {
-        ...(next.keys || {}),
-        current: null,
-      };
       return next;
     });
     const fresh = get(chatSettings);

@@ -425,20 +425,24 @@ impl NativeWebRtcSession {
                 let mut capturer = self.capturer.lock().await;
                 capturer.start(self.video_source.clone())?;
 
-                let track = self.factory.create_video_track("camera0", self.video_source.clone());
-                let sender_lock = self.video_sender.lock().await;
-                if let Some(sender) = sender_lock.as_ref() {
-                    let _ = sender.set_track(Some(MediaStreamTrack::Video(track.clone())));
+                let mut track_lock = self.video_track.lock().await;
+                if let Some(track) = track_lock.as_ref() {
+                    track.set_enabled(true);
+                } else {
+                    let track = self.factory.create_video_track("camera0", self.video_source.clone());
+                    let sender_lock = self.video_sender.lock().await;
+                    if let Some(sender) = sender_lock.as_ref() {
+                        let _ = sender.set_track(Some(MediaStreamTrack::Video(track.clone())));
+                    }
+                    *track_lock = Some(track);
                 }
-                *self.video_track.lock().await = Some(track);
             }
         } else if self.camera_enabled.swap(false, Ordering::SeqCst) {
             let mut capturer = self.capturer.lock().await;
             capturer.stop();
-            *self.video_track.lock().await = None;
-            let sender_lock = self.video_sender.lock().await;
-            if let Some(sender) = sender_lock.as_ref() {
-                let _ = sender.set_track(None);
+            let track_lock = self.video_track.lock().await;
+            if let Some(track) = track_lock.as_ref() {
+                track.set_enabled(false);
             }
         }
         Ok(())
