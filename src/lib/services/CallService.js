@@ -5,7 +5,9 @@ import { activeCall, patchCallState, resetCallState, CALL_PHASE, CALL_MODE, call
 import { CallEncryptionSession, generateCallKeyPair, exportPublicKeyBytes, deriveSharedSecret } from '$lib/crypto/callEncryption.js';
 import { mediaPipeline } from '$lib/services/MediaPipelineHost.js';
 import { showAlert } from '$lib/utils/alert.js';
-import { currentUser, currentSessionChats } from '$lib/stores/api.js';
+import API, { currentUser, currentSessionChats } from '$lib/stores/api.js';
+import { getCurrentAccount } from '$lib/stores/accounts.js';
+import { initHandshake, acceptHandshake, processAccept } from '$lib/crypto/asymmetric.js';
 import { startIncomingRingtone, startOutgoingRingback, stopCallAudio, playRejectionTone } from '$lib/services/callAudio.js';
 import { showDesktopCallNotification, cancelDesktopCallNotification } from '$lib/utils/notifications.js';
 import { getContactDirect } from '$lib/stores/contacts.js';
@@ -522,15 +524,16 @@ class MaxCallSession {
 
     let isAutoSecure = false;
     const targetPeerId = peerId || this.#contactPeerId;
-    if (mode === CALL_MODE.SECURE && targetPeerId) {
-      const secret = await this.#resolveSharedSecret(targetPeerId);
-      if (secret) {
-        await this.#encryption.initFromChatSecret(secret, conversationId, role === 'originator');
+    if (targetPeerId) {
+      const resolved = await this.#resolveSharedSecret(targetPeerId);
+      if (resolved?.secret) {
+        await this.#encryption.initFromChatSecret(resolved.secret, conversationId, role === 'originator');
         isAutoSecure = true;
+        const displayFp = resolved.fingerprint || this.#encryption.fingerprint;
         patchCallState({
           mode: CALL_MODE.SECURE,
           secureStatus: 'active',
-          secureKeyFingerprint: this.#encryption.fingerprint,
+          secureKeyFingerprint: displayFp,
         });
         await this.#syncEncryptionToMedia();
       }
@@ -539,18 +542,49 @@ class MaxCallSession {
     if (!isAutoSecure && mode === CALL_MODE.SECURE) {
       patchCallState({
         mode: CALL_MODE.SECURE,
-        secureStatus: 'pending',
+        secureStatus: 'unsupported',
         secureKeyFingerprint: null,
       });
-      setTimeout(() => {
-        if (this.#encryption.mode !== 'secure' && get(activeCall).mode === CALL_MODE.SECURE && get(activeCall).secureStatus === 'pending') {
-          patchCallState({ secureStatus: 'unsupported' });
-        }
-      }, 15000);
     }
 
     await this.#captureMedia(isVideo);
     await this.#openVoiceChannel(endpoint);
+  }
+
+
+  async #resolveTargetChatId(peerId) {
+    if (!peerId && !this.#contactPeerId) return null;
+    try {
+      const account = await getCurrentAccount().catch(() => null);
+      if (!account?.id) return null;
+      const user = get(currentUser);
+      const myUid = user?.id || user?.userId || (typeof user === 'number' || typeof user === 'string' ? user : null) || account.contact?.id || account.id;
+      const targetId = peerId || this.#contactPeerId || get(activeCall).peerId;
+      let chats = get(currentSessionChats) || [];
+      if (!chats.length) {
+        try {
+          const loaded = await invoke('load_chats', { account: Number(account.id) });
+          if (Array.isArray(loaded)) chats = loaded;
+        } catch {}
+      }
+      for (const c of chats) {
+        if (!c?.id) continue;
+        const pList = c.participants ? (Array.isArray(c.participants) ? c.participants.map(p => typeof p === 'object' ? p?.id : p) : Object.keys(c.participants)) : [];
+        const isMatch = pList.some(p => String(p) === String(targetId))
+          || (c.owner && String(c.owner) === String(targetId))
+          || (c.ownerId && String(c.ownerId) === String(targetId))
+          || (c.userId && String(c.userId) === String(targetId))
+          || (String(c.id) === String(targetId));
+        if (isMatch) return Number(c.id);
+      }
+      if (myUid && targetId) {
+        try {
+          return Number(BigInt(targetId) ^ BigInt(myUid));
+        } catch {}
+      }
+      if (targetId) return Number(targetId);
+    } catch {}
+    return null;
   }
 
   async #resolveSharedSecret(peerId) {
@@ -559,7 +593,7 @@ class MaxCallSession {
       const account = await getCurrentAccount().catch(() => null);
       if (!account?.id) return null;
       const user = get(currentUser);
-      const myUid = user?.id || user?.userId || (typeof user === 'number' || typeof user === 'string' ? user : null);
+      const myUid = user?.id || user?.userId || (typeof user === 'number' || typeof user === 'string' ? user : null) || account.contact?.id || account.id;
       const candidates = new Set();
       if (peerId) candidates.add(Number(peerId));
       if (this.#contactPeerId) candidates.add(Number(this.#contactPeerId));
@@ -575,23 +609,24 @@ class MaxCallSession {
           candidates.add(Number(BigInt(this.#contactPeerId) ^ BigInt(myUid)));
         } catch {}
       }
-      const chats = get(currentSessionChats) || [];
+      let chats = get(currentSessionChats) || [];
+      if (!chats.length) {
+        try {
+          const loaded = await invoke('load_chats', { account: Number(account.id) });
+          if (Array.isArray(loaded)) chats = loaded;
+        } catch {}
+      }
       for (const c of chats) {
         if (!c?.id) continue;
         const cid = Number(c.id);
-        if (c.type === 'DIALOG' || c.type === 'private') {
-          if (c.participants && Object.keys(c.participants).some(p => String(p) === String(peerId) || String(p) === String(this.#contactPeerId))) {
-            candidates.add(cid);
-          }
-          if (c.owner && (String(c.owner) === String(peerId) || String(c.owner) === String(this.#contactPeerId))) {
-            candidates.add(cid);
-          }
-          if (c.userId && (String(c.userId) === String(peerId) || String(c.userId) === String(this.#contactPeerId))) {
-            candidates.add(cid);
-          }
-          if (String(c.id) === String(peerId) || String(c.id) === String(this.#contactPeerId)) {
-            candidates.add(cid);
-          }
+        const pList = c.participants ? (Array.isArray(c.participants) ? c.participants.map(p => typeof p === 'object' ? p?.id : p) : Object.keys(c.participants)) : [];
+        const isMatch = pList.some(p => String(p) === String(peerId) || String(p) === String(this.#contactPeerId))
+          || (c.owner && (String(c.owner) === String(peerId) || String(c.owner) === String(this.#contactPeerId)))
+          || (c.ownerId && (String(c.ownerId) === String(peerId) || String(c.ownerId) === String(this.#contactPeerId)))
+          || (c.userId && (String(c.userId) === String(peerId) || String(c.userId) === String(this.#contactPeerId)))
+          || (String(c.id) === String(peerId) || String(c.id) === String(this.#contactPeerId));
+        if (isMatch) {
+          candidates.add(cid);
         }
       }
 
@@ -601,8 +636,11 @@ class MaxCallSession {
           account: Number(account.id),
           chatId: cid,
         }).catch(() => null);
-        const secret = settings?.session?.shared_secret || settings?.keys?.current;
-        if (secret) return secret;
+        const secret = settings?.session?.shared_secret || settings?.keys?.current || settings?.password;
+        if (secret) {
+          const fingerprint = settings?.session?.fingerprint || null;
+          return { secret, fingerprint, chatId: cid };
+        }
       }
     } catch {}
     return null;
@@ -627,8 +665,9 @@ class MaxCallSession {
 
   async enableSecureMode() {
     try {
-      if (this.#encryption.mode === CALL_MODE.SECURE && this.#encryption.fingerprint) {
-        showAlert('E2E шифрование активно. Код: ' + this.#encryption.fingerprint);
+      if (this.#encryption.mode === CALL_MODE.SECURE && get(activeCall).secureStatus === 'active') {
+        const fp = get(activeCall).secureKeyFingerprint;
+        showAlert('E2E шифрование активно' + (fp ? ` (${fp})` : ''));
         return;
       }
 
@@ -641,51 +680,127 @@ class MaxCallSession {
         || (remoteParticipant ? String(remoteParticipant.id) : null);
 
       if (targetPeerId) {
-        const secret = await this.#resolveSharedSecret(targetPeerId);
-        if (secret) {
-          await this.#encryption.initFromChatSecret(secret, this.#conversationId, this.#role === 'originator');
+        const resolved = await this.#resolveSharedSecret(targetPeerId);
+        if (resolved?.secret) {
+          await this.#encryption.initFromChatSecret(resolved.secret, this.#conversationId, this.#role === 'originator');
           await this.#syncEncryptionToMedia();
+          const displayFp = resolved.fingerprint || this.#encryption.fingerprint;
           patchCallState({
             mode: CALL_MODE.SECURE,
             secureStatus: 'active',
-            secureKeyFingerprint: this.#encryption.fingerprint,
+            secureKeyFingerprint: displayFp,
           });
-          showAlert('E2E шифрование установлено. Код: ' + this.#encryption.fingerprint);
+          if (this.#dataChannel && this.#dataChannel.readyState === 'open') {
+            try {
+              this.#dataChannel.send(JSON.stringify({ type: 'call_e2e_activated' }));
+            } catch {}
+          }
+          showAlert('E2E шифрование активно' + (displayFp ? ` (${displayFp})` : ''));
+          return;
+        }
+
+        const account = await getCurrentAccount().catch(() => null);
+        const targetChatId = await this.#resolveTargetChatId(targetPeerId);
+        if (account?.id && targetChatId) {
+          patchCallState({ mode: CALL_MODE.SECURE, secureStatus: 'pending', secureKeyFingerprint: null });
+          showAlert('Запрос на шифрование отправлен...');
+          const initPacket = await initHandshake(Number(account.id), Number(targetChatId), 'zh');
+          try {
+            await get(API).sendMessage(initPacket, targetChatId, { notify: true });
+          } catch {}
+          if (this.#dataChannel && this.#dataChannel.readyState === 'open') {
+            try {
+              this.#dataChannel.send(JSON.stringify({
+                type: 'call_e2e_request',
+                handshakeData: initPacket,
+                chatId: targetChatId,
+              }));
+            } catch {}
+          }
           return;
         }
       }
 
-      if (this.#pc) {
-        if (!this.#localDtlsFingerprint && this.#pc.localDescription?.sdp) {
-          this.#extractAndApplyFingerprint(this.#pc.localDescription.sdp, true);
-        }
-        if (!this.#remoteDtlsFingerprint && this.#pc.remoteDescription?.sdp) {
-          this.#extractAndApplyFingerprint(this.#pc.remoteDescription.sdp, false);
-        }
-      }
-
-      const fps = [this.#localDtlsFingerprint, this.#remoteDtlsFingerprint].filter(Boolean).sort();
-      if (fps.length > 0) {
-        const seedStr = `${fps.join('|')}|${this.#conversationId || 'default'}`;
-        const hashBuf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(seedStr));
-        const hashBytes = new Uint8Array(hashBuf);
-        const hex = Array.from(hashBytes.slice(0, 16)).map(b => b.toString(16).padStart(2, '0')).join('').toUpperCase();
-        const code = hex.match(/.{4}/g)?.join('-') || hex;
-        await this.#encryption.initSecure(hashBytes, this.#role === 'originator');
-        patchCallState({
-          mode: CALL_MODE.SECURE,
-          secureStatus: 'active',
-          secureKeyFingerprint: code,
-        });
-        showAlert('E2E шифрование установлено. Код: ' + code);
-        return;
-      }
-
-      patchCallState({ mode: CALL_MODE.SECURE, secureStatus: 'pending', secureKeyFingerprint: null });
-      showAlert('Запрос на установку E2E шифрования отправлен...');
+      patchCallState({ mode: CALL_MODE.SECURE, secureStatus: 'unsupported', secureKeyFingerprint: null });
+      showAlert('Не удалось определить диалог для отправки запроса E2E');
     } catch (e) {
       log('enableSecureMode error:', e);
       showAlert('Не удалось включить E2E шифрование');
+    }
+  }
+
+  async acceptSecureRequest(req) {
+    const targetReq = req || get(activeCall).incomingSecureRequest;
+    patchCallState({ incomingSecureRequest: null });
+    if (!targetReq?.handshakeData) return;
+    try {
+      const account = await getCurrentAccount().catch(() => null);
+      if (!account?.id) return;
+      const targetChatId = Number(targetReq.chatId || (await this.#resolveTargetChatId(this.#contactPeerId)));
+      const replyPacket = await acceptHandshake(Number(account.id), targetChatId, targetReq.handshakeData, 'zh');
+      const resolved = await this.#resolveSharedSecret(this.#contactPeerId || get(activeCall).peerId);
+      if (resolved?.secret) {
+        await this.#encryption.initFromChatSecret(resolved.secret, this.#conversationId, false);
+        await this.#syncEncryptionToMedia();
+      }
+      const displayFp = resolved?.fingerprint || this.#encryption.fingerprint;
+      patchCallState({
+        mode: CALL_MODE.SECURE,
+        secureStatus: 'active',
+        secureKeyFingerprint: displayFp,
+      });
+      try {
+        await get(API).sendMessage(replyPacket, targetChatId, { notify: true });
+      } catch {}
+      if (this.#dataChannel && this.#dataChannel.readyState === 'open') {
+        try {
+          this.#dataChannel.send(JSON.stringify({
+            type: 'call_e2e_accept',
+            handshakeData: replyPacket,
+            chatId: targetChatId,
+            fingerprint: displayFp,
+          }));
+        } catch {}
+      }
+      showAlert('E2E шифрование установлено' + (displayFp ? ` (${displayFp})` : ''));
+    } catch (e) {
+      log('acceptSecureRequest failed:', e);
+      showAlert('Не удалось принять запрос на шифрование');
+    }
+  }
+
+  denySecureRequest() {
+    patchCallState({ incomingSecureRequest: null });
+    if (this.#dataChannel && this.#dataChannel.readyState === 'open') {
+      try {
+        this.#dataChannel.send(JSON.stringify({ type: 'call_e2e_decline' }));
+      } catch {}
+    }
+  }
+
+  async handleAcceptFromPeer(data) {
+    try {
+      const account = await getCurrentAccount().catch(() => null);
+      const targetChatId = Number(data.chatId || (await this.#resolveTargetChatId(this.#contactPeerId)));
+      let fp = data.fingerprint;
+      if (data.handshakeData && account?.id && targetChatId) {
+        fp = await processAccept(Number(account.id), targetChatId, data.handshakeData);
+      }
+      const resolved = await this.#resolveSharedSecret(this.#contactPeerId || get(activeCall).peerId);
+      if (resolved?.secret) {
+        await this.#encryption.initFromChatSecret(resolved.secret, this.#conversationId, true);
+        await this.#syncEncryptionToMedia();
+      }
+      const displayFp = fp || resolved?.fingerprint || this.#encryption.fingerprint;
+      patchCallState({
+        mode: CALL_MODE.SECURE,
+        secureStatus: 'active',
+        secureKeyFingerprint: displayFp,
+        incomingSecureRequest: null,
+      });
+      showAlert('E2E шифрование установлено' + (displayFp ? ` (${displayFp})` : ''));
+    } catch (e) {
+      log('handleAcceptFromPeer error:', e);
     }
   }
 
@@ -728,7 +843,34 @@ class MaxCallSession {
         const raw = typeof event.data === 'string' ? event.data : new TextDecoder().decode(event.data);
         const data = JSON.parse(raw);
         const targetPeerId = this.#ws2PeerId || this.#contactPeerId;
-        if (data.type === 'e2e_key' && Array.isArray(data.pubKey)) {
+        if (data.type === 'call_e2e_request') {
+          patchCallState({
+            incomingSecureRequest: {
+              chatId: data.chatId,
+              handshakeData: data.handshakeData,
+            },
+          });
+        } else if (data.type === 'call_e2e_accept') {
+          await this.handleAcceptFromPeer(data);
+        } else if (data.type === 'call_e2e_decline') {
+          patchCallState({ secureStatus: 'unsupported', incomingSecureRequest: null });
+          showAlert('Собеседник отклонил запрос на шифрование');
+        } else if (data.type === 'call_e2e_activated') {
+          if (this.#encryption.mode !== 'secure') {
+            const destId = targetPeerId || get(activeCall).peerId;
+            const resolved = await this.#resolveSharedSecret(destId);
+            if (resolved?.secret) {
+              await this.#encryption.initFromChatSecret(resolved.secret, this.#conversationId, this.#role === 'originator');
+              await this.#syncEncryptionToMedia();
+              const displayFp = resolved.fingerprint || this.#encryption.fingerprint;
+              patchCallState({
+                mode: CALL_MODE.SECURE,
+                secureStatus: 'active',
+                secureKeyFingerprint: displayFp,
+              });
+            }
+          }
+        } else if (data.type === 'e2e_key' && Array.isArray(data.pubKey)) {
           log('Received e2e_key over data channel');
           await this.#handlePeerPublicKey(new Uint8Array(data.pubKey), false, targetPeerId);
         } else if (data.type === 'e2e_key_reply' && Array.isArray(data.pubKey)) {
@@ -2539,12 +2681,41 @@ export const CallService = {
   async toggleSecure() {
     const cur = get(activeCall);
     if (cur.mode === CALL_MODE.SECURE && cur.secureStatus === 'active') {
-      showAlert(`E2E шифрование активно. Код: ${cur.secureKeyFingerprint || 'OK'}`);
+      showAlert(`E2E шифрование активно (ключ: ${cur.secureKeyFingerprint || 'OK'})`);
       return;
     }
     if (_activeSession) {
       await _activeSession.enableSecureMode();
     }
+  },
+
+  async acceptSecureRequest() {
+    const req = get(activeCall).incomingSecureRequest;
+    if (_activeSession) {
+      await _activeSession.acceptSecureRequest(req);
+    }
+  },
+
+  denySecureRequest() {
+    if (_activeSession) {
+      _activeSession.denySecureRequest();
+    } else {
+      patchCallState({ incomingSecureRequest: null });
+    }
+  },
+
+  handleIncomingChatHandshake(req) {
+    if (!_activeSession) return;
+    const cur = get(activeCall);
+    if (cur.phase !== CALL_PHASE.ACTIVE && cur.phase !== CALL_PHASE.CONNECTING) return;
+    patchCallState({ incomingSecureRequest: req });
+  },
+
+  async handleIncomingChatAccept(fingerprint, handshakeData = null, chatId = null) {
+    if (!_activeSession) return;
+    const cur = get(activeCall);
+    if (cur.phase !== CALL_PHASE.ACTIVE && cur.phase !== CALL_PHASE.CONNECTING) return;
+    await _activeSession.handleAcceptFromPeer({ fingerprint, handshakeData, chatId });
   },
 
   async _endActive() {

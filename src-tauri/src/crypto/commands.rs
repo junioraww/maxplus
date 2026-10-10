@@ -80,6 +80,72 @@ fn get_active_session_key(settings: &Value) -> Option<[u8; 32]> {
     }
 }
 
+fn get_all_session_keys(settings: &Value) -> Vec<[u8; 32]> {
+    let mut list = Vec::new();
+    if let Some(active) = get_active_session_key(settings) {
+        list.push(active);
+    }
+    if let Some(keys_arr) = settings.get("keys").and_then(|k| k.get("keys")).and_then(|k| k.as_array()) {
+        for entry in keys_arr {
+            if let Some(hex_key) = entry.get("shared_secret").and_then(|s| s.as_str()) {
+                if let Ok(bytes) = hex::decode(hex_key) {
+                    if bytes.len() == 32 {
+                        let mut arr = [0u8; 32];
+                        arr.copy_from_slice(&bytes);
+                        if !list.contains(&arr) {
+                            list.push(arr);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    list
+}
+
+fn archive_current_session(settings: &mut Value, until_timestamp: i64) {
+    if let Some(session) = settings.get("session").cloned() {
+        if let Some(secret) = session.get("shared_secret").and_then(|s| s.as_str()) {
+            if !secret.is_empty() {
+                let from_ts = session.get("established_at").and_then(|t| t.as_i64()).unwrap_or(0);
+                let fp = session.get("fingerprint").and_then(|f| f.as_str()).unwrap_or("");
+                if settings.get("keys").is_none() || !settings["keys"].is_object() {
+                    settings["keys"] = json!({
+                        "current": null,
+                        "keys": [],
+                        "messages": []
+                    });
+                }
+                let keys_arr = settings["keys"].get_mut("keys").and_then(|k| k.as_array_mut());
+                let entry = json!({
+                    "shared_secret": secret,
+                    "fingerprint": fp,
+                    "message_from": from_ts,
+                    "message_until": until_timestamp,
+                });
+                if let Some(arr) = keys_arr {
+                    let mut exists = false;
+                    for item in arr.iter_mut() {
+                        if item.get("shared_secret").and_then(|s| s.as_str()) == Some(secret) {
+                            if let Some(obj) = item.as_object_mut() {
+                                obj.insert("message_until".into(), json!(until_timestamp));
+                            }
+                            exists = true;
+                            break;
+                        }
+                    }
+                    if !exists {
+                        arr.push(entry);
+                    }
+                } else {
+                    settings["keys"]["keys"] = json!([entry]);
+                }
+            }
+        }
+    }
+}
+
+
 fn load_dictionary_data(app: &AppHandle) -> Option<DictionaryData> {
     let dict_path = app
         .path()
@@ -95,7 +161,7 @@ fn load_dictionary_data(app: &AppHandle) -> Option<DictionaryData> {
 #[tauri::command]
 fn decrypt_single_message_dto(
     msg: IncomingMessageDto,
-    session_key: Option<&[u8; 32]>,
+    session_keys: &[[u8; 32]],
     effective_password: Option<&str>,
     dict_opt: Option<&DictionaryData>,
 ) -> Option<(String, DecryptedMessageDto)> {
@@ -144,7 +210,25 @@ fn decrypt_single_message_dto(
         None => return None,
     };
 
-    let dto = match unpack_message(&bytes, session_key, effective_password) {
+    let mut unpacked_res = None;
+    for k in session_keys {
+        if let Ok(payload) = unpack_message(&bytes, Some(k), effective_password) {
+            unpacked_res = Some(Ok(payload));
+            break;
+        }
+    }
+
+    if unpacked_res.is_none() {
+        if let Ok(payload) = unpack_message(&bytes, None, effective_password) {
+            unpacked_res = Some(Ok(payload));
+        } else if let Some(first_key) = session_keys.first() {
+            unpacked_res = Some(unpack_message(&bytes, Some(first_key), effective_password));
+        } else {
+            unpacked_res = Some(unpack_message(&bytes, None, effective_password));
+        }
+    }
+
+    let dto = match unpacked_res.unwrap() {
         Ok(PayloadData::Text(t)) => DecryptedMessageDto {
             text: t,
             obf: obf_name,
@@ -222,7 +306,7 @@ pub async fn batch_decrypt_messages(
     password: Option<String>,
 ) -> Result<HashMap<String, DecryptedMessageDto>, String> {
     let settings = load_chat_settings_json(&app, account, chat_id);
-    let session_key = get_active_session_key(&settings);
+    let session_keys = Arc::new(get_all_session_keys(&settings));
     let effective_password = password.or_else(|| {
         settings
             .get("password")
@@ -231,19 +315,18 @@ pub async fn batch_decrypt_messages(
     });
 
     let dict_opt = Arc::new(load_dictionary_data(&app));
-    let session_key = Arc::new(session_key);
     let effective_password = Arc::new(effective_password);
 
     let tasks: Vec<_> = messages
         .into_iter()
         .map(|msg| {
-            let session_key = session_key.clone();
+            let session_keys = session_keys.clone();
             let effective_password = effective_password.clone();
             let dict_opt = dict_opt.clone();
             tokio::task::spawn_blocking(move || {
                 decrypt_single_message_dto(
                     msg,
-                    session_key.as_ref().as_ref(),
+                    session_keys.as_ref(),
                     effective_password.as_deref(),
                     dict_opt.as_ref().as_ref(),
                 )
@@ -371,6 +454,7 @@ pub async fn accept_e2e_handshake(
     let timestamp = Utc::now().timestamp_millis();
 
     let mut settings = load_chat_settings_json(&app, account, chat_id);
+    archive_current_session(&mut settings, timestamp);
     settings["session"] = json!({
         "shared_secret": hex::encode(shared_secret),
         "fingerprint": fingerprint,
@@ -451,13 +535,15 @@ pub async fn process_e2e_accept(
 
     let shared_secret = compute_shared_secret(&my_x_sk, &parsed.x_pk);
     let fingerprint = generate_fingerprint(&shared_secret);
+    let timestamp = Utc::now().timestamp_millis();
 
+    archive_current_session(&mut settings, timestamp);
     settings["session"] = json!({
         "shared_secret": hex::encode(shared_secret),
         "fingerprint": fingerprint.clone(),
         "peer_ed_pk": hex::encode(parsed.ed_pk),
         "peer_x_pk": hex::encode(parsed.x_pk),
-        "established_at": Utc::now().timestamp_millis()
+        "established_at": timestamp
     });
     settings["keys"]["current"] = json!(1);
     if let Some(o) = settings.as_object_mut() {

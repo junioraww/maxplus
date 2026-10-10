@@ -84,7 +84,17 @@ export class CallEncryptionSession {
   }
 
   async initFromChatSecret(chatSecret, conversationId, isOriginator = true) {
-    const raw = typeof chatSecret === 'string' ? hexToBytes(chatSecret) : chatSecret;
+    let raw;
+    if (typeof chatSecret === 'string') {
+      if (/^[0-9a-fA-F]{64}$/.test(chatSecret)) {
+        raw = hexToBytes(chatSecret);
+      } else {
+        const hash = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(chatSecret));
+        raw = new Uint8Array(hash);
+      }
+    } else {
+      raw = chatSecret;
+    }
     const convStr = String(conversationId || 'default');
     const saltBuffer = await crypto.subtle.digest(
       'SHA-256',
