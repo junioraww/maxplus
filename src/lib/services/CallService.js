@@ -553,13 +553,11 @@ class MaxCallSession {
 
 
   async #resolveTargetChatId(peerId) {
-    if (!peerId && !this.#contactPeerId) return null;
+    const targetId = peerId || this.#contactPeerId || get(activeCall).peerId;
+    if (!targetId) return null;
     try {
       const account = await getCurrentAccount().catch(() => null);
       if (!account?.id) return null;
-      const user = get(currentUser);
-      const myUid = user?.id || user?.userId || (typeof user === 'number' || typeof user === 'string' ? user : null) || account.contact?.id || account.id;
-      const targetId = peerId || this.#contactPeerId || get(activeCall).peerId;
       let chats = get(currentSessionChats) || [];
       if (!chats.length) {
         try {
@@ -571,64 +569,27 @@ class MaxCallSession {
         if (!c?.id) continue;
         const pList = c.participants ? (Array.isArray(c.participants) ? c.participants.map(p => typeof p === 'object' ? p?.id : p) : Object.keys(c.participants)) : [];
         const isMatch = pList.some(p => String(p) === String(targetId))
-          || (c.owner && String(c.owner) === String(targetId))
-          || (c.ownerId && String(c.ownerId) === String(targetId))
-          || (c.userId && String(c.userId) === String(targetId))
-          || (String(c.id) === String(targetId));
+          || String(c.owner) === String(targetId)
+          || String(c.ownerId) === String(targetId)
+          || String(c.userId) === String(targetId)
+          || String(c.id) === String(targetId);
         if (isMatch) return Number(c.id);
       }
-      if (myUid && targetId) {
-        try {
-          return Number(BigInt(targetId) ^ BigInt(myUid));
-        } catch {}
-      }
-      if (targetId) return Number(targetId);
+      return Number(targetId);
     } catch {}
     return null;
   }
 
   async #resolveSharedSecret(peerId) {
-    if (!peerId && !this.#contactPeerId) return null;
+    const targetId = peerId || this.#contactPeerId || get(activeCall).peerId;
+    if (!targetId) return null;
     try {
       const account = await getCurrentAccount().catch(() => null);
       if (!account?.id) return null;
-      const user = get(currentUser);
-      const myUid = user?.id || user?.userId || (typeof user === 'number' || typeof user === 'string' ? user : null) || account.contact?.id || account.id;
+      const chatId = await this.#resolveTargetChatId(targetId);
       const candidates = new Set();
-      if (peerId) candidates.add(Number(peerId));
-      if (this.#contactPeerId) candidates.add(Number(this.#contactPeerId));
-      const activePeer = get(activeCall).peerId;
-      if (activePeer) candidates.add(Number(activePeer));
-      if (myUid && peerId) {
-        try {
-          candidates.add(Number(BigInt(peerId) ^ BigInt(myUid)));
-        } catch {}
-      }
-      if (myUid && this.#contactPeerId) {
-        try {
-          candidates.add(Number(BigInt(this.#contactPeerId) ^ BigInt(myUid)));
-        } catch {}
-      }
-      let chats = get(currentSessionChats) || [];
-      if (!chats.length) {
-        try {
-          const loaded = await invoke('load_chats', { account: Number(account.id) });
-          if (Array.isArray(loaded)) chats = loaded;
-        } catch {}
-      }
-      for (const c of chats) {
-        if (!c?.id) continue;
-        const cid = Number(c.id);
-        const pList = c.participants ? (Array.isArray(c.participants) ? c.participants.map(p => typeof p === 'object' ? p?.id : p) : Object.keys(c.participants)) : [];
-        const isMatch = pList.some(p => String(p) === String(peerId) || String(p) === String(this.#contactPeerId))
-          || (c.owner && (String(c.owner) === String(peerId) || String(c.owner) === String(this.#contactPeerId)))
-          || (c.ownerId && (String(c.ownerId) === String(peerId) || String(c.ownerId) === String(this.#contactPeerId)))
-          || (c.userId && (String(c.userId) === String(peerId) || String(c.userId) === String(this.#contactPeerId)))
-          || (String(c.id) === String(peerId) || String(c.id) === String(this.#contactPeerId));
-        if (isMatch) {
-          candidates.add(cid);
-        }
-      }
+      if (chatId) candidates.add(Number(chatId));
+      candidates.add(Number(targetId));
 
       for (const cid of candidates) {
         if (!cid) continue;
