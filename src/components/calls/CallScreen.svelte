@@ -74,10 +74,10 @@
 
   $: isSwapped = Boolean($activeCall.swapped);
   $: hasRemoteVideo = Boolean(
-    (remoteStream &&
+    (peerVideoOn || peerScreenOn) &&
+    ((remoteStream &&
       remoteStream.getVideoTracks &&
-      remoteStream.getVideoTracks().some(t => t.readyState === 'live' && t.enabled)) ||
-    (peerVideoOn || peerScreenOn)
+      remoteStream.getVideoTracks().some(t => t.readyState === 'live' && t.enabled)) || isLinux)
   );
   $: hasLocalVideo = Boolean((videoOn || screenOn || cameraLoading) && (localCameraStream || localScreenStream || cameraLoading));
   $: localEffectiveStream = screenOn ? localScreenStream : localCameraStream;
@@ -169,10 +169,12 @@
     await CallService.acceptSecureRequest();
   }
 
-  function handleDenySecureRequest() {
-    CallService.denySecureRequest();
-  }
+  let rawStreamBypass = false;
 
+  function toggleRawEncryptedStream() {
+    rawStreamBypass = !rawStreamBypass;
+    CallService.setBypassDecrypt(rawStreamBypass);
+  }
 
   function toggleSwap() {
     patchCallState({ swapped: !isSwapped });
@@ -487,6 +489,17 @@
               }}
             >
               {$callUseStubs ? 'Вкл (шум/снег)' : 'Выкл'}
+            </button>
+          </div>
+          <div class="debug-item">
+            <span class="debug-label">Сырой поток:</span>
+            <button
+              type="button"
+              class="debug-val"
+              style="cursor: pointer; background: rgba(255, 255, 255, 0.1); border: 1px solid rgba(255, 255, 255, 0.2); border-radius: 4px; padding: 2px 8px; color: inherit;"
+              on:click={toggleRawEncryptedStream}
+            >
+              {rawStreamBypass ? 'Вкл (сырой шум)' : 'Выкл (дешифровано)'}
             </button>
           </div>
           {#if conversationId}
