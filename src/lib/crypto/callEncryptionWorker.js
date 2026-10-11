@@ -2,6 +2,7 @@ let encKey = null;
 let decKey = null;
 let salt = null;
 let counter = 0;
+let bypassDecrypt = false;
 
 self.addEventListener('message', async (e) => {
   if (e.data?.type === 'setKeys') {
@@ -26,6 +27,13 @@ self.addEventListener('message', async (e) => {
         ['decrypt']
       );
     }
+  } else if (e.data?.type === 'clearKeys') {
+    encKey = null;
+    decKey = null;
+    salt = null;
+    counter = 0;
+  } else if (e.data?.type === 'setBypassDecrypt') {
+    bypassDecrypt = Boolean(e.data.bypass);
   }
 });
 
@@ -67,7 +75,13 @@ self.onrtctransform = async (event) => {
 
           frame.data = out.buffer;
         }
+        await writer.write(frame);
       } else if (op === 'decrypt' && decKey) {
+        if (bypassDecrypt) {
+          await writer.write(frame);
+          continue;
+        }
+
         const raw = new Uint8Array(frame.data);
         const unencryptedBytes = kind === 'video' ? (frame.type === 'key' ? 10 : 3) : 1;
 
@@ -87,10 +101,11 @@ self.onrtctransform = async (event) => {
           out.set(decBytes, unencryptedBytes);
 
           frame.data = out.buffer;
+          await writer.write(frame);
         }
+      } else {
+        await writer.write(frame);
       }
     } catch {}
-
-    await writer.write(frame);
   }
 };

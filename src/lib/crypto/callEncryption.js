@@ -22,6 +22,7 @@ export class CallEncryptionSession {
   #videoFrameCounter = 0;
 
   #workers = new Set();
+  #bypassDecrypt = false;
 
   get mode() { return this.#mode; }
   get fingerprint() { return this.#fingerprint; }
@@ -57,6 +58,11 @@ export class CallEncryptionSession {
     this.#videoRecvSalt = null;
     this.#audioFrameCounter = 0;
     this.#videoFrameCounter = 0;
+    for (const entry of this.#workers) {
+      try {
+        entry.worker.postMessage({ type: 'clearKeys' });
+      } catch {}
+    }
   }
 
   async initFromChatSecret(chatSecret, conversationId, isOriginator = true) {
@@ -274,6 +280,10 @@ export class CallEncryptionSession {
         const { readable, writable } = receiver.createEncodedStreams();
         const transformStream = new TransformStream({
           transform: async (frame, controller) => {
+            if (this.#bypassDecrypt) {
+              controller.enqueue(frame);
+              return;
+            }
             const dec = await this.decryptFrame(frame.data, kind);
             if (dec) {
               frame.data = dec.buffer || dec;
@@ -282,6 +292,18 @@ export class CallEncryptionSession {
           }
         });
         readable.pipeThrough(transformStream).pipeTo(writable).catch(() => {});
+      } catch {}
+    }
+  }
+
+  setBypassDecrypt(bypass) {
+    this.#bypassDecrypt = Boolean(bypass);
+    for (const entry of this.#workers) {
+      try {
+        entry.worker.postMessage({
+          type: 'setBypassDecrypt',
+          bypass: this.#bypassDecrypt,
+        });
       } catch {}
     }
   }

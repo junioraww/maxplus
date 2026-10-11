@@ -381,6 +381,7 @@ export class NativeRustPeerConnection extends EventTarget {
 
   async createOffer(options = {}) {
     await this._initPromise;
+    if (this._closed || this.sessionId == null) return { type: 'offer', sdp: '' };
     try {
       const res = await invoke('webrtc_create_offer', {
         sessionId: this.sessionId,
@@ -395,6 +396,7 @@ export class NativeRustPeerConnection extends EventTarget {
 
   async createAnswer() {
     await this._initPromise;
+    if (this._closed || this.sessionId == null) return { type: 'answer', sdp: '' };
     try {
       const res = await invoke('webrtc_create_answer', {
         sessionId: this.sessionId,
@@ -409,6 +411,7 @@ export class NativeRustPeerConnection extends EventTarget {
   async setLocalDescription(desc) {
     this.localDescription = desc;
     await this._initPromise;
+    if (this._closed || this.sessionId == null) return;
     try {
       await invoke('webrtc_set_local_description', {
         sessionId: this.sessionId,
@@ -429,6 +432,7 @@ export class NativeRustPeerConnection extends EventTarget {
   async setRemoteDescription(desc) {
     this.remoteDescription = desc;
     await this._initPromise;
+    if (this._closed || this.sessionId == null) return;
     const type = desc?.type || 'offer';
     try {
       await invoke('webrtc_set_remote_description', {
@@ -443,12 +447,14 @@ export class NativeRustPeerConnection extends EventTarget {
       }
     } catch (err) {
       if (type === 'offer' && String(err).includes('have-local-offer')) {
+        if (this._closed || this.sessionId == null) return;
         await invoke('webrtc_set_local_description', {
           sessionId: this.sessionId,
           sdpType: 'rollback',
           sdp: '',
         });
         this.signalingState = 'stable';
+        if (this._closed || this.sessionId == null) return;
         await invoke('webrtc_set_remote_description', {
           sessionId: this.sessionId,
           sdpType: 'offer',
@@ -465,6 +471,7 @@ export class NativeRustPeerConnection extends EventTarget {
   async addIceCandidate(candidate) {
     if (!candidate || !candidate.candidate) return;
     await this._initPromise;
+    if (this._closed || this.sessionId == null) return;
     try {
       await invoke('webrtc_add_ice_candidate', {
         sessionId: this.sessionId,
@@ -483,7 +490,7 @@ export class NativeRustPeerConnection extends EventTarget {
 
   async setEncryptionKeys(keys) {
     await this._initPromise;
-    if (this.sessionId == null) return;
+    if (this._closed || this.sessionId == null) return;
     try {
       await invoke('webrtc_set_encryption_keys', {
         sessionId: this.sessionId,

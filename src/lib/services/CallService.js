@@ -674,6 +674,18 @@ class MaxCallSession {
     }
   }
 
+  async disableSecureMode() {
+    await this.#encryption.initPlain();
+    patchCallState({
+      mode: CALL_MODE.PLAIN,
+      secureStatus: 'plain',
+      secureKeyFingerprint: null,
+      incomingSecureRequest: null,
+    });
+    await this.#syncEncryptionToMedia();
+    showAlert('E2E шифрование выключено');
+  }
+
   async acceptSecureRequest(req) {
     const targetReq = req || get(activeCall).incomingSecureRequest;
     patchCallState({ incomingSecureRequest: null });
@@ -751,6 +763,10 @@ class MaxCallSession {
     }
   }
 
+  setBypassDecrypt(bypass) {
+    this.#encryption.setBypassDecrypt(bypass);
+  }
+
   #setupDataChannel(dc) {
     if (!dc) return;
     if (dc.label === 'producerCommand') {
@@ -776,7 +792,13 @@ class MaxCallSession {
   }
 
   async #syncEncryptionToMedia() {
-    if (!this.#encryption || this.#encryption.mode !== 'secure') return;
+    if (!this.#encryption) return;
+    if (this.#encryption.mode === 'plain') {
+      if (this.#pc && typeof this.#pc.setEncryptionKeys === 'function') {
+        await this.#pc.setEncryptionKeys({ mode: 'plain' });
+      }
+      return;
+    }
     if (this.#pc && typeof this.#pc.setEncryptionKeys === 'function') {
       await this.#pc.setEncryptionKeys(this.#encryption.getExportedKeys());
     }
@@ -2021,13 +2043,19 @@ class MaxCallSession {
     if (on && !this.#screenStream) {
       try {
         let stream = null;
-        if (navigator.mediaDevices?.getDisplayMedia) {
+        const isAndroid = typeof navigator !== 'undefined' && /android/i.test(navigator.userAgent);
+        if (!isAndroid && navigator.mediaDevices?.getDisplayMedia) {
           try {
             stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
           } catch {
-            stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+            try {
+              stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+            } catch (err) {
+              if (err.name === 'NotAllowedError') throw err;
+            }
           }
-        } else {
+        }
+        if (!stream) {
           const captureInfo = await invoke('start_android_screen_capture');
           const port = captureInfo?.port;
           const width = captureInfo?.width || 720;
@@ -2530,10 +2558,23 @@ export const CallService = {
     await _activeSession?.enableScreen(!state.screenOn);
   },
 
+  async disableSecureMode() {
+    if (_activeSession) {
+      await _activeSession.disableSecureMode();
+    } else {
+      patchCallState({
+        mode: CALL_MODE.PLAIN,
+        secureStatus: 'plain',
+        secureKeyFingerprint: null,
+        incomingSecureRequest: null,
+      });
+    }
+  },
+
   async toggleSecure() {
     const cur = get(activeCall);
-    if (cur.mode === CALL_MODE.SECURE && cur.secureStatus === 'active') {
-      showAlert(`E2E шифрование активно (ключ: ${cur.secureKeyFingerprint || 'OK'})`);
+    if (cur.mode === CALL_MODE.SECURE && (cur.secureStatus === 'active' || cur.secureStatus === 'pending')) {
+      await this.disableSecureMode();
       return;
     }
     if (_activeSession) {
@@ -2575,6 +2616,12 @@ export const CallService = {
     const cur = get(activeCall);
     if (cur.phase !== CALL_PHASE.ACTIVE && cur.phase !== CALL_PHASE.CONNECTING) return;
     await _activeSession.syncFromChat(chatId);
+  },
+
+  setBypassDecrypt(bypass) {
+    if (_activeSession) {
+      _activeSession.setBypassDecrypt(bypass);
+    }
   },
 
   async _endActive() {
