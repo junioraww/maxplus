@@ -60,6 +60,9 @@ import {
 import {
   getMessagePreview
 } from "$lib/utils/text";
+import { batchDecrypt } from "$lib/crypto/messages.js";
+import { CallService } from "$lib/services/CallService.js";
+import { activeCall, CALL_PHASE } from "$lib/stores/calls.js";
 
 import BaseAPI from "./BaseApi";
 
@@ -245,6 +248,26 @@ export default class MobileApi extends BaseAPI {
           });
 
           if (!isOutgoing) {
+            if (message.text) {
+              const call = get(activeCall);
+              if (call && (call.phase === CALL_PHASE.ACTIVE || call.phase === CALL_PHASE.CONNECTING)) {
+                getCurrentAccount().then(async (acc) => {
+                  if (acc?.id) {
+                    const decrypted = await batchDecrypt(Number(acc.id), Number(message.chatId), [message]).catch(() => null);
+                    const dec = decrypted?.[String(message.id)];
+                    if (dec?.is_handshake_request && dec.handshake_data) {
+                      CallService.handleIncomingChatHandshake({
+                        chatId: message.chatId,
+                        messageId: message.id,
+                        handshakeData: dec.handshake_data,
+                      });
+                    } else if (dec?.is_handshake_accept && dec.handshake_data) {
+                      CallService.handleIncomingChatAccept(dec.handshake_data, dec.handshake_data, message.chatId);
+                    }
+                  }
+                }).catch(() => {});
+              }
+            }
             const info = chat.getInfo();
             if (info?.type === "DIALOG") {
               let peerId = null;

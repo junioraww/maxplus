@@ -276,6 +276,8 @@ export async function handleEnc(chat, chatSettings, messages, action) {
         undefined,
         true
       );
+
+      await CallService.syncChatSessionToActiveCall(chat.id);
     } catch (e) {
       console.error(e);
       alert(String(e));
