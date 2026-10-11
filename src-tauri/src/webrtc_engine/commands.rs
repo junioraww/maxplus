@@ -47,7 +47,9 @@ pub struct EncryptionKeysPayload {
 pub async fn webrtc_create(ice_servers: Vec<IceServerConfig>) -> Result<u32, String> {
     #[cfg(target_os = "linux")]
     {
+        println!("[webrtc:cmd] webrtc_create called ({} ice servers)", ice_servers.len());
         let session = NativeWebRtcSession::create(ice_servers).await?;
+        println!("[webrtc:cmd] webrtc_create succeeded -> session id: {}", session.id);
         Ok(session.id)
     }
     #[cfg(not(target_os = "linux"))]
@@ -64,8 +66,11 @@ pub async fn webrtc_create_offer(
 ) -> Result<SessionDescriptionPayload, String> {
     #[cfg(target_os = "linux")]
     {
+        println!("[webrtc:cmd] webrtc_create_offer called for session {}", session_id);
         let session = NativeWebRtcSession::get(session_id).await?;
-        session.create_offer(ice_restart.unwrap_or(false)).await
+        let res = session.create_offer(ice_restart.unwrap_or(false)).await;
+        println!("[webrtc:cmd] webrtc_create_offer result: {:?}", res.as_ref().map(|s| s.sdp_type.clone()));
+        res
     }
     #[cfg(not(target_os = "linux"))]
     {
@@ -81,8 +86,11 @@ pub async fn webrtc_create_offer(
 pub async fn webrtc_create_answer(session_id: u32) -> Result<SessionDescriptionPayload, String> {
     #[cfg(target_os = "linux")]
     {
+        println!("[webrtc:cmd] webrtc_create_answer called for session {}", session_id);
         let session = NativeWebRtcSession::get(session_id).await?;
-        session.create_answer().await
+        let res = session.create_answer().await;
+        println!("[webrtc:cmd] webrtc_create_answer result: {:?}", res.as_ref().map(|s| s.sdp_type.clone()));
+        res
     }
     #[cfg(not(target_os = "linux"))]
     {
@@ -151,6 +159,7 @@ pub async fn webrtc_add_ice_candidate(
 pub async fn webrtc_set_camera_enabled(session_id: u32, enabled: bool) -> Result<(), String> {
     #[cfg(target_os = "linux")]
     {
+        println!("[webrtc:cmd] webrtc_set_camera_enabled for session {}: {}", session_id, enabled);
         let session = NativeWebRtcSession::get(session_id).await?;
         session.set_camera_enabled(enabled).await
     }
@@ -165,6 +174,7 @@ pub async fn webrtc_set_camera_enabled(session_id: u32, enabled: bool) -> Result
 pub async fn webrtc_set_mic_muted(session_id: u32, muted: bool) -> Result<(), String> {
     #[cfg(target_os = "linux")]
     {
+        println!("[webrtc:cmd] webrtc_set_mic_muted for session {}: {}", session_id, muted);
         let session = NativeWebRtcSession::get(session_id).await?;
         session.set_mic_muted(muted).await
     }
@@ -182,8 +192,10 @@ pub async fn webrtc_listen_video(
 ) -> Result<(), String> {
     #[cfg(target_os = "linux")]
     {
+        println!("[webrtc:cmd] webrtc_listen_video for session {}", session_id);
         let session = NativeWebRtcSession::get(session_id).await?;
         session.set_video_channel(channel).await;
+        println!("[webrtc:cmd] webrtc_listen_video attached for session {}", session_id);
         Ok(())
     }
     #[cfg(not(target_os = "linux"))]
@@ -200,8 +212,10 @@ pub async fn webrtc_listen_candidates(
 ) -> Result<(), String> {
     #[cfg(target_os = "linux")]
     {
+        println!("[webrtc:cmd] webrtc_listen_candidates for session {}", session_id);
         let session = NativeWebRtcSession::get(session_id).await?;
         session.set_candidates_channel(channel).await;
+        println!("[webrtc:cmd] webrtc_listen_candidates attached for session {}", session_id);
         Ok(())
     }
     #[cfg(not(target_os = "linux"))]
@@ -218,8 +232,10 @@ pub async fn webrtc_listen_state(
 ) -> Result<(), String> {
     #[cfg(target_os = "linux")]
     {
+        println!("[webrtc:cmd] webrtc_listen_state for session {}", session_id);
         let session = NativeWebRtcSession::get(session_id).await?;
         session.set_state_channel(channel).await;
+        println!("[webrtc:cmd] webrtc_listen_state attached for session {}", session_id);
         Ok(())
     }
     #[cfg(not(target_os = "linux"))]

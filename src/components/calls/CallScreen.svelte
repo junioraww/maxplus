@@ -609,7 +609,7 @@
   {/if}
 
   {#if incomingSecureRequest}
-    <div class="secure-req-backdrop" transition:fade={{ duration: 150 }} on:click={handleDenySecureRequest} role="presentation">
+    <div class="secure-req-backdrop" transition:fade={{ duration: 150 }} role="presentation">
       <div class="secure-req-card" transition:scale={{ start: 0.95, duration: 150 }} on:click|stopPropagation role="dialog">
         <div class="secure-req-icon">
           <svg xmlns="http://www.w3.org/2000/svg" width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#22c55e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">

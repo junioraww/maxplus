@@ -11,10 +11,6 @@ import {
   generateCallKeyPair,
   exportPublicKeyBytes,
   deriveSharedSecret,
-  FRAME_HEADER_SIZE,
-  FRAME_MAGIC_0,
-  FRAME_MAGIC_1,
-  FRAME_TYPE_MEDIA,
 } from "../src/lib/crypto/callEncryption.js";
 
 test.describe("End-to-End Encryption and Obfuscation Detection", () => {
@@ -678,10 +674,10 @@ test.describe("End-to-End Call Media Encryption", () => {
     const sampleAudio = new Uint8Array([10, 20, 30, 40, 50, 60, 70, 80]);
     const encrypted = await alice.encryptFrame(sampleAudio, "audio");
 
-    expect(encrypted[0]).toBe(FRAME_MAGIC_0);
-    expect(encrypted[1]).toBe(FRAME_MAGIC_1);
-    expect(encrypted[2]).toBe(FRAME_TYPE_MEDIA);
-    expect(encrypted.length).toBe(FRAME_HEADER_SIZE + sampleAudio.length + 16);
+    expect(encrypted[0]).toBe(sampleAudio[0]);
+    expect(encrypted.length).toBe(sampleAudio.length + 16 + 12 + 2);
+    expect(encrypted[encrypted.length - 2]).toBe(12);
+    expect(encrypted[encrypted.length - 1]).toBe(0);
 
     const decrypted = await bob.decryptFrame(encrypted, "audio");
     expect(Array.from(decrypted)).toEqual(Array.from(sampleAudio));

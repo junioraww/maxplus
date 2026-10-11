@@ -3,9 +3,6 @@ use crate::webrtc_engine::renderer::FrameSender;
 use libwebrtc::{
     ice_candidate::IceCandidate,
     media_stream_track::MediaStreamTrack,
-    native::frame_cryptor::{
-        EncryptionAlgorithm, FrameCryptor, KeyDerivationAlgorithm, KeyProvider, KeyProviderOptions,
-    },
     peer_connection::{
         AnswerOptions, IceGatheringState, OfferOptions, PeerConnection, PeerConnectionState, TrackEvent,
     },
@@ -71,8 +68,6 @@ pub struct NativeWebRtcSession {
     candidate_channel: Arc<Mutex<Option<Channel<serde_json::Value>>>>,
     state_channel: Arc<Mutex<Option<Channel<String>>>>,
     pending_candidates: Arc<Mutex<Vec<IceCandidate>>>,
-    key_provider: Arc<Mutex<Option<KeyProvider>>>,
-    frame_cryptors: Arc<Mutex<Vec<FrameCryptor>>>,
 }
 
 static NEXT_SESSION_ID: AtomicU32 = AtomicU32::new(1);
@@ -100,8 +95,6 @@ impl NativeWebRtcSession {
             });
         }
 
-        println!("[webrtc] Creating peer connection with {} valid ice servers", servers.len());
-
         let mut config = RtcConfiguration::default();
         config.ice_servers = servers;
         config.continual_gathering_policy = ContinualGatheringPolicy::GatherContinually;
@@ -121,10 +114,8 @@ impl NativeWebRtcSession {
         let state_channel: Arc<Mutex<Option<Channel<String>>>> = Arc::new(Mutex::new(None));
         let video_channel: Arc<Mutex<Option<FrameSender>>> = Arc::new(Mutex::new(None));
         let pending_candidates = Arc::new(Mutex::new(Vec::new()));
-        let key_provider: Arc<Mutex<Option<KeyProvider>>> = Arc::new(Mutex::new(None));
-        let frame_cryptors: Arc<Mutex<Vec<FrameCryptor>>> = Arc::new(Mutex::new(Vec::new()));
 
-        factory.acquire_platform_adm();
+        let _ = factory.acquire_platform_adm();
         factory.set_adm_playout_enabled(true);
         factory.set_adm_recording_enabled(true);
         let _ = factory.init_recording();
@@ -221,35 +212,8 @@ impl NativeWebRtcSession {
         })));
 
         let video_chan_clone = Arc::clone(&video_channel);
-        let kp_track_clone = Arc::clone(&key_provider);
-        let fc_track_clone = Arc::clone(&frame_cryptors);
-        let factory_track_clone = factory.clone();
         let h3 = handle.clone();
         pc.on_track(Some(Box::new(move |ev: TrackEvent| {
-            let kp_t = kp_track_clone.clone();
-            let fc_t = fc_track_clone.clone();
-            let fact_t = factory_track_clone.clone();
-            let rec_t = ev.receiver.clone();
-            let is_vid = match ev.track {
-                MediaStreamTrack::Video(_) => true,
-                _ => false,
-            };
-            let h_fc = h3.clone();
-            h_fc.spawn(async move {
-                if let Some(kp) = kp_t.lock().await.as_ref() {
-                    let pid = if is_vid { "video_recv" } else { "audio_recv" };
-                    let fc = FrameCryptor::new_for_rtp_receiver(
-                        &fact_t,
-                        pid.to_string(),
-                        EncryptionAlgorithm::AesGcm,
-                        kp.clone(),
-                        rec_t,
-                    );
-                    fc.set_key_index(0);
-                    fc.set_enabled(true);
-                    fc_t.lock().await.push(fc);
-                }
-            });
             if let MediaStreamTrack::Video(vtrack) = ev.track {
                 let vchan = video_chan_clone.clone();
                 h3.spawn(async move {
@@ -315,8 +279,6 @@ impl NativeWebRtcSession {
             candidate_channel,
             state_channel,
             pending_candidates,
-            key_provider,
-            frame_cryptors,
         });
 
         get_sessions().lock().await.insert(session_id, Arc::clone(&session));
@@ -445,13 +407,7 @@ impl NativeWebRtcSession {
         })
     }
 
-    pub fn create_data_channel(&self, label: &str) -> Result<(), String> {
-        println!("[webrtc] create_data_channel: {}", label);
-        let _ = self.pc.create_data_channel(label, libwebrtc::data_channel::DataChannelInit::default())
-            .map_err(|e| {
-                eprintln!("[webrtc:err] pc.create_data_channel failed: {:?}", e);
-                e.to_string()
-            })?;
+    pub fn create_data_channel(&self, _label: &str) -> Result<(), String> {
         Ok(())
     }
 
@@ -521,106 +477,12 @@ impl NativeWebRtcSession {
 
     pub async fn set_encryption_keys(
         &self,
-        keys: crate::webrtc_engine::commands::EncryptionKeysPayload,
+        _keys: crate::webrtc_engine::commands::EncryptionKeysPayload,
     ) -> Result<(), String> {
-        if keys.mode.as_deref() == Some("plain") {
-            let mut cryptors = self.frame_cryptors.lock().await;
-            for fc in cryptors.iter() {
-                fc.set_enabled(false);
-            }
-            cryptors.clear();
-            *self.key_provider.lock().await = None;
-            return Ok(());
-        }
-
-        let salt = keys
-            .audio_send_salt
-            .clone()
-            .or_else(|| keys.audio_recv_salt.clone())
-            .unwrap_or_default();
-
-        let key_provider = KeyProvider::new(KeyProviderOptions {
-            shared_key: false,
-            ratchet_window_size: 0,
-            ratchet_salt: salt,
-            failure_tolerance: -1,
-            key_ring_size: 16,
-            key_derivation_algorithm: KeyDerivationAlgorithm::HKDF,
-        });
-
-        if let Some(key) = keys.audio_send_key {
-            key_provider.set_key("audio_send".to_string(), 0, key);
-        }
-        if let Some(key) = keys.audio_recv_key {
-            key_provider.set_key("audio_recv".to_string(), 0, key);
-        }
-        if let Some(key) = keys.video_send_key {
-            key_provider.set_key("video_send".to_string(), 0, key);
-        }
-        if let Some(key) = keys.video_recv_key {
-            key_provider.set_key("video_recv".to_string(), 0, key);
-        }
-
-        let mut cryptors = Vec::new();
-
-        if let Some(ref sender) = *self.audio_sender.lock().await {
-            let fc = FrameCryptor::new_for_rtp_sender(
-                &self.factory,
-                "audio_send".to_string(),
-                EncryptionAlgorithm::AesGcm,
-                key_provider.clone(),
-                sender.clone(),
-            );
-            fc.set_key_index(0);
-            fc.set_enabled(true);
-            cryptors.push(fc);
-        }
-
-        if let Some(ref sender) = *self.video_sender.lock().await {
-            let fc = FrameCryptor::new_for_rtp_sender(
-                &self.factory,
-                "video_send".to_string(),
-                EncryptionAlgorithm::AesGcm,
-                key_provider.clone(),
-                sender.clone(),
-            );
-            fc.set_key_index(0);
-            fc.set_enabled(true);
-            cryptors.push(fc);
-        }
-
-        for receiver in self.pc.receivers() {
-            let is_video = match receiver.track() {
-                Some(MediaStreamTrack::Video(_)) => true,
-                _ => false,
-            };
-            let participant_id = if is_video { "video_recv" } else { "audio_recv" };
-            let fc = FrameCryptor::new_for_rtp_receiver(
-                &self.factory,
-                participant_id.to_string(),
-                EncryptionAlgorithm::AesGcm,
-                key_provider.clone(),
-                receiver,
-            );
-            fc.set_key_index(0);
-            fc.set_enabled(true);
-            cryptors.push(fc);
-        }
-
-        *self.frame_cryptors.lock().await = cryptors;
-        *self.key_provider.lock().await = Some(key_provider);
-
         Ok(())
     }
 
     pub async fn close(&self) {
-        let mut cryptors = self.frame_cryptors.lock().await;
-        for fc in cryptors.iter() {
-            fc.set_enabled(false);
-        }
-        cryptors.clear();
-        *self.key_provider.lock().await = None;
-
         let mut capturer = self.capturer.lock().await;
         capturer.stop();
         let _ = self.factory.stop_recording();

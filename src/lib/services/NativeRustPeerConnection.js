@@ -358,15 +358,6 @@ export class NativeRustPeerConnection extends EventTarget {
   }
 
   createDataChannel(label, options = {}) {
-    this._initPromise.then(() => {
-      if (this.sessionId != null) {
-        invoke('webrtc_create_data_channel', {
-          sessionId: this.sessionId,
-          label,
-        }).catch((e) => console.warn('[NativeRustPeerConnection] create_data_channel warn:', e));
-      }
-    });
-
     const dc = {
       label,
       id: options.id ?? 0,
@@ -395,8 +386,7 @@ export class NativeRustPeerConnection extends EventTarget {
         sessionId: this.sessionId,
         iceRestart: Boolean(options.iceRestart),
       });
-      const offer = { type: res.sdp_type || res.sdpType || 'offer', sdp: res.sdp || '' };
-      return offer;
+      return { type: res.sdp_type || res.sdpType || 'offer', sdp: res.sdp || '' };
     } catch (err) {
       console.error('[NativeRustPeerConnection] createOffer error:', err);
       throw err;
@@ -409,8 +399,7 @@ export class NativeRustPeerConnection extends EventTarget {
       const res = await invoke('webrtc_create_answer', {
         sessionId: this.sessionId,
       });
-      const answer = { type: res.sdp_type || res.sdpType || 'answer', sdp: res.sdp || '' };
-      return answer;
+      return { type: res.sdp_type || res.sdpType || 'answer', sdp: res.sdp || '' };
     } catch (err) {
       console.error('[NativeRustPeerConnection] createAnswer error:', err);
       throw err;
