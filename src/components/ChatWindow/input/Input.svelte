@@ -26,6 +26,7 @@
   import { encodeAudioBufferToOggOpus } from "$lib/utils/audioEncoder.js";
   import { encryptMediaAttachment } from "$lib/crypto/messages.js";
   import { getCurrentAccount } from "$lib/stores/accounts.js";
+  import { safetyLockouts, isChatSafetyLocked } from "$lib/stores/e2eSafety.js";
 
   import SelectedAttaches from "$components/ChatWindow/input/SelectedAttaches.svelte";
   import EditingBanner from "$components/ChatWindow/input/EditingBanner.svelte";
@@ -63,6 +64,7 @@
     ? compileBackdropSpans(newMessage, composerFormat.getRawElements(newMessage))
     : [];
   $: hasFormatting = backdropSpans.length > 0;
+  $: isLockedOut = isChatSafetyLocked(chat?.id, $safetyLockouts);
 
   function syncScroll() {
     if (backdropEl && textareaEl) {
@@ -583,7 +585,7 @@
   }
 
   async function onSend() {
-    if (isSending) return;
+    if (isSending || isLockedOut) return;
     if (!newMessage.trim() && !attaches.length && !($forwardDraft?.messages?.length)) return;
     clearTimeout(suggestionTimer);
     activeSearchQuery = "";
@@ -1504,7 +1506,24 @@
     }
   }
 
+  function handleSafetyLockoutEvent(e) {
+    if (String(e?.detail?.chatId) === String(chat?.id)) {
+      if (isRecording || isHoldStarted) {
+        clearTimeout(holdTimeout);
+        cancelRecording();
+        showAlert("Шифрование отключено. Запись отменена в целях безопасности.");
+      }
+    }
+  }
+
+  onMount(() => {
+    if (typeof window !== "undefined") {
+      window.addEventListener("e2e_safety_lockout", handleSafetyLockoutEvent);
+    }
+  });
+
   function handleRecordPointerDown(e) {
+    if (isLockedOut) return;
     pointerDownTime = Date.now();
     isHoldStarted = false;
     pointerStartX = e.clientX;
@@ -1558,6 +1577,9 @@
   }
 
   onDestroy(() => {
+    if (typeof window !== "undefined") {
+      window.removeEventListener("e2e_safety_lockout", handleSafetyLockoutEvent);
+    }
     session.cancel(videoPreviewEl);
   });
 </script>
@@ -1790,7 +1812,7 @@
         </div>
 
         {#if newMessage.length || attaches.length || ($forwardDraft && $forwardDraft.messages?.length > 0)}
-          <button class="button send-button" type="button" on:click={onSend} title="Отправить">
+          <button class="button send-button" class:disabled-cooldown={isLockedOut} disabled={isLockedOut} type="button" on:click={onSend} title="Отправить">
             <svg viewBox="0 0 24 24" width="22" height="22">
               <path fill="currentColor" d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
             </svg>
@@ -1799,6 +1821,8 @@
           <button
             class="button voice-button"
             class:video-mode={recordMode === 'video'}
+            class:disabled-cooldown={isLockedOut}
+            disabled={isLockedOut}
             type="button"
             title={recordMode === 'voice' ? 'Зажмите для записи, нажмите для переключения на видео' : 'Зажмите для записи, нажмите для переключения на голос'}
             on:pointerdown={handleRecordPointerDown}
@@ -2127,5 +2151,12 @@
     display: flex;
     align-items: center;
     justify-content: center;
+  }
+
+  :global(.button.disabled-cooldown) {
+    opacity: 0.35 !important;
+    pointer-events: none !important;
+    cursor: not-allowed !important;
+    filter: grayscale(1) !important;
   }
 </style>

@@ -51,7 +51,8 @@ self.onrtctransform = async (event) => {
     try {
       if (op === 'encrypt' && encKey && salt) {
         const raw = new Uint8Array(frame.data);
-        const unencryptedBytes = kind === 'video' ? (frame.type === 'key' ? 10 : 3) : 1;
+        const isKey = (frame.type === 'key') || (raw.length > 0 && (raw[0] & 0x01) === 0);
+        const unencryptedBytes = kind === 'video' ? (isKey ? 10 : 3) : 1;
 
         if (raw.length > unencryptedBytes) {
           const payload = raw.subarray(unencryptedBytes);
@@ -83,29 +84,36 @@ self.onrtctransform = async (event) => {
         }
 
         const raw = new Uint8Array(frame.data);
-        const unencryptedBytes = kind === 'video' ? (frame.type === 'key' ? 10 : 3) : 1;
+        const isKey = (frame.type === 'key') || (raw.length > 0 && (raw[0] & 0x01) === 0);
+        const unencryptedBytes = kind === 'video' ? (isKey ? 10 : 3) : 1;
 
         if (raw.length >= unencryptedBytes + 30 && raw[raw.length - 2] === 0x0c) {
           const iv = raw.subarray(raw.length - 14, raw.length - 2);
           const cipherWithTag = raw.subarray(unencryptedBytes, raw.length - 14);
 
-          const decrypted = await crypto.subtle.decrypt(
-            { name: 'AES-GCM', iv, tagLength: 128 },
-            decKey,
-            cipherWithTag
-          );
-          const decBytes = new Uint8Array(decrypted);
+          try {
+            const decrypted = await crypto.subtle.decrypt(
+              { name: 'AES-GCM', iv, tagLength: 128 },
+              decKey,
+              cipherWithTag
+            );
+            const decBytes = new Uint8Array(decrypted);
 
-          const out = new Uint8Array(unencryptedBytes + decBytes.length);
-          out.set(raw.subarray(0, unencryptedBytes), 0);
-          out.set(decBytes, unencryptedBytes);
+            const out = new Uint8Array(unencryptedBytes + decBytes.length);
+            out.set(raw.subarray(0, unencryptedBytes), 0);
+            out.set(decBytes, unencryptedBytes);
 
-          frame.data = out.buffer;
-          await writer.write(frame);
+            frame.data = out.buffer;
+          } catch {}
         }
+        await writer.write(frame);
       } else {
         await writer.write(frame);
       }
-    } catch {}
+    } catch {
+      try {
+        await writer.write(frame);
+      } catch {}
+    }
   }
 };

@@ -118,7 +118,7 @@
             }
             await CallService.acceptIncoming();
           } else if (action === 'dismiss') {
-            CallService.declineIncoming();
+            CallService.dismissIncomingCall();
           } else if (action === 'show_incoming') {
             if (payloadObj.vcp || payloadObj.conversationId) {
               await CallService.handleIncomingPush(payloadObj);

@@ -381,10 +381,11 @@ export class NativeRustPeerConnection extends EventTarget {
 
   async createOffer(options = {}) {
     await this._initPromise;
-    if (this._closed || this.sessionId == null) return { type: 'offer', sdp: '' };
+    const sid = this.sessionId;
+    if (this._closed || typeof sid !== 'number' || sid < 0) return { type: 'offer', sdp: '' };
     try {
       const res = await invoke('webrtc_create_offer', {
-        sessionId: this.sessionId,
+        sessionId: sid,
         iceRestart: Boolean(options.iceRestart),
       });
       return { type: res.sdp_type || res.sdpType || 'offer', sdp: res.sdp || '' };
@@ -396,10 +397,11 @@ export class NativeRustPeerConnection extends EventTarget {
 
   async createAnswer() {
     await this._initPromise;
-    if (this._closed || this.sessionId == null) return { type: 'answer', sdp: '' };
+    const sid = this.sessionId;
+    if (this._closed || typeof sid !== 'number' || sid < 0) return { type: 'answer', sdp: '' };
     try {
       const res = await invoke('webrtc_create_answer', {
-        sessionId: this.sessionId,
+        sessionId: sid,
       });
       return { type: res.sdp_type || res.sdpType || 'answer', sdp: res.sdp || '' };
     } catch (err) {
@@ -411,10 +413,11 @@ export class NativeRustPeerConnection extends EventTarget {
   async setLocalDescription(desc) {
     this.localDescription = desc;
     await this._initPromise;
-    if (this._closed || this.sessionId == null) return;
+    const sid = this.sessionId;
+    if (this._closed || typeof sid !== 'number' || sid < 0) return;
     try {
       await invoke('webrtc_set_local_description', {
-        sessionId: this.sessionId,
+        sessionId: sid,
         sdpType: desc?.type || 'offer',
         sdp: desc?.sdp || '',
       });
@@ -432,11 +435,12 @@ export class NativeRustPeerConnection extends EventTarget {
   async setRemoteDescription(desc) {
     this.remoteDescription = desc;
     await this._initPromise;
-    if (this._closed || this.sessionId == null) return;
+    const sid = this.sessionId;
+    if (this._closed || typeof sid !== 'number' || sid < 0) return;
     const type = desc?.type || 'offer';
     try {
       await invoke('webrtc_set_remote_description', {
-        sessionId: this.sessionId,
+        sessionId: sid,
         sdpType: type,
         sdp: desc?.sdp || '',
       });
@@ -447,14 +451,15 @@ export class NativeRustPeerConnection extends EventTarget {
       }
     } catch (err) {
       if (type === 'offer' && String(err).includes('have-local-offer')) {
-        if (this._closed || this.sessionId == null) return;
+        const curSid = this.sessionId;
+        if (this._closed || typeof curSid !== 'number' || curSid < 0) return;
         await invoke('webrtc_set_local_description', {
-          sessionId: this.sessionId,
+          sessionId: curSid,
           sdpType: 'rollback',
           sdp: '',
         });
         this.signalingState = 'stable';
-        if (this._closed || this.sessionId == null) return;
+        if (this._closed || typeof this.sessionId !== 'number' || this.sessionId < 0) return;
         await invoke('webrtc_set_remote_description', {
           sessionId: this.sessionId,
           sdpType: 'offer',
@@ -471,10 +476,11 @@ export class NativeRustPeerConnection extends EventTarget {
   async addIceCandidate(candidate) {
     if (!candidate || !candidate.candidate) return;
     await this._initPromise;
-    if (this._closed || this.sessionId == null) return;
+    const sid = this.sessionId;
+    if (this._closed || typeof sid !== 'number' || sid < 0) return;
     try {
       await invoke('webrtc_add_ice_candidate', {
-        sessionId: this.sessionId,
+        sessionId: sid,
         candidate: {
           candidate: candidate.candidate,
           sdp_mid: candidate.sdpMid != null ? String(candidate.sdpMid) : null,
@@ -490,10 +496,11 @@ export class NativeRustPeerConnection extends EventTarget {
 
   async setEncryptionKeys(keys) {
     await this._initPromise;
-    if (this._closed || this.sessionId == null) return;
+    const sid = this.sessionId;
+    if (this._closed || typeof sid !== 'number' || sid < 0) return;
     try {
       await invoke('webrtc_set_encryption_keys', {
-        sessionId: this.sessionId,
+        sessionId: sid,
         keys,
       });
     } catch (err) {

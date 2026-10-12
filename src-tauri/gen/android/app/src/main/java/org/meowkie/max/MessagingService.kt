@@ -21,6 +21,14 @@ class MessagingService : FirebaseMessagingService() {
     }
     if (type == "CallFinished") {
       CallNotificationManager.cancelCallNotification(this)
+      val conversationId = data["conversationId"] ?: data["cid"] ?: data["vcId"] ?: ""
+      val callerId = data["callerId"] ?: data["suid"] ?: ""
+      val vcp = data["vcp"] ?: ""
+      MainActivity.instance?.let { activity ->
+        activity.runOnUiThread {
+          activity.forwardCallDismiss(conversationId, callerId, vcp)
+        }
+      }
       return
     }
 
