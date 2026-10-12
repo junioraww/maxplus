@@ -10,6 +10,7 @@ import {
 } from "$lib/crypto/asymmetric.js";
 import { sendMessage } from "$components/ChatWindow/actions.js";
 import { CallService } from "$lib/services/CallService.js";
+import { triggerSafetyLockout } from "$lib/stores/e2eSafety.js";
 
 const pendingRequests = new Map();
 const blockedRequests = new Map();
@@ -117,6 +118,50 @@ export async function checkForEncryptionRequest(
 
     const senderId = Number(msg.sender?.id || msg.sender);
     const isFromMe = myIds.has(senderId);
+
+    const isDisableSignal = dec.text && (dec.text === "__E2E_DISABLE__" || dec.text.includes('"e2e_control":"disable"'));
+    if (isDisableSignal && (!isFromMe || isSavedMessagesChat)) {
+      dec.text = "<b>Собеседник отключил сквозное шифрование</b>";
+      if (isSessionActive) {
+        chatSettings.update((old) => {
+          const next = { ...old };
+          if (next.session?.shared_secret) {
+            const fromTs = next.session.established_at || 0;
+            const untilTs = Date.now();
+            const existingKeys = Array.isArray(next.keys?.keys) ? [...next.keys.keys] : [];
+            const found = existingKeys.find((k) => k.shared_secret === next.session.shared_secret);
+            if (found) {
+              found.message_until = untilTs;
+            } else {
+              existingKeys.push({
+                shared_secret: next.session.shared_secret,
+                fingerprint: next.session.fingerprint,
+                message_from: fromTs,
+                message_until: untilTs,
+              });
+            }
+            next.keys = {
+              ...(next.keys || {}),
+              keys: existingKeys,
+              current: null,
+            };
+          }
+          delete next.session;
+          delete next.pending;
+          delete next.e2e_declined;
+          return next;
+        });
+        const fresh = get(chatSettings);
+        invoke("set_chat_settings", {
+          account: accId,
+          chatId: Number(chat.id),
+          data: fresh,
+        }).catch(() => {});
+        triggerSafetyLockout(chat.id, 5000);
+        CallService.disableSecureMode().catch(() => {});
+      }
+      continue;
+    }
 
     if (dec.is_handshake_request && dec.handshake_data) {
       if (!candidateIds.has(msgIdStr)) {
@@ -390,6 +435,20 @@ export async function switchEnc(chat, chatSettings, messages) {
       alert(String(e));
     }
   } else {
+    try {
+      const disableSignal = JSON.stringify({ e2e_control: "disable", timestamp: Date.now() });
+      await sendMessage(
+        chat,
+        chatSettings,
+        messages,
+        disableSignal,
+        undefined,
+        undefined,
+        undefined,
+        false
+      );
+    } catch {}
+    triggerSafetyLockout(chat.id, 5000);
     chatSettings.update((old) => {
       const next = { ...old };
       if (next.session?.shared_secret) {
@@ -424,6 +483,7 @@ export async function switchEnc(chat, chatSettings, messages) {
       chatId: Number(chat.id),
       data: fresh,
     }).catch(() => {});
+    CallService.disableSecureMode().catch(() => {});
   }
 }
 

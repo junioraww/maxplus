@@ -364,8 +364,13 @@ class VoiceChannel {
 }
 
 function parseParticipant(raw) {
+  const externalId = raw.id?.external || raw.externalId || raw.userId || (typeof raw.id === 'string' || typeof raw.id === 'number' ? raw.id : null);
+  const internalId = raw.id?.internal || raw.internalId || (typeof raw.id === 'string' || typeof raw.id === 'number' ? raw.id : null);
+  const effectiveId = String(externalId || internalId || '');
   return {
-    id: String(raw.userId || raw.id || ''),
+    id: effectiveId,
+    internalId: internalId ? String(internalId) : null,
+    externalId: externalId ? String(externalId) : null,
     name: raw.name || raw.displayName || raw.firstName || '',
     avatar: raw.avatarUrl || raw.photo || raw.avatar || null,
     muted: raw.isAudioEnabled === false || raw.isMicrophoneEnabled === false,
@@ -442,7 +447,11 @@ class MaxCallSession {
     const transceivers = pc.getTransceivers();
     for (const tr of transceivers) {
       if (!mids.has(tr.mid)) continue;
-      const track = this.#cameraStream?.getVideoTracks()[0];
+      const isScreen = Boolean(get(activeCall).screenOn);
+      const isVideo = Boolean(get(activeCall).videoOn);
+      const track = (isScreen && this.#screenStream?.getVideoTracks()[0])
+        || (isVideo && this.#cameraStream?.getVideoTracks()[0])
+        || null;
       if (track) {
         try {
           await tr.sender?.replaceTrack(track);
@@ -450,9 +459,9 @@ class MaxCallSession {
       }
       try {
         if (typeof tr.setDirection === 'function') {
-          await tr.setDirection('sendonly');
+          await tr.setDirection(track ? 'sendonly' : 'recvonly');
         } else {
-          tr.direction = 'sendonly';
+          tr.direction = track ? 'sendonly' : 'recvonly';
         }
       } catch {}
       return;
@@ -635,8 +644,9 @@ class MaxCallSession {
       const remoteParticipant = participants.find(p => String(p.id) !== myId);
       const targetPeerId = (this.#contactPeerId && String(this.#contactPeerId) !== myId ? this.#contactPeerId : null)
         || (get(activeCall).peerId && String(get(activeCall).peerId) !== myId ? get(activeCall).peerId : null)
-        || (this.#ws2PeerId && String(this.#ws2PeerId) !== myId ? this.#ws2PeerId : null)
-        || (remoteParticipant ? String(remoteParticipant.id) : null);
+        || (remoteParticipant?.externalId && String(remoteParticipant.externalId) !== myId ? remoteParticipant.externalId : null)
+        || (remoteParticipant ? String(remoteParticipant.id) : null)
+        || (this.#ws2PeerId && String(this.#ws2PeerId) !== myId ? this.#ws2PeerId : null);
 
       if (targetPeerId) {
         const resolved = await this.#resolveSharedSecret(targetPeerId);
@@ -819,7 +829,52 @@ class MaxCallSession {
   }
 
   #embedLocalCandidates(sdp) {
-    return sdp;
+    if (!sdp || this.#allLocalCandidates.length === 0) return sdp;
+    const lines = sdp.split(/\r?\n/);
+    const sections = [];
+    let currentSection = [];
+    for (const line of lines) {
+      if (line.startsWith('m=')) {
+        if (currentSection.length > 0) sections.push(currentSection);
+        currentSection = [line];
+      } else {
+        currentSection.push(line);
+      }
+    }
+    if (currentSection.length > 0) sections.push(currentSection);
+
+    const processedSections = sections.map((sec, idx) => {
+      if (idx === 0 && !sec[0].startsWith('m=')) return sec;
+      let secMid = null;
+      const secCandidates = new Set();
+      for (const line of sec) {
+        if (line.startsWith('a=mid:')) {
+          secMid = line.substring(6).trim();
+        } else if (line.startsWith('a=candidate:')) {
+          secCandidates.add(line.trim());
+        }
+      }
+      const mLineIdx = idx - (sections[0][0].startsWith('m=') ? 0 : 1);
+      const toAppend = [];
+      for (const c of this.#allLocalCandidates) {
+        const raw = c.candidate || '';
+        if (!raw) continue;
+        const candLine = raw.startsWith('a=') ? raw.trim() : `a=${raw.trim()}`;
+        if (secCandidates.has(candLine)) continue;
+        const midMatch = c.sdpMid != null && secMid != null && String(c.sdpMid) === String(secMid);
+        const indexMatch = c.sdpMLineIndex != null && Number(c.sdpMLineIndex) === mLineIdx;
+        if (midMatch || indexMatch || (c.sdpMid == null && c.sdpMLineIndex == null)) {
+          toAppend.push(candLine);
+          secCandidates.add(candLine);
+        }
+      }
+      if (toAppend.length > 0) {
+        return [...sec, ...toAppend];
+      }
+      return sec;
+    });
+
+    return processedSections.map(s => s.join('\r\n')).join('\r\n') + '\r\n';
   }
 
   async #retransmitAllLocalCandidates() {}
@@ -1086,16 +1141,23 @@ class MaxCallSession {
     log(`[call:pc:create] instantiating RTCPeerConnection (${PeerConnection.name || 'Anonymous'}), iceServers:`, this.#iceServers);
     const isVideo = get(activeCall).callType === 'video' || Boolean(this.#cameraStream);
     const useStubs = Boolean(get(activeCall).useStubs);
-    const pc = new PeerConnection({
+    const pcConfig = {
       iceServers: this.#iceServers,
       sdpSemantics: 'unified-plan',
       bundlePolicy: 'balanced',
       rtcpMuxPolicy: 'require',
-      ...(this.#encryption.mode === CALL_MODE.SECURE ? { encodedInsertableStreams: true } : {}),
+      encodedInsertableStreams: true,
       isAudio: true,
       isVideo,
       useStubs,
-    });
+    };
+    let pc;
+    try {
+      pc = new PeerConnection(pcConfig);
+    } catch {
+      delete pcConfig.encodedInsertableStreams;
+      pc = new PeerConnection(pcConfig);
+    }
 
     pc.onicecandidate = (e) => {
       if (e.candidate) {
@@ -1472,11 +1534,34 @@ class MaxCallSession {
       this.#remoteDescSet = true;
       await this.#flushCandidates();
 
+      const candLines = sdp.split(/\r?\n/);
+      let rMid = null;
+      let rMLine = -1;
+      const IceCand = getRTCIceCandidate();
+      for (const line of candLines) {
+        if (line.startsWith('m=')) {
+          rMLine++;
+          rMid = null;
+        } else if (line.startsWith('a=mid:')) {
+          rMid = line.substring(6).trim();
+        } else if (line.startsWith('a=candidate:') && IceCand) {
+          try {
+            await pc.addIceCandidate(new IceCand({
+              candidate: line.substring(2).trim(),
+              sdpMid: rMid,
+              sdpMLineIndex: rMLine >= 0 ? rMLine : 0,
+            }));
+          } catch {}
+        }
+      }
+
       const answer = await pc.createAnswer();
       await pc.setLocalDescription(answer);
       await this.#gatherDone();
 
-      const answerSdp = this.#applyTrackLabels(pc.localDescription?.sdp || answer.sdp || '');
+      const rawAnswerSdp = pc.localDescription?.sdp || answer.sdp || '';
+      const embeddedSdp = this.#embedLocalCandidates(rawAnswerSdp);
+      const answerSdp = this.#applyTrackLabels(embeddedSdp);
       this.#extractAndApplyFingerprint(answerSdp, true);
       if (get(activeCall).mode === CALL_MODE.SECURE && get(activeCall).secureStatus !== 'active') {
         this.enableSecureMode().catch(() => {});
@@ -1651,9 +1736,11 @@ class MaxCallSession {
     if (pc.iceGatheringState === 'complete' || pc.connectionState === 'connected' || pc.iceConnectionState === 'connected') return Promise.resolve();
     return new Promise(resolve => {
       let done = false;
+      let relayDebounceTimer = null;
       const finish = () => {
         if (done) return;
         done = true;
+        if (relayDebounceTimer) clearTimeout(relayDebounceTimer);
         pc.removeEventListener('icegatheringstatechange', checkGathering);
         pc.removeEventListener('icecandidate', checkCandidate);
         clearTimeout(timer);
@@ -1663,15 +1750,17 @@ class MaxCallSession {
         if (pc.iceGatheringState === 'complete') finish();
       };
       const checkCandidate = (e) => {
-        if (!e?.candidate || (e.candidate.candidate && e.candidate.candidate.includes('typ relay'))) {
+        if (!e?.candidate) {
           finish();
+        } else if (e.candidate.candidate && e.candidate.candidate.includes('typ relay')) {
+          if (!relayDebounceTimer) {
+            relayDebounceTimer = setTimeout(finish, 150);
+          }
         }
       };
       pc.addEventListener('icegatheringstatechange', checkGathering);
       pc.addEventListener('icecandidate', checkCandidate);
-      const timer = setTimeout(() => {
-        finish();
-      }, 1000);
+      const timer = setTimeout(finish, 1000);
     });
   }
 
@@ -2347,6 +2436,11 @@ export const CallService = {
 
   async handleIncomingPush(pushData) {
     try {
+      const isCancellation = pushData.type === 'CallFinished' || pushData.type === 'CANCEL' || pushData.action === 'CANCEL' || pushData.status === 'CANCELED' || pushData.reason === 'CANCELED';
+      if (isCancellation) {
+        this.dismissIncomingCall();
+        return;
+      }
       const vcp = pushData.vcp || pushData.conversationParams;
       let convParams = {};
       if (vcp) {
@@ -2461,6 +2555,15 @@ export const CallService = {
     setTimeout(() => {
       resetCallState();
     }, 320);
+  },
+
+  dismissIncomingCall() {
+    stopCallAudio();
+    invoke('cancel_call_notification').catch(() => {});
+    cancelDesktopCallNotification().catch(() => {});
+    this._pendingIncoming = null;
+    this._endActive();
+    resetCallState();
   },
 
   async hangup() {

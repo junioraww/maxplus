@@ -410,7 +410,12 @@ export default class MobileApi extends BaseAPI {
         const p = response.payload;
         if (p) {
           const { CallService } = await import('$lib/services/CallService.js');
-          CallService.handleIncomingPush(p);
+          const isFinished = p.type === 'CallFinished' || p.type === 'CANCEL' || p.action === 'CANCEL' || p.status === 'CANCELED' || p.reason === 'CANCELED';
+          if (isFinished) {
+            CallService.dismissIncomingCall();
+          } else {
+            CallService.handleIncomingPush(p);
+          }
         }
       } else if (opc === 159) {
         const contact = response.payload?.profile?.contact || response.payload?.contact;

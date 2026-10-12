@@ -253,8 +253,12 @@ export class CallEncryptionSession {
         const { readable, writable } = sender.createEncodedStreams();
         const transformStream = new TransformStream({
           transform: async (frame, controller) => {
-            const enc = await this.encryptFrame(frame.data, kind);
-            frame.data = enc.buffer || enc;
+            try {
+              const enc = await this.encryptFrame(frame.data, kind);
+              if (enc) {
+                frame.data = enc.buffer || enc;
+              }
+            } catch {}
             controller.enqueue(frame);
           }
         });
@@ -284,11 +288,13 @@ export class CallEncryptionSession {
               controller.enqueue(frame);
               return;
             }
-            const dec = await this.decryptFrame(frame.data, kind);
-            if (dec) {
-              frame.data = dec.buffer || dec;
-              controller.enqueue(frame);
-            }
+            try {
+              const dec = await this.decryptFrame(frame.data, kind);
+              if (dec) {
+                frame.data = dec.buffer || dec;
+              }
+            } catch {}
+            controller.enqueue(frame);
           }
         });
         readable.pipeThrough(transformStream).pipeTo(writable).catch(() => {});
