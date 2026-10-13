@@ -2,7 +2,7 @@ use crate::crypto::asymmetric::{
     compute_shared_secret, create_handshake_accept, create_handshake_init, generate_keypair_bundle,
     parse_and_verify_handshake,
 };
-use crate::crypto::emoji::generate_fingerprint;
+use crate::crypto::emoji::{derive_call_fingerprint, generate_fingerprint};
 use crate::crypto::media::{decrypt_media_bytes, encrypt_media_bytes, MediaDescriptor};
 use crate::crypto::obfuscation::{ChineseObfuscator, DictionaryData, WordsObfuscator};
 use crate::crypto::protocol::{pack_message, unpack_message, PayloadData};
@@ -563,6 +563,10 @@ pub async fn get_chat_encryption_info(
 ) -> Result<Value, String> {
     let settings = load_chat_settings_json(&app, account, chat_id);
     let has_session = settings.get("session").is_some();
+    let has_pwd = settings
+        .get("password")
+        .and_then(|p| p.as_str())
+        .map_or(false, |s| !s.trim().is_empty());
     let fingerprint = settings
         .get("session")
         .and_then(|s| s.get("fingerprint"))
@@ -572,10 +576,18 @@ pub async fn get_chat_encryption_info(
     let has_pending = settings.get("pending").is_some();
 
     Ok(json!({
-        "active": has_session,
+        "active": has_session || has_pwd,
         "fingerprint": fingerprint,
         "pending": has_pending
     }))
+}
+
+#[tauri::command]
+pub fn get_call_encryption_fingerprint(
+    dh_secret: Option<String>,
+    password: Option<String>,
+) -> Result<Option<String>, String> {
+    Ok(derive_call_fingerprint(dh_secret.as_deref(), password.as_deref()))
 }
 
 #[tauri::command]

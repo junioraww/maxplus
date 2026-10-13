@@ -32,10 +32,12 @@ export async function sendMessage(
   const settings = get(chatSettings) || {};
   const hasSession = Boolean(settings?.keys?.current || settings?.session);
   const password = settings?.password;
-  const obf = settings?.obfs || (hasSession || password ? "zh" : null);
+  const isE2eActive = Boolean(hasSession || password);
+  const isDisableControl = originalPlaintext === "__E2E_DISABLE__" || originalPlaintext.includes('"e2e_control":"disable"');
+  const obf = isDisableControl ? null : (settings?.obfs || (isE2eActive ? "zh" : null));
 
   let effectiveMedia = mediaDescriptor;
-  if (!effectiveMedia && attaches?.length && (hasSession || password || obf)) {
+  if (!effectiveMedia && attaches?.length && (isE2eActive || obf)) {
     const firstAttach = attaches[0];
     effectiveMedia = {
       attach_index: 0,
@@ -51,7 +53,7 @@ export async function sendMessage(
     };
   }
 
-  if (!forceObfuscation && (hasSession || password || obf)) {
+  if (!isDisableControl && !forceObfuscation && (isE2eActive || obf)) {
     const account = await getCurrentAccount();
     text = await encryptMessage({
       account: Number(account?.id || 0),
@@ -67,11 +69,11 @@ export async function sendMessage(
   const id = Date.now();
   const cid = -id;
 
-  const plainEntry = (hasSession || password || obf) ? {
-    text: originalPlaintext,
+  const plainEntry = (isE2eActive || isDisableControl) ? {
+    text: isDisableControl ? "<b>Вы отключили сквозное шифрование</b>" : originalPlaintext,
     media: effectiveMedia,
-    is_encrypted: true,
-    obf,
+    is_encrypted: isE2eActive && !isDisableControl,
+    obf: isE2eActive && !isDisableControl ? obf : null,
     error: null,
   } : null;
 
@@ -86,7 +88,7 @@ export async function sendMessage(
   const displayMessageEarlyEntry = {
     id,
     cid,
-    text,
+    text: isDisableControl ? "<b>Вы отключили сквозное шифрование</b>" : text,
     sender: get(currentUser),
     reactionInfo: {},
     attaches: (attaches || []).map((a, idx) => {
@@ -185,7 +187,7 @@ export async function sendMessage(
       ...displayMessageEarlyEntry,
       ...message,
       id: message.id || id,
-      text: message.text || text,
+      text: isDisableControl ? "<b>Вы отключили сквозное шифрование</b>" : (message.text || text),
       sender: message.sender || get(currentUser),
       chatId: chat.id,
       time: message.time || Date.now(),

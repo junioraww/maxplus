@@ -67,7 +67,7 @@ export function createMessagesLoader({
         ...updates,
       }));
 
-      const newReq = await checkForEncryptionRequest(getChatObj(), settingsStore, updates, toDecode);
+      const newReq = await checkForEncryptionRequest(getChatObj(), settingsStore, updates, toDecode, decodedMessages);
       if (newReq) {
         onSecretChatRequest(newReq);
       }

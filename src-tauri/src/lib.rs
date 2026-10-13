@@ -286,6 +286,7 @@ pub fn run() {
             crypto::commands::accept_e2e_handshake,
             crypto::commands::process_e2e_accept,
             crypto::commands::get_chat_encryption_info,
+            crypto::commands::get_call_encryption_fingerprint,
             crypto::commands::make_dictionary,
             crypto::commands::encrypt_media_file,
             crypto::commands::decrypt_media_file,

@@ -37,7 +37,9 @@
   $: isSystem = Boolean(msg.attaches?.some((x) => x._type === "CONTROL"));
 
   $: rawText = decoded ? (decoded.text ?? "") : (msg.text || "");
-  $: lines = rawText ? rawText.split("\n") : [];
+  $: isE2eDisable = Boolean(rawText && (rawText === "__E2E_DISABLE__" || rawText.includes('"e2e_control":"disable"')));
+  $: effectiveText = isE2eDisable ? (isMe ? "<b>Вы отключили сквозное шифрование</b>" : "<b>Собеседник отключил сквозное шифрование</b>") : rawText;
+  $: lines = effectiveText ? effectiveText.split("\n") : [];
   $: effectiveAttaches = (() => {
     if (!msg.attaches || !msg.attaches.length) return [];
     if (!decoded?.media) return msg.attaches;
@@ -336,8 +338,8 @@
                   </svg>
                 {:else if isRead}
                   <svg class="status-icon is-read" viewBox="0 0 20 12">
+                    <path fill="currentColor" d="M4.5 10.5L0 6l1.4-1.4L4.5 7.7 12.6 0l1.4 1.4z" />
                     <path fill="currentColor" d="M9.5 10.5L5 6l1.4-1.4L9.5 7.7 17.6 0l1.4 1.4z" />
-                    <path fill="currentColor" d="M4.5 10.5L0 6l1.4-1.4L4.5 7.7 7.5 4.7 8.9 6.1z" />
                   </svg>
                 {:else}
                   <svg class="status-icon is-sent" viewBox="0 0 16 12">
@@ -435,17 +437,17 @@
             </div>
           {/if}
 
-          {#if decoded?.error || rawText.includes('<b style="color:#f66">')}
+          {#if decoded?.error || effectiveText.includes('<b style="color:#f66">')}
             {#each lines as line}
               <p class="line crypto-error">{@html line}</p>
             {/each}
-          {:else if decoded?.is_handshake_request || decoded?.is_handshake_accept || (typeof rawText === "string" && /<\/?(b|i|u|s|span|div|p|a|code|strong|em)(\s+[^>]*)?>/i.test(rawText))}
+          {:else if isE2eDisable || decoded?.is_handshake_request || decoded?.is_handshake_accept || (typeof effectiveText === "string" && /<\/?(b|i|u|s|span|div|p|a|code|strong|em)(\s+[^>]*)?>/i.test(effectiveText))}
             {#each lines as line}
               <p class="line">{@html line}</p>
             {/each}
-          {:else if rawText}
+          {:else if effectiveText}
             <FormattedText
-              text={rawText}
+              text={effectiveText}
               elements={msg.elements || []}
               deleted={msg.deleted}
               {isSystem}
@@ -491,6 +493,9 @@
                 изм.
               </button>
             {/if}
+            {#if !isMe && !isSystem && decoded?.obf && !isE2eDisable}
+              <a class="obf-type">{decoded.obf}</a>
+            {/if}
             <span class="timestamp"
               >{new Date(msg.time).toLocaleTimeString([], {
                 hour: "2-digit",
@@ -507,15 +512,15 @@
                 </svg>
               {:else if isRead}
                 <svg class="status-icon is-read" viewBox="0 0 20 12">
+                  <path fill="currentColor" d="M4.5 10.5L0 6l1.4-1.4L4.5 7.7 12.6 0l1.4 1.4z" />
                   <path fill="currentColor" d="M9.5 10.5L5 6l1.4-1.4L9.5 7.7 17.6 0l1.4 1.4z" />
-                  <path fill="currentColor" d="M4.5 10.5L0 6l1.4-1.4L4.5 7.7 7.5 4.7 8.9 6.1z" />
                 </svg>
               {:else}
                 <svg class="status-icon is-sent" viewBox="0 0 16 12">
                   <path fill="currentColor" d="M5.5 10.5L1 6l1.4-1.4L5.5 7.7 13.6 0l1.4 1.4z" />
                 </svg>
               {/if}
-              {#if decoded}
+              {#if decoded?.obf && !isE2eDisable}
                 <a class="obf-type">{decoded.obf}</a>
               {/if}
             </div>

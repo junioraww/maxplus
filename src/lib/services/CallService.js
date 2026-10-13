@@ -6,6 +6,7 @@ import { CallEncryptionSession } from '$lib/crypto/callEncryption.js';
 import { mediaPipeline } from '$lib/services/MediaPipelineHost.js';
 import { showAlert } from '$lib/utils/alert.js';
 import API, { currentUser, currentSessionChats } from '$lib/stores/api.js';
+import Session, { closeChat } from '$lib/stores/session.js';
 import { getCurrentAccount } from '$lib/stores/accounts.js';
 import { initHandshake, acceptHandshake, processAccept } from '$lib/crypto/asymmetric.js';
 import { startIncomingRingtone, startOutgoingRingback, stopCallAudio, playRejectionTone } from '$lib/services/callAudio.js';
@@ -21,6 +22,20 @@ try {
   isLinuxClient = platform() === 'linux';
 } catch {
   isLinuxClient = typeof navigator !== 'undefined' && /linux/i.test(navigator.userAgent || navigator.platform || '') && !/android/i.test(navigator.userAgent || '');
+}
+
+const disabledCallE2ePeers = new Set();
+
+export function markCallE2eDisabled(peerId) {
+  if (peerId) disabledCallE2ePeers.add(String(peerId));
+}
+
+export function clearCallE2eDisabled(peerId) {
+  if (peerId) disabledCallE2ePeers.delete(String(peerId));
+}
+
+export function isCallE2eDisabled(peerId) {
+  return peerId ? disabledCallE2ePeers.has(String(peerId)) : false;
 }
 
 function bytesToBase64(bytes) {
@@ -419,6 +434,15 @@ class MaxCallSession {
   #signalQueue = Promise.resolve();
   #iceRestarting = false;
   #isSfuPc = false;
+  #useStubs = false;
+  #controlChannel = null;
+
+  constructor() {
+    if (isLinuxClient) {
+      this.#encryption.setBypassEncrypt(true);
+      this.#encryption.setBypassDecrypt(true);
+    }
+  }
 
   get encryption() { return this.#encryption; }
 
@@ -532,7 +556,8 @@ class MaxCallSession {
 
     let isAutoSecure = false;
     const targetPeerId = peerId || this.#contactPeerId;
-    if (targetPeerId) {
+    const isE2eDisabledForPeer = targetPeerId && isCallE2eDisabled(targetPeerId);
+    if (targetPeerId && !isE2eDisabledForPeer && mode !== CALL_MODE.PLAIN) {
       const resolved = await this.#resolveSharedSecret(targetPeerId);
       if (resolved?.secret) {
         await this.#encryption.initFromChatSecret(resolved.secret, conversationId, role === 'originator');
@@ -542,6 +567,7 @@ class MaxCallSession {
           mode: CALL_MODE.SECURE,
           secureStatus: 'active',
           secureKeyFingerprint: displayFp,
+          secureIncludesPassword: Boolean(resolved?.hasPassword),
         });
         await this.#syncEncryptionToMedia();
       }
@@ -551,6 +577,12 @@ class MaxCallSession {
       patchCallState({
         mode: CALL_MODE.SECURE,
         secureStatus: 'unsupported',
+        secureKeyFingerprint: null,
+      });
+    } else if (!isAutoSecure) {
+      patchCallState({
+        mode: CALL_MODE.PLAIN,
+        secureStatus: 'plain',
         secureKeyFingerprint: null,
       });
     }
@@ -621,10 +653,22 @@ class MaxCallSession {
           account: Number(account.id),
           chatId: cid,
         }).catch(() => null);
-        const secret = settings?.session?.shared_secret || settings?.keys?.current || settings?.password;
-        if (secret) {
-          const fingerprint = settings?.session?.fingerprint || null;
-          return { secret, fingerprint, chatId: cid };
+        const dhSecret = settings?.session?.shared_secret || settings?.keys?.current || null;
+        const password = settings?.password ? String(settings.password).trim() : null;
+        if (dhSecret || password) {
+          const callFp = await invoke('get_call_encryption_fingerprint', {
+            dhSecret: dhSecret ? String(dhSecret) : null,
+            password: password ? String(password) : null,
+          }).catch(() => null);
+          const secret = (dhSecret && password)
+            ? `${dhSecret}:${password}`
+            : (dhSecret || password);
+          return {
+            secret,
+            fingerprint: callFp || settings?.session?.fingerprint || null,
+            chatId: cid,
+            hasPassword: Boolean(password),
+          };
         }
       }
     } catch {}
@@ -649,6 +693,7 @@ class MaxCallSession {
         || (this.#ws2PeerId && String(this.#ws2PeerId) !== myId ? this.#ws2PeerId : null);
 
       if (targetPeerId) {
+        clearCallE2eDisabled(targetPeerId);
         const resolved = await this.#resolveSharedSecret(targetPeerId);
         if (resolved?.secret) {
           await this.#encryption.initFromChatSecret(resolved.secret, this.#conversationId, this.#role === 'originator');
@@ -658,7 +703,9 @@ class MaxCallSession {
             mode: CALL_MODE.SECURE,
             secureStatus: 'active',
             secureKeyFingerprint: displayFp,
+            secureIncludesPassword: Boolean(resolved?.hasPassword),
           });
+          this.#sendControlOverDataChannel({ type: 'call_e2e_enable', fingerprint: displayFp });
           showAlert('E2E шифрование активно' + (displayFp ? ` (${displayFp})` : ''));
           return;
         }
@@ -684,7 +731,21 @@ class MaxCallSession {
     }
   }
 
+  #sendControlOverDataChannel(msg) {
+    const payload = JSON.stringify(msg);
+    try {
+      if (this.#controlChannel && this.#controlChannel.readyState === 'open') {
+        this.#controlChannel.send(payload);
+      }
+    } catch {}
+  }
+
   async disableSecureMode() {
+    const targetPeerId = this.#contactPeerId || get(activeCall).peerId;
+    if (targetPeerId) {
+      markCallE2eDisabled(targetPeerId);
+    }
+    this.#sendControlOverDataChannel({ type: 'call_e2e_disable' });
     await this.#encryption.initPlain();
     patchCallState({
       mode: CALL_MODE.PLAIN,
@@ -696,6 +757,22 @@ class MaxCallSession {
     showAlert('E2E шифрование выключено');
   }
 
+  async handleRemoteE2eDisable() {
+    const targetPeerId = this.#contactPeerId || get(activeCall).peerId;
+    if (targetPeerId) {
+      markCallE2eDisabled(targetPeerId);
+    }
+    await this.#encryption.initPlain();
+    patchCallState({
+      mode: CALL_MODE.PLAIN,
+      secureStatus: 'plain',
+      secureKeyFingerprint: null,
+      incomingSecureRequest: null,
+    });
+    await this.#syncEncryptionToMedia();
+    showAlert('Собеседник выключил E2E шифрование');
+  }
+
   async acceptSecureRequest(req) {
     const targetReq = req || get(activeCall).incomingSecureRequest;
     patchCallState({ incomingSecureRequest: null });
@@ -703,9 +780,13 @@ class MaxCallSession {
     try {
       const account = await getCurrentAccount().catch(() => null);
       if (!account?.id) return;
+      const targetPeerId = this.#contactPeerId || get(activeCall).peerId;
+      if (targetPeerId) {
+        clearCallE2eDisabled(targetPeerId);
+      }
       const targetChatId = Number(targetReq.chatId || (await this.#resolveTargetChatId(this.#contactPeerId)));
       const replyPacket = await acceptHandshake(Number(account.id), targetChatId, targetReq.handshakeData, 'zh');
-      const resolved = await this.#resolveSharedSecret(this.#contactPeerId || get(activeCall).peerId, targetChatId);
+      const resolved = await this.#resolveSharedSecret(targetPeerId, targetChatId);
       if (resolved?.secret) {
         await this.#encryption.initFromChatSecret(resolved.secret, this.#conversationId, false);
         await this.#syncEncryptionToMedia();
@@ -716,6 +797,7 @@ class MaxCallSession {
         secureStatus: 'active',
         secureKeyFingerprint: displayFp,
       });
+      this.#sendControlOverDataChannel({ type: 'call_e2e_enable', fingerprint: displayFp });
       try {
         await get(API).sendMessage(replyPacket, targetChatId, { notify: true });
       } catch {}
@@ -748,6 +830,7 @@ class MaxCallSession {
         mode: CALL_MODE.SECURE,
         secureStatus: 'active',
         secureKeyFingerprint: displayFp,
+        secureIncludesPassword: Boolean(resolved?.hasPassword),
         incomingSecureRequest: null,
       });
       showAlert('E2E шифрование установлено' + (displayFp ? ` (${displayFp})` : ''));
@@ -767,10 +850,15 @@ class MaxCallSession {
         mode: CALL_MODE.SECURE,
         secureStatus: 'active',
         secureKeyFingerprint: displayFp,
+        secureIncludesPassword: Boolean(resolved?.hasPassword),
         incomingSecureRequest: null,
       });
       showAlert('E2E шифрование активно' + (displayFp ? ` (${displayFp})` : ''));
     }
+  }
+
+  setBypassEncrypt(bypass) {
+    this.#encryption.setBypassEncrypt(bypass);
   }
 
   setBypassDecrypt(bypass) {
@@ -779,6 +867,72 @@ class MaxCallSession {
 
   #setupDataChannel(dc) {
     if (!dc) return;
+    if (dc.label === 'callControl') {
+      this.#controlChannel = dc;
+      if (isLinuxClient) {
+        this.#encryption.setBypassEncrypt(true);
+        this.#encryption.setBypassDecrypt(true);
+      }
+      const sendCaps = () => {
+        try {
+          dc.send(JSON.stringify({
+            type: 'peer_caps',
+            platform: isLinuxClient ? 'linux' : 'standard',
+            supportsSframe: !isLinuxClient,
+          }));
+        } catch {}
+      };
+      if (dc.readyState === 'open') {
+        sendCaps();
+      } else {
+        dc.onopen = sendCaps;
+      }
+      dc.onmessage = (event) => {
+        try {
+          const raw = typeof event.data === 'string' ? event.data : new TextDecoder().decode(event.data);
+          const data = JSON.parse(raw);
+          if (data?.type === 'peer_caps') {
+            if (!data.supportsSframe || data.platform === 'linux') {
+              this.#encryption.setBypassEncrypt(true);
+              this.#encryption.setBypassDecrypt(true);
+            }
+          } else if (data?.type === 'call_e2e_disable') {
+            this.handleRemoteE2eDisable();
+          } else if (data?.type === 'call_e2e_enable') {
+            const destId = this.#contactPeerId || get(activeCall).peerId;
+            if (destId) {
+              clearCallE2eDisabled(destId);
+              this.#resolveSharedSecret(destId).then(async (resolved) => {
+                if (resolved?.secret) {
+                  await this.#encryption.initFromChatSecret(resolved.secret, this.#conversationId, this.#role === 'originator');
+                  await this.#syncEncryptionToMedia();
+                  const displayFp = data.fingerprint || resolved.fingerprint || this.#encryption.fingerprint;
+                  patchCallState({
+                    mode: CALL_MODE.SECURE,
+                    secureStatus: 'active',
+                    secureKeyFingerprint: displayFp,
+                    secureIncludesPassword: Boolean(resolved?.hasPassword),
+                  });
+                } else {
+                  patchCallState({
+                    mode: CALL_MODE.SECURE,
+                    secureStatus: 'active',
+                    secureKeyFingerprint: data.fingerprint || null,
+                  });
+                }
+              }).catch(() => {});
+            } else {
+              patchCallState({
+                mode: CALL_MODE.SECURE,
+                secureStatus: 'active',
+                secureKeyFingerprint: data.fingerprint || null,
+              });
+            }
+          }
+        } catch {}
+      };
+      return;
+    }
     if (dc.label === 'producerCommand') {
       this.#sfuCommandChannel = dc;
       dc.onopen = () => {
@@ -803,14 +957,9 @@ class MaxCallSession {
 
   async #syncEncryptionToMedia() {
     if (!this.#encryption) return;
-    if (this.#encryption.mode === 'plain') {
-      if (this.#pc && typeof this.#pc.setEncryptionKeys === 'function') {
-        await this.#pc.setEncryptionKeys({ mode: 'plain' });
-      }
-      return;
-    }
     if (this.#pc && typeof this.#pc.setEncryptionKeys === 'function') {
-      await this.#pc.setEncryptionKeys(this.#encryption.getExportedKeys());
+      const keys = this.#encryption.mode === 'plain' ? { mode: 'plain' } : this.#encryption.getExportedKeys();
+      await this.#pc.setEncryptionKeys(keys);
     }
     if (this.#pc) {
       if (typeof this.#pc.getSenders === 'function') {
@@ -876,8 +1025,6 @@ class MaxCallSession {
 
     return processedSections.map(s => s.join('\r\n')).join('\r\n') + '\r\n';
   }
-
-  async #retransmitAllLocalCandidates() {}
 
   #extractAndApplyFingerprint(sdp, isLocal = false) {
     if (!sdp) return;
@@ -1099,26 +1246,30 @@ class MaxCallSession {
   }
 
   async #captureMedia(isVideo) {
-    try {
-      try {
-        this.#localStream = await navigator.mediaDevices.getUserMedia({
-          audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
-        });
-      } catch {
-        this.#localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      }
-      mediaPipeline.setSourceTracks(null, this.#localStream.getAudioTracks()[0]);
+    if (this.#useStubs || get(callUseStubs)) {
+      this.#syntheticAudio = createSyntheticAudioStream();
+      this.#localStream = this.#syntheticAudio.stream;
       patchCallState({ localStream: this.#localStream });
-    } catch (e) {
-      log('getUserMedia audio unavailable, using synthetic fallback:', e.name, e.message);
+    } else {
       try {
-        this.#syntheticAudio = createSyntheticAudioStream();
-        this.#localStream = this.#syntheticAudio.stream;
-        mediaPipeline.setSourceTracks(null, this.#localStream.getAudioTracks()[0]);
+        try {
+          this.#localStream = await navigator.mediaDevices.getUserMedia({
+            audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+          });
+        } catch {
+          this.#localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        }
         patchCallState({ localStream: this.#localStream });
-      } catch (err) {
-        log('synthetic audio failed:', err);
-        patchCallState({ muted: true, localStream: null });
+      } catch (e) {
+        log('getUserMedia audio unavailable, using synthetic fallback:', e?.name, e?.message);
+        try {
+          this.#syntheticAudio = createSyntheticAudioStream();
+          this.#localStream = this.#syntheticAudio.stream;
+          patchCallState({ localStream: this.#localStream });
+        } catch (err) {
+          log('synthetic audio failed:', err);
+          patchCallState({ muted: true, localStream: null });
+        }
       }
     }
 
@@ -1254,15 +1405,14 @@ class MaxCallSession {
         patchCallState({ participantStreams: streams });
       }
 
-      if (this.#encryption.mode === CALL_MODE.SECURE) {
-        this.#encryption.applyToReceiver(e.receiver, track.kind || 'audio');
-      }
+      this.#encryption.applyToReceiver(e.receiver, track.kind || 'audio');
     };
 
     const audioTracks = this.#localStream?.getAudioTracks() || [];
     if (audioTracks.length > 0) {
       for (const track of audioTracks) {
-        pc.addTrack(track, this.#localStream);
+        const sender = pc.addTrack(track, this.#localStream);
+        if (sender) this.#encryption.applyToSender(sender, 'audio');
       }
     } else {
       try {
@@ -1273,11 +1423,32 @@ class MaxCallSession {
     const videoTracks = (this.#cameraStream?.getVideoTracks() || []).concat(this.#screenStream?.getVideoTracks() || []);
     if (videoTracks.length > 0) {
       for (const track of videoTracks) {
-        pc.addTrack(track, this.#cameraStream || this.#screenStream);
+        const sender = pc.addTrack(track, this.#cameraStream || this.#screenStream);
+        if (sender) this.#encryption.applyToSender(sender, 'video');
       }
     } else {
       try {
         pc.addTransceiver('video', { direction: 'recvonly' });
+      } catch {}
+    }
+
+    const rtpSenderCls = (typeof window !== 'undefined' ? window.RTCRtpSender : null) || (typeof globalThis !== 'undefined' ? globalThis.RTCRtpSender : null);
+    if (typeof rtpSenderCls?.getCapabilities === 'function') {
+      try {
+        const caps = rtpSenderCls.getCapabilities('video');
+        if (caps?.codecs) {
+          const vp8 = caps.codecs.filter(c => c.mimeType.toLowerCase() === 'video/vp8');
+          const others = caps.codecs.filter(c => c.mimeType.toLowerCase() !== 'video/vp8');
+          const preferred = [...vp8, ...others];
+          const transceivers = typeof pc.getTransceivers === 'function' ? pc.getTransceivers() : [];
+          for (const tc of transceivers) {
+            if (tc.sender?.track?.kind === 'video' || tc.receiver?.track?.kind === 'video') {
+              if (typeof tc.setCodecPreferences === 'function') {
+                tc.setCodecPreferences(preferred);
+              }
+            }
+          }
+        }
       } catch {}
     }
 
@@ -1293,6 +1464,11 @@ class MaxCallSession {
       try {
         const notifDc = pc.createDataChannel('producerNotification', { ordered: true });
         this.#setupDataChannel(notifDc);
+      } catch {}
+    } else {
+      try {
+        const ctrlDc = pc.createDataChannel('callControl', { ordered: true });
+        this.#setupDataChannel(ctrlDc);
       } catch {}
     }
 
@@ -1994,27 +2170,32 @@ class MaxCallSession {
         }
       } else if (on && !this.#cameraStream) {
         patchCallState({ videoOn: true, cameraLoading: true });
-        try {
+        if (this.#useStubs || get(callUseStubs)) {
+          this.#syntheticVideo = createSyntheticVideoStream();
+          this.#cameraStream = this.#syntheticVideo.stream;
+        } else {
           try {
-            this.#cameraStream = await navigator.mediaDevices.getUserMedia({
-              video: { width: { ideal: 1280 }, height: { ideal: 720 } },
-              audio: false,
-            });
-          } catch {
-            this.#cameraStream = await navigator.mediaDevices.getUserMedia({
-              video: true,
-              audio: false,
-            });
-          }
-        } catch (e) {
-          log('[call:media] getUserMedia video failed, using synthetic fallback:', e?.name, e?.message);
-          try {
-            this.#syntheticVideo = createSyntheticVideoStream();
-            this.#cameraStream = this.#syntheticVideo.stream;
-          } catch (err) {
-            showAlert('Не удалось получить доступ к камере');
-            patchCallState({ videoOn: false, localCameraStream: null, cameraLoading: false });
-            return;
+            try {
+              this.#cameraStream = await navigator.mediaDevices.getUserMedia({
+                video: { width: { ideal: 1280 }, height: { ideal: 720 } },
+                audio: false,
+              });
+            } catch {
+              this.#cameraStream = await navigator.mediaDevices.getUserMedia({
+                video: true,
+                audio: false,
+              });
+            }
+          } catch (e) {
+            log('[call:media] getUserMedia video failed, using synthetic fallback:', e?.name, e?.message);
+            try {
+              this.#syntheticVideo = createSyntheticVideoStream();
+              this.#cameraStream = this.#syntheticVideo.stream;
+            } catch (err) {
+              showAlert('Не удалось получить доступ к камере');
+              patchCallState({ videoOn: false, localCameraStream: null, cameraLoading: false });
+              return;
+            }
           }
         }
 
@@ -2035,8 +2216,10 @@ class MaxCallSession {
           if (!get(activeCall).screenOn) {
             if (sender) {
               await sender.replaceTrack(track);
+              this.#encryption.applyToSender(sender, 'video');
             } else {
-              this.#pc.addTrack(track, this.#cameraStream);
+              const newSender = this.#pc.addTrack(track, this.#cameraStream);
+              if (newSender) this.#encryption.applyToSender(newSender, 'video');
             }
             if (this.#topology !== 'SERVER') {
               await this.#renegotiate();
@@ -2335,9 +2518,84 @@ class MaxCallSession {
       this.#pc.detachVideoCanvas(canvas);
     }
   }
+
+  async setCallUseStubs(enabled) {
+    this.#useStubs = enabled;
+    if (!this.#pc) return;
+    try {
+      const senders = typeof this.#pc.getSenders === 'function' ? this.#pc.getSenders() : [];
+      const audioSender = senders.find(s => s.track?.kind === 'audio');
+      const videoSender = senders.find(s => s.track?.kind === 'video');
+
+      if (enabled) {
+        if (!this.#syntheticAudio) {
+          this.#syntheticAudio = createSyntheticAudioStream();
+        }
+        const stubAudioTrack = this.#syntheticAudio.stream.getAudioTracks()[0];
+        if (audioSender && stubAudioTrack) {
+          await audioSender.replaceTrack(stubAudioTrack);
+        }
+
+        if (get(activeCall).videoOn) {
+          if (!this.#syntheticVideo) {
+            this.#syntheticVideo = createSyntheticVideoStream();
+          }
+          const stubVideoTrack = this.#syntheticVideo.stream.getVideoTracks()[0];
+          if (videoSender && stubVideoTrack) {
+            await videoSender.replaceTrack(stubVideoTrack);
+          }
+          patchCallState({ localCameraStream: this.#syntheticVideo.stream });
+        }
+      } else {
+        if (this.#syntheticAudio) {
+          this.#syntheticAudio.stop();
+          this.#syntheticAudio = null;
+        }
+        if (this.#syntheticVideo) {
+          this.#syntheticVideo.stop();
+          this.#syntheticVideo = null;
+        }
+        const realAudioTrack = this.#localStream?.getAudioTracks()[0];
+        if (audioSender && realAudioTrack) {
+          await audioSender.replaceTrack(realAudioTrack);
+        }
+        if (get(activeCall).videoOn && this.#cameraStream) {
+          const realVideoTrack = this.#cameraStream.getVideoTracks()[0];
+          if (videoSender && realVideoTrack) {
+            await videoSender.replaceTrack(realVideoTrack);
+          }
+          patchCallState({ localCameraStream: this.#cameraStream });
+        }
+      }
+    } catch (err) {
+      log('setCallUseStubs error:', err);
+    }
+  }
 }
 
 let _activeSession = null;
+
+function _closeMatchingChat(targetPeerId) {
+  if (!targetPeerId) return;
+  try {
+    const curSession = get(Session);
+    const opened = curSession?.openedChats || [];
+    if (!opened.length) return;
+    const account = get(currentUser);
+    const myId = Number(account?.id || account || 0);
+    const peerIdNum = Number(targetPeerId || 0);
+    let xorChatId = null;
+    if (myId && peerIdNum) {
+      xorChatId = Number(BigInt(myId) ^ BigInt(peerIdNum));
+    }
+    for (const cid of opened) {
+      const numCid = Number(cid);
+      if (numCid === peerIdNum || (xorChatId && numCid === xorChatId)) {
+        closeChat(cid);
+      }
+    }
+  } catch {}
+}
 
 function _buildInternalParams(deviceId = '') {
   return JSON.stringify({
@@ -2363,6 +2621,7 @@ export const CallService = {
       showAlert('Нельзя позвонить самому себе');
       return;
     }
+    _closeMatchingChat(peerId);
     await this._endActive();
     patchCallState({
       phase: CALL_PHASE.CONNECTING,
@@ -2401,6 +2660,7 @@ export const CallService = {
       showAlert('Нельзя позвонить самому себе');
       return;
     }
+    _closeMatchingChat(peerId);
     await this._endActive();
     patchCallState({
       phase: CALL_PHASE.CONNECTING,
@@ -2507,13 +2767,14 @@ export const CallService = {
     }
   },
 
-  async acceptIncoming(mode = CALL_MODE.PLAIN) {
+  async acceptIncoming(mode = null) {
     stopCallAudio();
     invoke('cancel_call_notification').catch(() => {});
     cancelDesktopCallNotification().catch(() => {});
     const pending = this._pendingIncoming;
     if (!pending) return;
     this._pendingIncoming = null;
+    _closeMatchingChat(pending.callerId);
     patchCallState({ phase: CALL_PHASE.CONNECTING, connectionStatus: 'connecting' });
     const session = new MaxCallSession();
     _activeSession = session;
@@ -2766,4 +3027,16 @@ export const CallService = {
   detachVideoCanvas(canvas) {
     _activeSession?.detachVideoCanvas(canvas);
   },
+  setCallUseStubs(enabled) {
+    _activeSession?.setCallUseStubs(enabled);
+  },
+  setBypassEncrypt(bypass) {
+    _activeSession?.setBypassEncrypt(bypass);
+  },
+  setBypassDecrypt(bypass) {
+    _activeSession?.setBypassDecrypt(bypass);
+  },
+  markCallE2eDisabled,
+  clearCallE2eDisabled,
+  isCallE2eDisabled,
 };
