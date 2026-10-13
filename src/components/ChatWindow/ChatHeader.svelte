@@ -94,7 +94,7 @@
         class="header-call-btn"
         type="button"
         on:click|stopPropagation={() => {
-          const mode = ($chatSettings?.session?.shared_secret || fingerprint) ? 'secure' : 'plain';
+          const mode = ($chatSettings?.session?.shared_secret || $chatSettings?.password) ? 'secure' : 'plain';
           CallService.placeAudioCall(avatarUserId, title, $peerContact?.avatar || $peerContact?.baseUrl, mode);
         }}
         title="Позвонить"

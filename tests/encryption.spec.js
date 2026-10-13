@@ -654,12 +654,12 @@ test.describe("End-to-End Call Media Encryption", () => {
     expect(alice.fingerprint).toMatch(/^[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}$/);
   });
 
-  test("different conversation IDs produce distinct fingerprints and keys", async () => {
+  test("different secrets produce distinct fingerprints and keys", async () => {
     const sessionA = new CallEncryptionSession();
     const sessionB = new CallEncryptionSession();
 
     await sessionA.initFromChatSecret(SYNTHETIC_SHARED_SECRET, "conv-1", true);
-    await sessionB.initFromChatSecret(SYNTHETIC_SHARED_SECRET, "conv-2", true);
+    await sessionB.initFromChatSecret("fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210", "conv-2", true);
 
     expect(sessionA.fingerprint).not.toBe(sessionB.fingerprint);
   });

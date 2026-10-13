@@ -61,6 +61,7 @@
 
   $: remoteParticipants = remoteList.map(p => ({
     ...p,
+    video: Boolean(p.videoOn || p.screenOn || p.video),
     stream: streams[p.id] || (remoteList.length === 1 ? $activeCall.remoteStream : null),
     isSelf: false,
   }));

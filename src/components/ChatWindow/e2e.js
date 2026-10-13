@@ -16,6 +16,7 @@ const pendingRequests = new Map();
 const blockedRequests = new Map();
 const rejectedRequests = new Map();
 const dismissedRequests = new Set();
+const handledDisables = new Set();
 
 function getRejectedSet(chatId, settings) {
   let set = rejectedRequests.get(Number(chatId));
@@ -64,7 +65,8 @@ export async function checkForEncryptionRequest(
   chat,
   chatSettings,
   decryptedBatch,
-  newMessages = []
+  newMessages = [],
+  decodedMessagesStore = null
 ) {
   if (!chat || !decryptedBatch || chat.type === "CHAT") return null;
 
@@ -120,9 +122,44 @@ export async function checkForEncryptionRequest(
     const isFromMe = myIds.has(senderId);
 
     const isDisableSignal = dec.text && (dec.text === "__E2E_DISABLE__" || dec.text.includes('"e2e_control":"disable"'));
-    if (isDisableSignal && (!isFromMe || isSavedMessagesChat)) {
-      dec.text = "<b>Собеседник отключил сквозное шифрование</b>";
-      if (isSessionActive) {
+    if (isDisableSignal) {
+      let payloadTs = 0;
+      try {
+        if (dec.text.includes('"e2e_control"')) {
+          const parsed = JSON.parse(dec.text);
+          if (parsed && parsed.timestamp) {
+            payloadTs = Number(parsed.timestamp);
+          }
+        }
+      } catch (_) {}
+      const msgTime = Number(msg.time || msg.created_at || 0);
+      const effectiveTime = payloadTs || msgTime;
+
+      const noticeText = (!isFromMe || isSavedMessagesChat)
+        ? "<b>Собеседник отключил сквозное шифрование</b>"
+        : "<b>Вы отключили сквозное шифрование</b>";
+      dec.text = noticeText;
+      dec.is_encrypted = false;
+      dec.obf = null;
+      if (decodedMessagesStore?.update) {
+        decodedMessagesStore.update((curr) => ({
+          ...curr,
+          [msgIdStr]: {
+            ...curr[msgIdStr],
+            text: noticeText,
+            is_encrypted: false,
+            obf: null,
+          },
+        }));
+      }
+      if (handledDisables.has(msgIdStr)) {
+        continue;
+      }
+      if (isSessionActive && establishedAt && effectiveTime && effectiveTime <= establishedAt) {
+        continue;
+      }
+      if ((!isFromMe || isSavedMessagesChat) && isSessionActive) {
+        handledDisables.add(msgIdStr);
         chatSettings.update((old) => {
           const next = { ...old };
           if (next.session?.shared_secret) {
@@ -186,7 +223,7 @@ export async function checkForEncryptionRequest(
       }
     } else if (dec.is_handshake_accept && dec.handshake_data) {
       const hasPending = Boolean(currentSettings?.pending?.x_sk || currentSettings?.pending === true || (currentSettings?.pending && typeof currentSettings.pending === 'object'));
-      if (hasPending && !currentSettings?.session?.fingerprint && (!isFromMe || isSavedMessagesChat)) {
+      if (hasPending && !currentSettings?.session?.peer_x_pk && (!isFromMe || isSavedMessagesChat)) {
         try {
           const fingerprint = await processAccept(
             accId,

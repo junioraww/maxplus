@@ -425,9 +425,15 @@
                   <span>{emoji}</span>
                 {/each}
               </div>
+              {#if $activeCall.secureIncludesPassword}
+                <span class="call-password-note">Учитывается пароль</span>
+              {/if}
             {:else}
               <img src="/icons/lock-green.svg" alt="" width="13" height="13" class="lock-icon" />
               <span class="secure-text">Защищено</span>
+              {#if $activeCall.secureIncludesPassword}
+                <span class="call-password-note">Учитывается пароль</span>
+              {/if}
             {/if}
           {:else if secureStatus === 'unsupported'}
             <img src="/icons/warning.svg" alt="" width="13" height="13" class="lock-icon" />
@@ -486,6 +492,7 @@
               on:click={() => {
                 const next = !$callUseStubs;
                 setCallUseStubs(next);
+                CallService.setCallUseStubs(next);
               }}
             >
               {$callUseStubs ? 'Вкл (шум/снег)' : 'Выкл'}
@@ -1049,6 +1056,17 @@
     font-weight: 600;
     color: #4ade80;
     letter-spacing: 0.5px;
+  }
+
+  .call-password-note {
+    display: block;
+    font-size: 8.5px;
+    line-height: 1.1;
+    opacity: 0.3;
+    margin-top: 2px;
+    text-align: center;
+    white-space: nowrap;
+    letter-spacing: 0.2px;
   }
 
   .peer-info {

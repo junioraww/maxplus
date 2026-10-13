@@ -529,6 +529,8 @@
           }
 
           await updateVisibleMessages();
+        } else {
+          await loader.decodeMessagesBatch([message]);
         }
       });
     }

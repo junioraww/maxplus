@@ -43,6 +43,7 @@ const INITIAL_STATE = {
   startedAt: null,
   serverTopology: null,
   secureKeyFingerprint: null,
+  secureIncludesPassword: false,
   secureStatus: 'none',
   remoteStream: null,
   localStream: null,

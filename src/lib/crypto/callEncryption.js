@@ -23,6 +23,7 @@ export class CallEncryptionSession {
 
   #workers = new Set();
   #bypassDecrypt = false;
+  #bypassEncrypt = false;
 
   get mode() { return this.#mode; }
   get fingerprint() { return this.#fingerprint; }
@@ -77,12 +78,7 @@ export class CallEncryptionSession {
     } else {
       raw = chatSecret;
     }
-    const convStr = String(conversationId || 'default');
-    const saltBuffer = await crypto.subtle.digest(
-      'SHA-256',
-      new TextEncoder().encode('maxplus-call-salt-v2-' + convStr)
-    );
-    const salt = new Uint8Array(saltBuffer);
+    const salt = new TextEncoder().encode('maxplus-call-media-salt-v2-32b');
     await this.#deriveSessionKeys(raw, salt, isOriginator);
   }
 
@@ -176,7 +172,7 @@ export class CallEncryptionSession {
   }
 
   async encryptFrame(data, kind = 'audio') {
-    if (this.#mode === 'plain') return data;
+    if (this.#mode === 'plain' || this.#bypassEncrypt) return data;
     const encKey = kind === 'video' ? this.#videoEncKey : this.#audioEncKey;
     const salt = kind === 'video' ? this.#videoSendSalt : this.#audioSendSalt;
     if (!encKey || !salt) return data;
@@ -237,13 +233,19 @@ export class CallEncryptionSession {
   }
 
   applyToSender(sender, kind = 'audio') {
-    if (!sender || sender._hasEncryptionTransform || this.#mode === 'plain') return;
+    if (!sender || sender._hasEncryptionTransform) return;
     sender._hasEncryptionTransform = true;
     if (typeof RTCRtpScriptTransform !== 'undefined') {
       try {
         const worker = new Worker(new URL('./callEncryptionWorker.js', import.meta.url), { type: 'module' });
         this.#workers.add({ worker, kind, op: 'encrypt' });
         this.#sendWorkerKeys(worker, kind, 'encrypt');
+        if (this.#bypassEncrypt) {
+          worker.postMessage({ type: 'setBypassEncrypt', bypass: true });
+        }
+        if (this.#bypassDecrypt) {
+          worker.postMessage({ type: 'setBypassDecrypt', bypass: true });
+        }
         sender.transform = new RTCRtpScriptTransform(worker, { op: 'encrypt', kind });
         return;
       } catch {}
@@ -253,6 +255,10 @@ export class CallEncryptionSession {
         const { readable, writable } = sender.createEncodedStreams();
         const transformStream = new TransformStream({
           transform: async (frame, controller) => {
+            if (this.#bypassEncrypt) {
+              controller.enqueue(frame);
+              return;
+            }
             try {
               const enc = await this.encryptFrame(frame.data, kind);
               if (enc) {
@@ -268,13 +274,19 @@ export class CallEncryptionSession {
   }
 
   applyToReceiver(receiver, kind = 'audio') {
-    if (!receiver || receiver._hasEncryptionTransform || this.#mode === 'plain') return;
+    if (!receiver || receiver._hasEncryptionTransform) return;
     receiver._hasEncryptionTransform = true;
     if (typeof RTCRtpScriptTransform !== 'undefined') {
       try {
         const worker = new Worker(new URL('./callEncryptionWorker.js', import.meta.url), { type: 'module' });
         this.#workers.add({ worker, kind, op: 'decrypt' });
         this.#sendWorkerKeys(worker, kind, 'decrypt');
+        if (this.#bypassDecrypt) {
+          worker.postMessage({ type: 'setBypassDecrypt', bypass: true });
+        }
+        if (this.#bypassEncrypt) {
+          worker.postMessage({ type: 'setBypassEncrypt', bypass: true });
+        }
         receiver.transform = new RTCRtpScriptTransform(worker, { op: 'decrypt', kind });
         return;
       } catch {}
@@ -298,6 +310,18 @@ export class CallEncryptionSession {
           }
         });
         readable.pipeThrough(transformStream).pipeTo(writable).catch(() => {});
+      } catch {}
+    }
+  }
+
+  setBypassEncrypt(bypass) {
+    this.#bypassEncrypt = Boolean(bypass);
+    for (const entry of this.#workers) {
+      try {
+        entry.worker.postMessage({
+          type: 'setBypassEncrypt',
+          bypass: this.#bypassEncrypt,
+        });
       } catch {}
     }
   }

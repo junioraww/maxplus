@@ -36,12 +36,14 @@ export class NativeRustPeerConnection extends EventTarget {
       sender: audioSender,
       receiver: audioReceiver,
       direction: 'sendrecv',
+      setCodecPreferences: () => {},
     };
     const videoTransceiver = {
       mid: '1',
       sender: videoSender,
       receiver: videoReceiver,
       direction: 'sendrecv',
+      setCodecPreferences: () => {},
     };
     this._senders = [audioSender, videoSender];
     this._receivers = [audioReceiver, videoReceiver];
@@ -52,6 +54,7 @@ export class NativeRustPeerConnection extends EventTarget {
     this._videoChannel = null;
     this._candidatesChannel = null;
     this._stateChannel = null;
+    this._pendingRemoteCandidates = [];
 
     this._initPromise = this._init();
   }
@@ -324,6 +327,7 @@ export class NativeRustPeerConnection extends EventTarget {
       sender,
       receiver,
       direction: 'sendrecv',
+      setCodecPreferences: () => {},
     };
     this._transceivers.push(transceiver);
     return sender;
@@ -352,6 +356,7 @@ export class NativeRustPeerConnection extends EventTarget {
       sender,
       receiver,
       direction: options.direction || 'sendrecv',
+      setCodecPreferences: () => {},
     };
     this._transceivers.push(transceiver);
     return transceiver;
@@ -432,6 +437,15 @@ export class NativeRustPeerConnection extends EventTarget {
     }
   }
 
+  async #drainPendingCandidates() {
+    if (!this._pendingRemoteCandidates.length) return;
+    const queued = [...this._pendingRemoteCandidates];
+    this._pendingRemoteCandidates = [];
+    for (const c of queued) {
+      await this.addIceCandidate(c);
+    }
+  }
+
   async setRemoteDescription(desc) {
     this.remoteDescription = desc;
     await this._initPromise;
@@ -449,6 +463,7 @@ export class NativeRustPeerConnection extends EventTarget {
       } else if (type === 'offer') {
         this.signalingState = 'have-remote-offer';
       }
+      await this.#drainPendingCandidates();
     } catch (err) {
       if (type === 'offer' && String(err).includes('have-local-offer')) {
         const curSid = this.sessionId;
@@ -466,6 +481,7 @@ export class NativeRustPeerConnection extends EventTarget {
           sdp: desc?.sdp || '',
         });
         this.signalingState = 'have-remote-offer';
+        await this.#drainPendingCandidates();
         return;
       }
       console.error('[NativeRustPeerConnection] setRemoteDescription error:', err);
@@ -475,6 +491,10 @@ export class NativeRustPeerConnection extends EventTarget {
 
   async addIceCandidate(candidate) {
     if (!candidate || !candidate.candidate) return;
+    if (!this.remoteDescription) {
+      this._pendingRemoteCandidates.push(candidate);
+      return;
+    }
     await this._initPromise;
     const sid = this.sessionId;
     if (this._closed || typeof sid !== 'number' || sid < 0) return;
