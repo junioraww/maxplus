@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { goto } from "$app/navigation";
 import { getWebAppProxyBase } from "./proxyConfig.js";
 import { showAlert } from "./alert.js";
 import { parseApiError } from "./errors.js";
@@ -106,6 +107,18 @@ export function extractMaxUrlInfo(rawInput) {
     };
   }
 
+  if (cleanName === 'get-avatar') {
+    return {
+      isMax: true,
+      kind: 'get_avatar',
+      avatarId: parsed.searchParams.get('id') || null,
+      canonicalUrl: value,
+      startPayload: null,
+      startAppParam: null,
+      targetName: null,
+    };
+  }
+
   if (RESERVED_SLUGS.has(cleanName.toLowerCase())) return null;
   if (!VALID_IDENTIFIER_REGEX.test(cleanName)) return null;
 
@@ -167,6 +180,17 @@ export async function processMaxLink(targetUrl, { currentUserId, api, onOpenChat
       try {
         const { handlePluginDeepLink } = await import('../plugins/runtime.js');
         await handlePluginDeepLink(info.pluginId);
+      } catch (err) {
+        console.error(err);
+      }
+    }
+    return true;
+  }
+
+  if (info.kind === 'get_avatar') {
+    if (info.avatarId) {
+      try {
+        goto(`/settings/profile?avatar=${encodeURIComponent(info.avatarId)}`);
       } catch (err) {
         console.error(err);
       }

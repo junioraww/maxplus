@@ -25,6 +25,7 @@ import { goto } from "$app/navigation";
   import { set as sessionSet, openSettingsPage, openAvatarGallery } from "$lib/stores/session";
   import { currentUserDetails } from "$lib/stores/api";
   import Avatar from "$components/main/Avatar.svelte";
+  import SafeAvatarPickerModal from "$components/main/SafeAvatarPickerModal.svelte";
   import API, { currentUser } from "$lib/stores/api";
   import { openDigitalIdApp, openSferumApp } from "$lib/stores/webapp.js";
 
@@ -35,6 +36,7 @@ import { goto } from "$app/navigation";
   let name;
   let selfAvatarBusy = false;
   let selfAvatarWrapEl;
+  let safeAvatarModalOpen = false;
 
   $: selfAvatarUrl = $currentUserDetails?.baseRawUrl || $currentUserDetails?.avatar || $currentUserDetails?.baseUrl || null;
   $: selfPhotoId = $currentUserDetails?.photoId || null;
@@ -150,11 +152,6 @@ import { goto } from "$app/navigation";
         icon: "logs.svg",
         text: "Сетевые логи",
         action: () => openSettingsPage("logs"),
-      },
-      {
-        icon: "debug.svg",
-        text: "Настройки отладки",
-        action: () => sessionSet("devSettings", true),
       },
       {
         icon: "about.svg",
@@ -317,9 +314,21 @@ import { goto } from "$app/navigation";
     <div
       class="self-avatar-wrap"
       bind:this={selfAvatarWrapEl}
-      on:click={openSelfAvatar}
     >
-      <Avatar size={85} isSelf={true} contactId={contact?.id}/>
+      <div class="self-avatar-clickable" on:click={openSelfAvatar}>
+        <Avatar size={85} isSelf={true} contactId={contact?.id}/>
+      </div>
+      <button
+        type="button"
+        class="self-avatar-safe-badge"
+        title="Сменить аватарку"
+        on:click|stopPropagation={() => (safeAvatarModalOpen = true)}
+      >
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="12" y1="5" x2="12" y2="19"/>
+          <line x1="5" y1="12" x2="19" y2="12"/>
+        </svg>
+      </button>
     </div>
     <a class="name">{name}</a>
     <a class="phone">{phone}</a>
@@ -358,6 +367,12 @@ import { goto } from "$app/navigation";
   </div>
 </div>
 
+{#if safeAvatarModalOpen}
+  <SafeAvatarPickerModal
+    onClose={() => (safeAvatarModalOpen = false)}
+  />
+{/if}
+
 <style>
   .settings {
     position: relative;
@@ -378,12 +393,46 @@ import { goto } from "$app/navigation";
   }
 
   .self-avatar-wrap {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .self-avatar-clickable {
     cursor: pointer;
     transition: transform 0.14s;
   }
 
-  .self-avatar-wrap:active {
+  .self-avatar-clickable:active {
     transform: scale(0.96);
+  }
+
+  .self-avatar-safe-badge {
+    position: absolute;
+    right: -2px;
+    bottom: -2px;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    border: 2px solid #26262e;
+    background: #0ea5e9;
+    color: #ffffff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    box-shadow: 0 3px 8px rgba(0, 0, 0, 0.35);
+    transition: background 0.15s, transform 0.12s;
+  }
+
+  .self-avatar-safe-badge:hover {
+    background: #38bdf8;
+    transform: scale(1.08);
+  }
+
+  .self-avatar-safe-badge:active {
+    transform: scale(0.92);
   }
 
   .info .name {

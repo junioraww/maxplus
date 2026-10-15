@@ -11,6 +11,7 @@
     startTrace,
     stopTraceAndExport,
   } from "$lib/services/trace";
+  import { safeAvatarDebugStore } from "$lib/services/AvatarSyncManager";
 
   let visualMarker = sessionGet("visualMarker");
 
@@ -54,6 +55,16 @@
     <div class="group">
       <div on:click={swapVisualMarker} class="button">
         <a>{visualMarker ? "Отключить" : "Включить"} визуальные маркеры</a>
+      </div>
+    </div>
+    <div class="group">
+      <div
+        on:click={() => {
+          safeAvatarDebugStore.update((v) => !v);
+        }}
+        class="button"
+      >
+        <a>{$safeAvatarDebugStore ? "Отключить" : "Включить"} отладку аватарок Max+</a>
       </div>
     </div>
     <div class="group">

@@ -3,6 +3,7 @@
   import { page } from "$app/stores";
   import SettingsPageWrapper from "$components/settings/SettingsPageWrapper.svelte";
   import Avatar from "$components/main/Avatar.svelte";
+  import SafeAvatarPickerModal from "$components/main/SafeAvatarPickerModal.svelte";
   import { openAvatarGallery } from "$lib/stores/session";
   import API, { currentUserDetails } from "$lib/stores/api";
   import { formatTimeAgo } from "$lib/utils/time.js";
@@ -12,6 +13,7 @@
   let description = "";
   let updated = "";
   let initialized = false;
+  let safeAvatarModalOpen = false;
 
   const original = {
     firstName: "",
@@ -36,6 +38,10 @@
 
   export let onClose = null;
   $: from = $page.url.searchParams.get("from") || "/?card=settings";
+  $: deepAvatarUid = $page.url.searchParams.get("avatar");
+  $: if (deepAvatarUid) {
+    safeAvatarModalOpen = true;
+  }
 
   let loading = false;
   let avatarBusy = false;
@@ -161,9 +167,8 @@
         <button
           type="button"
           class="avatar-camera-badge"
-          title="Изменить фото"
-          disabled={avatarBusy}
-          on:click|stopPropagation={handleUploadAvatar}
+          title="Сменить аватарку"
+          on:click|stopPropagation={() => (safeAvatarModalOpen = true)}
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
             <line x1="12" y1="5" x2="12" y2="19"/>
@@ -176,10 +181,9 @@
         <button
           type="button"
           class="avatar-action-btn primary"
-          disabled={avatarBusy}
-          on:click={handleUploadAvatar}
+          on:click={() => (safeAvatarModalOpen = true)}
         >
-          {avatarBusy ? "Загрузка..." : "Загрузить фото"}
+          Сменить аватарку
         </button>
         {#if canDeleteSelfAvatar}
           <button
@@ -252,6 +256,15 @@
   </svelte:fragment>
 </SettingsPageWrapper>
 
+{#if safeAvatarModalOpen}
+  <SafeAvatarPickerModal
+    initialUid={deepAvatarUid || ""}
+    initialTab={deepAvatarUid ? "id" : "catalog"}
+    onClose={() => (safeAvatarModalOpen = false)}
+    onApplySuccess={() => notify("Аватарка успешно установлена")}
+  />
+{/if}
+
 <style>
   .badge {
     font-size: 0.75rem;
@@ -299,6 +312,33 @@
 
   .avatar-preview-wrap:active {
     transform: scale(0.96);
+  }
+
+  .avatar-safe-badge {
+    position: absolute;
+    left: -2px;
+    bottom: -2px;
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    border: 2px solid #26262e;
+    background: #0ea5e9;
+    color: #ffffff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    box-shadow: 0 3px 8px rgba(0, 0, 0, 0.35);
+    transition: background 0.15s, transform 0.12s, opacity 0.15s;
+  }
+
+  .avatar-safe-badge:hover {
+    background: #38bdf8;
+    transform: scale(1.08);
+  }
+
+  .avatar-safe-badge:active {
+    transform: scale(0.92);
   }
 
   .avatar-camera-badge {
@@ -361,6 +401,15 @@
 
   .avatar-action-btn.primary:hover {
     background: rgba(51, 144, 236, 0.28);
+  }
+
+  .avatar-action-btn.safe {
+    background: rgba(14, 165, 233, 0.18);
+    color: #38bdf8;
+  }
+
+  .avatar-action-btn.safe:hover {
+    background: rgba(14, 165, 233, 0.28);
   }
 
   .avatar-action-btn.danger {
