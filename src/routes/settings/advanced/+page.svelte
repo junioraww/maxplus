@@ -6,6 +6,8 @@
     saveOthersDeletedMessages,
     hideMyDeletedMessages,
   } from "$lib/stores/deletionSettings.js";
+  import { disableMaxPlusAvatars } from "$lib/stores/avatarSettings.js";
+  import { set as sessionSet } from "$lib/stores/session.js";
 
   export let isTab = false;
   export let onClose = null;
@@ -21,6 +23,30 @@
   {/if}
 
   <div class="content-container">
+    <div class="section-header">
+      <h2>Аватарки</h2>
+    </div>
+
+    <div class="settings-card">
+      <div
+        class="toggle-row"
+        on:click={() => disableMaxPlusAvatars.toggle()}
+      >
+        <div class="toggle-info">
+          <span class="toggle-title">Отключить аватарки Max+</span>
+          <span class="toggle-desc"
+            >Показывать только стандартные аватарки Max, игнорировать кастомные и анимированные</span
+          >
+        </div>
+        <div class="toggle-track" class:active={$disableMaxPlusAvatars}>
+          <div
+            class="toggle-thumb"
+            class:active={$disableMaxPlusAvatars}
+          ></div>
+        </div>
+      </div>
+    </div>
+
     <div class="section-header">
       <h2>Медиа</h2>
     </div>
@@ -86,6 +112,27 @@
             class:active={$hideMyDeletedMessages}
           ></div>
         </div>
+      </div>
+    </div>
+
+    <div class="section-header">
+      <h2>Разработка и отладка</h2>
+    </div>
+
+    <div class="settings-card">
+      <div
+        class="link-row"
+        on:click={() => sessionSet("devSettings", true)}
+      >
+        <div class="toggle-info">
+          <span class="toggle-title">Настройки отладки</span>
+          <span class="toggle-desc"
+            >Инструменты разработчика, параметры сети и отладка стеганографии</span
+          >
+        </div>
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#888" stroke-width="2">
+          <polyline points="9 18 15 12 9 6"/>
+        </svg>
       </div>
     </div>
   </div>
@@ -200,5 +247,19 @@
     color: #aaa;
     text-transform: uppercase;
     letter-spacing: 0.5px;
+  }
+
+  .link-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    cursor: pointer;
+    user-select: none;
+    transition: opacity 0.2s;
+  }
+
+  .link-row:active {
+    opacity: 0.7;
   }
 </style>
