@@ -241,8 +241,8 @@
     const vh = window.innerHeight;
     const maxW = vw * 0.94;
     const maxH = vh * 0.80;
-    let natW = mainImgEl?.naturalWidth || 0;
-    let natH = mainImgEl?.naturalHeight || 0;
+    let natW = mainImgEl?.naturalWidth || mainImgEl?.videoWidth || 0;
+    let natH = mainImgEl?.naturalHeight || mainImgEl?.videoHeight || 0;
     if (!natW || !natH) {
       const size = Math.min(maxW, maxH, 520);
       return { width: size, height: size, cx, cy };
@@ -251,9 +251,16 @@
     return { width: natW * ratio, height: natH * ratio, cx, cy };
   }
 
+  let videoErrorMap = {};
+
+  function isMediaVideo(url) {
+    if (!url || videoErrorMap[url]) return false;
+    return url.includes("/media") || url.endsWith(".webm") || url.endsWith(".mp4");
+  }
+
   onMount(async () => {
     if (initialUrl) {
-      const existingImg = originEl?.querySelector?.("img");
+      const existingImg = originEl?.querySelector?.("img, video");
       if (existingImg?.src && !existingImg.src.startsWith("data:image/svg")) {
         resolvedUrlMap = { ...resolvedUrlMap, [initialUrl]: existingImg.src };
       }
@@ -269,10 +276,11 @@
       heroStyle = "opacity: 0; transition: none;";
       await tick();
 
-      if (mainImgEl && !mainImgEl.complete) {
+      if (mainImgEl && !mainImgEl.complete && (mainImgEl.readyState === undefined || mainImgEl.readyState < 2)) {
         await new Promise((res) => {
           const done = () => res();
           mainImgEl.addEventListener("load", done, { once: true });
+          mainImgEl.addEventListener("loadeddata", done, { once: true });
           mainImgEl.addEventListener("error", done, { once: true });
           setTimeout(done, 90);
         });
@@ -958,7 +966,17 @@
       on:pointercancel={handlePointerUp}
     >
       {#if prevUrl && (slideOffset > 0 || isSlideAnimating) && heroPhase === "idle"}
-        {#if resolvedUrlMap[prevUrl]}
+        {#if isMediaVideo(prevUrl)}
+          <video
+            src={resolvedUrlMap[prevUrl] || prevUrl}
+            autoPlay
+            loop
+            muted
+            playsInline
+            class="ag-image"
+            style="transform: translate3d(calc(-50% + {slideOffset - (stageEl?.clientWidth || window.innerWidth)}px), -50%, 0) scale(1); border-radius: 0px;"
+          />
+        {:else if resolvedUrlMap[prevUrl]}
           <img
             src={resolvedUrlMap[prevUrl]}
             alt=""
@@ -970,7 +988,25 @@
       {/if}
 
       {#if currentUrl}
-        {#if resolvedUrlMap[currentUrl]}
+        {#if isMediaVideo(currentUrl)}
+          <video
+            bind:this={mainImgEl}
+            src={resolvedUrlMap[currentUrl] || currentUrl}
+            autoPlay
+            loop
+            muted
+            playsInline
+            class="ag-image"
+            style={mainTransformStyle}
+            on:error={() => {
+              videoErrorMap = { ...videoErrorMap, [currentUrl]: true };
+            }}
+            on:ended={(e) => {
+              e.currentTarget.currentTime = 0;
+              e.currentTarget.play().catch(() => {});
+            }}
+          />
+        {:else if resolvedUrlMap[currentUrl]}
           <img
             bind:this={mainImgEl}
             src={resolvedUrlMap[currentUrl]}
@@ -987,7 +1023,17 @@
       {/if}
 
       {#if nextUrl && (slideOffset < 0 || isSlideAnimating) && heroPhase === "idle"}
-        {#if resolvedUrlMap[nextUrl]}
+        {#if isMediaVideo(nextUrl)}
+          <video
+            src={resolvedUrlMap[nextUrl] || nextUrl}
+            autoPlay
+            loop
+            muted
+            playsInline
+            class="ag-image"
+            style="transform: translate3d(calc(-50% + {slideOffset + (stageEl?.clientWidth || window.innerWidth)}px), -50%, 0) scale(1); border-radius: 0px;"
+          />
+        {:else if resolvedUrlMap[nextUrl]}
           <img
             src={resolvedUrlMap[nextUrl]}
             alt=""

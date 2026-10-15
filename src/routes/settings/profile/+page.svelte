@@ -6,6 +6,9 @@
   import SafeAvatarPickerModal from "$components/main/SafeAvatarPickerModal.svelte";
   import { openAvatarGallery } from "$lib/stores/session";
   import API, { currentUserDetails } from "$lib/stores/api";
+  import { safeAvatarMapStore } from "$lib/services/AvatarSyncManager";
+  import { getSafeAvatarMediaUrl } from "$lib/services/uplink";
+  import { disableMaxPlusAvatars } from "$lib/stores/avatarSettings";
   import { formatTimeAgo } from "$lib/utils/time.js";
 
   let firstName = "";
@@ -60,6 +63,7 @@
   $: selfAvatarUrl = $currentUserDetails?.baseRawUrl || $currentUserDetails?.avatar || $currentUserDetails?.baseUrl || null;
   $: selfPhotoId = $currentUserDetails?.photoId || null;
   $: canDeleteSelfAvatar = Boolean(selfPhotoId || selfAvatarUrl);
+  $: selfSafeAvatarUid = !$disableMaxPlusAvatars && $currentUserDetails?.id && $safeAvatarMapStore.has(Number($currentUserDetails.id)) ? $safeAvatarMapStore.get(Number($currentUserDetails.id)) : null;
 
   $: changed =
     firstName !== original.firstName ||
@@ -67,11 +71,13 @@
     description !== original.description;
 
   function openSelfGallery(e) {
-    if (selfAvatarUrl || $currentUserDetails?.id) {
+    const highResSafeUrl = selfSafeAvatarUid ? getSafeAvatarMediaUrl(selfSafeAvatarUid) : null;
+    const galleryUrl = highResSafeUrl || selfAvatarUrl;
+    if (galleryUrl || $currentUserDetails?.id) {
       const targetEl = avatarPreviewEl || e?.currentTarget;
       const rect = targetEl?.getBoundingClientRect?.();
       openAvatarGallery({
-        initialUrl: selfAvatarUrl,
+        initialUrl: galleryUrl,
         initialPhotoId: selfPhotoId,
         userId: $currentUserDetails?.id,
         isOwnProfile: true,

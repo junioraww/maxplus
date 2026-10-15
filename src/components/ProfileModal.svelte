@@ -20,7 +20,7 @@
 
   import { getContact } from "$lib/utils/caching";
   import { safeAvatarMapStore } from "$lib/services/AvatarSyncManager";
-  import { getSafeAvatarPreviewUrl } from "$lib/services/uplink";
+  import { getSafeAvatarMediaUrl } from "$lib/services/uplink";
   import { disableMaxPlusAvatars } from "$lib/stores/avatarSettings";
   import { formatMs } from "$lib/utils/time";
   import { dict } from "$lib/crypto/text-codec";
@@ -522,7 +522,7 @@
   $: profileSafeAvatarUid = !$disableMaxPlusAvatars && targetProfileEntityId && $safeAvatarMapStore.has(targetProfileEntityId) ? $safeAvatarMapStore.get(targetProfileEntityId) : null;
 
   function openAvatarGallery(e) {
-    const highResSafeUrl = profileSafeAvatarUid ? getSafeAvatarPreviewUrl(profileSafeAvatarUid) : null;
+    const highResSafeUrl = profileSafeAvatarUid ? getSafeAvatarMediaUrl(profileSafeAvatarUid) : null;
     const galleryUrl = highResSafeUrl || avatar;
     if (galleryUrl || (userId && (!chat || chat.type === "DIALOG"))) {
       const targetEl = avatarWrapEl || e?.currentTarget;
