@@ -1,0 +1,81 @@
+name: Publish Release to Web
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: 'Release Tag'
+        required: true
+        type: string
+      name:
+        description: 'Release Title'
+        required: false
+        type: string
+      body:
+        description: 'Release Notes'
+        required: false
+        type: string
+      files_path:
+        description: 'Path or glob to build artifacts to upload'
+        required: false
+        default: 'build_output/*'
+        type: string
+
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    env:
+      CI_ENDPOINT: ${{ vars.SITE_CI_ENDPOINT || secrets.SITE_CI_ENDPOINT || vars.SITE_CI_URL || secrets.SITE_CI_URL }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Verify Tag Availability
+        id: check_tag
+        env:
+          CI_SECRET: ${{ secrets.SITE_CI_SECRET }}
+          TAG: ${{ inputs.tag_name }}
+        run: |
+          HTTP_STATUS=$(curl -s -o check_res.json -w "%{http_code}" \
+            -X POST "$CI_ENDPOINT" \
+            -H "X-CI-Secret: $CI_SECRET" \
+            -F "tag_name=$TAG" \
+            -F "name=Check" || true)
+
+          if [ "$HTTP_STATUS" = "409" ]; then
+            echo "Error: Release tag $TAG already exists on target endpoint!"
+            cat check_res.json
+            exit 1
+          fi
+
+      - name: Gather Release Files
+        id: gather_files
+        run: |
+          mkdir -p release_assets
+          if compgen -G "${{ inputs.files_path }}" > /dev/null; then
+            cp -r ${{ inputs.files_path }} release_assets/
+          fi
+          echo "Assets to publish:"
+          ls -la release_assets/
+
+      - name: Publish Release to Web
+        env:
+          CI_SECRET: ${{ secrets.SITE_CI_SECRET }}
+          TAG: ${{ inputs.tag_name }}
+          TITLE: ${{ inputs.name || inputs.tag_name }}
+          NOTES: ${{ inputs.body || 'Production build update' }}
+        run: |
+          CURL_CMD=(curl -s -f -X POST "$CI_ENDPOINT" \
+            -H "X-CI-Secret: $CI_SECRET" \
+            -F "tag_name=$TAG" \
+            -F "name=$TITLE" \
+            -F "body=$NOTES")
+
+          for file in release_assets/*; do
+            if [ -f "$file" ]; then
+              CURL_CMD+=(-F "files=@$file")
+            fi
+          done
+
+          RESPONSE=$("${CURL_CMD[@]}")
+          echo "$RESPONSE"
