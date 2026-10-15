@@ -28,6 +28,9 @@ import { goto } from "$app/navigation";
   import SafeAvatarPickerModal from "$components/main/SafeAvatarPickerModal.svelte";
   import API, { currentUser } from "$lib/stores/api";
   import { openDigitalIdApp, openSferumApp } from "$lib/stores/webapp.js";
+  import { safeAvatarMapStore } from "$lib/services/AvatarSyncManager";
+  import { getSafeAvatarMediaUrl } from "$lib/services/uplink";
+  import { disableMaxPlusAvatars } from "$lib/stores/avatarSettings";
 
   let platform;
 
@@ -41,13 +44,16 @@ import { goto } from "$app/navigation";
   $: selfAvatarUrl = $currentUserDetails?.baseRawUrl || $currentUserDetails?.avatar || $currentUserDetails?.baseUrl || null;
   $: selfPhotoId = $currentUserDetails?.photoId || null;
   $: canDeleteSelfAvatar = Boolean(selfPhotoId || selfAvatarUrl);
+  $: selfSafeAvatarUid = !$disableMaxPlusAvatars && $currentUser && $safeAvatarMapStore.has(Number($currentUser)) ? $safeAvatarMapStore.get(Number($currentUser)) : null;
 
   function openSelfAvatar(e) {
-    if (selfAvatarUrl || contact?.id) {
+    const highResSafeUrl = selfSafeAvatarUid ? getSafeAvatarMediaUrl(selfSafeAvatarUid) : null;
+    const galleryUrl = highResSafeUrl || selfAvatarUrl;
+    if (galleryUrl || contact?.id) {
       const targetEl = selfAvatarWrapEl || e?.currentTarget;
       const rect = targetEl?.getBoundingClientRect?.();
       openAvatarGallery({
-        initialUrl: selfAvatarUrl,
+        initialUrl: galleryUrl,
         initialPhotoId: selfPhotoId,
         userId: contact?.id ?? $currentUser,
         isOwnProfile: true,
