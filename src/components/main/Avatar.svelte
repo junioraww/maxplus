@@ -1,11 +1,10 @@
 <script>
   import { getContact } from "$lib/utils/caching";
-  import { getAvatarPlaceholder, getInitials, getAssetUrl } from "$lib/utils/images";
+  import { getAvatarPlaceholder, getInitials } from "$lib/utils/images";
   import Image from "$components/main/Image.svelte";
   import { currentPresence, currentUser, currentUserDetails } from "$lib/stores/api";
-  import { decodeStegoPayload } from "$lib/utils/stego";
-  import { safeAvatarMapStore, safeAvatarDebugStore, AvatarSyncManager } from "$lib/services/AvatarSyncManager";
-  import { getSafeAvatarMediaUrl, getSafeAvatarPreviewUrl } from "$lib/services/uplink";
+  import { safeAvatarMapStore, safeAvatarDebugStore, AvatarSyncManager, avatarAssetStore, loadAvatarAsset, inspectAvatarStego } from "$lib/services/AvatarSyncManager";
+  import { getSafeAvatarMediaUrl } from "$lib/services/uplink";
   import { disableMaxPlusAvatars } from "$lib/stores/avatarSettings";
 
   export let size = 50;
@@ -54,12 +53,22 @@
     $contact?.avatar ||
     $contact?.baseUrl;
 
-  const imageStyle = `width: 100%; height: 100%; border-radius: 50%; object-fit: cover;`;
-
   $: targetEntityId = Number(effectiveContactId || chat?.id || $currentUser || 0);
   $: safeAvatarUid = !$disableMaxPlusAvatars && targetEntityId && $safeAvatarMapStore.has(targetEntityId) ? $safeAvatarMapStore.get(targetEntityId) : null;
   $: safeMediaUrl = safeAvatarUid ? getSafeAvatarMediaUrl(safeAvatarUid) : null;
-  $: safeAvatarPreviewUrl = safeAvatarUid ? getSafeAvatarPreviewUrl(safeAvatarUid) : null;
+
+  let activeSrc = null;
+  $: if (safeMediaUrl) {
+    if ($avatarAssetStore.has(safeMediaUrl)) {
+      activeSrc = $avatarAssetStore.get(safeMediaUrl);
+    } else {
+      loadAvatarAsset(safeMediaUrl).then((url) => {
+        activeSrc = url;
+      });
+    }
+  } else {
+    activeSrc = null;
+  }
 
   let mediaError = false;
   let isVideoAvatar = true;
@@ -68,6 +77,24 @@
     mediaError = false;
     isVideoAvatar = true;
     mediaLoaded = false;
+  }
+
+  function handleVideoReady(e) {
+    const video = e?.currentTarget;
+    if (!video || mediaLoaded) return;
+
+    if (video.seeking) {
+      video.addEventListener("seeked", () => handleVideoReady({ currentTarget: video }), { once: true });
+      return;
+    }
+
+    if (video.videoWidth > 0 && video.videoHeight > 0) {
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          mediaLoaded = true;
+        });
+      });
+    }
   }
 
   function handleVideoError() {
@@ -84,79 +111,8 @@
     }
   }
 
-  const inspectedUrls = new Set();
-
-  $: if (!$disableMaxPlusAvatars && avatarUrl && targetEntityId && !safeAvatarUid && !inspectedUrls.has(avatarUrl)) {
-    inspectedUrls.add(avatarUrl);
-    inspectStego(avatarUrl, targetEntityId);
-  }
-
-  async function inspectStego(url, targetId) {
-    if (typeof window === "undefined" || !url || !targetId || $disableMaxPlusAvatars) return;
-    try {
-      const localUrl = await getAssetUrl(url);
-      if (!localUrl) return;
-
-      let imgData = null;
-
-      try {
-        const resp = await fetch(localUrl);
-        if (resp.ok) {
-          const blob = await resp.blob();
-          if (typeof createImageBitmap !== "undefined") {
-            const bmp = await createImageBitmap(blob);
-            if (bmp.width >= 64) {
-              const canvas = document.createElement("canvas");
-              canvas.width = bmp.width;
-              canvas.height = bmp.height;
-              const ctx = canvas.getContext("2d");
-              if (ctx) {
-                ctx.drawImage(bmp, 0, 0);
-                imgData = ctx.getImageData(0, 0, bmp.width, bmp.height);
-              }
-            }
-          }
-        }
-      } catch {}
-
-      if (!imgData) {
-        const img = new window.Image();
-        img.crossOrigin = "anonymous";
-        await new Promise((resolve) => {
-          img.onload = resolve;
-          img.onerror = resolve;
-          img.src = localUrl;
-        });
-        if (!img.width || img.width < 64) return;
-
-        const canvas = document.createElement("canvas");
-        canvas.width = img.width;
-        canvas.height = img.height;
-        const ctx = canvas.getContext("2d");
-        if (!ctx) return;
-        ctx.drawImage(img, 0, 0);
-        imgData = ctx.getImageData(0, 0, img.width, img.height);
-      }
-
-      if (!imgData) return;
-      const foundUid = decodeStegoPayload(imgData, targetId);
-
-      if (foundUid) {
-        if ($safeAvatarDebugStore) {
-          console.log(`[SafeAvatar] Stego MATCH: targetId=${targetId}, uid=${foundUid}`);
-        }
-        safeAvatarMapStore.update((map) => {
-          map.set(targetId, foundUid);
-          return map;
-        });
-      } else if ($safeAvatarDebugStore) {
-        console.log(`[SafeAvatar] Stego negative: targetId=${targetId}`);
-      }
-    } catch (e) {
-      if ($safeAvatarDebugStore) {
-        console.error(`[SafeAvatar] Inspect error:`, e);
-      }
-    }
+  $: if (!$disableMaxPlusAvatars && avatarUrl && targetEntityId && !safeAvatarUid) {
+    inspectAvatarStego(avatarUrl, targetEntityId, $disableMaxPlusAvatars);
   }
 
   function syncVideo(node, uid) {
@@ -188,17 +144,16 @@
 
   <div class="avatar-container">
     {#if chat?.id === 0}
-      <img src="/saved.webp" style={imageStyle} alt={effectiveTitle} />
+      <img src="/saved.webp" class="avatar-static-img" alt={effectiveTitle} />
     {:else if safeAvatarUid && !mediaError}
-      <div class="avatar-media-container" style="width: 100%; height: 100%; position: relative; border-radius: 50%; overflow: hidden;">
+      <div class="avatar-media-container">
         {#if !mediaLoaded}
           <div class="avatar-shimmer-placeholder"></div>
         {/if}
 
-        {#if isVideoAvatar}
+        {#if isVideoAvatar && activeSrc}
           <video
-            src={safeMediaUrl}
-            poster={safeAvatarPreviewUrl}
+            src={activeSrc}
             autoPlay
             loop
             muted
@@ -206,22 +161,24 @@
             preload="auto"
             class="avatar-media"
             class:loaded={mediaLoaded}
-            style={imageStyle}
             use:syncVideo={safeAvatarUid}
-            on:canplay={() => (mediaLoaded = true)}
-            on:playing={() => (mediaLoaded = true)}
+            on:loadedmetadata={handleVideoReady}
+            on:loadeddata={handleVideoReady}
+            on:canplay={handleVideoReady}
+            on:playing={handleVideoReady}
+            on:resize={handleVideoReady}
+            on:seeked={handleVideoReady}
             on:error={handleVideoError}
             on:ended={(e) => {
               e.currentTarget.currentTime = 0;
               e.currentTarget.play().catch(() => {});
             }}
           />
-        {:else}
+        {:else if activeSrc}
           <img
-            src={safeMediaUrl}
+            src={activeSrc}
             class="avatar-media"
             class:loaded={mediaLoaded}
-            style={imageStyle}
             alt={effectiveTitle}
             on:load={() => (mediaLoaded = true)}
             on:error={handleMediaError}
@@ -229,7 +186,7 @@
         {/if}
       </div>
     {:else if avatarUrl}
-      <Image src={avatarUrl} alt={effectiveTitle} style={imageStyle} />
+      <Image src={avatarUrl} alt={effectiveTitle} class="avatar-static-img" />
     {:else}
       <div
         class="avatar-placeholder"
@@ -267,6 +224,16 @@
   .avatar-container {
     width: 100%;
     height: 100%;
+    border-radius: 50%;
+  }
+
+  .avatar-media-container {
+    width: 100%;
+    height: 100%;
+    aspect-ratio: 1 / 1;
+    position: relative;
+    border-radius: 50%;
+    overflow: hidden;
   }
 
   .avatar-shimmer-placeholder {
@@ -286,7 +253,7 @@
     background-size: 200% 100%;
     animation: avatarShimmer 1.6s infinite linear;
     pointer-events: none;
-    z-index: 1;
+    z-index: 3;
   }
 
   @keyframes avatarShimmer {
@@ -299,12 +266,31 @@
   }
 
   .avatar-media {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    aspect-ratio: 1 / 1;
+    display: block;
+    border-radius: 50%;
+    object-fit: cover;
     opacity: 0;
-    transition: opacity 0.2s ease-out;
+    transition: opacity 0.15s ease-out;
+    z-index: 2;
   }
 
   .avatar-media.loaded {
     opacity: 1;
+  }
+
+  .avatar-static-img,
+  .avatar-container :global(img) {
+    width: 100%;
+    height: 100%;
+    aspect-ratio: 1 / 1;
+    display: block;
+    border-radius: 50%;
+    object-fit: cover;
   }
 
   .avatar-placeholder {

@@ -68,10 +68,10 @@
   let isSlideAnimating = false;
   let slideAnimFrame = null;
 
-  let heroPhase = "idle";
-  let heroStyle = "";
-  let backdropOpacity = 1;
-  let uiOpacity = 1;
+  let heroPhase = originRect && initialUrl ? "entering" : "idle";
+  let heroStyle = originRect && initialUrl ? "opacity: 0; transition: none;" : "";
+  let backdropOpacity = originRect && initialUrl ? 0 : 1;
+  let uiOpacity = originRect && initialUrl ? 0 : 1;
   let isClosing = false;
 
   let activePointers = new Map();

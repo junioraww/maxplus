@@ -1,4 +1,6 @@
 import { writable } from "svelte/store";
+import { getAssetUrl } from "$lib/utils/images";
+import { decodeStegoPayload } from "$lib/utils/stego";
 
 function initMap() {
   const map = new Map();
@@ -103,3 +105,119 @@ class AvatarSyncManagerClass {
 }
 
 export const AvatarSyncManager = new AvatarSyncManagerClass();
+
+export const avatarAssetStore = writable(new Map());
+
+const inflightAvatarAssets = new Map();
+
+export async function loadAvatarAsset(url) {
+  if (!url || typeof url !== "string") return null;
+
+  let cachedUrl = null;
+  const unsub = avatarAssetStore.subscribe((map) => {
+    cachedUrl = map.get(url);
+  });
+  unsub();
+
+  if (cachedUrl) return cachedUrl;
+
+  if (inflightAvatarAssets.has(url)) {
+    return inflightAvatarAssets.get(url);
+  }
+
+  const promise = (async () => {
+    try {
+      const localUrl = await getAssetUrl(url);
+      if (localUrl) {
+        avatarAssetStore.update((map) => {
+          map.set(url, localUrl);
+          return map;
+        });
+        return localUrl;
+      }
+      return url;
+    } catch {
+      return url;
+    } finally {
+      inflightAvatarAssets.delete(url);
+    }
+  })();
+
+  inflightAvatarAssets.set(url, promise);
+  return promise;
+}
+
+const scannedStegoUrls = new Set();
+const inflightStego = new Map();
+
+export async function inspectAvatarStego(url, targetId, disableMaxPlus = false) {
+  if (typeof window === "undefined" || !url || !targetId || disableMaxPlus) return;
+  if (scannedStegoUrls.has(url)) return;
+
+  if (inflightStego.has(url)) {
+    return inflightStego.get(url);
+  }
+
+  const promise = (async () => {
+    try {
+      const localUrl = await getAssetUrl(url);
+      if (!localUrl) return;
+
+      let imgData = null;
+      try {
+        const resp = await fetch(localUrl);
+        if (resp.ok) {
+          const blob = await resp.blob();
+          if (typeof createImageBitmap !== "undefined") {
+            const bmp = await createImageBitmap(blob);
+            if (bmp.width >= 64) {
+              const canvas = document.createElement("canvas");
+              canvas.width = bmp.width;
+              canvas.height = bmp.height;
+              const ctx = canvas.getContext("2d");
+              if (ctx) {
+                ctx.drawImage(bmp, 0, 0);
+                imgData = ctx.getImageData(0, 0, bmp.width, bmp.height);
+              }
+            }
+          }
+        }
+      } catch {}
+
+      if (!imgData) {
+        const img = new window.Image();
+        img.crossOrigin = "anonymous";
+        await new Promise((resolve) => {
+          img.onload = resolve;
+          img.onerror = resolve;
+          img.src = localUrl;
+        });
+        if (!img.width || img.width < 64) return;
+
+        const canvas = document.createElement("canvas");
+        canvas.width = img.width;
+        canvas.height = img.height;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) return;
+        ctx.drawImage(img, 0, 0);
+        imgData = ctx.getImageData(0, 0, img.width, img.height);
+      }
+
+      if (!imgData) return;
+      const foundUid = decodeStegoPayload(imgData, targetId);
+
+      if (foundUid) {
+        safeAvatarMapStore.update((map) => {
+          map.set(targetId, foundUid);
+          return map;
+        });
+      }
+    } catch {} finally {
+      scannedStegoUrls.add(url);
+      inflightStego.delete(url);
+    }
+  })();
+
+  inflightStego.set(url, promise);
+  return promise;
+}
