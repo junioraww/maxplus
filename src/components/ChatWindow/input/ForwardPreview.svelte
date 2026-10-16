@@ -1,7 +1,8 @@
 <script>
   import { forwardDraft, clearForwardDraft } from "$lib/stores/forwardDraft.js";
   import { getContact } from "$lib/stores/contacts";
-  import { currentUser, currentUserDetails, currentSessionChats } from "$lib/stores/api";
+  import { currentUser, currentUserDetails } from "$lib/stores/api";
+  import { getChat } from "$lib/stores/messages";
 
   $: draft = $forwardDraft;
   $: msgs = draft?.messages || [];
@@ -9,7 +10,8 @@
   $: isMe = Number(firstMsg?.sender) === Number($currentUser);
   $: cachedContact = firstMsg?.sender ? getContact(firstMsg.sender) : null;
   $: contact = $cachedContact;
-  $: sourceChat = draft?.sourceChatId != null ? $currentSessionChats?.find(c => String(c.id) === String(draft.sourceChatId)) : null;
+  $: sourceChatStore = draft?.sourceChatId != null ? getChat(draft.sourceChatId).chatInfo : null;
+  $: sourceChat = sourceChatStore ? $sourceChatStore : null;
 
   $: authorName = (() => {
     if (firstMsg?.link?.chatName) return firstMsg.link.chatName;

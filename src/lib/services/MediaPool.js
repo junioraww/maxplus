@@ -2,6 +2,29 @@ import { getAssetUrl } from "$lib/utils/images";
 import { decodeStegoPayload } from "$lib/utils/stego";
 import { safeAvatarMapStore } from "$lib/services/AvatarSyncManager";
 
+let stegoWorker = null;
+
+function getStegoWorker() {
+  if (typeof window === "undefined") return null;
+  if (!stegoWorker && typeof Worker !== "undefined") {
+    try {
+      stegoWorker = new Worker(new URL("../utils/stegoWorker.js", import.meta.url), { type: "module" });
+      stegoWorker.onmessage = (e) => {
+        const { foundUid, targetEntityId } = e.data || {};
+        if (foundUid && targetEntityId) {
+          safeAvatarMapStore.update((map) => {
+            map.set(Number(targetEntityId), foundUid);
+            return map;
+          });
+        }
+      };
+    } catch {
+      stegoWorker = null;
+    }
+  }
+  return stegoWorker;
+}
+
 class MediaEntry {
   constructor(key, type, src) {
     this.key = key;
@@ -188,6 +211,10 @@ class MediaPoolEngine {
     );
 
     video.src = url;
+    video.load();
+    if (video.readyState >= 2 && video.videoWidth > 0 && video.videoHeight > 0) {
+      onReady();
+    }
   }
 
   async _loadImage(entry, url, targetEntityId) {
@@ -234,19 +261,21 @@ class MediaPoolEngine {
   async _inspectStego(source, targetEntityId) {
     if (!targetEntityId || typeof window === "undefined") return;
     try {
+      const worker = getStegoWorker();
+      if (worker && typeof createImageBitmap === "function") {
+        const transferBitmap = await createImageBitmap(source);
+        worker.postMessage({ bitmap: transferBitmap, targetEntityId }, [transferBitmap]);
+        return;
+      }
       const sw = source.naturalWidth || source.videoWidth || source.width;
       const sh = source.naturalHeight || source.videoHeight || source.height;
       if (!sw || !sh || sw < 64 || sh < 64) return;
 
-      let canvas;
-      if (typeof OffscreenCanvas !== "undefined") {
-        canvas = new OffscreenCanvas(sw, sh);
-      } else {
-        canvas = document.createElement("canvas");
-        canvas.width = sw;
-        canvas.height = sh;
-      }
-
+      const canvas = typeof OffscreenCanvas !== "undefined"
+        ? new OffscreenCanvas(sw, sh)
+        : document.createElement("canvas");
+      canvas.width = sw;
+      canvas.height = sh;
       const ctx = canvas.getContext("2d");
       if (!ctx) return;
       ctx.drawImage(source, 0, 0, sw, sh);

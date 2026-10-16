@@ -18,7 +18,6 @@
   import "$lib/styles/AnimatedPanel.css";
   import API, {
     currentUser,
-    currentSessionChats,
   } from "$lib/stores/api";
   import {
     getChatSettings,
@@ -81,7 +80,8 @@
     clearSelection();
   }
 
-  $: chat = $currentSessionChats?.find((c) => String(c.id) === String(chatId));
+  $: chatStore = chatId != null ? getChat(chatId).chatInfo : null;
+  $: chat = chatStore ? $chatStore : null;
 
   let title;
   let gotSecretChatRequest = null;
@@ -182,7 +182,7 @@
     return undefined;
   })();
 
-  $: unreadBadgeCount = Math.max(0, Number($currentSessionChats?.find((x) => x.id === chat?.id)?.newMessages ?? chat?.newMessages ?? 0));
+  $: unreadBadgeCount = Math.max(0, Number(chat?.newMessages ?? 0));
   $: chatSettings = getChatSettings(chat?.id ?? chatId);
 
   function handleCloseChat() {
@@ -1172,11 +1172,7 @@
         ...chat,
         pinnedMessage: null,
       };
-      currentSessionChats.update(chats => {
-        const idx = chats.findIndex(x => x.id === chat.id);
-        if (idx !== -1) chats[idx] = updatedChat;
-        return [...chats];
-      });
+      getChat(chat.id).chatInfo.set(updatedChat);
       await saveChats([ updatedChat ]);
       showAlert("Сообщение откреплено");
     } catch (e) {

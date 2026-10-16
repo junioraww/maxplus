@@ -3,7 +3,6 @@
   import { get } from "svelte/store";
   import {
     currentUser,
-    currentSessionChats,
   } from "$lib/stores/api";
   import {
     getContact
@@ -30,7 +29,8 @@
 
   const dispatch = createEventDispatcher();
 
-  $: currentChat = $currentSessionChats?.find((x) => String(x.id) === String(chat?.id)) || chat;
+  $: chatStore = chat?.id != null ? getChat(chat.id).chatInfo : null;
+  $: currentChat = (chatStore && $chatStore) || chat;
   $: unread = currentChat?.newMessages ?? 0;
 
   $: peerId = (() => {

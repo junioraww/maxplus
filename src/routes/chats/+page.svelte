@@ -20,7 +20,6 @@
   import { debounce } from "$lib/utils/debounce.js";
   import { openChat } from "$lib/stores/session.js";
   import API, {
-    currentSessionChats,
     currentSessionCalls,
     currentRealChats,
     currentRealContacts,
@@ -173,7 +172,7 @@
 
   async function muteNotifications() {
     if (!selectedChats.size) return;
-    const allSelected = Array.from(selectedChats).map(id => $currentSessionChats?.find(c => String(c.id) === String(id))).filter(Boolean);
+    const allSelected = Array.from(selectedChats).map(id => getChat(id).getInfo()).filter(Boolean);
     const anyMuted = allSelected.some(c => isChatMuted(c));
     const targetDDU = anyMuted ? 0 : -1;
     for (const chat of allSelected) {
@@ -283,14 +282,10 @@
   }
 
   $: chatsByFolderId = (() => {
-    if (!$currentSessionChats || !$currentRealChats || !localFolders.length) return new Map();
-    const chatMap = new Map();
-    for (let i = 0; i < $currentSessionChats.length; i++) {
-      chatMap.set(String($currentSessionChats[i].id), $currentSessionChats[i]);
-    }
+    if (!$currentRealChats || !localFolders.length) return new Map();
     const chats = [];
     for (let i = 0; i < $currentRealChats.length; i++) {
-      const found = chatMap.get(String($currentRealChats[i]));
+      const found = getChat($currentRealChats[i]).getInfo();
       if (found) chats.push(found);
     }
     const result = new Map();
@@ -444,53 +439,10 @@
     }
   }
 
-  const unsubscribers = new Map();
-
-  $: if ($currentSessionChats) {
-    $currentSessionChats.forEach((chat) => {
-      if (!unsubscribers.has(chat.id)) {
-        const { receivedMessage } = getChat(chat.id);
-        let initialSkip = true;
-
-        const unsub = receivedMessage.subscribe((msg) => {
-          // Пропускаем начальное значение при первой подписке
-          if (initialSkip) {
-            initialSkip = false;
-            return;
-          }
-          if (!msg) return;
-
-          currentSessionChats.update((chats) => {
-            const index = chats.findIndex((c) => c.id === chat.id);
-            if (index === -1) return chats;
-
-            const myId = Number(get(currentUser));
-            const isOutgoing = Number(msg.sender) === myId || Number(msg.from) === myId;
-
-            const updatedChat = {
-              ...chats[index],
-              lastMessage: msg,
-              lastEventTime: msg.time || Date.now(),
-              newMessages: isOutgoing ? (chats[index].newMessages || 0) : ((chats[index].newMessages || 0) + 1),
-            };
-
-            const next = [...chats];
-            next.splice(index, 1);
-            return [updatedChat, ...next];
-          });
-        });
-
-        unsubscribers.set(chat.id, unsub);
-      }
-    });
-  }
-
   onDestroy(() => {
     if (scrollRafId) cancelAnimationFrame(scrollRafId);
     clearTimeout(scrollEndTimeout);
     clearTimeout(scrollTimeout);
-    unsubscribers.forEach(unsub => unsub());
-    unsubscribers.clear();
   });
 
   let showFolderModal = false;
@@ -699,9 +651,7 @@
 
       {#if searchMsg.length}
         {#each searchMsg as result, i (result.chatId ? `${result.chatId}_${result.message?.id ?? i}` : i)}
-          {@const chat = $currentSessionChats.find(
-            (x) => String(x.id) === String(result.chatId),
-          )}
+          {@const chat = getChat(result.chatId).getInfo()}
           {#if chat && result.message}
             {@const hl = result.highlights[0]}
             <ChatItem
@@ -735,7 +685,7 @@
             chats={folderChats}
             {isSelectionMode}
             {selectedChats}
-            loading={$currentlySyncing && i === activeFolderIndex && (!$currentSessionChats || $currentSessionChats.length === 0)}
+            loading={$currentlySyncing && i === activeFolderIndex && (!$currentRealChats || $currentRealChats.length === 0)}
             on:open={(e) => e.detail && openChat(e.detail)}
             on:longpress={handleChatLongPress}
             on:toggle={handleChatToggle}
@@ -750,7 +700,7 @@
   {#if showFolderModal && folderToEdit}
     <FolderEditModal
       folder={folderToEdit}
-      allChats={$currentSessionChats}
+      allChats={($currentRealChats || []).map(id => getChat(id).getInfo()).filter(Boolean)}
       on:close={() => {
         showFolderModal = false;
         folderToEdit = null;

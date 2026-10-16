@@ -3,10 +3,11 @@ import { getCachedFile, setCachedFile } from "$lib/stores/cache";
 import { getCurrentAccount } from "$lib/stores/accounts";
 import { getVideoProxyBase } from './proxyConfig.js';
 
-const MAX_CONCURRENT_DOWNLOADS = 6;
+const MAX_CONCURRENT_DOWNLOADS = 16;
 let activeDownloads = 0;
 const downloadQueue = [];
 const inflightRequests = new Map();
+let cachedAccountId = 0;
 
 function processQueue() {
     if (activeDownloads >= MAX_CONCURRENT_DOWNLOADS || downloadQueue.length === 0) {
@@ -51,15 +52,33 @@ export async function getLocalFilePath(src) {
         return src;
     }
 
+    if (resolvedAssetCache.has(src)) {
+        return resolvedAssetCache.get(src);
+    }
+
     if (inflightRequests.has(src)) {
         return inflightRequests.get(src);
     }
 
+    try {
+        const directCached = await invoke("get_cached_file", { account: cachedAccountId, src }).catch(() => null);
+        if (directCached) {
+            setCachedAsset(src, directCached);
+            return directCached;
+        }
+    } catch {}
+
     const promise = enqueueDownload(async () => {
         try {
-            const account = await getCurrentAccount().catch(() => null);
-            const accountId = account?.id ? Number(account.id) : 0;
-            return await invoke("cache_url", { account: accountId, src });
+            if (!cachedAccountId) {
+                const account = await getCurrentAccount().catch(() => null);
+                if (account?.id) cachedAccountId = Number(account.id);
+            }
+            const res = await invoke("cache_url", { account: cachedAccountId, src });
+            if (res) {
+                setCachedAsset(src, res);
+            }
+            return res;
         } catch (e) {
             console.error("Failed to load image to cache:", e);
             return null;

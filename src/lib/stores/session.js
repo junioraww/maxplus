@@ -1,9 +1,10 @@
 import { writable, get as getStoreValue, readable } from "svelte/store";
 import { goto } from "$app/navigation";
 
-import API, { currentSessionChats } from "$lib/stores/api";
+import API from "$lib/stores/api";
 import {
   saveChats,
+  getChat,
 } from "$lib/stores/messages";
 
 const data = writable({
@@ -35,8 +36,8 @@ export async function openChat(chatId) {
   const profile = currentData.profile;
 
   if (openedChats.findIndex(id => String(id) === String(chatId)) === -1) {
-    const rawChats = getStoreValue(currentSessionChats);
-    let chat = Array.isArray(rawChats) ? rawChats.find(x => String(x.id) === String(chatId)) : null;
+    const chatEntry = getChat(chatId);
+    let chat = chatEntry.getInfo();
 
     if (!chat) {
       const response = await getStoreValue(API).getChat(chatId);
@@ -46,15 +47,7 @@ export async function openChat(chatId) {
       }
 
       const info = response.chats[0];
-
-      currentSessionChats.update(chats => {
-        const list = Array.isArray(chats) ? [...chats] : [];
-        const idx = list.findIndex(x => x.id === info.id);
-        if (idx !== -1) list.splice(idx, 1);
-        list.push(info);
-        return list;
-      });
-
+      chatEntry.chatInfo.set(info);
       await saveChats([ info ]);
     }
 

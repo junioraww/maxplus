@@ -11,7 +11,6 @@ import {
 
 export const currentUser = writable(undefined);
 export const currentUserDetails = writable(undefined);
-export const currentSessionChats = writable(undefined);
 export const currentSessionCalls = writable(undefined);
 export const currentlySyncing = writable(false);
 export const currentFolders = writable([]);

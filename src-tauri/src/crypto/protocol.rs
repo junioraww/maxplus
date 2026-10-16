@@ -5,6 +5,7 @@ use flate2::write::DeflateEncoder;
 use flate2::Compression;
 use rand::{RngCore, thread_rng};
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use std::io::{Read, Write};
 
 pub const PROTOCOL_VERSION: u8 = 0x00;
@@ -65,10 +66,21 @@ pub fn decompress_bytes(bytes: &[u8]) -> Result<Vec<u8>, String> {
     Ok(out)
 }
 
+pub fn derive_chat_salt(chat_id: i64) -> [u8; 16] {
+    let mut salt = [0u8; 16];
+    let mut hasher = Sha256::new();
+    hasher.update(b"maxplus_chat_pwd_salt_v1:");
+    hasher.update(chat_id.to_be_bytes());
+    let hash = hasher.finalize();
+    salt.copy_from_slice(&hash[..16]);
+    salt
+}
+
 pub fn pack_message(
     payload: PayloadData,
     session_key: Option<&[u8; 32]>,
     password: Option<&str>,
+    chat_id: Option<i64>,
 ) -> Result<Vec<u8>, String> {
     let is_control = matches!(payload, PayloadData::Handshake(_));
     let mut raw_bytes = match payload {
@@ -113,8 +125,12 @@ pub fn pack_message(
     let has_password = password.is_some();
     if let Some(pwd) = password {
         let mut salt = [0u8; 16];
+        if let Some(cid) = chat_id {
+            salt = derive_chat_salt(cid);
+        } else {
+            thread_rng().fill_bytes(&mut salt);
+        }
         let mut nonce = [0u8; 12];
-        thread_rng().fill_bytes(&mut salt);
         thread_rng().fill_bytes(&mut nonce);
 
         let p_key = symmetric::derive_key(pwd, &salt)?;
@@ -225,7 +241,7 @@ mod tests {
     #[test]
     fn test_plain_message_roundtrip() {
         let text = "Synthetic plain message test".to_string();
-        let packed = pack_message(PayloadData::Text(text.clone()), None, None).unwrap();
+        let packed = pack_message(PayloadData::Text(text.clone()), None, None, None).unwrap();
         let unpacked = unpack_message(&packed, None, None).unwrap();
 
         match unpacked {
@@ -239,7 +255,7 @@ mod tests {
         let session_key = [55u8; 32];
         let text = "Synthetic session encrypted message".to_string();
         let packed =
-            pack_message(PayloadData::Text(text.clone()), Some(&session_key), None).unwrap();
+            pack_message(PayloadData::Text(text.clone()), Some(&session_key), None, None).unwrap();
         assert_ne!(&packed[1..], text.as_bytes());
 
         let unpacked = unpack_message(&packed, Some(&session_key), None).unwrap();
@@ -253,7 +269,7 @@ mod tests {
     fn test_password_encrypted_roundtrip() {
         let password = "synthetic_password_xyz";
         let text = "Synthetic password encrypted message".to_string();
-        let packed = pack_message(PayloadData::Text(text.clone()), None, Some(password)).unwrap();
+        let packed = pack_message(PayloadData::Text(text.clone()), None, Some(password), Some(42)).unwrap();
 
         let unpacked = unpack_message(&packed, None, Some(password)).unwrap();
         match unpacked {
@@ -275,6 +291,7 @@ mod tests {
             PayloadData::Text(text.clone()),
             Some(&session_key),
             Some(password),
+            Some(42),
         )
         .unwrap();
 
@@ -308,7 +325,7 @@ mod tests {
             media: desc.clone(),
         };
 
-        let packed = pack_message(payload, Some(&session_key), None).unwrap();
+        let packed = pack_message(payload, Some(&session_key), None, None).unwrap();
         let unpacked = unpack_message(&packed, Some(&session_key), None).unwrap();
 
         match unpacked {

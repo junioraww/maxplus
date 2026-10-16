@@ -1,11 +1,11 @@
 <script>
   import {
     currentPresence,
-    currentSessionChats,
     currentUser,
     currentRealContacts,
   } from "$lib/stores/api";
   import { getContact } from "$lib/stores/contacts";
+  import { getChat } from "$lib/stores/messages";
   import { get as sessionGet } from "$lib/stores/session";
   import Timestamp from "$components/main/Timestamp.svelte";
 
@@ -18,9 +18,9 @@
   $: resolvedContactStore = contact ?? (targetContactId ? getContact(targetContactId) : null);
   $: c = resolvedContactStore ? $resolvedContactStore : null;
 
-  $: activeChat = chat ?? (targetContactId && $currentUser != null
-    ? $currentSessionChats?.find(x => x.id === ($currentUser ^ targetContactId))
-    : null);
+  $: activeChatId = chat?.id ?? (targetContactId && $currentUser != null ? ($currentUser ^ targetContactId) : null);
+  $: activeChatStore = activeChatId != null ? getChat(activeChatId).chatInfo : null;
+  $: activeChat = chat ?? (activeChatStore ? $activeChatStore : null);
 
   $: resolvedPresence = presence ?? (targetContactId ? $currentPresence[targetContactId] : (c?.id ? $currentPresence[c.id] : null));
 

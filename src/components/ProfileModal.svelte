@@ -37,7 +37,6 @@
   import API, {
     currentUser,
     currentUserDetails,
-    currentSessionChats,
     currentPresence,
     currentRealContacts,
     currentRealChats,
@@ -76,49 +75,29 @@
     if (cid != null) return cid;
     const uid = $Session.profile?.userId;
     if (uid != null && $currentUser != null) {
-      const match = $currentSessionChats?.find(x =>
-        x.type === "DIALOG" && (
-          (x.participants && Object.keys(x.participants).some(p => String(p) === String(uid))) ||
-          String(x.owner) === String(uid)
-        )
-      );
-      if (match?.id != null) return match.id;
       try {
-        return Number(BigInt(uid) ^ BigInt($currentUser));
+        const xorId = Number(BigInt(uid) ^ BigInt($currentUser));
+        return xorId;
       } catch (e) {}
     }
     return undefined;
   })();
 
   $: if (chatId != null && fetchingChatId !== chatId) {
-    const existing = $currentSessionChats?.find(x => String(x.id) === String(chatId));
+    const existing = getChat(chatId).getInfo();
     if (!existing) {
       fetchingChatId = chatId;
       $API.getChat(chatId).then(res => {
         if (res?.chats?.length) {
           fetchedChat = res.chats[0];
+          getChat(chatId).chatInfo.set(res.chats[0]);
         }
       }).catch(() => {});
     }
   }
 
-  $: chat = (() => {
-    if (chatId != null) {
-      const byId = $currentSessionChats?.find(x => String(x.id) === String(chatId));
-      if (byId) return byId;
-    }
-    const uid = $Session.profile?.userId;
-    if (uid != null) {
-      const byParticipant = $currentSessionChats?.find(x =>
-        x.type === "DIALOG" && (
-          (x.participants && Object.keys(x.participants).some(p => String(p) === String(uid))) ||
-          String(x.owner) === String(uid)
-        )
-      );
-      if (byParticipant) return byParticipant;
-    }
-    return fetchedChat;
-  })();
+  $: chatStore = chatId != null ? getChat(chatId).chatInfo : null;
+  $: chat = (chatStore && $chatStore) || fetchedChat;
 
   $: userId = (() => {
     const uid = $Session.profile?.userId;

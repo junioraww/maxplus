@@ -16,7 +16,7 @@ use futures_util::future::join_all;
 use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
-use std::sync::Arc;
+use std::sync::{Arc, LazyLock, RwLock};
 use tauri::{AppHandle, Manager};
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -146,7 +146,16 @@ fn archive_current_session(settings: &mut Value, until_timestamp: i64) {
 }
 
 
-fn load_dictionary_data(app: &AppHandle) -> Option<DictionaryData> {
+static DICTIONARY_CACHE: LazyLock<RwLock<Option<Arc<DictionaryData>>>> =
+    LazyLock::new(|| RwLock::new(None));
+
+pub fn load_dictionary_data(app: &AppHandle) -> Option<Arc<DictionaryData>> {
+    if let Ok(guard) = DICTIONARY_CACHE.read() {
+        if let Some(ref d) = *guard {
+            return Some(Arc::clone(d));
+        }
+    }
+
     let dict_path = app
         .path()
         .app_data_dir()
@@ -155,7 +164,21 @@ fn load_dictionary_data(app: &AppHandle) -> Option<DictionaryData> {
         .join("dictionary");
     let stored: Value = Storage::new(None).load(&dict_path)?;
     let data_val = stored.get("data")?;
-    serde_json::from_value(data_val.clone()).ok()
+    let mut parsed: DictionaryData = serde_json::from_value(data_val.clone()).ok()?;
+    parsed.init_maps();
+    let arc_data = Arc::new(parsed);
+
+    if let Ok(mut guard) = DICTIONARY_CACHE.write() {
+        *guard = Some(Arc::clone(&arc_data));
+    }
+
+    Some(arc_data)
+}
+
+pub fn invalidate_dictionary_cache() {
+    if let Ok(mut guard) = DICTIONARY_CACHE.write() {
+        *guard = None;
+    }
 }
 
 #[tauri::command]
@@ -314,7 +337,12 @@ pub async fn batch_decrypt_messages(
             .map(|s| s.to_string())
     });
 
-    let dict_opt = Arc::new(load_dictionary_data(&app));
+    if let Some(pwd) = effective_password.as_deref() {
+        let chat_salt = crate::crypto::protocol::derive_chat_salt(chat_id);
+        let _ = crate::crypto::symmetric::derive_key(pwd, &chat_salt);
+    }
+
+    let dict_opt = load_dictionary_data(&app);
     let effective_password = Arc::new(effective_password);
 
     let tasks: Vec<_> = messages
@@ -328,7 +356,7 @@ pub async fn batch_decrypt_messages(
                     msg,
                     session_keys.as_ref(),
                     effective_password.as_deref(),
-                    dict_opt.as_ref().as_ref(),
+                    dict_opt.as_deref(),
                 )
             })
         })
@@ -380,6 +408,7 @@ pub async fn encrypt_message(
         payload,
         session_key.as_ref(),
         effective_password.as_deref(),
+        Some(chat_id),
     )?;
 
     let target_obf = obf.or_else(|| {
@@ -425,7 +454,7 @@ pub async fn init_e2e_handshake(
 
     let hs_packet =
         create_handshake_init(&bundle.ed_sk, &bundle.ed_pk, &bundle.x_pk, timestamp);
-    let packed = pack_message(PayloadData::Handshake(hs_packet), None, None)?;
+    let packed = pack_message(PayloadData::Handshake(hs_packet), None, None, Some(chat_id))?;
 
     let target_obf = obf.unwrap_or_else(|| "zh".into());
     if target_obf == "words" {
@@ -477,7 +506,7 @@ pub async fn accept_e2e_handshake(
         &my_bundle.x_pk,
         timestamp,
     );
-    let packed = pack_message(PayloadData::Handshake(hs_packet), None, None)?;
+    let packed = pack_message(PayloadData::Handshake(hs_packet), None, None, Some(chat_id))?;
 
     let target_obf = obf.unwrap_or_else(|| "zh".into());
     if target_obf == "words" {
@@ -619,6 +648,7 @@ pub async fn make_dictionary(app: AppHandle, text: Value) -> Result<Value, Strin
         .unwrap_or_else(|| json!({ "url": null, "data": null }));
     store["data"] = val.clone();
     Storage::new(None).save(&path, &store)?;
+    invalidate_dictionary_cache();
 
     Ok(val)
 }
