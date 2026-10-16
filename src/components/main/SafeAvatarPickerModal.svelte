@@ -743,6 +743,7 @@
   .grid-img {
     width: 100%;
     height: 100%;
+    aspect-ratio: 1 / 1;
     object-fit: cover;
   }
 
@@ -868,6 +869,7 @@
   .direct-preview-img {
     width: 100%;
     height: 100%;
+    aspect-ratio: 1 / 1;
     object-fit: cover;
   }
 
@@ -1011,6 +1013,7 @@
   .sheet-media {
     width: 100%;
     height: 100%;
+    aspect-ratio: 1 / 1;
     object-fit: cover;
   }
 

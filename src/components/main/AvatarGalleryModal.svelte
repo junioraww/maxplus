@@ -4,7 +4,7 @@
   import { invoke as tauriInvoke, Channel } from "@tauri-apps/api/core";
   import { save } from "@tauri-apps/plugin-dialog";
   import { registerBackHandler } from "$lib/utils/backButton.js";
-  import { getAssetUrl } from "$lib/utils/images";
+  import MediaCanvas from "$components/main/MediaCanvas.svelte";
   import API, { currentUserDetails } from "$lib/stores/api";
   import SafeAvatarPickerModal from "$components/main/SafeAvatarPickerModal.svelte";
 
@@ -54,9 +54,10 @@
   let isUploading = false;
   let isDeleting = false;
 
-  let resolvedUrlMap = {};
   let stageEl;
-  let mainImgEl;
+  let windowWidth = typeof window !== "undefined" ? window.innerWidth : 400;
+  let windowHeight = typeof window !== "undefined" ? window.innerHeight : 600;
+  $: modalMediaSize = Math.round(Math.min(windowWidth * 0.94, windowHeight * 0.80, 520));
 
   let scale = 1;
   let x = 0;
@@ -234,21 +235,7 @@
 
   function getTargetImageBox() {
     const { cx, cy } = getStageCenter();
-    if (mainImgEl && mainImgEl.offsetWidth > 0 && mainImgEl.offsetHeight > 0) {
-      return { width: mainImgEl.offsetWidth, height: mainImgEl.offsetHeight, cx, cy };
-    }
-    const vw = window.innerWidth;
-    const vh = window.innerHeight;
-    const maxW = vw * 0.94;
-    const maxH = vh * 0.80;
-    let natW = mainImgEl?.naturalWidth || mainImgEl?.videoWidth || 0;
-    let natH = mainImgEl?.naturalHeight || mainImgEl?.videoHeight || 0;
-    if (!natW || !natH) {
-      const size = Math.min(maxW, maxH, 520);
-      return { width: size, height: size, cx, cy };
-    }
-    const ratio = Math.min(maxW / natW, maxH / natH, 1);
-    return { width: natW * ratio, height: natH * ratio, cx, cy };
+    return { width: modalMediaSize, height: modalMediaSize, cx, cy };
   }
 
   let videoErrorMap = {};
@@ -259,14 +246,6 @@
   }
 
   onMount(async () => {
-    if (initialUrl) {
-      const existingImg = originEl?.querySelector?.("img, video");
-      if (existingImg?.src && !existingImg.src.startsWith("data:image/svg")) {
-        resolvedUrlMap = { ...resolvedUrlMap, [initialUrl]: existingImg.src };
-      }
-      await ensureResolved(initialUrl);
-    }
-
     const rect = getActiveOriginRect();
     if (rect && initialUrl) {
       hideOriginImageImmediate();
@@ -275,16 +254,6 @@
       uiOpacity = 0;
       heroStyle = "opacity: 0; transition: none;";
       await tick();
-
-      if (mainImgEl && !mainImgEl.complete && (mainImgEl.readyState === undefined || mainImgEl.readyState < 2)) {
-        await new Promise((res) => {
-          const done = () => res();
-          mainImgEl.addEventListener("load", done, { once: true });
-          mainImgEl.addEventListener("loadeddata", done, { once: true });
-          mainImgEl.addEventListener("error", done, { once: true });
-          setTimeout(done, 90);
-        });
-      }
 
       const target = getTargetImageBox();
       const startScaleX = rect.width / Math.max(target.width, 1);
@@ -362,27 +331,6 @@
     }
   }
 
-  async function ensureResolved(rawUrl) {
-    if (!rawUrl) return null;
-    if (resolvedUrlMap[rawUrl]) return resolvedUrlMap[rawUrl];
-    try {
-      const res = await getAssetUrl(rawUrl);
-      if (res) {
-        resolvedUrlMap = { ...resolvedUrlMap, [rawUrl]: res };
-        return res;
-      }
-    } catch {}
-    return null;
-  }
-
-  $: {
-    const cur = items[currentIndex]?.url;
-    const prev = items[currentIndex - 1]?.url;
-    const next = items[currentIndex + 1]?.url;
-    if (cur) ensureResolved(cur);
-    if (prev) ensureResolved(prev);
-    if (next) ensureResolved(next);
-  }
 
   $: currentItem = items[currentIndex] || null;
   $: currentUrl = currentItem?.url || null;
@@ -432,7 +380,6 @@
             url: entry.url,
             photoId: entry.photoId || parsePhotoIdFromUrl(entry.url) || null,
           });
-          ensureResolved(entry.url);
           added++;
         } else if (!next[existingIdx].photoId && entry.photoId) {
           next[existingIdx] = { ...next[existingIdx], photoId: entry.photoId };
@@ -461,7 +408,6 @@
         const newUrl = res?.baseRawUrl || res?.baseUrl || res?.avatar || res?.baseRawIconUrl || res?.baseIconUrl || res?.iconUrl;
         const newPid = res?.photoId || parsePhotoIdFromUrl(newUrl) || null;
         if (newUrl) {
-          ensureResolved(newUrl);
           items = [{ url: newUrl, photoId: newPid }, ...items.filter(x => x.url !== newUrl)];
           totalCount = Math.max(totalCount + 1, items.length);
           currentIndex = 0;
@@ -493,7 +439,6 @@
       if (nextItems.length === 0) {
         const fallbackUrl = updatedContact?.baseRawUrl || updatedContact?.baseUrl || updatedContact?.avatar;
         if (fallbackUrl && fallbackUrl !== targetUrl) {
-          ensureResolved(fallbackUrl);
           items = [{ url: fallbackUrl, photoId: updatedContact?.photoId || parsePhotoIdFromUrl(fallbackUrl) }];
           currentIndex = 0;
         } else {
@@ -857,7 +802,7 @@
     : `transform: translate3d(calc(-50% + ${x + slideOffset}px), calc(-50% + ${y}px), 0) scale(${scale}); border-radius: 0px;`;
 </script>
 
-<svelte:window on:keydown={handleKeydown} />
+<svelte:window on:keydown={handleKeydown} bind:innerWidth={windowWidth} bind:innerHeight={windowHeight} />
 
 <div
   class="ag-overlay"
@@ -966,82 +911,50 @@
       on:pointercancel={handlePointerUp}
     >
       {#if prevUrl && (slideOffset > 0 || isSlideAnimating) && heroPhase === "idle"}
-        {#if isMediaVideo(prevUrl)}
-          <video
-            src={resolvedUrlMap[prevUrl] || prevUrl}
-            autoPlay
-            loop
-            muted
-            playsInline
-            class="ag-image"
-            style="transform: translate3d(calc(-50% + {slideOffset - (stageEl?.clientWidth || window.innerWidth)}px), -50%, 0) scale(1); border-radius: 0px;"
+        <div
+          class="ag-image-wrapper"
+          style="transform: translate3d(calc(-50% + {slideOffset - (stageEl?.clientWidth || windowWidth)}px), -50%, 0) scale(1); border-radius: 0px;"
+        >
+          <MediaCanvas
+            src={prevUrl}
+            type={isMediaVideo(prevUrl) ? "video" : "image"}
+            size={modalMediaSize}
+            class="ag-media"
           />
-        {:else if resolvedUrlMap[prevUrl]}
-          <img
-            src={resolvedUrlMap[prevUrl]}
-            alt=""
-            draggable="false"
-            class="ag-image"
-            style="transform: translate3d(calc(-50% + {slideOffset - (stageEl?.clientWidth || window.innerWidth)}px), -50%, 0) scale(1); border-radius: 0px;"
-          />
-        {/if}
+        </div>
       {/if}
 
       {#if currentUrl}
-        {#if isMediaVideo(currentUrl)}
-          <video
-            bind:this={mainImgEl}
-            src={resolvedUrlMap[currentUrl] || currentUrl}
-            autoPlay
-            loop
-            muted
-            playsInline
-            class="ag-image"
-            style={mainTransformStyle}
+        <div
+          class="ag-image-wrapper"
+          style={mainTransformStyle}
+        >
+          <MediaCanvas
+            src={currentUrl}
+            type={isMediaVideo(currentUrl) ? "video" : "image"}
+            size={modalMediaSize}
+            class="ag-media"
             on:error={() => {
               videoErrorMap = { ...videoErrorMap, [currentUrl]: true };
             }}
-            on:ended={(e) => {
-              e.currentTarget.currentTime = 0;
-              e.currentTarget.play().catch(() => {});
-            }}
           />
-        {:else if resolvedUrlMap[currentUrl]}
-          <img
-            bind:this={mainImgEl}
-            src={resolvedUrlMap[currentUrl]}
-            alt=""
-            draggable="false"
-            class="ag-image"
-            style={mainTransformStyle}
-          />
-        {:else}
-          <div class="ag-shimmer"></div>
-        {/if}
+        </div>
       {:else if isLoadingHistory}
         <div class="ag-shimmer"></div>
       {/if}
 
       {#if nextUrl && (slideOffset < 0 || isSlideAnimating) && heroPhase === "idle"}
-        {#if isMediaVideo(nextUrl)}
-          <video
-            src={resolvedUrlMap[nextUrl] || nextUrl}
-            autoPlay
-            loop
-            muted
-            playsInline
-            class="ag-image"
-            style="transform: translate3d(calc(-50% + {slideOffset + (stageEl?.clientWidth || window.innerWidth)}px), -50%, 0) scale(1); border-radius: 0px;"
+        <div
+          class="ag-image-wrapper"
+          style="transform: translate3d(calc(-50% + {slideOffset + (stageEl?.clientWidth || windowWidth)}px), -50%, 0) scale(1); border-radius: 0px;"
+        >
+          <MediaCanvas
+            src={nextUrl}
+            type={isMediaVideo(nextUrl) ? "video" : "image"}
+            size={modalMediaSize}
+            class="ag-media"
           />
-        {:else if resolvedUrlMap[nextUrl]}
-          <img
-            src={resolvedUrlMap[nextUrl]}
-            alt=""
-            draggable="false"
-            class="ag-image"
-            style="transform: translate3d(calc(-50% + {slideOffset + (stageEl?.clientWidth || window.innerWidth)}px), -50%, 0) scale(1); border-radius: 0px;"
-          />
-        {/if}
+        </div>
       {/if}
     </div>
 
@@ -1193,23 +1106,35 @@
     touch-action: none;
   }
 
-  .ag-image {
+  .ag-image-wrapper {
     position: absolute;
     top: 50%;
     left: 50%;
     transform: translate3d(-50%, -50%, 0) scale(1);
-    max-width: 94vw;
-    max-height: 80vh;
-    object-fit: cover;
+    width: min(94vw, 80vh, 520px);
+    height: min(94vw, 80vh, 520px);
+    aspect-ratio: 1 / 1;
+    overflow: hidden;
     will-change: transform, border-radius, opacity;
     touch-action: none;
     -webkit-user-drag: none;
     user-select: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  :global(.ag-media) {
+    width: 100% !important;
+    height: 100% !important;
+    aspect-ratio: 1 / 1 !important;
+    border-radius: inherit !important;
   }
 
   .ag-shimmer {
-    width: min(80vw, 420px);
-    height: min(80vw, 420px);
+    width: min(94vw, 80vh, 520px);
+    height: min(94vw, 80vh, 520px);
+    aspect-ratio: 1 / 1;
     border-radius: 16px;
     background: linear-gradient(
       90deg,
