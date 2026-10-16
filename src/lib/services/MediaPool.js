@@ -81,9 +81,16 @@ class MediaPoolEngine {
       entry = new MediaEntry(key, resolvedType, options.src);
       this.pool.set(key, entry);
       this._load(entry, options);
-    } else if (entry.evictionTimer) {
-      clearTimeout(entry.evictionTimer);
-      entry.evictionTimer = null;
+    } else {
+      if (entry.evictionTimer) {
+        clearTimeout(entry.evictionTimer);
+        entry.evictionTimer = null;
+      }
+      if (entry.status === "error") {
+        entry.status = "idle";
+        entry.error = null;
+        this._load(entry, options);
+      }
     }
 
     entry.refCount++;
@@ -93,6 +100,8 @@ class MediaPoolEngine {
         consumer.onReady(entry);
         if (entry.type === "image") {
           consumer.drawStatic?.(entry.source);
+        } else if (entry.type === "video") {
+          consumer.onFrame?.(entry.source);
         }
       } else if (entry.status === "error") {
         consumer.onError(entry.error);
@@ -133,9 +142,14 @@ class MediaPoolEngine {
 
     if (isVisible) {
       entry.visibleConsumers.add(consumer);
-      if (entry.type === "video" && entry.status === "ready" && entry.source) {
-        if (entry.source.paused) {
-          entry.source.play().catch(() => {});
+      if (entry.type === "video") {
+        if (entry.source) {
+          if (entry.source.paused) {
+            entry.source.play().then(() => this._ensureRenderLoop()).catch(() => {});
+          }
+          if (entry.status === "ready" && entry.source.videoWidth > 0) {
+            consumer.onFrame?.(entry.source);
+          }
         }
         this._ensureRenderLoop();
       } else if (entry.type === "image" && entry.status === "ready" && entry.source) {
@@ -182,26 +196,45 @@ class MediaPoolEngine {
     video.preload = "auto";
     video.autoplay = true;
 
-    const onReady = () => {
-      if (entry.status === "ready") return;
-      if (video.videoWidth === 0 || video.videoHeight === 0) return;
-      entry.status = "ready";
-      entry.source = video;
+    const markReady = () => {
+      if (entry.status !== "ready") {
+        if (video.videoWidth === 0 || video.videoHeight === 0) {
+          return;
+        }
+        entry.status = "ready";
+        entry.source = video;
 
-      for (const consumer of entry.consumers) {
-        consumer.onReady(entry);
+        for (const consumer of entry.consumers) {
+          consumer.onReady(entry);
+          if (entry.visibleConsumers.has(consumer)) {
+            consumer.onFrame?.(video);
+          }
+        }
       }
 
       if (entry.visibleConsumers.size > 0) {
-        video.play().catch(() => {});
+        if (video.paused) {
+          video.play().then(() => this._ensureRenderLoop()).catch(() => {});
+        }
         this._ensureRenderLoop();
       }
     };
 
-    video.addEventListener("loadedmetadata", onReady);
-    video.addEventListener("loadeddata", onReady);
-    video.addEventListener("canplay", onReady);
-    video.addEventListener("playing", onReady);
+    const handleWakeup = () => {
+      markReady();
+      if (entry.visibleConsumers.size > 0) {
+        this._ensureRenderLoop();
+      }
+    };
+
+    video.addEventListener("loadedmetadata", markReady);
+    video.addEventListener("loadeddata", markReady);
+    video.addEventListener("canplay", markReady);
+    video.addEventListener("canplaythrough", markReady);
+    video.addEventListener("playing", handleWakeup);
+    video.addEventListener("play", handleWakeup);
+    video.addEventListener("timeupdate", handleWakeup);
+    video.addEventListener("seeked", handleWakeup);
     video.addEventListener(
       "error",
       () => {
@@ -212,8 +245,13 @@ class MediaPoolEngine {
 
     video.src = url;
     video.load();
+
+    video.play().then(() => {
+      this._ensureRenderLoop();
+    }).catch(() => {});
+
     if (video.readyState >= 2 && video.videoWidth > 0 && video.videoHeight > 0) {
-      onReady();
+      markReady();
     }
   }
 
@@ -303,15 +341,15 @@ class MediaPoolEngine {
   _ensureRenderLoop() {
     if (this.isRendering) return;
 
-    let hasActiveVideos = false;
+    let shouldRender = false;
     for (const entry of this.pool.values()) {
-      if (entry.type === "video" && entry.visibleConsumers.size > 0 && entry.status === "ready") {
-        hasActiveVideos = true;
+      if (entry.type === "video" && entry.visibleConsumers.size > 0) {
+        shouldRender = true;
         break;
       }
     }
 
-    if (hasActiveVideos) {
+    if (shouldRender) {
       this.isRendering = true;
       this.rafId = requestAnimationFrame(this.render);
     }
@@ -319,14 +357,38 @@ class MediaPoolEngine {
 
   render() {
     let hasActiveVideos = false;
+    let hasPendingVideos = false;
 
     for (const entry of this.pool.values()) {
-      if (entry.type !== "video" || entry.visibleConsumers.size === 0 || entry.status !== "ready") {
+      if (entry.type !== "video" || entry.visibleConsumers.size === 0) {
         continue;
       }
 
       const video = entry.source;
-      if (!video || video.readyState < 2 || video.paused || video.videoWidth === 0 || video.videoHeight === 0) {
+      if (!video) {
+        if (entry.status === "loading") {
+          hasPendingVideos = true;
+        }
+        continue;
+      }
+
+      if (entry.status !== "ready") {
+        if (video.videoWidth > 0 && video.videoHeight > 0) {
+          entry.status = "ready";
+          for (const consumer of entry.consumers) {
+            consumer.onReady(entry);
+          }
+        } else {
+          hasPendingVideos = true;
+          continue;
+        }
+      }
+
+      if (video.paused || video.readyState < 2) {
+        hasPendingVideos = true;
+        if (video.paused) {
+          video.play().catch(() => {});
+        }
         continue;
       }
 
@@ -336,7 +398,7 @@ class MediaPoolEngine {
       }
     }
 
-    if (hasActiveVideos) {
+    if (hasActiveVideos || hasPendingVideos) {
       this.rafId = requestAnimationFrame(this.render);
     } else {
       this.isRendering = false;

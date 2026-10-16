@@ -71,12 +71,6 @@
   function handleMediaError() {
     if (activeType === "video") {
       safeVideoFailed = true;
-      if (targetEntityId) {
-        safeAvatarMapStore.update((map) => {
-          map.delete(targetEntityId);
-          return map;
-        });
-      }
     } else {
       staticMediaFailed = true;
     }

@@ -50,7 +50,7 @@
     onReady(entry) {
       isReady = true;
       dispatch("ready", entry);
-      if (entry.type === "image" && entry.source) {
+      if (entry.source) {
         drawCover(entry.source);
       }
     },
@@ -59,6 +59,7 @@
       dispatch("error", err);
     },
     onFrame(videoSource) {
+      if (!isReady) isReady = true;
       if (isVisible) {
         drawCover(videoSource);
       }
@@ -130,7 +131,7 @@
           if (currentKey) {
             MediaPool.setVisible(currentKey, consumer, isVisible);
           }
-          if (isVisible && isReady) {
+          if (isVisible) {
             const item = MediaPool.getEntry(currentKey);
             if (item?.source) {
               drawCover(item.source);

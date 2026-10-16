@@ -9,6 +9,12 @@ const downloadQueue = [];
 const inflightRequests = new Map();
 let cachedAccountId = 0;
 
+if (typeof window !== "undefined") {
+    getCurrentAccount().then((acc) => {
+        if (acc?.id) cachedAccountId = Number(acc.id);
+    }).catch(() => {});
+}
+
 function processQueue() {
     if (activeDownloads >= MAX_CONCURRENT_DOWNLOADS || downloadQueue.length === 0) {
         return;
@@ -31,16 +37,26 @@ function enqueueDownload(task) {
     });
 }
 
-const resolvedAssetCache = new Map();
+const localFilePathCache = new Map();
+const proxiedUrlCache = new Map();
 const MAX_RESOLVED_CACHE = 1000;
 
-function setCachedAsset(src, url) {
-    if (!src || !url) return;
-    if (resolvedAssetCache.size >= MAX_RESOLVED_CACHE) {
-        const first = resolvedAssetCache.keys().next().value;
-        resolvedAssetCache.delete(first);
+function setCachedPath(src, path) {
+    if (!src || !path) return;
+    if (localFilePathCache.size >= MAX_RESOLVED_CACHE) {
+        const first = localFilePathCache.keys().next().value;
+        localFilePathCache.delete(first);
     }
-    resolvedAssetCache.set(src, url);
+    localFilePathCache.set(src, path);
+}
+
+function setCachedProxied(src, url) {
+    if (!src || !url) return;
+    if (proxiedUrlCache.size >= MAX_RESOLVED_CACHE) {
+        const first = proxiedUrlCache.keys().next().value;
+        proxiedUrlCache.delete(first);
+    }
+    proxiedUrlCache.set(src, url);
 }
 
 export async function getLocalFilePath(src) {
@@ -52,18 +68,23 @@ export async function getLocalFilePath(src) {
         return src;
     }
 
-    if (resolvedAssetCache.has(src)) {
-        return resolvedAssetCache.get(src);
+    if (localFilePathCache.has(src)) {
+        return localFilePathCache.get(src);
     }
 
     if (inflightRequests.has(src)) {
         return inflightRequests.get(src);
     }
 
+    if (!cachedAccountId) {
+        const account = await getCurrentAccount().catch(() => null);
+        if (account?.id) cachedAccountId = Number(account.id);
+    }
+
     try {
         const directCached = await invoke("get_cached_file", { account: cachedAccountId, src }).catch(() => null);
         if (directCached) {
-            setCachedAsset(src, directCached);
+            setCachedPath(src, directCached);
             return directCached;
         }
     } catch {}
@@ -76,7 +97,7 @@ export async function getLocalFilePath(src) {
             }
             const res = await invoke("cache_url", { account: cachedAccountId, src });
             if (res) {
-                setCachedAsset(src, res);
+                setCachedPath(src, res);
             }
             return res;
         } catch (e) {
@@ -93,21 +114,21 @@ export async function getLocalFilePath(src) {
 
 export async function getAssetUrl(src) {
     if (!src) return null;
-    if (resolvedAssetCache.has(src)) {
-        return resolvedAssetCache.get(src);
+    if (proxiedUrlCache.has(src)) {
+        return proxiedUrlCache.get(src);
     }
     if (src.startsWith("data:") || src.startsWith("blob:") || isProxiedMediaUrl(src)) {
         return src;
     }
     if (!src.startsWith("http://") && !src.startsWith("https://")) {
         const res = getProxiedMediaUrl(src);
-        setCachedAsset(src, res);
+        setCachedProxied(src, res);
         return res;
     }
     const path = await getLocalFilePath(src);
     if (path) {
         const res = getProxiedMediaUrl(path);
-        setCachedAsset(src, res);
+        setCachedProxied(src, res);
         return res;
     }
     return null;
