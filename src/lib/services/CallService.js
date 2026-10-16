@@ -5,7 +5,8 @@ import { activeCall, patchCallState, resetCallState, CALL_PHASE, CALL_MODE, call
 import { CallEncryptionSession } from '$lib/crypto/callEncryption.js';
 import { mediaPipeline } from '$lib/services/MediaPipelineHost.js';
 import { showAlert } from '$lib/utils/alert.js';
-import API, { currentUser, currentSessionChats } from '$lib/stores/api.js';
+import API, { currentUser, currentRealChats } from '$lib/stores/api.js';
+import { getChat } from '$lib/stores/messages.js';
 import Session, { closeChat } from '$lib/stores/session.js';
 import { getCurrentAccount } from '$lib/stores/accounts.js';
 import { initHandshake, acceptHandshake, processAccept } from '$lib/crypto/asymmetric.js';
@@ -604,7 +605,12 @@ class MaxCallSession {
         xorChatId = Number(BigInt(myId) ^ BigInt(targetId));
       } catch {}
 
-      let chats = get(currentSessionChats) || [];
+      if (xorChatId != null) {
+        const direct = getChat(xorChatId).getInfo();
+        if (direct) return direct;
+      }
+      const realIds = get(currentRealChats) || [];
+      let chats = realIds.map(id => getChat(id).getInfo()).filter(Boolean);
       if (!chats.length) {
         try {
           const loaded = await invoke('load_chats', { account: myId });

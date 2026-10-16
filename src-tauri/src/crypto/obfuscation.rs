@@ -122,6 +122,21 @@ pub struct DictionaryData {
     pub punct: Vec<(String, u32)>,
     pub dict8: Vec<String>,
     pub dict16: Vec<String>,
+    #[serde(skip)]
+    pub dict8_map: HashMap<String, usize>,
+    #[serde(skip)]
+    pub dict16_map: HashMap<String, usize>,
+}
+
+impl DictionaryData {
+    pub fn init_maps(&mut self) {
+        if self.dict8_map.is_empty() {
+            self.dict8_map = self.dict8.iter().enumerate().map(|(i, w)| (w.clone(), i)).collect();
+        }
+        if self.dict16_map.is_empty() {
+            self.dict16_map = self.dict16.iter().enumerate().map(|(i, w)| (w.clone(), i)).collect();
+        }
+    }
 }
 
 pub struct WordsObfuscator;
@@ -188,12 +203,16 @@ impl WordsObfuscator {
             punct.push((p.to_string(), prob));
         }
 
-        Ok(DictionaryData {
+        let mut dict_data = DictionaryData {
             dict_sha256,
             punct,
             dict8,
             dict16,
-        })
+            dict8_map: HashMap::new(),
+            dict16_map: HashMap::new(),
+        };
+        dict_data.init_maps();
+        Ok(dict_data)
     }
 
     pub fn detect(text: &str, dict: &DictionaryData) -> bool {
@@ -209,19 +228,12 @@ impl WordsObfuscator {
         let clean_first = clean_word(words[0]);
         let clean_second = clean_word(words[1]);
 
-        let dict8_map: HashMap<&str, usize> = dict
-            .dict8
-            .iter()
-            .enumerate()
-            .map(|(i, w)| (w.as_str(), i))
-            .collect();
-
-        let first_idx = match dict8_map.get(clean_first.as_str()) {
+        let first_idx = match dict.dict8_map.get(clean_first.as_str()) {
             Some(&idx) => idx,
             None => return false,
         };
 
-        let second_idx = match dict8_map.get(clean_second.as_str()) {
+        let second_idx = match dict.dict8_map.get(clean_second.as_str()) {
             Some(&idx) => idx,
             None => return false,
         };
@@ -323,21 +335,9 @@ impl WordsObfuscator {
             return Err("Too few tokens for word deobfuscation".into());
         }
 
-        let dict8_map: HashMap<&str, usize> = dict
-            .dict8
-            .iter()
-            .enumerate()
-            .map(|(i, w)| (w.as_str(), i))
-            .collect();
-        let dict16_map: HashMap<&str, usize> = dict
-            .dict16
-            .iter()
-            .enumerate()
-            .map(|(i, w)| (w.as_str(), i))
-            .collect();
-
         let first = clean_word(tokens[0]);
-        let prefix_0 = dict8_map
+        let prefix_0 = dict
+            .dict8_map
             .get(first.as_str())
             .copied()
             .ok_or_else(|| format!("Unknown prefix word: {first}"))?;
@@ -354,14 +354,14 @@ impl WordsObfuscator {
                 continue;
             }
 
-            if let Some(&idx16) = dict16_map.get(cleaned.as_str()) {
+            if let Some(&idx16) = dict.dict16_map.get(cleaned.as_str()) {
                 let real_idx = (idx16 + len16 - (seed % len16)) % len16;
                 bytes.push(((real_idx >> 8) & 0xFF) as u8);
                 bytes.push((real_idx & 0xFF) as u8);
                 continue;
             }
 
-            if let Some(&idx8) = dict8_map.get(cleaned.as_str()) {
+            if let Some(&idx8) = dict.dict8_map.get(cleaned.as_str()) {
                 let real_idx = (idx8 + len8 - (seed % len8)) % len8;
                 bytes.push(real_idx as u8);
                 continue;

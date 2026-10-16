@@ -1,18 +1,19 @@
 <script>
   import { createEventDispatcher } from "svelte";
-  import { currentSessionChats } from "$lib/stores/api.js";
+  import { currentRealChats } from "$lib/stores/api.js";
+  import { getChat } from "$lib/stores/messages.js";
   import ChatItem from "$components/chats/ChatItem.svelte";
   import Search from "$components/main/Search.svelte";
 
-  // props
-  export let selectedIds = []; // ID уже выбранных чатов
+  export let selectedIds = [];
   export let actionTitle = "Выберите чаты";
   export let multiSelect = true;
 
   const dispatch = createEventDispatcher();
   let searchQuery = "";
 
-  $: filteredChats = $currentSessionChats.filter((chat) => {
+  $: allChats = ($currentRealChats || []).map(id => getChat(id).getInfo()).filter(Boolean);
+  $: filteredChats = allChats.filter((chat) => {
     if (searchQuery) {
       const title = chat.title || chat.participants?.[0]?.name || "";
       if (!title.toLowerCase().includes(searchQuery.toLowerCase()))

@@ -45,6 +45,30 @@
     }
   }
 
+  let spriteMap = {};
+
+  function initSprites() {
+    spriteMap = {};
+    for (const color of colors) {
+      const size = 128;
+      const offCanvas = typeof OffscreenCanvas !== "undefined"
+        ? new OffscreenCanvas(size, size)
+        : document.createElement("canvas");
+      offCanvas.width = size;
+      offCanvas.height = size;
+      const sCtx = offCanvas.getContext("2d");
+      const r = size / 2;
+      const g = sCtx.createRadialGradient(r - r * 0.3, r - r * 0.4, r * 0.1, r, r, r);
+      g.addColorStop(0, color);
+      g.addColorStop(1, color);
+      sCtx.fillStyle = g;
+      sCtx.beginPath();
+      sCtx.arc(r, r, r, 0, Math.PI * 2);
+      sCtx.fill();
+      spriteMap[color] = offCanvas;
+    }
+  }
+
   function resize() {
     if (!canvas) return;
 
@@ -79,23 +103,10 @@
 
       ctx.globalAlpha = p.alpha;
 
-      const g = ctx.createRadialGradient(
-        x - p.r * 0.3,
-        y - p.r * 0.4,
-        p.r * 0.1,
-        x,
-        y,
-        p.r
-      );
-
-      g.addColorStop(0, p.color);
-      g.addColorStop(1, p.color);
-
-      ctx.fillStyle = g;
-
-      ctx.beginPath();
-      ctx.arc(x, y, p.r, 0, Math.PI * 2);
-      ctx.fill();
+      const sprite = spriteMap[p.color];
+      if (sprite) {
+        ctx.drawImage(sprite, x - p.r, y - p.r, p.r * 2, p.r * 2);
+      }
     }
 
     ctx.globalAlpha = 1;
@@ -115,10 +126,20 @@
   }
 
   let lastFrameTime = 0;
-  const frameInterval = 1000 / 30;
   let isVisible = true;
   let isPageVisible = true;
+  let isUserActive = true;
+  let idleTimeout = null;
   let observer = null;
+
+  function wakeUp() {
+    isUserActive = true;
+    if (idleTimeout) clearTimeout(idleTimeout);
+    idleTimeout = setTimeout(() => {
+      isUserActive = false;
+    }, 4000);
+    startLoop();
+  }
 
   function loop(timestamp = 0) {
     if (!isVisible || !isPageVisible) {
@@ -126,6 +147,8 @@
       return;
     }
     rafId = requestAnimationFrame(loop);
+    const targetFps = isUserActive ? 30 : 10;
+    const frameInterval = 1000 / targetFps;
     const elapsed = timestamp - lastFrameTime;
     if (elapsed < frameInterval) return;
     lastFrameTime = timestamp - (elapsed % frameInterval);
@@ -175,18 +198,23 @@
   }
 
   onMount(() => {
+    initSprites();
     resize();
     initParticles();
+    wakeUp();
 
     window.addEventListener("resize", resize, { passive: true });
     document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("pointerdown", wakeUp, { passive: true });
+    window.addEventListener("touchstart", wakeUp, { passive: true });
+    window.addEventListener("scroll", wakeUp, { passive: true });
 
     if (typeof IntersectionObserver !== "undefined" && canvas) {
       observer = new IntersectionObserver((entries) => {
         for (const entry of entries) {
           isVisible = entry.isIntersecting;
           if (isVisible) {
-            startLoop();
+            wakeUp();
           } else {
             stopLoop();
           }
@@ -205,12 +233,19 @@
 
   onDestroy(() => {
     stopLoop();
+    if (idleTimeout) {
+      clearTimeout(idleTimeout);
+      idleTimeout = null;
+    }
     if (observer) {
       observer.disconnect();
       observer = null;
     }
     window.removeEventListener("resize", resize);
     document.removeEventListener("visibilitychange", handleVisibilityChange);
+    window.removeEventListener("pointerdown", wakeUp);
+    window.removeEventListener("touchstart", wakeUp);
+    window.removeEventListener("scroll", wakeUp);
     window.removeEventListener("pointermove", onPointerMove);
     window.removeEventListener("touchmove", onPointerMove);
   });

@@ -2,7 +2,8 @@
   import { createEventDispatcher, onMount } from "svelte";
   import { writable } from "svelte/store";
   import { openPath } from "@tauri-apps/plugin-opener";
-  import API, { currentUser, currentUserDetails, currentSessionChats } from "$lib/stores/api";
+  import API, { currentUser, currentUserDetails } from "$lib/stores/api";
+  import { getChat } from "$lib/stores/messages";
   import { getContact } from "$lib/utils/caching";
   import Session, { openChat } from "$lib/stores/session";
   import {
@@ -140,7 +141,8 @@
   $: isForwardFromMe = Number(linkedMsg?.sender) === Number($currentUser);
   $: cachedForwardContact = linkedMsg?.sender ? getContact(linkedMsg.sender) : null;
   $: forwardContact = cachedForwardContact ? $cachedForwardContact : null;
-  $: forwardChat = msg.link?.chatId != null ? $currentSessionChats?.find((c) => String(c.id) === String(msg.link.chatId)) : null;
+  $: forwardChatStore = msg.link?.chatId != null ? getChat(msg.link.chatId).chatInfo : null;
+  $: forwardChat = forwardChatStore ? $forwardChatStore : null;
   $: isForwardChannel = linkedMsg?.type === "CHANNEL" || forwardChat?.type === "CHANNEL" || (Boolean(msg.link?.chatName) && !linkedMsg?.sender);
 
   $: forwardAuthorName = (() => {

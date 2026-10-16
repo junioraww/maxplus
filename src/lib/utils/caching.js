@@ -1,7 +1,4 @@
 import {
-  currentSessionChats,
-} from "$lib/stores/api";
-import {
   updateContact as saveToStore,
   getCachedContacts,
   getContact as getContactStore

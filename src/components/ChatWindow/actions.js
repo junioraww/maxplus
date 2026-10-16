@@ -1,6 +1,5 @@
 import API, {
   currentUser,
-  currentSessionChats,
   currentRealChats,
 } from "$lib/stores/api";
 import {
@@ -210,32 +209,19 @@ export async function sendMessage(
       });
     }
 
-    currentSessionChats.update((chats) => {
-      if (!chats) return chats;
-      const index = chats.findIndex((c) => String(c.id) === String(chat.id));
-      const now = fullMsg.time || Date.now();
-      if (index === -1) {
-        const newChat = {
-          ...chat,
-          id: chat.id,
-          lastMessage: fullMsg,
-          lastEventTime: now,
-          newMessages: 0,
-        };
-        return [newChat, ...chats];
-      }
-      const updatedChat = {
-        ...chats[index],
-        lastMessage: fullMsg,
-        lastEventTime: now,
-      };
-      const next = [...chats];
-      next.splice(index, 1);
-      return [updatedChat, ...next];
-    });
+    const now = fullMsg.time || Date.now();
+    const chatEntry = getChat(chat.id);
+    chatEntry.chatInfo.update((existing) => ({
+      ...(existing || chat),
+      id: chat.id,
+      lastMessage: fullMsg,
+      lastEventTime: now,
+    }));
 
     currentRealChats.update((ids) => {
-      return ids?.some(id => String(id) === String(chat.id)) ? ids : [chat.id, ...(ids || [])];
+      const idStr = String(chat.id);
+      const filtered = (ids || []).filter(id => String(id) !== idStr);
+      return [chat.id, ...filtered];
     });
 
     saveChats([
@@ -358,7 +344,7 @@ export async function forwardMessages(targetChatId, messagesToForward, optionalT
     const sourceChatId = m.chatId ?? m.chat_id ?? m.sourceChatId;
     const msgIdStr = m.id != null ? String(m.id) : null;
     if (sourceChatId == null || !msgIdStr) continue;
-    const sourceChat = get(currentSessionChats)?.find((c) => String(c.id) === String(sourceChatId));
+    const sourceChat = getChat(sourceChatId).getInfo();
     const channelName = m.link?.chatName || (sourceChat?.type === "CHANNEL" ? sourceChat.title : null);
     const channelIcon = m.link?.chatIconUrl || (sourceChat?.type === "CHANNEL" ? (sourceChat.avatar || sourceChat.baseIconUrl || sourceChat.iconUrl) : null);
     const link = {

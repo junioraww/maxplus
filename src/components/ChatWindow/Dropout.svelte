@@ -5,8 +5,8 @@
   import { registerBackHandler } from "$lib/utils/backButton.js";
 
   import { handleReaction } from "$components/ChatWindow/actions";
-  import API, { currentSessionChats, currentUser, serverConfig } from "$lib/stores/api";
-  import { saveChats } from "$lib/stores/messages";
+  import API, { currentUser, serverConfig } from "$lib/stores/api";
+  import { saveChats, getChat } from "$lib/stores/messages";
   import { reactionEmojis, ensureReactionsLoaded } from "$lib/stores/reactions.js";
   import Avatar from "$components/main/Avatar.svelte";
 
@@ -181,12 +181,7 @@
       pinnedMessage: targetMsg,
     };
 
-    currentSessionChats.update(chats => {
-      const idx = chats.findIndex(x => x.id === chat.id);
-      if (idx !== -1) chats[idx] = updatedChat;
-      return [...chats];
-    });
-
+    getChat(chat.id).chatInfo.set(updatedChat);
     await saveChats([ updatedChat ]);
     dispatch("close", {});
     cleanupBack();

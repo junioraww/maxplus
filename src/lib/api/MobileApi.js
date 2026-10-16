@@ -7,7 +7,6 @@ import { invoke } from "$lib/utils/invoke";
 import {
   currentUser,
   currentUserDetails,
-  currentSessionChats,
   currentSessionCalls,
   currentRealChats,
   currentRealContacts,
@@ -195,19 +194,14 @@ export default class MobileApi extends BaseAPI {
           chat.receivedMessage.set(message);
           pluginEmit("message:edited", { message, chatId: message.chatId });
 
-          currentSessionChats.update((chats) => {
-            if (!chats) return chats;
-            const index = chats.findIndex((c) => String(c.id) === String(message.chatId));
-            if (index !== -1 && chats[index].lastMessage && String(chats[index].lastMessage.id) === String(message.id)) {
-              const updatedChat = {
-                ...chats[index],
+          chat.chatInfo.update((c) => {
+            if (c && c.lastMessage && String(c.lastMessage.id) === String(message.id)) {
+              return {
+                ...c,
                 lastMessage: message,
               };
-              const next = [...chats];
-              next[index] = updatedChat;
-              return next;
             }
-            return chats;
+            return c;
           });
         } else {
           chat.receivedMessage.set(message);
@@ -217,34 +211,21 @@ export default class MobileApi extends BaseAPI {
           const isOutgoing = Number(message.sender) === myId || Number(message.from) === myId;
           const msgTime = message.time || Date.now();
 
-          currentSessionChats.update((chats) => {
-            if (!chats) return chats;
-            const index = chats.findIndex((c) => String(c.id) === String(message.chatId));
-            if (index === -1) {
-              const info = chat.getInfo() || { id: message.chatId, type: "DIALOG" };
-              const newChat = {
-                ...info,
-                id: message.chatId,
-                lastMessage: message,
-                lastEventTime: msgTime,
-                newMessages: isOutgoing ? 0 : 1,
-              };
-              return [newChat, ...chats];
-            }
-            const updatedChat = {
-              ...chats[index],
+          chat.chatInfo.update((c) => {
+            const prev = c || chat.getInfo() || { id: message.chatId, type: "DIALOG" };
+            return {
+              ...prev,
+              id: message.chatId,
               lastMessage: message,
               lastEventTime: msgTime,
-              newMessages: isOutgoing ? (chats[index].newMessages || 0) : ((chats[index].newMessages || 0) + 1),
+              newMessages: isOutgoing ? (prev.newMessages || 0) : ((prev.newMessages || 0) + 1),
             };
-            const next = [...chats];
-            next.splice(index, 1);
-            return [updatedChat, ...next];
           });
 
           currentRealChats.update((ids) => {
-            if (!ids) return [message.chatId];
-            return ids.some(id => String(id) === String(message.chatId)) ? ids : [message.chatId, ...ids];
+            const idStr = String(message.chatId);
+            const filtered = (ids || []).filter(id => String(id) !== idStr);
+            return [message.chatId, ...filtered];
           });
 
           if (!isOutgoing) {
@@ -314,18 +295,14 @@ export default class MobileApi extends BaseAPI {
           const chat = getChat(chatId);
           chat.readReceipt?.set({ userId, mark });
 
-          currentSessionChats.update(chats => {
-            if (!chats) return chats;
-            const idx = chats.findIndex(c => String(c.id) === String(chatId));
-            if (idx === -1) return chats;
-            const current = chats[idx];
+          chat.chatInfo.update((current) => {
+            if (!current) return current;
             const participants = { ...(current.participants || {}), [userId]: mark };
             let otherReadTime = current.otherReadTime || 0;
             if (userId !== myId && mark > otherReadTime) {
               otherReadTime = mark;
             }
-            chats[idx] = { ...current, participants, otherReadTime };
-            return [...chats];
+            return { ...current, participants, otherReadTime };
           });
         }
       } else if (opc === 132) {
@@ -392,15 +369,11 @@ export default class MobileApi extends BaseAPI {
       } else if (opc === 135) {
         const chatPayload = response.payload?.chat;
         if (chatPayload && chatPayload.id != null) {
+          const chat = getChat(chatPayload.id);
           let mergedChat = null;
-          currentSessionChats.update((chats) => {
-            if (!chats) return chats;
-            const idx = chats.findIndex((c) => String(c.id) === String(chatPayload.id));
-            if (idx === -1) return chats;
-            mergedChat = { ...chats[idx], ...chatPayload };
-            const next = [...chats];
-            next[idx] = mergedChat;
-            return next;
+          chat.chatInfo.update((current) => {
+            mergedChat = { ...(current || {}), ...chatPayload };
+            return mergedChat;
           });
           if (mergedChat) {
             await saveChats([mergedChat]).catch(() => {});
@@ -822,8 +795,10 @@ export default class MobileApi extends BaseAPI {
       if (updatedExisting.length) {
         await saveChats(updatedExisting);
       }
+      for (const c of updatedCurrentChats) {
+        getChat(c.id).chatInfo.set(c);
+      }
       currentRealChats.set(updatedCurrentChats.map(x => x.id));
-      currentSessionChats.set(updatedCurrentChats);
 
       const telemetrySetupResp = await invoke("set_chats_for_telemetry", {
         chats: currentChats.map(c => ({ chatId: c.id, chatType: c.type }))
@@ -1118,21 +1093,14 @@ export default class MobileApi extends BaseAPI {
   async setChatMute(chatId, dontDisturbUntil) {
     await this.waitSync();
     const res = await invoke("set_chat_mute", { chatId, dontDisturbUntil });
+    const chat = getChat(chatId);
     let updatedChat = null;
-    currentSessionChats.update((chats) => {
-      if (!chats) return chats;
-      return chats.map((c) => {
-        if (String(c.id) === String(chatId)) {
-          updatedChat = { ...c, dontDisturbUntil };
-          return updatedChat;
-        }
-        return c;
-      });
+    chat.chatInfo.update((c) => {
+      updatedChat = { ...(c || chat.getInfo() || { id: chatId }), dontDisturbUntil };
+      return updatedChat;
     });
     if (updatedChat) {
       await saveChats([updatedChat]);
-    } else {
-      await saveChats([{ id: chatId, dontDisturbUntil }]);
     }
     return res;
   }
@@ -1649,15 +1617,11 @@ export default class MobileApi extends BaseAPI {
 
     const updatedChat = res?.chat;
     if (updatedChat) {
+      const chat = getChat(chatId);
       let merged = null;
-      currentSessionChats.update((chats) => {
-        if (!chats) return chats;
-        const idx = chats.findIndex((c) => String(c.id) === String(chatId));
-        if (idx === -1) return chats;
-        merged = { ...chats[idx], ...updatedChat };
-        const next = [...chats];
-        next[idx] = merged;
-        return next;
+      chat.chatInfo.update((c) => {
+        merged = { ...(c || chat.getInfo() || {}), ...updatedChat };
+        return merged;
       });
       if (merged) {
         await saveChats([merged]).catch(() => {});
@@ -1678,12 +1642,12 @@ export default class MobileApi extends BaseAPI {
 
     if (!payload) return null;
 
-    currentSessionChats.update(chats => {
-      chats.push(payload.chat);
-      return chats;
-    });
+    if (payload.chat) {
+      getChat(payload.chatId).chatInfo.set(payload.chat);
+      await saveChats([payload.chat]).catch(() => {});
+    }
 
-    currentRealChats.update(x => [...x, payload.chatId]);
+    currentRealChats.update(x => [...(x || []), payload.chatId]);
 
     return payload.chat;
   }
@@ -1694,12 +1658,7 @@ export default class MobileApi extends BaseAPI {
     const { chat } = response;
 
     currentRealChats.update(chats => [ ...chats, chat.id ]);
-
-    currentSessionChats.update(chats => {
-      const idx = chats.findIndex(x => x.id === chat.id);
-      if (idx !== -1) chats.splice(idx, 1);
-      chats.push(chat);
-    });
+    getChat(chat.id).chatInfo.set(chat);
 
     await saveChats([ chat ]);
 
@@ -1788,12 +1747,7 @@ export default class MobileApi extends BaseAPI {
       description: chat.description
     });
 
-    currentSessionChats.update(chats => {
-      const idx = chats.findIndex(x => x.id === chat.id);
-      if (idx !== -1) chats.splice(idx, 1);
-      chats.push(chat);
-    });
-
+    getChat(chat.id).chatInfo.set(chat);
     await saveChats([ chat ]);
 
     return response.chat;
@@ -1805,13 +1759,9 @@ export default class MobileApi extends BaseAPI {
       chatId, messageId
     });
 
-    // TODO Optimize
-    // сделать отдельные сторы под каждые значения? unreadStore, lastMessageStore и тд
-    currentSessionChats.update(chats => {
-      if (!chats) return;
-      const updated = chats.find(x => x.id === chatId);
-      if (updated) updated.newMessages = response.unread;
-      return chats;
+    getChat(chatId).chatInfo.update(chat => {
+      if (!chat) return chat;
+      return { ...chat, newMessages: response.unread };
     });
 
     return response;
@@ -1823,11 +1773,9 @@ export default class MobileApi extends BaseAPI {
 
     if (!response.chat) throw new Error("Неизвестный ответ сервера");
 
-    currentSessionChats.update(chats => {
-      if (!chats) return;
-      const updated = chats.find(x => x.id === chatId);
-      if (updated) updated.link = response.chat.link;
-      return chats;
+    getChat(chatId).chatInfo.update(chat => {
+      if (!chat) return chat;
+      return { ...chat, link: response.chat.link };
     });
 
     return response;
@@ -2039,13 +1987,7 @@ export default class MobileApi extends BaseAPI {
       showHistory: Boolean(showHistory)
     });
     if (res?.chat) {
-      currentSessionChats.update(chats => {
-        const idx = chats.findIndex(x => x.id === Number(chatId));
-        if (idx !== -1) {
-          chats[idx] = { ...chats[idx], ...res.chat };
-        }
-        return chats;
-      });
+      getChat(chatId).chatInfo.update(c => ({ ...(c || {}), ...res.chat }));
     }
     return res;
   }
@@ -2059,13 +2001,7 @@ export default class MobileApi extends BaseAPI {
       cleanMsgPeriod: Number(cleanPeriod)
     });
     if (res?.chat) {
-      currentSessionChats.update(chats => {
-        const idx = chats.findIndex(x => x.id === Number(chatId));
-        if (idx !== -1) {
-          chats[idx] = { ...chats[idx], ...res.chat };
-        }
-        return chats;
-      });
+      getChat(chatId).chatInfo.update(c => ({ ...(c || {}), ...res.chat }));
     }
     return res;
   }
@@ -2079,13 +2015,7 @@ export default class MobileApi extends BaseAPI {
       alias: alias ? String(alias) : null
     });
     if (res?.chat) {
-      currentSessionChats.update(chats => {
-        const idx = chats.findIndex(x => x.id === Number(chatId));
-        if (idx !== -1) {
-          chats[idx] = { ...chats[idx], ...res.chat };
-        }
-        return chats;
-      });
+      getChat(chatId).chatInfo.update(c => ({ ...(c || {}), ...res.chat }));
     }
     return res;
   }
@@ -2097,13 +2027,7 @@ export default class MobileApi extends BaseAPI {
       userId: Number(userId)
     });
     if (res?.chat) {
-      currentSessionChats.update(chats => {
-        const idx = chats.findIndex(x => x.id === Number(chatId));
-        if (idx !== -1) {
-          chats[idx] = { ...chats[idx], ...res.chat };
-        }
-        return chats;
-      });
+      getChat(chatId).chatInfo.update(c => ({ ...(c || {}), ...res.chat }));
     }
     return res;
   }
@@ -2126,41 +2050,36 @@ export default class MobileApi extends BaseAPI {
     });
 
     let targetChat = null;
-    currentSessionChats.update(chats => {
-      if (!chats) return chats;
-      const idx = chats.findIndex(x => x.id === Number(chatId));
-      if (idx !== -1) {
-        const existing = chats[idx];
-        const nextOpts = { ...(existing.options || {}), ...(res?.chat?.options || {}) };
-        if (allCanPin !== null) {
-          nextOpts.ALL_CAN_PIN_MESSAGE = allCanPin;
-          nextOpts.allCanPinMessage = allCanPin;
-        }
-        if (onlyOwnerIcon !== null) {
-          nextOpts.ONLY_OWNER_CAN_CHANGE_ICON_TITLE = onlyOwnerIcon;
-          nextOpts.onlyOwnerCanChangeIconTitle = onlyOwnerIcon;
-        }
-        if (onlyAdminAdd !== null) {
-          nextOpts.ONLY_ADMIN_CAN_ADD_MEMBER = onlyAdminAdd;
-          nextOpts.onlyAdminCanAddMember = onlyAdminAdd;
-        }
-        if (onlyAdminCall !== null) {
-          nextOpts.ONLY_ADMIN_CAN_CALL = onlyAdminCall;
-          nextOpts.onlyAdminCanCall = onlyAdminCall;
-        }
-        if (membersLink !== null) {
-          nextOpts.MEMBERS_CAN_SEE_PRIVATE_LINK = membersLink;
-          nextOpts.membersCanSeePrivateLink = membersLink;
-        }
-        const updated = {
-          ...existing,
-          ...(res?.chat || {}),
-          options: nextOpts,
-        };
-        chats[idx] = updated;
-        targetChat = updated;
+    getChat(chatId).chatInfo.update((existing) => {
+      if (!existing) return existing;
+      const nextOpts = { ...(existing.options || {}), ...(res?.chat?.options || {}) };
+      if (allCanPin !== null) {
+        nextOpts.ALL_CAN_PIN_MESSAGE = allCanPin;
+        nextOpts.allCanPinMessage = allCanPin;
       }
-      return [...chats];
+      if (onlyOwnerIcon !== null) {
+        nextOpts.ONLY_OWNER_CAN_CHANGE_ICON_TITLE = onlyOwnerIcon;
+        nextOpts.onlyOwnerCanChangeIconTitle = onlyOwnerIcon;
+      }
+      if (onlyAdminAdd !== null) {
+        nextOpts.ONLY_ADMIN_CAN_ADD_MEMBER = onlyAdminAdd;
+        nextOpts.onlyAdminCanAddMember = onlyAdminAdd;
+      }
+      if (onlyAdminCall !== null) {
+        nextOpts.ONLY_ADMIN_CAN_CALL = onlyAdminCall;
+        nextOpts.onlyAdminCanCall = onlyAdminCall;
+      }
+      if (membersLink !== null) {
+        nextOpts.MEMBERS_CAN_SEE_PRIVATE_LINK = membersLink;
+        nextOpts.membersCanSeePrivateLink = membersLink;
+      }
+      const updated = {
+        ...existing,
+        ...(res?.chat || {}),
+        options: nextOpts,
+      };
+      targetChat = updated;
+      return updated;
     });
 
     if (targetChat) {
@@ -2209,18 +2128,13 @@ export default class MobileApi extends BaseAPI {
       }
       c.receivedMessage?.set({ chatId: Number(chatId), type: "CLEAR_HISTORY" });
     }
-    currentSessionChats.update((chats) => {
-      if (!chats) return chats;
-      const idx = chats.findIndex((ch) => String(ch.id) === String(chatId));
-      if (idx !== -1) {
-        chats[idx] = {
-          ...chats[idx],
-          lastMessage: null,
-          newMessages: 0,
-        };
-        return [...chats];
-      }
-      return chats;
+    getChat(chatId).chatInfo.update((ch) => {
+      if (!ch) return ch;
+      return {
+        ...ch,
+        lastMessage: null,
+        newMessages: 0,
+      };
     });
     return res;
   }

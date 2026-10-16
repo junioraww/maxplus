@@ -6,10 +6,10 @@
 
   import API, {
     currentSessionCalls,
-    currentSessionChats,
     currentRealContacts,
     currentUser,
   } from '$lib/stores/api';
+  import { getChat } from '$lib/stores/messages';
   import { getContact, getCachedContacts } from '$lib/stores/contacts';
   import { activeCall, patchCallState, resetCallState, CALL_PHASE, CALL_MODE } from '$lib/stores/calls.js';
   import { CallService } from '$lib/services/CallService.js';
@@ -214,7 +214,7 @@
       let avatar = null;
 
       if (isGroup) {
-        const chat = $currentSessionChats?.find(c => c.id === call.chatId);
+        const chat = getChat(call.chatId).getInfo();
         name = chat?.title || 'Групповой звонок';
         avatar = chat?.avatar || chat?.baseUrl;
       } else {

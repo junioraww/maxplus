@@ -133,9 +133,7 @@ fn handle_local_file(request: tiny_http::Request, mut path: &str) {
         Header::from_bytes(&b"Accept-Ranges"[..], b"bytes").unwrap(),
         Header::from_bytes(&b"Content-Type"[..], mime.as_bytes()).unwrap(),
         Header::from_bytes(&b"Content-Disposition"[..], b"inline").unwrap(),
-        Header::from_bytes(&b"Cache-Control"[..], b"no-store, no-cache, must-revalidate").unwrap(),
-        Header::from_bytes(&b"Pragma"[..], b"no-cache").unwrap(),
-        Header::from_bytes(&b"Expires"[..], b"0").unwrap(),
+        Header::from_bytes(&b"Cache-Control"[..], b"public, max-age=31536000, immutable").unwrap(),
     ];
 
     if let Some(rh) = range_header {
@@ -297,6 +295,13 @@ fn handle_request(request: tiny_http::Request, client: &reqwest::blocking::Clien
                         .and_then(|v| v.as_u64())
                 })
                 .unwrap_or(0);
+
+            if let Ok(Some(cached_path)) = crate::stores::get_cached_file_sync(app, acc, &url) {
+                if std::path::Path::new(&cached_path).exists() {
+                    handle_local_file(request, &cached_path);
+                    return;
+                }
+            }
 
             let paths = crate::stores::Paths::new(app, acc);
             let p1 = paths.cache_file(&crate::stores::hash(&url));

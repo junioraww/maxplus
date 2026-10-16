@@ -7,7 +7,8 @@
   import SettingsPageWrapper from "$components/settings/SettingsPageWrapper.svelte";
 
   import { get } from "svelte/store";
-  import API, { currentUser, currentSessionChats } from "$lib/stores/api";
+  import API, { currentUser, currentRealChats } from "$lib/stores/api";
+  import { getChat } from "$lib/stores/messages";
   import { getContact } from "$lib/utils/caching";
   import Avatar from "$components/main/Avatar.svelte";
   import {
@@ -36,7 +37,7 @@
   let activeTab = "all";
   let unmutingIds = new Set();
 
-  $: allChats = $currentSessionChats || [];
+  $: allChats = ($currentRealChats || []).map(id => getChat(id).getInfo()).filter(Boolean);
   $: mutedItems = allChats.filter(c => isChatMuted(c));
 
   $: mutedChats = mutedItems.filter(c => c.type !== "DIALOG");

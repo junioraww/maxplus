@@ -5,28 +5,22 @@ import {
   getCurrentAccount,
 } from "$lib/stores/accounts";
 import {
-  currentSessionChats,
+  currentRealChats,
 } from "$lib/stores/api";
 import {
   get as sessionGet,
 } from "$lib/stores/session";
-
-// TODO перенести currentSessionChats сюда
 
 const settingsCache = {};
 const chatsCache = {};
 
 export const loadChats = async () => {
   const account = await getCurrentAccount();
-
-  // TODO caching?
-
   return invoke("load_chats", { account: account.id });
 }
 
 export const saveChats = async (chats) => {
   const account = await getCurrentAccount();
-
   return invoke("save_chats", { account: account.id, chats });
 }
 
@@ -70,20 +64,20 @@ export const getChatSettings = chatId => {
   return store;
 };
 
-
 export const getChat = chatId => {
   if (chatsCache[chatId])
     return chatsCache[chatId];
 
-  // TODO this must be store used in currentSessionChats (so make currentSessionChats usual array!)
-  //const chatInfo = writable(undefined);
-
+  const chatInfo = writable(null);
   const receivedMessage = writable(null);
   const readReceipt = writable(null);
   const deletedMessages = writable(null);
 
   const entry = {
-    getInfo: () => get(currentSessionChats).find(chat => chat.id === Number(chatId)),
+    chatInfo,
+    chatMeta: chatInfo,
+    chatData: chatInfo,
+    getInfo: () => get(chatInfo),
     receivedMessage,
     readReceipt,
     deletedMessages,
@@ -153,4 +147,22 @@ export const closeChatSettings = chatId => {
   if (!settings) return;
   if (settings.unsubscribe) settings.unsubscribe();
   delete settingsCache[chatId];
+};
+
+export const getChatInfo = chatId => getChat(chatId).chatInfo;
+export const getChatMeta = chatId => getChat(chatId).chatInfo;
+export const setChatInfo = (chatId, info) => getChat(chatId).chatInfo.set(info);
+
+export const updateChatInfo = (chatId, updater) => {
+  const { chatInfo } = getChat(chatId);
+  if (typeof updater === "function") {
+    chatInfo.update(updater);
+  } else {
+    chatInfo.update(prev => ({ ...(prev || {}), ...updater }));
+  }
+};
+
+export const getAllChats = () => {
+  const ids = get(currentRealChats) || [];
+  return ids.map(id => getChat(id).getInfo()).filter(Boolean);
 };

@@ -6,7 +6,7 @@ import { mountedContent, registerMount, unregisterMount } from './mount-registry
 import API, {
   currentUser,
   currentUserDetails,
-  currentSessionChats,
+  currentRealChats,
   currentSessionCalls,
   currentFolders,
   currentPresence,
@@ -94,7 +94,7 @@ export function buildPluginContext(manifest, pluginId) {
       session: Session,
       currentUser,
       currentUserDetails,
-      currentSessionChats,
+      currentRealChats,
       currentSessionCalls,
       currentFolders,
       currentPresence,

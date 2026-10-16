@@ -16,8 +16,8 @@ import {
   getLocalFilePath,
   getFallbackAvatarLocalPath
 } from "$lib/utils/images";
-import Session from "$lib/stores/session";
-import API, { currentSessionChats, currentUser } from "$lib/stores/api";
+import API, { currentUser } from "$lib/stores/api";
+import { getChat } from "$lib/stores/messages";
 import { getCurrentAccount } from "$lib/stores/accounts";
 import { getContactDirect } from "$lib/stores/contacts";
 import { getMessagePreview } from "$lib/utils/text";
@@ -238,7 +238,7 @@ export function isChatMuted(chat) {
   let chatObj = typeof chat === "object" && chat !== null && typeof chat.getInfo === "function" ? chat.getInfo() : chat;
   const id = typeof chat === "number" || typeof chat === "string" ? Number(chat) : Number(chatObj?.id);
   if (!isNaN(id)) {
-    const found = get(currentSessionChats)?.find(c => String(c.id) === String(id));
+    const found = getChat(id).getInfo();
     if (found) chatObj = found;
   }
   if (!chatObj) return false;
