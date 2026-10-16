@@ -182,11 +182,16 @@
     return null;
   })();
 
-  $: column =
-    rawText?.length > 20 ||
+  $: hasBlocks = Boolean(
+    linkedMsg ||
     effectiveAttaches?.length ||
     msg.reactionInfo?.totalCount ||
-    msg.link?.messageId;
+    msg.deleted ||
+    lines.length > 1 ||
+    (effectiveText && effectiveText.length > 30) ||
+    isSystem
+  );
+  $: isInlineRow = !hasBlocks && Boolean(effectiveText);
 
   $: showAvatar =
     chat.type !== "CHANNEL" &&
@@ -359,120 +364,121 @@
         {/if}
       </div>
     {:else}
-      <div class={"message-bubble " + (column ? "column" : "row")}>
-      <div class="direction">
-        <div class="text">
-        {#if linkedMsg}
-          {#if linkedType === "FORWARD"}
-            <div class="forward-block">
-              <div
-                class="forward-header"
-                on:click|stopPropagation={handleForwardHeaderClick}
-              >
-                <div class="forward-avatar-placeholder">
-                  <Avatar
-                    contactId={isForwardChannel ? null : (isForwardFromMe ? Number($currentUser) : (linkedMsg?.sender ? Number(linkedMsg.sender) : null))}
-                    chat={isForwardChannel ? (forwardChat || { title: forwardAuthorName }) : forwardChat}
-                    src={forwardAvatarUrl}
-                    title={forwardAuthorName}
-                    size={22}
-                  />
-                </div>
-                <div class="forward-info">
-                  <span class="forward-name">{forwardAuthorName}</span>
-                  <span class="forward-label">Пересланное сообщение</span>
-                </div>
-                <svg class="forward-arrow" viewBox="0 0 24 24"
-                  ><path
-                    d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"
-                  /></svg
+      <div class="message-bubble" class:is-row={isInlineRow}>
+        <div class="bubble-content">
+          {#if linkedMsg}
+            {#if linkedType === "FORWARD"}
+              <div class="forward-block">
+                <div
+                  class="forward-header"
+                  on:click|stopPropagation={handleForwardHeaderClick}
                 >
-              </div>
-
-              {#if forwardLines}
-                <div class="forward-content">
-                  {#each forwardLines as fLine}
-                    <p class="line allow-selection">{fLine}</p>
-                  {/each}
+                  <div class="forward-avatar-placeholder">
+                    <Avatar
+                      contactId={isForwardChannel ? null : (isForwardFromMe ? Number($currentUser) : (linkedMsg?.sender ? Number(linkedMsg.sender) : null))}
+                      chat={isForwardChannel ? (forwardChat || { title: forwardAuthorName }) : forwardChat}
+                      src={forwardAvatarUrl}
+                      title={forwardAuthorName}
+                      size={22}
+                    />
+                  </div>
+                  <div class="forward-info">
+                    <span class="forward-name">{forwardAuthorName}</span>
+                    <span class="forward-label">Пересланное сообщение</span>
+                  </div>
+                  <svg class="forward-arrow" viewBox="0 0 24 24"
+                    ><path
+                      d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"
+                    /></svg
+                  >
                 </div>
-              {/if}
 
-              {#if linkedMsg.attaches}
-                <Attachments
-                  {getFile}
-                  attaches={linkedMsg.attaches}
-                  {handleMediaClick}
-                  chatId={linkedMsg.chatId || chat?.id}
-                  messageId={linkedMsg.id}
-                />
-              {/if}
-            </div>
-          {:else if linkedType === "REPLY"}
-            <div on:click|stopPropagation={openReply} class="reply-block">
-              <div class="reply-content">
-                <p class="line allow-selection">
-                  <b>{replyAuthorName}</b>
-                  <MessagePreview {chat} msg={linkedMsg} cut={true} />
-                </p>
+                {#if forwardLines}
+                  <div class="forward-content">
+                    {#each forwardLines as fLine}
+                      <p class="line allow-selection">{fLine}</p>
+                    {/each}
+                  </div>
+                {/if}
+
+                {#if linkedMsg.attaches}
+                  <Attachments
+                    {getFile}
+                    attaches={linkedMsg.attaches}
+                    {handleMediaClick}
+                    chatId={linkedMsg.chatId || chat?.id}
+                    messageId={linkedMsg.id}
+                  />
+                {/if}
               </div>
-            </div>
-          {/if}
-        {/if}
-
-        {#if isSystem}
-          {@const sysText = getSystemText(msg) || ""}
-          {#if sysText}
-            {#each sysText.split("\n") as line}
-              <p class="line system">{@html line}</p>
-            {/each}
-          {/if}
-        {:else}
-          {#if msg.deleted}
-            <div class="deleted-notice">
-              <svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor">
-                <path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/>
-              </svg>
-              <span>Сообщение удалено</span>
-              {#if msg.deleted_at || msg.deletedAt}
-                <span class="deleted-notice-time">({new Date(msg.deleted_at || msg.deletedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })})</span>
-              {/if}
-            </div>
+            {:else if linkedType === "REPLY"}
+              <div on:click|stopPropagation={openReply} class="reply-block">
+                <div class="reply-content">
+                  <p class="line allow-selection">
+                    <b>{replyAuthorName}</b>
+                    <MessagePreview {chat} msg={linkedMsg} cut={true} />
+                  </p>
+                </div>
+              </div>
+            {/if}
           {/if}
 
-          {#if decoded?.error || effectiveText.includes('<b style="color:#f66">')}
-            {#each lines as line}
-              <p class="line crypto-error">{@html line}</p>
-            {/each}
-          {:else if isE2eDisable || decoded?.is_handshake_request || decoded?.is_handshake_accept || (typeof effectiveText === "string" && /<\/?(b|i|u|s|span|div|p|a|code|strong|em)(\s+[^>]*)?>/i.test(effectiveText))}
-            {#each lines as line}
-              <p class="line">{@html line}</p>
-            {/each}
-          {:else if effectiveText}
-            <FormattedText
-              text={effectiveText}
-              elements={msg.elements || []}
-              deleted={msg.deleted}
-              {isSystem}
-            />
+          {#if isSystem}
+            {@const sysText = getSystemText(msg) || ""}
+            {#if sysText}
+              {#each sysText.split("\n") as line}
+                <p class="line system">{@html line}</p>
+              {/each}
+            {/if}
+          {:else}
+            {#if msg.deleted}
+              <div class="deleted-notice">
+                <svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor">
+                  <path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/>
+                </svg>
+                <span>Сообщение удалено</span>
+                {#if msg.deleted_at || msg.deletedAt}
+                  <span class="deleted-notice-time">({new Date(msg.deleted_at || msg.deletedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })})</span>
+                {/if}
+              </div>
+            {/if}
+
+            {#if decoded?.error || effectiveText.includes('<b style="color:#f66">')}
+              {#each lines as line}
+                <p class="line crypto-error">{@html line}</p>
+              {/each}
+            {:else if isE2eDisable || decoded?.is_handshake_request || decoded?.is_handshake_accept || (typeof effectiveText === "string" && /<\/?(b|i|u|s|span|div|p|a|code|strong|em)(\s+[^>]*)?>/i.test(effectiveText))}
+              {#each lines as line}
+                <p class="line">{@html line}</p>
+              {/each}
+            {:else if effectiveText}
+              <FormattedText
+                text={effectiveText}
+                elements={msg.elements || []}
+                deleted={msg.deleted}
+                {isSystem}
+              />
+            {/if}
+
+            {#if effectiveAttaches?.length}
+              <Attachments
+                {getFile}
+                attaches={effectiveAttaches}
+                {handleMediaClick}
+                chatId={msg?.chatId ?? chat?.id}
+                messageId={msg?.id}
+                {isMe}
+              />
+            {/if}
+          {/if}
+        </div>
+
+        <div class="message-footer">
+          {#if msg.reactionInfo?.totalCount}
+            <Reactions info={msg.reactionInfo} {isMe} msgId={msg.id} on:react={(e) => dispatch("react", e.detail)} />
           {/if}
 
-          {#if effectiveAttaches?.length}
-            <Attachments
-              {getFile}
-              attaches={effectiveAttaches}
-              {handleMediaClick}
-              chatId={msg?.chatId ?? chat?.id}
-              messageId={msg?.id}
-              {isMe}
-            />
-          {/if}
-        {/if}
-      </div>
-      <div class={column ? "bottom cmn" : "bottom"}>
-        <Reactions info={msg.reactionInfo} {isMe} msgId={msg.id} on:react={(e) => dispatch("react", e.detail)} />
-
-        <div class="message-status">
-          <div class="status-meta">
+          <div class="message-status">
             {#if msg.stats?.views}
               <span class="views">
                 <svg viewBox="0 0 24 24" class="views-icon"
@@ -495,8 +501,8 @@
                 изм.
               </button>
             {/if}
-            {#if !isMe && !isSystem && decoded?.obf && !isE2eDisable}
-              <a class="obf-type">{decoded.obf}</a>
+            {#if !isSystem && decoded?.obf && !isE2eDisable}
+              <span class="obf-type" title="Шифрование: {decoded.obf}">{decoded.obf}</span>
             {/if}
             <span class="timestamp"
               >{new Date(msg.time).toLocaleTimeString([], {
@@ -504,34 +510,29 @@
                 minute: "2-digit",
               })}</span
             >
+            {#if isMe && !isSystem}
+              <span class="status-ticks">
+                {#if isSending}
+                  <svg class="status-icon is-sending" viewBox="0 0 16 16">
+                    <circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" stroke-width="1.6" />
+                    <polyline points="8,4.5 8,8 10.5,9.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
+                  </svg>
+                {:else if isRead}
+                  <svg class="status-icon is-read" viewBox="0 0 20 12">
+                    <path fill="currentColor" d="M4.5 10.5L0 6l1.4-1.4L4.5 7.7 12.6 0l1.4 1.4z" />
+                    <path fill="currentColor" d="M9.5 10.5L5 6l1.4-1.4L9.5 7.7 17.6 0l1.4 1.4z" />
+                  </svg>
+                {:else}
+                  <svg class="status-icon is-sent" viewBox="0 0 16 12">
+                    <path fill="currentColor" d="M5.5 10.5L1 6l1.4-1.4L5.5 7.7 13.6 0l1.4 1.4z" />
+                  </svg>
+                {/if}
+              </span>
+            {/if}
           </div>
-          {#if isMe && !isSystem}
-            <div class="status-ticks">
-              {#if isSending}
-                <svg class="status-icon is-sending" viewBox="0 0 16 16">
-                  <circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" stroke-width="1.6" />
-                  <polyline points="8,4.5 8,8 10.5,9.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
-                </svg>
-              {:else if isRead}
-                <svg class="status-icon is-read" viewBox="0 0 20 12">
-                  <path fill="currentColor" d="M4.5 10.5L0 6l1.4-1.4L4.5 7.7 12.6 0l1.4 1.4z" />
-                  <path fill="currentColor" d="M9.5 10.5L5 6l1.4-1.4L9.5 7.7 17.6 0l1.4 1.4z" />
-                </svg>
-              {:else}
-                <svg class="status-icon is-sent" viewBox="0 0 16 12">
-                  <path fill="currentColor" d="M5.5 10.5L1 6l1.4-1.4L5.5 7.7 13.6 0l1.4 1.4z" />
-                </svg>
-              {/if}
-              {#if decoded?.obf && !isE2eDisable}
-                <a class="obf-type">{decoded.obf}</a>
-              {/if}
-            </div>
-          {/if}
         </div>
       </div>
-    </div>
-  </div>
-  {/if}
+    {/if}
 
   {#if transcription && transcription.expanded}
     <div class="transcription-card" class:is-me={isMe}>
@@ -626,26 +627,37 @@
 
   .message-bubble {
     color: #fff;
-    padding: 8px 4px 8px 12px;
+    padding: 7px 10px 6px 12px;
     border-radius: 16px 16px 16px 0;
-    min-width: 100px;
+    min-width: 90px;
     width: 100%;
     box-sizing: border-box;
     font-size: 13px;
     position: relative;
     user-select: text;
     -webkit-user-select: text;
+    display: flex;
+    flex-direction: column;
   }
 
-  .text {
+  .message-bubble.is-row {
+    flex-direction: row;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 10px;
+    width: fit-content;
+  }
+
+  .bubble-content {
     min-width: 0;
     user-select: text;
     -webkit-user-select: text;
     cursor: text;
+    width: 100%;
   }
 
-  .message-bubble.column .text {
-    padding-right: 10px;
+  .message-bubble.is-row .bubble-content {
+    width: auto;
   }
 
   .message-row .message-bubble::before {
@@ -692,15 +704,11 @@
     text-align: center;
   }
 
-  .message-row.is-system .direction {
+  .message-row.is-system .bubble-content {
     display: flex;
     align-items: center;
     justify-content: center;
     gap: 8px;
-    text-align: center;
-  }
-
-  .message-row.is-system .text {
     text-align: center;
     width: 100%;
   }
@@ -784,29 +792,15 @@
     background-color: #c99;
   }
 
-  /* динамичная сетка */
-
-  .message-bubble.row .direction {
-    display: flex;
-    gap: 10px;
-  }
-
-  .message-bubble.column .direction {
-    display: flex;
-    flex-direction: column;
-  }
-
-  /* связанные сообщения */
-
   .forward-block {
     border-left: 2px solid #34b7f1;
-    padding-left: 8px;
-    margin-bottom: 8px;
+    padding: 4px 8px;
+    margin-bottom: 6px;
     background: rgba(255, 255, 255, 0.05);
-    border-radius: 4px 12px 12px 4px;
-    padding-top: 4px;
-    padding-bottom: 4px;
+    border-radius: 4px 8px 8px 4px;
     overflow: hidden;
+    width: 100%;
+    box-sizing: border-box;
   }
 
   .forward-header {
@@ -859,15 +853,16 @@
   }
 
   .reply-block {
-    border-left: 3px solid #4a90e2;
-    padding: 10px 4px 10px 8px;
+    border-left: 3px solid #38bdf8;
+    padding: 4px 8px;
     margin-bottom: 6px;
-    margin-left: -4px;
-    border-radius: 4px 0 0 0;
-    opacity: 0.85;
+    border-radius: 4px 8px 8px 4px;
+    opacity: 0.9;
     font-size: 12px;
-    background-color: #0001;
+    background-color: rgba(255, 255, 255, 0.06);
     cursor: pointer;
+    width: 100%;
+    box-sizing: border-box;
   }
 
   .reply-content {
@@ -877,38 +872,37 @@
   }
 
   .message-row.is-system .reply-block {
-    border-left: 3px solid #fff7;
+    border-left: 3px solid rgba(255, 255, 255, 0.4);
   }
 
-  /* значки */
-
-  .bottom {
+  .message-footer {
     display: flex;
+    align-items: flex-end;
     justify-content: space-between;
-    gap: 15px;
-    margin-right: 4px;
-    flex: 1;
+    gap: 8px;
+    margin-top: 3px;
+    width: 100%;
+    line-height: 1;
   }
 
-  .bottom.cmn {
-    flex-direction: row;
+  .message-bubble.is-row .message-footer {
+    width: auto;
+    margin-top: 0;
+    margin-left: auto;
+    flex-shrink: 0;
+    align-self: flex-end;
   }
 
   .message-status {
     display: inline-flex;
-    gap: 4px;
     align-items: center;
+    gap: 4px;
+    line-height: 1;
     white-space: nowrap;
     margin-left: auto;
-    margin-right: 0;
-    line-height: 1;
-  }
-
-  .status-meta {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    line-height: 1;
+    flex-shrink: 0;
+    user-select: none;
+    -webkit-user-select: none;
   }
 
   .views {
@@ -916,7 +910,7 @@
     align-items: center;
     gap: 2px;
     font-size: 10px;
-    opacity: 0.6;
+    opacity: 0.65;
     line-height: 1;
   }
 
@@ -951,7 +945,6 @@
     font-size: 10px;
     color: #ef4444;
     font-weight: 600;
-    margin-right: 2px;
     line-height: 1;
   }
 
@@ -960,12 +953,13 @@
     border: none;
     font-size: 10px;
     line-height: 1;
-    color: #8b929e;
+    color: rgba(255, 255, 255, 0.6);
     cursor: pointer;
-    padding: 0 2px;
+    padding: 0;
     border-radius: 3px;
     transition: color 0.15s ease;
-    display: inline-block;
+    display: inline-flex;
+    align-items: center;
   }
 
   .edited-badge:hover {
@@ -973,10 +967,19 @@
     text-decoration: underline;
   }
 
+  .obf-type {
+    font-size: 9px;
+    font-weight: 700;
+    color: #4ade80;
+    line-height: 1;
+    display: inline-flex;
+    align-items: center;
+  }
+
   .timestamp {
     font-size: 11px;
     line-height: 1;
-    opacity: 0.5;
+    opacity: 0.65;
     display: inline-block;
   }
 
@@ -993,13 +996,13 @@
     height: 10px;
     display: block;
     fill: currentColor;
-    color: #8e8e93;
+    color: rgba(255, 255, 255, 0.65);
   }
 
   .status-icon.is-sending {
     width: 11px;
     height: 11px;
-    color: #8e8e93;
+    color: rgba(255, 255, 255, 0.65);
     stroke: currentColor;
     fill: none;
     display: block;
@@ -1008,7 +1011,7 @@
   .status-icon.is-sent {
     width: 13px;
     height: 10px;
-    color: #8e8e93;
+    color: rgba(255, 255, 255, 0.65);
     fill: currentColor;
     display: block;
   }
@@ -1016,17 +1019,9 @@
   .status-icon.is-read {
     width: 16px;
     height: 10px;
-    color: #34b7f1;
+    color: #38bdf8;
     fill: currentColor;
     display: block;
-  }
-
-  .obf-type {
-    font-size: 8px;
-    color: #7f7;
-    font-weight: 1000;
-    position: relative;
-    top: 1px;
   }
 
   .line {
