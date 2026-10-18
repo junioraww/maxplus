@@ -63,9 +63,7 @@ self.onrtctransform = async (event) => {
 
         if (raw.length > unencryptedBytes) {
           const payload = raw.subarray(unencryptedBytes);
-          const iv = new Uint8Array(12);
-          iv.set(salt.subarray(0, Math.min(8, salt.length)), 0);
-          new DataView(iv.buffer).setUint32(8, (counter++) >>> 0, false);
+          const iv = crypto.getRandomValues(new Uint8Array(12));
 
           const encrypted = await crypto.subtle.encrypt(
             { name: 'AES-GCM', iv, tagLength: 128 },
@@ -84,7 +82,7 @@ self.onrtctransform = async (event) => {
           frame.data = out.buffer;
         }
         await writer.write(frame);
-      } else if (op === 'decrypt' && decKey) {
+      } else if (op === 'decrypt') {
         if (bypassDecrypt) {
           await writer.write(frame);
           continue;
@@ -93,8 +91,14 @@ self.onrtctransform = async (event) => {
         const raw = new Uint8Array(frame.data);
         const isKey = (frame.type === 'key') || (raw.length > 0 && (raw[0] & 0x01) === 0);
         const unencryptedBytes = kind === 'video' ? (isKey ? 10 : 3) : 1;
+        const isEncrypted = raw.length >= unencryptedBytes + 30
+          && raw[raw.length - 2] === 0x0c
+          && raw[raw.length - 1] === 0x00;
 
-        if (raw.length >= unencryptedBytes + 30 && raw[raw.length - 2] === 0x0c) {
+        if (isEncrypted) {
+          if (!decKey) {
+            continue;
+          }
           const iv = raw.subarray(raw.length - 14, raw.length - 2);
           const cipherWithTag = raw.subarray(unencryptedBytes, raw.length - 14);
 
@@ -115,6 +119,7 @@ self.onrtctransform = async (event) => {
           } catch {}
           continue;
         }
+
         await writer.write(frame);
       } else {
         await writer.write(frame);

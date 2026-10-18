@@ -24,9 +24,12 @@ object CallNotificationManager {
   const val ONGOING_CALL_NOTIFICATION_ID = 987655
   const val CALL_CHANNEL_ID = "org.meowkie.max.CALLS"
   private const val CALL_CHANNEL_NAME = "Входящие вызовы"
+  const val ONGOING_CALL_CHANNEL_ID = "org.meowkie.max.ONGOING_CALLS"
+  private const val ONGOING_CALL_CHANNEL_NAME = "Активный звонок"
   private const val PREFS_NAME = "org_meowkie_max_call_prefs"
   private const val KEY_SOUND = "call_sound"
   private const val KEY_VIBRATION = "call_vibration"
+  private const val KEY_ENABLED = "call_enabled"
 
   @Volatile
   private var activeRingtone: Ringtone? = null
@@ -39,11 +42,12 @@ object CallNotificationManager {
   }
 
   @JvmStatic
-  fun syncCallSettings(sound: Boolean, vibration: Boolean) {
+  fun syncCallSettings(sound: Boolean, vibration: Boolean, enabled: Boolean) {
     val ctx = MainActivity.appContext ?: MainActivity.instance?.applicationContext ?: return
     getPrefs(ctx).edit()
       .putBoolean(KEY_SOUND, sound)
       .putBoolean(KEY_VIBRATION, vibration)
+      .putBoolean(KEY_ENABLED, enabled)
       .apply()
   }
 
@@ -66,27 +70,37 @@ object CallNotificationManager {
   }
 
   fun showIncomingCallNotification(context: Context, data: Map<String, String>) {
+    val prefs = getPrefs(context)
+    if (!prefs.getBoolean(KEY_ENABLED, true)) return
     createCallChannel(context)
 
-    val prefs = getPrefs(context)
     val soundEnabled = prefs.getBoolean(KEY_SOUND, true)
     val vibrationEnabled = prefs.getBoolean(KEY_VIBRATION, true)
 
-    val conversationId = data["conversationId"] ?: data["vcId"] ?: data["conference_id"] ?: ""
-    val callerId = data["callerId"] ?: data["suid"] ?: data["caller_id"] ?: ""
+    val conversationId = data["conversationId"] ?: data["vcId"] ?: data["conference_id"] ?: data["cid"] ?: data["chat_id"] ?: data["call_id"] ?: ""
+    val callerId = data["callerId"] ?: data["suid"] ?: data["caller_id"] ?: data["from"] ?: ""
     val account = data["c"]?.toLongOrNull() ?: 0L
     val callerIdLong = callerId.toLongOrNull() ?: 0L
     val rawCallerName = data["userName"] ?: data["title"] ?: data["callerName"] ?: data["caller_name"] ?: data["name"]
     val callerName = rawCallerName?.takeIf { it.isNotBlank() && !it.startsWith("Пользователь ") && !it.startsWith("User ") }
       ?: if (callerId.isNotEmpty()) "Пользователь $callerId" else "Входящий вызов"
     val isVideo = data["isVideo"]?.toBoolean() ?: data["video"]?.toBoolean() ?: (data["iv"] == "1" || data["iv"] == "true")
-    val vcp = data["vcp"] ?: data["conversationParams"] ?: ""
+    val vcp = data["vcp"] ?: data["conversationParams"] ?: data["voiceChannelParams"] ?: ""
+
+    val callDataJson = org.json.JSONObject().apply {
+      put("conversationId", conversationId)
+      put("callerId", callerId)
+      put("callerName", callerName)
+      put("isVideo", isVideo)
+      put("vcp", vcp)
+    }.toString()
 
     val dismissIntent = Intent(context, CallDismissReceiver::class.java).apply {
       action = "${context.packageName}.ACTION_DISMISS_CALL"
       putExtra("conversationId", conversationId)
       putExtra("callerId", callerId)
       putExtra("vcp", vcp)
+      putExtra("call_data", callDataJson)
     }
     val dismissPendingIntent = PendingIntent.getBroadcast(
       context,
@@ -104,6 +118,7 @@ object CallNotificationManager {
       putExtra("callerName", callerName)
       putExtra("isVideo", isVideo)
       putExtra("vcp", vcp)
+      putExtra("call_data", callDataJson)
     }
     val answerPendingIntent = PendingIntent.getActivity(
       context,
@@ -121,6 +136,7 @@ object CallNotificationManager {
       putExtra("callerName", callerName)
       putExtra("isVideo", isVideo)
       putExtra("vcp", vcp)
+      putExtra("call_data", callDataJson)
     }
     val fullScreenPendingIntent = PendingIntent.getActivity(
       context,
@@ -187,7 +203,7 @@ object CallNotificationManager {
     startTimeMs: Long,
     account: Long
   ) {
-    createCallChannel(context)
+    createOngoingCallChannel(context)
 
     val hangupIntent = Intent(context, CallDismissReceiver::class.java).apply {
       action = "${context.packageName}.ACTION_HANGUP_CALL"
@@ -219,37 +235,60 @@ object CallNotificationManager {
       .setImportant(true)
       .build()
 
-    val builder = NotificationCompat.Builder(context, CALL_CHANNEL_ID)
+    val builder = NotificationCompat.Builder(context, ONGOING_CALL_CHANNEL_ID)
       .setSmallIcon(R.drawable.ic_notification)
       .setLargeIcon(avatarBitmap)
       .setContentTitle("Звонок")
       .setContentText(peerName)
-      .setPriority(NotificationCompat.PRIORITY_MAX)
+      .setPriority(NotificationCompat.PRIORITY_DEFAULT)
       .setCategory(NotificationCompat.CATEGORY_CALL)
       .setAutoCancel(false)
       .setOngoing(true)
+      .setOnlyAlertOnce(true)
       .setUsesChronometer(true)
       .setWhen(startTimeMs)
       .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
       .setContentIntent(openPendingIntent)
-
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-      builder.setStyle(
-        NotificationCompat.CallStyle.forOngoingCall(
-          callerPerson,
-          hangupPendingIntent
-        )
-      )
-    } else {
-      builder.addAction(
+      .addAction(
         R.drawable.ic_notification,
         "Сбросить",
         hangupPendingIntent
       )
-    }
 
     val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-    notificationManager.notify(ONGOING_CALL_NOTIFICATION_ID, builder.build())
+    var shown = false
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+      try {
+        val styleBuilder = NotificationCompat.Builder(context, ONGOING_CALL_CHANNEL_ID)
+          .setSmallIcon(R.drawable.ic_notification)
+          .setLargeIcon(avatarBitmap)
+          .setContentTitle("Звонок")
+          .setContentText(peerName)
+          .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+          .setCategory(NotificationCompat.CATEGORY_CALL)
+          .setAutoCancel(false)
+          .setOngoing(true)
+          .setOnlyAlertOnce(true)
+          .setUsesChronometer(true)
+          .setWhen(startTimeMs)
+          .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+          .setContentIntent(openPendingIntent)
+          .setStyle(
+            NotificationCompat.CallStyle.forOngoingCall(
+              callerPerson,
+              hangupPendingIntent
+            )
+          )
+        notificationManager.notify(ONGOING_CALL_NOTIFICATION_ID, styleBuilder.build())
+        shown = true
+      } catch (_: Throwable) {}
+    }
+
+    if (!shown) {
+      try {
+        notificationManager.notify(ONGOING_CALL_NOTIFICATION_ID, builder.build())
+      } catch (_: Throwable) {}
+    }
   }
 
   fun cancelOngoingCallNotification(context: Context) {
@@ -343,6 +382,27 @@ object CallNotificationManager {
           lockscreenVisibility = android.app.Notification.VISIBILITY_PUBLIC
           setSound(soundUri, audioAttrs)
           enableVibration(true)
+        }
+        notificationManager.createNotificationChannel(channel)
+      }
+    }
+  }
+
+  private fun createOngoingCallChannel(context: Context) {
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+      val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+      val existing = notificationManager.getNotificationChannel(ONGOING_CALL_CHANNEL_ID)
+      if (existing == null) {
+        val channel = NotificationChannel(
+          ONGOING_CALL_CHANNEL_ID,
+          ONGOING_CALL_CHANNEL_NAME,
+          NotificationManager.IMPORTANCE_DEFAULT
+        ).apply {
+          description = "Уведомление о текущем активном вызове"
+          enableLights(false)
+          enableVibration(false)
+          setSound(null, null)
+          lockscreenVisibility = android.app.Notification.VISIBILITY_PUBLIC
         }
         notificationManager.createNotificationChannel(channel)
       }

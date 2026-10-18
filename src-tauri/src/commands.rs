@@ -462,8 +462,8 @@ pub fn decode_call_push(blob: String) -> Result<Value, String> {
     let colon = blob.find(':').ok_or("Invalid vcp: no colon separator")?;
     let raw_len_str = &blob[..colon];
     let raw_len: usize = raw_len_str.parse().map_err(|_| "Invalid vcp: bad rawLen")?;
-    if raw_len == 0 {
-        return Err("Invalid vcp: empty length".to_string());
+    if raw_len == 0 || raw_len > 1_000_000 {
+        return Err("Invalid vcp: empty or excessive length".to_string());
     }
     let b64 = &blob[colon + 1..];
     let compressed = base64::engine::general_purpose::STANDARD

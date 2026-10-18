@@ -62,8 +62,13 @@ export function createSyntheticVideoStream() {
     const elapsedSec = ((Date.now() - startTime) / 1000).toFixed(1);
     ctx.save();
     ctx.fillStyle = 'rgba(15, 23, 42, 0.75)';
-    ctx.roundRect ? ctx.roundRect(140, 200, 360, 80, 16) : ctx.fillRect(140, 200, 360, 80);
-    ctx.fill();
+    ctx.beginPath();
+    if (ctx.roundRect) {
+      ctx.roundRect(140, 200, 360, 80, 16);
+      ctx.fill();
+    } else {
+      ctx.fillRect(140, 200, 360, 80);
+    }
     ctx.fillStyle = '#38bdf8';
     ctx.font = 'bold 26px sans-serif';
     ctx.textAlign = 'center';

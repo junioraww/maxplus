@@ -99,22 +99,41 @@ class MainActivity : TauriActivity() {
 
   private fun handleCallIntent(intent: Intent?) {
     if (intent == null) return
+    val expectedPrefix = "${packageName}.ACTION_"
+    val action = intent.action
+    if (action == null || !action.startsWith(expectedPrefix)) return
     val callAction = intent.getStringExtra("call_action")
     if (callAction != null) {
       CallNotificationManager.stopAlerts()
       CallNotificationManager.cancelCallNotification(this)
-      val conversationId = intent.getStringExtra("conversationId") ?: ""
-      val callerId = intent.getStringExtra("callerId") ?: ""
-      val isVideo = intent.getBooleanExtra("isVideo", false)
-      val vcp = intent.getStringExtra("vcp") ?: ""
-      intent.removeExtra("call_action")
-      try {
-        val json = org.json.JSONObject().apply {
-          put("conversationId", conversationId)
-          put("callerId", callerId)
-          put("isVideo", isVideo)
-          put("vcp", vcp)
+      val rawCallData = intent.getStringExtra("call_data")
+      val json = if (!rawCallData.isNullOrBlank()) {
+        try {
+          org.json.JSONObject(rawCallData)
+        } catch (_: Throwable) {
+          org.json.JSONObject()
         }
+      } else {
+        org.json.JSONObject()
+      }
+      val cid = intent.getStringExtra("conversationId")
+      if (!cid.isNullOrBlank() && (!json.has("conversationId") || json.optString("conversationId").isEmpty())) {
+        json.put("conversationId", cid)
+      }
+      val uid = intent.getStringExtra("callerId")
+      if (!uid.isNullOrBlank() && (!json.has("callerId") || json.optString("callerId").isEmpty())) {
+        json.put("callerId", uid)
+      }
+      val vcp = intent.getStringExtra("vcp")
+      if (!vcp.isNullOrBlank() && (!json.has("vcp") || json.optString("vcp").isEmpty())) {
+        json.put("vcp", vcp)
+      }
+      if (!json.has("isVideo")) {
+        json.put("isVideo", intent.getBooleanExtra("isVideo", false))
+      }
+      intent.removeExtra("call_action")
+      intent.removeExtra("call_data")
+      try {
         notifyCallActionNative(callAction, json.toString())
       } catch (e: Throwable) {
         Log.e("MaxPlus", "handleCallIntent error", e)

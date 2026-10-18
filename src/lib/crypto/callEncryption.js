@@ -78,7 +78,10 @@ export class CallEncryptionSession {
     } else {
       raw = chatSecret;
     }
-    const salt = new TextEncoder().encode('maxplus-call-media-salt-v2-32b');
+    const salt = new Uint8Array(await crypto.subtle.digest(
+      'SHA-256',
+      new TextEncoder().encode(`maxplus-call-media-salt-v3|${conversationId ?? ''}`)
+    ));
     await this.#deriveSessionKeys(raw, salt, isOriginator);
   }
 
@@ -182,10 +185,7 @@ export class CallEncryptionSession {
     if (raw.length <= unencryptedBytes) return data;
 
     const payload = raw.subarray(unencryptedBytes);
-    const counter = kind === 'video' ? this.#videoFrameCounter++ : this.#audioFrameCounter++;
-    const iv = new Uint8Array(12);
-    iv.set(salt.subarray(0, Math.min(8, salt.length)), 0);
-    new DataView(iv.buffer).setUint32(8, counter >>> 0, false);
+    const iv = crypto.getRandomValues(new Uint8Array(12));
 
     const ciphertext = await crypto.subtle.encrypt(
       { name: 'AES-GCM', iv, tagLength: 128 },
@@ -204,32 +204,37 @@ export class CallEncryptionSession {
   }
 
   async decryptFrame(data, kind = 'audio') {
-    if (this.#mode === 'plain') return data;
-    const decKey = kind === 'video' ? this.#videoDecKey : this.#audioDecKey;
-    if (!decKey) return data;
-
+    if (this.#bypassDecrypt) return data;
     const raw = data instanceof Uint8Array ? data : new Uint8Array(data);
     const unencryptedBytes = kind === 'video' ? ((raw.length > 0 && (raw[0] & 0x01) === 0) ? 10 : 3) : 1;
-    if (raw.length < unencryptedBytes + 30) return data;
-    if (raw[raw.length - 2] !== 0x0c) return data;
+    const isEncrypted = raw.length >= unencryptedBytes + 30
+      && raw[raw.length - 2] === 0x0c
+      && raw[raw.length - 1] === 0x00;
 
-    const iv = raw.subarray(raw.length - 14, raw.length - 2);
-    const ciphertext = raw.subarray(unencryptedBytes, raw.length - 14);
+    if (isEncrypted) {
+      const decKey = kind === 'video' ? this.#videoDecKey : this.#audioDecKey;
+      if (!decKey) return this.#mode === 'plain' ? data : null;
 
-    try {
-      const plain = await crypto.subtle.decrypt(
-        { name: 'AES-GCM', iv, tagLength: 128 },
-        decKey,
-        ciphertext
-      );
-      const plainBytes = new Uint8Array(plain);
-      const result = new Uint8Array(unencryptedBytes + plainBytes.length);
-      result.set(raw.subarray(0, unencryptedBytes), 0);
-      result.set(plainBytes, unencryptedBytes);
-      return result;
-    } catch {
-      return null;
+      const iv = raw.subarray(raw.length - 14, raw.length - 2);
+      const ciphertext = raw.subarray(unencryptedBytes, raw.length - 14);
+
+      try {
+        const plain = await crypto.subtle.decrypt(
+          { name: 'AES-GCM', iv, tagLength: 128 },
+          decKey,
+          ciphertext
+        );
+        const plainBytes = new Uint8Array(plain);
+        const result = new Uint8Array(unencryptedBytes + plainBytes.length);
+        result.set(raw.subarray(0, unencryptedBytes), 0);
+        result.set(plainBytes, unencryptedBytes);
+        return result;
+      } catch {
+        return null;
+      }
     }
+
+    return data;
   }
 
   applyToSender(sender, kind = 'audio') {
@@ -304,9 +309,9 @@ export class CallEncryptionSession {
               const dec = await this.decryptFrame(frame.data, kind);
               if (dec) {
                 frame.data = dec.buffer || dec;
+                controller.enqueue(frame);
               }
             } catch {}
-            controller.enqueue(frame);
           }
         });
         readable.pipeThrough(transformStream).pipeTo(writable).catch(() => {});

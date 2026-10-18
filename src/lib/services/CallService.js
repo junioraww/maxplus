@@ -73,13 +73,43 @@ const ICE_DEFAULTS = [
   { urls: 'stun:stun.l.google.com:19302' },
 ];
 
-function log(...args) {
-  const sanitized = args.map(arg => {
-    if (typeof arg === 'string') {
-      return arg.replace(/([?&]token=)[^&]+/gi, '$1[REDACTED]');
+function _sanitizeLogArg(val, seen = new WeakSet()) {
+  if (val === null || val === undefined) return val;
+  if (typeof val === 'string') {
+    return val
+      .replace(/([?&]token=)[^&]+/gi, '$1[REDACTED]')
+      .replace(/([?&]tkn=)[^&]+/gi, '$1[REDACTED]');
+  }
+  if (typeof val !== 'object') return val;
+  if (seen.has(val)) return '[Circular]';
+  seen.add(val);
+
+  if (val instanceof Error) {
+    return {
+      name: val.name,
+      message: _sanitizeLogArg(val.message, seen),
+      stack: val.stack ? _sanitizeLogArg(val.stack, seen) : undefined,
+    };
+  }
+
+  if (Array.isArray(val)) {
+    return val.map(item => _sanitizeLogArg(item, seen));
+  }
+
+  const sensitiveKeys = /^(token|tkn|credential|password|trnp|secret)$/i;
+  const out = {};
+  for (const [k, v] of Object.entries(val)) {
+    if (sensitiveKeys.test(k) && typeof v === 'string') {
+      out[k] = '[REDACTED]';
+    } else {
+      out[k] = _sanitizeLogArg(v, seen);
     }
-    return arg;
-  });
+  }
+  return out;
+}
+
+function log(...args) {
+  const sanitized = args.map(arg => _sanitizeLogArg(arg));
   console.log('[call]', ...sanitized);
 }
 
@@ -345,6 +375,7 @@ class VoiceChannel {
       const errorMsg = msg.message || msg.error || 'Server error';
       if (errorMsg === 'conversation-ended' || msg.error === 'conversation-ended') {
         log('[call:ws2:conversation-ended]');
+        for (const fn of (this.#listeners.get('conversation-ended') || [])) fn(msg);
         this.destroy();
         return;
       }
@@ -632,7 +663,7 @@ class MaxCallSession {
 
       if (xorChatId != null) {
         const direct = getChat(xorChatId).getInfo();
-        if (direct) return direct;
+        if (direct?.id) return Number(direct.id);
       }
       const realIds = get(currentRealChats) || [];
       let chats = realIds.map(id => getChat(id).getInfo()).filter(Boolean);
@@ -652,8 +683,8 @@ class MaxCallSession {
           || (xorChatId && Number(c.id) === xorChatId);
         if (isMatch) return Number(c.id);
       }
-      if (xorChatId) return xorChatId;
-      return Number(targetId);
+      if (xorChatId != null) return Number(xorChatId);
+      return targetId ? Number(targetId) : null;
     } catch {}
     return null;
   }
@@ -736,7 +767,6 @@ class MaxCallSession {
             secureKeyFingerprint: displayFp,
             secureIncludesPassword: Boolean(resolved?.hasPassword),
           });
-          this.#sendControlOverDataChannel({ type: 'call_e2e_enable', fingerprint: displayFp });
           showAlert('E2E шифрование активно' + (displayFp ? ` (${displayFp})` : ''));
           return;
         }
@@ -818,8 +848,11 @@ class MaxCallSession {
       const targetChatId = Number(targetReq.chatId || (await this.#resolveTargetChatId(this.#contactPeerId)));
       const replyPacket = await acceptHandshake(Number(account.id), targetChatId, targetReq.handshakeData, 'zh');
       const resolved = await this.#resolveSharedSecret(targetPeerId, targetChatId);
+      try {
+        await get(API).sendMessage(replyPacket, targetChatId, { notify: true });
+      } catch {}
       if (resolved?.secret) {
-        await this.#encryption.initFromChatSecret(resolved.secret, this.#conversationId, false);
+        await this.#encryption.initFromChatSecret(resolved.secret, this.#conversationId, this.#role === 'originator');
         await this.#syncEncryptionToMedia();
       }
       const displayFp = resolved?.fingerprint || this.#encryption.fingerprint;
@@ -828,10 +861,6 @@ class MaxCallSession {
         secureStatus: 'active',
         secureKeyFingerprint: displayFp,
       });
-      this.#sendControlOverDataChannel({ type: 'call_e2e_enable', fingerprint: displayFp });
-      try {
-        await get(API).sendMessage(replyPacket, targetChatId, { notify: true });
-      } catch {}
       showAlert('E2E шифрование установлено' + (displayFp ? ` (${displayFp})` : ''));
     } catch (e) {
       log('acceptSecureRequest failed:', e);
@@ -853,7 +882,7 @@ class MaxCallSession {
       }
       const resolved = await this.#resolveSharedSecret(this.#contactPeerId || get(activeCall).peerId, targetChatId);
       if (resolved?.secret) {
-        await this.#encryption.initFromChatSecret(resolved.secret, this.#conversationId, true);
+        await this.#encryption.initFromChatSecret(resolved.secret, this.#conversationId, this.#role === 'originator');
         await this.#syncEncryptionToMedia();
       }
       const displayFp = fp || resolved?.fingerprint || this.#encryption.fingerprint;
@@ -986,6 +1015,20 @@ class MaxCallSession {
     }
   }
 
+  #requestVideoKeyframe() {
+    if (!this.#pc) return;
+    const senders = typeof this.#pc.getSenders === 'function' ? this.#pc.getSenders() : [];
+    for (const sender of senders) {
+      if (sender.track?.kind === 'video') {
+        if (typeof sender.generateKeyFrame === 'function') {
+          sender.generateKeyFrame().catch(() => {});
+        } else if (sender.track) {
+          sender.replaceTrack(sender.track).catch(() => {});
+        }
+      }
+    }
+  }
+
   async #syncEncryptionToMedia() {
     if (!this.#encryption) return;
     if (this.#pc && typeof this.#pc.setEncryptionKeys === 'function') {
@@ -993,6 +1036,16 @@ class MaxCallSession {
       await this.#pc.setEncryptionKeys(keys);
     }
     if (this.#pc) {
+      const transceivers = typeof this.#pc.getTransceivers === 'function' ? this.#pc.getTransceivers() : [];
+      for (const tc of transceivers) {
+        const kind = tc.receiver?.track?.kind || tc.sender?.track?.kind || (tc.mid && String(tc.mid).includes('video') ? 'video' : null) || 'audio';
+        if (tc.sender) {
+          this.#encryption.applyToSender(tc.sender, kind);
+        }
+        if (tc.receiver) {
+          this.#encryption.applyToReceiver(tc.receiver, kind);
+        }
+      }
       if (typeof this.#pc.getSenders === 'function') {
         for (const sender of this.#pc.getSenders()) {
           const kind = sender.track?.kind || 'audio';
@@ -1004,6 +1057,11 @@ class MaxCallSession {
           const kind = receiver.track?.kind || 'audio';
           this.#encryption.applyToReceiver(receiver, kind);
         }
+      }
+      if (this.#encryption.mode === 'secure' && (this.#cameraStream || this.#screenStream)) {
+        try {
+          this.#requestVideoKeyframe();
+        } catch {}
       }
     }
   }
@@ -1088,6 +1146,9 @@ class MaxCallSession {
     ch.on('transmitted-data', (msg) => this.#onRemoteSignal(msg));
     ch.on('registered-peer', (msg) => this.#onRegisteredPeer(msg));
     ch.on('accepted-call', (msg) => this.#onAcceptedCall(msg));
+    ch.on('conversation-ended', () => {
+      this.destroy();
+    });
     ch.on('hungup', (msg) => {
       log('hungup', msg);
       if (get(activeCall).phase === CALL_PHASE.OUTGOING || get(activeCall).phase === CALL_PHASE.INCOMING) {
@@ -1302,14 +1363,18 @@ class MaxCallSession {
         }
         patchCallState({ localStream: this.#localStream });
       } catch (e) {
-        log('getUserMedia audio unavailable, using synthetic fallback:', e?.name, e?.message);
-        try {
-          this.#syntheticAudio = createSyntheticAudioStream();
-          this.#localStream = this.#syntheticAudio.stream;
-          patchCallState({ localStream: this.#localStream });
-        } catch (err) {
-          log('synthetic audio failed:', err);
+        log('getUserMedia audio unavailable:', e?.name, e?.message);
+        if (e?.name === 'NotAllowedError' || e?.name === 'PermissionDeniedError') {
           patchCallState({ muted: true, localStream: null });
+        } else {
+          try {
+            this.#syntheticAudio = createSyntheticAudioStream();
+            this.#localStream = this.#syntheticAudio.stream;
+            patchCallState({ localStream: this.#localStream });
+          } catch (err) {
+            log('synthetic audio failed:', err);
+            patchCallState({ muted: true, localStream: null });
+          }
         }
       }
     }
@@ -1506,7 +1571,7 @@ class MaxCallSession {
         const notifDc = pc.createDataChannel('producerNotification', { ordered: true });
         this.#setupDataChannel(notifDc);
       } catch {}
-    } else {
+    } else if (this.#role === 'originator') {
       try {
         const ctrlDc = pc.createDataChannel('callControl', { ordered: true });
         this.#setupDataChannel(ctrlDc);
@@ -1632,6 +1697,7 @@ class MaxCallSession {
 
       if (this.#topology === 'SERVER' || isGroup) {
         patchCallState({ phase: CALL_PHASE.ACTIVE, startedAt: get(activeCall).startedAt || Date.now() });
+        CallService._showOngoingNotification();
 
         await this.#voiceChannel.send('allocate-consumer', {
           capabilities: {
@@ -2228,7 +2294,12 @@ class MaxCallSession {
               });
             }
           } catch (e) {
-            log('[call:media] getUserMedia video failed, using synthetic fallback:', e?.name, e?.message);
+            log('[call:media] getUserMedia video failed:', e?.name, e?.message);
+            if (e?.name === 'NotAllowedError' || e?.name === 'PermissionDeniedError') {
+              showAlert('Доступ к камере отклонен');
+              patchCallState({ videoOn: false, localCameraStream: null, cameraLoading: false });
+              return;
+            }
             try {
               this.#syntheticVideo = createSyntheticVideoStream();
               this.#cameraStream = this.#syntheticVideo.stream;
@@ -2504,11 +2575,13 @@ class MaxCallSession {
     this.destroy();
   }
 
-  destroy() {
+  destroy(shouldResetUi = true) {
     if (this.#destroyed) return;
     this.#destroyed = true;
     log('MaxCallSession destroyed');
-    patchCallState({ phase: CALL_PHASE.ENDING });
+    if (shouldResetUi) {
+      patchCallState({ phase: CALL_PHASE.ENDING });
+    }
     stopCallAudio();
     CallService._cancelOngoingNotification();
     if (this.#unlistenScreenCaptureStopped) {
@@ -2558,9 +2631,13 @@ class MaxCallSession {
     this.#sfuCommandChannel = null;
     this.#sfuNotificationChannel = null;
     invoke('cancel_call_notification').catch(() => {});
-    setTimeout(() => {
-      resetCallState();
-    }, 320);
+    if (shouldResetUi) {
+      setTimeout(() => {
+        if (_activeSession === this || !_activeSession) {
+          resetCallState();
+        }
+      }, 320);
+    }
   }
 
   attachVideoCanvas(canvas) {
@@ -2715,6 +2792,8 @@ export const CallService = {
       await session.begin({ endpoint, conversationId: convId, role: 'originator', isVideo: false, mode, peerId, convParams });
     } catch (e) {
       stopCallAudio();
+      try { if (_activeSession) await _activeSession.hangup(); } catch {}
+      _activeSession = null;
       showAlert('Не удалось начать звонок: ' + (e?.message || e));
       resetCallState();
     }
@@ -2755,6 +2834,8 @@ export const CallService = {
       await session.begin({ endpoint, conversationId: convId, role: 'originator', isVideo: true, mode, peerId, convParams });
     } catch (e) {
       stopCallAudio();
+      try { if (_activeSession) await _activeSession.hangup(); } catch {}
+      _activeSession = null;
       showAlert('Не удалось начать видеозвонок: ' + (e?.message || e));
       resetCallState();
     }
@@ -2769,10 +2850,14 @@ export const CallService = {
       const vcp = pushData.vcp || pushData.conversationParams;
       let convParams = {};
       if (vcp) {
-        try {
-          convParams = await invoke('decode_call_push', { blob: vcp });
-        } catch (e) {
-          log('vcp decode error:', e);
+        if (typeof vcp === 'object' && vcp !== null) {
+          convParams = vcp;
+        } else if (typeof vcp === 'string') {
+          try {
+            convParams = await invoke('decode_call_push', { blob: vcp });
+          } catch (e) {
+            log('vcp decode error:', e);
+          }
         }
       }
       const conversationId = pushData.conversationId || pushData.vcId || pushData.conference_id || (convParams?.cid ? String(convParams.cid) : '');
@@ -2781,7 +2866,10 @@ export const CallService = {
       const wse = convParams.wse || convParams.wsEndpoint;
       if (!endpoint && wse) {
         try {
-          const u = new URL(wse);
+          const wseFull = (!wse.startsWith('ws://') && !wse.startsWith('wss://'))
+            ? `wss://${wse}`
+            : wse;
+          const u = new URL(wseFull);
           const trnu = convParams.trnu || convParams.turnUser || '';
           const myCallId = trnu ? trnu.split(':').pop() : '';
           if (myCallId) u.searchParams.set('userId', myCallId);
@@ -2857,23 +2945,35 @@ export const CallService = {
       });
     } catch (e) {
       log('acceptIncoming failed:', e);
+      try { await session.hangup(); } catch {}
       resetCallState();
       _activeSession = null;
     }
   },
 
-  declineIncoming() {
+  declineIncoming(extraData = null) {
     stopCallAudio();
     playRejectionTone();
     invoke('cancel_call_notification').catch(() => {});
     cancelDesktopCallNotification().catch(() => {});
     this._cancelOngoingNotification();
     const pending = this._pendingIncoming;
-    if (!pending) return;
-    if (pending?.endpoint) {
+    const vcp = extraData?.vcp || (typeof pending?.convParams === 'string' ? pending.convParams : null) || pending?.convParams?.vcp;
+    const endpoint = pending?.endpoint || extraData?.endpoint;
+    const conversationId = extraData?.conversationId || pending?.conversationId || get(activeCall).conversationId || null;
+
+    if (vcp || endpoint || conversationId) {
+      invoke('reject_call', {
+        vcp: vcp ? String(vcp) : null,
+        endpoint: endpoint ? String(endpoint) : null,
+        conversationId: conversationId ? String(conversationId) : null,
+      }).catch(() => {});
+    }
+
+    if (endpoint) {
       try {
         const ch = new VoiceChannel();
-        ch.connect(pending.endpoint).then(async () => {
+        ch.connect(endpoint).then(async () => {
           try {
             await Promise.race([
               ch.send('hangup', { reason: 'REJECTED' }),
@@ -2886,6 +2986,10 @@ export const CallService = {
         }).catch(() => {});
       } catch {}
     }
+    if (_activeSession) {
+      _activeSession.hangup().catch(() => {});
+    }
+    this._pendingIncoming = null;
     this._endActive();
     patchCallState({ phase: CALL_PHASE.ENDING });
     setTimeout(() => {
@@ -2984,6 +3088,8 @@ export const CallService = {
     } catch (e) {
       showAlert('Не удалось присоединиться: ' + (e?.message || e));
       patchCallState({ errorText: String(e?.message || e) });
+      try { if (_activeSession) await _activeSession.hangup(); } catch {}
+      _activeSession = null;
       resetCallState();
     }
   },
@@ -3078,8 +3184,12 @@ export const CallService = {
         peerId,
         peerName,
         startTime,
+        startTimeMs: startTime,
+        start_time: startTime,
         account: accountId,
-      }).catch(() => {});
+      }).catch((e) => {
+        log('show_ongoing_call_notification error:', e);
+      });
     }).catch(() => {});
   },
 
@@ -3090,7 +3200,7 @@ export const CallService = {
   async _endActive() {
     this._cancelOngoingNotification();
     if (_activeSession) {
-      _activeSession.destroy();
+      _activeSession.destroy(false);
       _activeSession = null;
     }
   },

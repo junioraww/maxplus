@@ -133,7 +133,6 @@
       e.stopPropagation();
       e.preventDefault();
     }
-    resetCallState();
     try {
       CallService.declineIncoming();
     } catch {}
@@ -167,6 +166,10 @@
 
   async function handleAgreeSecureRequest() {
     await CallService.acceptSecureRequest();
+  }
+
+  function handleDenySecureRequest() {
+    CallService.denySecureRequest();
   }
 
   let rawStreamBypass = false;
