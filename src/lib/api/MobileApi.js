@@ -229,7 +229,7 @@ export default class MobileApi extends BaseAPI {
           });
 
           const rawAttaches = message.attaches || message.attachments || [];
-          const callAttach = rawAttaches.find(a => (a._type || a.type) === 'CALL' || a.hangupType != null);
+          const callAttach = rawAttaches.find(a => ((a._type || a.type) === 'CALL' && a.hangupType != null) || a.hangupType != null);
           if (callAttach) {
             CallService.dismissIncomingCall();
           }

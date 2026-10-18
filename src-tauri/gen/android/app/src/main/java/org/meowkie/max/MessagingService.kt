@@ -1,5 +1,7 @@
 package org.meowkie.max
 
+import android.content.Context
+import android.util.Log
 import com.google.firebase.messaging.FirebaseMessagingService
 import com.google.firebase.messaging.RemoteMessage
 import org.json.JSONObject
@@ -15,7 +17,11 @@ class MessagingService : FirebaseMessagingService() {
     val type = data["type"]
     if (type == "InboundCall" || data.containsKey("vcp")) {
       if (!AppState.isAppInForeground) {
-        CallNotificationManager.showIncomingCallNotification(this, data)
+        try {
+          CallNotificationManager.showIncomingCallNotification(this, data)
+        } catch (e: Throwable) {
+          Log.e("MaxPlus", "Failed to show incoming call notification", e)
+        }
       }
       return
     }
@@ -49,6 +55,12 @@ class MessagingService : FirebaseMessagingService() {
   
   override fun onNewToken(token: String) {
     super.onNewToken(token)
+    try {
+      getSharedPreferences("maxplus_push", Context.MODE_PRIVATE)
+        .edit()
+        .putString("fcm_token", token)
+        .apply()
+    } catch (_: Throwable) {}
     app.tauri.notification.NotificationPlugin.instance?.handleNewToken(token)
   }
 }

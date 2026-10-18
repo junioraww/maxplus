@@ -76,6 +76,14 @@ class MainActivity : TauriActivity() {
     }
   }
 
+  fun forwardCallHangup() {
+    try {
+      notifyCallActionNative("hangup", "{}")
+    } catch (e: Throwable) {
+      Log.e("MaxPlus", "forwardCallHangup error", e)
+    }
+  }
+
   fun forwardCallDismiss(conversationId: String, callerId: String, vcp: String) {
     try {
       val json = org.json.JSONObject().apply {

@@ -275,6 +275,8 @@ pub fn run() {
             notifications::cancel_notification,
             notifications::update_call_notification_config,
             notifications::cancel_call_notification,
+            notifications::show_ongoing_call_notification,
+            notifications::cancel_ongoing_call_notification,
             notifications::check_pending_open_chat,
             webapp_proxy::set_webapp_filter_rules,
             webapp_proxy::get_webapp_filter_rules,

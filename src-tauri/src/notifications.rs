@@ -801,3 +801,58 @@ pub async fn cancel_call_notification() -> Result<(), String> {
     Ok(())
 }
 
+#[tauri::command]
+pub async fn show_ongoing_call_notification(
+    peer_id: i64,
+    peer_name: String,
+    start_time: i64,
+    account: i64,
+) -> Result<(), String> {
+    #[cfg(target_os = "android")]
+    {
+        if let Some(vm) = GLOBAL_JVM.get() {
+            let res = vm.attach_current_thread(|env| -> Result<(), jni::errors::Error> {
+                let j_name = env.new_string(&peer_name)?;
+                let j_name_obj = JObject::from(j_name);
+                let mgr_class = env.find_class(jni_str!("org/meowkie/max/CallNotificationManager"))?;
+                env.call_static_method(
+                    mgr_class,
+                    jni_str!("showOngoingCallNotificationFromNative"),
+                    jni_sig!("(JLjava/lang/String;JJ)V"),
+                    &[
+                        jni::objects::JValue::Long(peer_id),
+                        jni::objects::JValue::Object(&j_name_obj),
+                        jni::objects::JValue::Long(start_time),
+                        jni::objects::JValue::Long(account),
+                    ],
+                )?;
+                Ok(())
+            });
+            if let Err(e) = res {
+                android_log(6, "MaxPlusJNI", &format!("showOngoingCallNotificationFromNative error: {:?}", e));
+            }
+        }
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn cancel_ongoing_call_notification() -> Result<(), String> {
+    #[cfg(target_os = "android")]
+    {
+        if let Some(vm) = GLOBAL_JVM.get() {
+            let _ = vm.attach_current_thread(|env| -> Result<(), jni::errors::Error> {
+                let mgr_class = env.find_class(jni_str!("org/meowkie/max/CallNotificationManager"))?;
+                env.call_static_method(
+                    mgr_class,
+                    jni_str!("cancelOngoingCallNotificationFromNative"),
+                    jni_sig!("()V"),
+                    &[],
+                )?;
+                Ok(())
+            });
+        }
+    }
+    Ok(())
+}
+
