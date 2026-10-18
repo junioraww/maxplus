@@ -9,6 +9,15 @@ class CallDismissReceiver : BroadcastReceiver() {
     CallNotificationManager.cancelCallNotification(context)
 
     val action = intent?.action ?: return
+    if (action.endsWith(".ACTION_HANGUP_CALL")) {
+      CallNotificationManager.cancelOngoingCallNotification(context)
+      MainActivity.instance?.let { activity ->
+        activity.runOnUiThread {
+          activity.forwardCallHangup()
+        }
+      }
+      return
+    }
     if (action.endsWith(".ACTION_DISMISS_CALL")) {
       val conversationId = intent.getStringExtra("conversationId") ?: ""
       val callerId = intent.getStringExtra("callerId") ?: ""

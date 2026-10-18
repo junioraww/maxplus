@@ -21,6 +21,7 @@ import androidx.core.graphics.drawable.IconCompat
 
 object CallNotificationManager {
   const val CALL_NOTIFICATION_ID = 987654
+  const val ONGOING_CALL_NOTIFICATION_ID = 987655
   const val CALL_CHANNEL_ID = "org.meowkie.max.CALLS"
   private const val CALL_CHANNEL_NAME = "Входящие вызовы"
   private const val PREFS_NAME = "org_meowkie_max_call_prefs"
@@ -52,6 +53,18 @@ object CallNotificationManager {
     cancelCallNotification(ctx)
   }
 
+  @JvmStatic
+  fun showOngoingCallNotificationFromNative(peerId: Long, peerName: String, startTimeMs: Long, account: Long) {
+    val ctx = MainActivity.appContext ?: MainActivity.instance?.applicationContext ?: return
+    showOngoingCallNotification(ctx, peerId, peerName, startTimeMs, account)
+  }
+
+  @JvmStatic
+  fun cancelOngoingCallNotificationFromNative() {
+    val ctx = MainActivity.appContext ?: MainActivity.instance?.applicationContext ?: return
+    cancelOngoingCallNotification(ctx)
+  }
+
   fun showIncomingCallNotification(context: Context, data: Map<String, String>) {
     createCallChannel(context)
 
@@ -64,9 +77,7 @@ object CallNotificationManager {
     val account = data["c"]?.toLongOrNull() ?: 0L
     val callerIdLong = callerId.toLongOrNull() ?: 0L
     val rawCallerName = data["userName"] ?: data["title"] ?: data["callerName"] ?: data["caller_name"] ?: data["name"]
-    val contactInfo = if (callerIdLong > 0L) ContactHelper.getContactInfo(context, account, callerIdLong) else null
-    val callerName = contactInfo?.name?.takeIf { it.isNotBlank() }
-      ?: rawCallerName?.takeIf { it.isNotBlank() && !it.startsWith("Пользователь ") && !it.startsWith("User ") }
+    val callerName = rawCallerName?.takeIf { it.isNotBlank() && !it.startsWith("Пользователь ") && !it.startsWith("User ") }
       ?: if (callerId.isNotEmpty()) "Пользователь $callerId" else "Входящий вызов"
     val isVideo = data["isVideo"]?.toBoolean() ?: data["video"]?.toBoolean() ?: (data["iv"] == "1" || data["iv"] == "true")
     val vcp = data["vcp"] ?: data["conversationParams"] ?: ""
@@ -118,7 +129,7 @@ object CallNotificationManager {
       PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
     )
 
-    val avatarBitmap = AvatarHelper.getAvatar(context, callerIdLong, callerName, contactInfo?.avatarPath, account)
+    val avatarBitmap = AvatarHelper.getAvatar(context, callerIdLong, callerName, null, account)
     val callerPerson = Person.Builder()
       .setName(callerName)
       .setKey(callerId)
@@ -167,6 +178,83 @@ object CallNotificationManager {
     notificationManager.notify(CALL_NOTIFICATION_ID, builder.build())
 
     playAlerts(context, soundEnabled, vibrationEnabled)
+  }
+
+  fun showOngoingCallNotification(
+    context: Context,
+    peerId: Long,
+    peerName: String,
+    startTimeMs: Long,
+    account: Long
+  ) {
+    createCallChannel(context)
+
+    val hangupIntent = Intent(context, CallDismissReceiver::class.java).apply {
+      action = "${context.packageName}.ACTION_HANGUP_CALL"
+      putExtra("callerId", peerId.toString())
+    }
+    val hangupPendingIntent = PendingIntent.getBroadcast(
+      context,
+      104,
+      hangupIntent,
+      PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+    )
+
+    val openIntent = Intent(context, MainActivity::class.java).apply {
+      flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+      putExtra("call_action", "show_active")
+    }
+    val openPendingIntent = PendingIntent.getActivity(
+      context,
+      105,
+      openIntent,
+      PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+    )
+
+    val avatarBitmap = AvatarHelper.getAvatar(context, peerId, peerName, null, account)
+    val callerPerson = Person.Builder()
+      .setName(peerName)
+      .setKey(peerId.toString())
+      .setIcon(IconCompat.createWithBitmap(avatarBitmap))
+      .setImportant(true)
+      .build()
+
+    val builder = NotificationCompat.Builder(context, CALL_CHANNEL_ID)
+      .setSmallIcon(R.drawable.ic_notification)
+      .setLargeIcon(avatarBitmap)
+      .setContentTitle("Звонок")
+      .setContentText(peerName)
+      .setPriority(NotificationCompat.PRIORITY_MAX)
+      .setCategory(NotificationCompat.CATEGORY_CALL)
+      .setAutoCancel(false)
+      .setOngoing(true)
+      .setUsesChronometer(true)
+      .setWhen(startTimeMs)
+      .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+      .setContentIntent(openPendingIntent)
+
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+      builder.setStyle(
+        NotificationCompat.CallStyle.forOngoingCall(
+          callerPerson,
+          hangupPendingIntent
+        )
+      )
+    } else {
+      builder.addAction(
+        R.drawable.ic_notification,
+        "Сбросить",
+        hangupPendingIntent
+      )
+    }
+
+    val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+    notificationManager.notify(ONGOING_CALL_NOTIFICATION_ID, builder.build())
+  }
+
+  fun cancelOngoingCallNotification(context: Context) {
+    val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+    notificationManager.cancel(ONGOING_CALL_NOTIFICATION_ID)
   }
 
   fun cancelCallNotification(context: Context) {

@@ -1131,6 +1131,7 @@ class MaxCallSession {
   #onCallActivated() {
     this.#isActive = true;
     patchCallState({ phase: CALL_PHASE.ACTIVE, startedAt: get(activeCall).startedAt || Date.now() });
+    CallService._showOngoingNotification();
     if (get(activeCall).mode === CALL_MODE.SECURE && this.#encryption.mode !== 'secure') {
       this.enableSecureMode().catch(() => {});
     }
@@ -2509,6 +2510,7 @@ class MaxCallSession {
     log('MaxCallSession destroyed');
     patchCallState({ phase: CALL_PHASE.ENDING });
     stopCallAudio();
+    CallService._cancelOngoingNotification();
     if (this.#unlistenScreenCaptureStopped) {
       try { this.#unlistenScreenCaptureStopped(); } catch {}
       this.#unlistenScreenCaptureStopped = null;
@@ -2865,6 +2867,7 @@ export const CallService = {
     playRejectionTone();
     invoke('cancel_call_notification').catch(() => {});
     cancelDesktopCallNotification().catch(() => {});
+    this._cancelOngoingNotification();
     const pending = this._pendingIncoming;
     if (!pending) return;
     if (pending?.endpoint) {
@@ -2894,6 +2897,7 @@ export const CallService = {
     stopCallAudio();
     invoke('cancel_call_notification').catch(() => {});
     cancelDesktopCallNotification().catch(() => {});
+    this._cancelOngoingNotification();
     this._pendingIncoming = null;
     this._endActive();
     resetCallState();
@@ -2903,6 +2907,7 @@ export const CallService = {
     stopCallAudio();
     invoke('cancel_call_notification').catch(() => {});
     cancelDesktopCallNotification().catch(() => {});
+    this._cancelOngoingNotification();
     this._pendingIncoming = null;
     const session = _activeSession;
     _activeSession = null;
@@ -2956,6 +2961,7 @@ export const CallService = {
       errorText: null,
       connectionStatus: 'connecting',
     });
+    this._showOngoingNotification();
     try {
       let token = joinLink.trim();
       if (token.includes('/')) {
@@ -3061,7 +3067,28 @@ export const CallService = {
     }
   },
 
+  _showOngoingNotification() {
+    const cur = get(activeCall);
+    const peerId = Number(cur.peerId || 0);
+    const peerName = cur.peerName || 'Собеседник';
+    const startTime = Number(cur.startedAt || Date.now());
+    getCurrentAccount().then(acc => {
+      const accountId = Number(acc?.id || 0);
+      invoke('show_ongoing_call_notification', {
+        peerId,
+        peerName,
+        startTime,
+        account: accountId,
+      }).catch(() => {});
+    }).catch(() => {});
+  },
+
+  _cancelOngoingNotification() {
+    invoke('cancel_ongoing_call_notification').catch(() => {});
+  },
+
   async _endActive() {
+    this._cancelOngoingNotification();
     if (_activeSession) {
       _activeSession.destroy();
       _activeSession = null;

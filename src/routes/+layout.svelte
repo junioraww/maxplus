@@ -119,6 +119,8 @@
             await CallService.acceptIncoming();
           } else if (action === 'dismiss') {
             CallService.dismissIncomingCall();
+          } else if (action === 'hangup') {
+            CallService.hangup();
           } else if (action === 'show_incoming') {
             if (payloadObj.vcp || payloadObj.conversationId) {
               await CallService.handleIncomingPush(payloadObj);

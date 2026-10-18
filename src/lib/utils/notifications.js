@@ -418,6 +418,13 @@ export async function sendNotification(data) {
 }
 
 export async function cancelDesktopCallNotification() {
+  if (!currentOs) currentOs = type();
+  if (currentOs === 'android') {
+    try {
+      await invoke("cancel_call_notification");
+    } catch {}
+    return;
+  }
   try {
     await invoke("cancel_notification", { chatId: 999991 });
   } catch {}
@@ -432,15 +439,21 @@ export async function showDesktopCallNotification({ callerName, isVideo = false,
     await suggestNotifications();
   }
   if (!granted) return;
+  if (!currentOs) currentOs = type();
+  if (currentOs === 'android') return;
   try {
     const title = isVideo ? `Входящий видеозвонок` : `Входящий аудиозвонок`;
     const body = callerName && callerName.trim() ? callerName.trim() : `Входящий вызов`;
+    let avatarPath = null;
+    if (avatar) {
+      avatarPath = await getLocalFilePath(avatar).catch(() => null);
+    }
     await pluginSendNotification({
       id: 999991,
       title,
       body,
-      icon: avatar,
-      largeIcon: avatar,
+      icon: avatarPath,
+      largeIcon: avatarPath,
     });
   } catch (e) {
     console.error("Failed to display call notification:", e);
