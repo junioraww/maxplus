@@ -29,6 +29,12 @@
     const side = Math.min(canvasEl.width, canvasEl.height);
     if (side <= 0) return;
 
+    if (sw === sh) {
+      ctx.clearRect(0, 0, side, side);
+      ctx.drawImage(source, 0, 0, side, side);
+      return;
+    }
+
     let sx = 0;
     let sy = 0;
     let sWidth = sw;
@@ -50,24 +56,45 @@
     onReady(entry) {
       isReady = true;
       dispatch("ready", entry);
-      if (entry.source) {
-        drawCover(entry.source);
+      const readySource = entry.masterCanvas || entry.source;
+      if (readySource) {
+        drawCover(readySource);
       }
     },
     onError(err) {
       isReady = false;
       dispatch("error", err);
     },
-    onFrame(videoSource) {
+    onFrame(frameSource) {
       if (!isReady) isReady = true;
       if (isVisible) {
-        drawCover(videoSource);
+        drawCover(frameSource);
       }
     },
     drawStatic(imageSource) {
       drawCover(imageSource);
     }
   };
+
+  function handleContextLost(e) {
+    e.preventDefault();
+    ctx = null;
+  }
+
+  function handleContextRestored() {
+    ctx = canvasEl.getContext("2d", { willReadFrequently: true });
+    if (ctx) {
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = "medium";
+    }
+    if (currentKey) {
+      const item = MediaPool.getEntry(currentKey);
+      const frameSource = item?.masterCanvas || item?.source;
+      if (frameSource) {
+        drawCover(frameSource);
+      }
+    }
+  }
 
   function updateCanvasSize() {
     if (!canvasEl) return;
@@ -78,7 +105,7 @@
       canvasEl.height = pixelSize;
     }
     if (!ctx) {
-      ctx = canvasEl.getContext("2d", { alpha: false, desynchronized: true });
+      ctx = canvasEl.getContext("2d", { willReadFrequently: true });
       if (ctx) {
         ctx.imageSmoothingEnabled = true;
         ctx.imageSmoothingQuality = "medium";
@@ -101,7 +128,7 @@
     }
 
     updateCanvasSize();
-    const newKey = MediaPool.getKey(src, type);
+    const newKey = MediaPool.getKey(src);
     if (newKey === currentKey) return;
 
     detachMedia();
@@ -111,9 +138,10 @@
     if (isVisible) {
       MediaPool.setVisible(newKey, consumer, true);
     }
-    if (entry.status === "ready" && entry.source) {
+    const readySource = entry.masterCanvas || entry.source;
+    if (entry.status === "ready" && readySource) {
       isReady = true;
-      drawCover(entry.source);
+      drawCover(readySource);
       dispatch("ready", entry);
     }
   }
@@ -124,6 +152,11 @@
   onMount(() => {
     updateCanvasSize();
 
+    if (canvasEl) {
+      canvasEl.addEventListener("contextlost", handleContextLost);
+      canvasEl.addEventListener("contextrestored", handleContextRestored);
+    }
+
     if (typeof IntersectionObserver !== "undefined") {
       observer = new IntersectionObserver((entries) => {
         for (const entry of entries) {
@@ -133,8 +166,9 @@
           }
           if (isVisible) {
             const item = MediaPool.getEntry(currentKey);
-            if (item?.source) {
-              drawCover(item.source);
+            const frameSource = item?.masterCanvas || item?.source;
+            if (frameSource) {
+              drawCover(frameSource);
             }
           }
         }
@@ -153,6 +187,10 @@
     attachMedia();
 
     return () => {
+      if (canvasEl) {
+        canvasEl.removeEventListener("contextlost", handleContextLost);
+        canvasEl.removeEventListener("contextrestored", handleContextRestored);
+      }
       if (observer) {
         observer.disconnect();
         observer = null;

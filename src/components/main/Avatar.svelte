@@ -60,7 +60,16 @@
   let safeVideoFailed = false;
   let staticMediaFailed = false;
 
-  $: if (safeAvatarUid) {
+  let prevTargetEntityId = null;
+  $: if (targetEntityId !== prevTargetEntityId) {
+    prevTargetEntityId = targetEntityId;
+    safeVideoFailed = false;
+    staticMediaFailed = false;
+  }
+
+  let prevSafeAvatarUid = null;
+  $: if (safeAvatarUid !== prevSafeAvatarUid) {
+    prevSafeAvatarUid = safeAvatarUid;
     safeVideoFailed = false;
     staticMediaFailed = false;
   }
@@ -69,7 +78,7 @@
   $: activeType = !safeVideoFailed && safeMediaUrl ? "video" : "image";
 
   function handleMediaError() {
-    if (activeType === "video") {
+    if (activeSrc === safeMediaUrl) {
       safeVideoFailed = true;
     } else {
       staticMediaFailed = true;

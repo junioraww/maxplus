@@ -1,7 +1,7 @@
 import { decodeStegoPayload } from "./stego.js";
 
 self.onmessage = async (e) => {
-  const { bitmap, targetEntityId } = e.data || {};
+  const { bitmap, targetEntityId, key } = e.data || {};
   if (!bitmap || !targetEntityId) return;
 
   try {
@@ -9,6 +9,7 @@ self.onmessage = async (e) => {
     const sh = bitmap.height;
     if (sw < 64 || sh < 64) {
       if (typeof bitmap.close === "function") bitmap.close();
+      self.postMessage({ foundUid: null, targetEntityId, key });
       return;
     }
 
@@ -16,6 +17,7 @@ self.onmessage = async (e) => {
     const ctx = canvas.getContext("2d");
     if (!ctx) {
       if (typeof bitmap.close === "function") bitmap.close();
+      self.postMessage({ foundUid: null, targetEntityId, key });
       return;
     }
 
@@ -23,11 +25,14 @@ self.onmessage = async (e) => {
     if (typeof bitmap.close === "function") bitmap.close();
 
     const imgData = ctx.getImageData(0, 0, sw, sh);
-    if (!imgData) return;
+    if (!imgData) {
+      self.postMessage({ foundUid: null, targetEntityId, key });
+      return;
+    }
 
     const foundUid = decodeStegoPayload(imgData, targetEntityId);
-    if (foundUid) {
-      self.postMessage({ foundUid, targetEntityId });
-    }
-  } catch {}
+    self.postMessage({ foundUid: foundUid || null, targetEntityId, key });
+  } catch {
+    self.postMessage({ foundUid: null, targetEntityId, key });
+  }
 };

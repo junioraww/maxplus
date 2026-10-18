@@ -238,12 +238,6 @@
     return { width: modalMediaSize, height: modalMediaSize, cx, cy };
   }
 
-  let videoErrorMap = {};
-
-  function isMediaVideo(url) {
-    if (!url || videoErrorMap[url]) return false;
-    return url.includes("/media") || url.endsWith(".webm") || url.endsWith(".mp4");
-  }
 
   onMount(async () => {
     const rect = getActiveOriginRect();
@@ -917,7 +911,6 @@
         >
           <MediaCanvas
             src={prevUrl}
-            type={isMediaVideo(prevUrl) ? "video" : "image"}
             size={modalMediaSize}
             class="ag-media"
           />
@@ -931,12 +924,8 @@
         >
           <MediaCanvas
             src={currentUrl}
-            type={isMediaVideo(currentUrl) ? "video" : "image"}
             size={modalMediaSize}
             class="ag-media"
-            on:error={() => {
-              videoErrorMap = { ...videoErrorMap, [currentUrl]: true };
-            }}
           />
         </div>
       {:else if isLoadingHistory}
@@ -950,7 +939,6 @@
         >
           <MediaCanvas
             src={nextUrl}
-            type={isMediaVideo(nextUrl) ? "video" : "image"}
             size={modalMediaSize}
             class="ag-media"
           />
