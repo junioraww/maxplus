@@ -451,7 +451,16 @@
     if (chatId) {
       openChat(chatId);
     } else if (peerId) {
-      Session.set('profile', { userId: peerId });
+      $Session.profile = { userId: peerId };
+    }
+  }
+
+  function handleCallAction(call) {
+    if (!call) return;
+    if (call.peerId) {
+      promptStartCall(call.peerId, call.name, call.avatar, call.isVideo ? 'video' : 'audio');
+    } else if (call.chatId) {
+      handleOpenChat(call.chatId, null);
     }
   }
 
@@ -605,7 +614,7 @@
           {#each allCalls as call (call.id || call.time)}
             <div
               class="history-card"
-              on:click={() => promptStartCall(call.peerId, call.name, call.avatar, call.isVideo ? 'video' : 'audio')}
+              on:click={() => handleCallAction(call)}
               role="button"
               tabindex="0"
             >
@@ -653,7 +662,7 @@
               <div class="actions-col">
                 <button
                   class="icon-action-btn dial-btn"
-                  on:click|stopPropagation={() => promptStartCall(call.peerId, call.name, call.avatar, call.isVideo ? 'video' : 'audio')}
+                  on:click|stopPropagation={() => handleCallAction(call)}
                   aria-label="Позвонить"
                 >
                   <img src="/icons/call-accept.svg" alt="" width="18" height="18" />
@@ -669,15 +678,17 @@
 
                 {#if activeMenuCallId === call.id}
                   <div class="context-popup" in:scale={{ start: 0.9, duration: 150 }} on:click|stopPropagation>
-                    <button class="popup-item" on:click={() => { activeMenuCallId = null; promptStartCall(call.peerId, call.name, call.avatar, 'audio'); }}>
-                      <img src="/icons/call-accept.svg" alt="" width="16" height="16" />
-                      <span>Аудиозвонок</span>
-                    </button>
+                    {#if call.peerId}
+                      <button class="popup-item" on:click={() => { activeMenuCallId = null; promptStartCall(call.peerId, call.name, call.avatar, 'audio'); }}>
+                        <img src="/icons/call-accept.svg" alt="" width="16" height="16" />
+                        <span>Аудиозвонок</span>
+                      </button>
 
-                    <button class="popup-item" on:click={() => { activeMenuCallId = null; promptStartCall(call.peerId, call.name, call.avatar, 'video'); }}>
-                      <img src="/icons/video.svg" alt="" width="16" height="16" />
-                      <span>Видеозвонок</span>
-                    </button>
+                      <button class="popup-item" on:click={() => { activeMenuCallId = null; promptStartCall(call.peerId, call.name, call.avatar, 'video'); }}>
+                        <img src="/icons/video.svg" alt="" width="16" height="16" />
+                        <span>Видеозвонок</span>
+                      </button>
+                    {/if}
 
                     <button class="popup-item" on:click={() => handleOpenChat(call.chatId, call.peerId)}>
                       <img src="/icons/chats.svg" alt="" width="16" height="16" />
@@ -718,7 +729,7 @@
           {#each missedCalls as call (call.id || call.time)}
             <div
               class="history-card"
-              on:click={() => promptStartCall(call.peerId, call.name, call.avatar, call.isVideo ? 'video' : 'audio')}
+              on:click={() => handleCallAction(call)}
               role="button"
               tabindex="0"
             >
@@ -758,7 +769,7 @@
               <div class="actions-col">
                 <button
                   class="icon-action-btn dial-btn"
-                  on:click|stopPropagation={() => promptStartCall(call.peerId, call.name, call.avatar, call.isVideo ? 'video' : 'audio')}
+                  on:click|stopPropagation={() => handleCallAction(call)}
                   aria-label="Позвонить"
                 >
                   <img src="/icons/call-accept.svg" alt="" width="18" height="18" />
@@ -774,15 +785,17 @@
 
                 {#if activeMenuCallId === call.id}
                   <div class="context-popup" in:scale={{ start: 0.9, duration: 150 }} on:click|stopPropagation>
-                    <button class="popup-item" on:click={() => { activeMenuCallId = null; promptStartCall(call.peerId, call.name, call.avatar, 'audio'); }}>
-                      <img src="/icons/call-accept.svg" alt="" width="16" height="16" />
-                      <span>Аудиозвонок</span>
-                    </button>
+                    {#if call.peerId}
+                      <button class="popup-item" on:click={() => { activeMenuCallId = null; promptStartCall(call.peerId, call.name, call.avatar, 'audio'); }}>
+                        <img src="/icons/call-accept.svg" alt="" width="16" height="16" />
+                        <span>Аудиозвонок</span>
+                      </button>
 
-                    <button class="popup-item" on:click={() => { activeMenuCallId = null; promptStartCall(call.peerId, call.name, call.avatar, 'video'); }}>
-                      <img src="/icons/video.svg" alt="" width="16" height="16" />
-                      <span>Видеозвонок</span>
-                    </button>
+                      <button class="popup-item" on:click={() => { activeMenuCallId = null; promptStartCall(call.peerId, call.name, call.avatar, 'video'); }}>
+                        <img src="/icons/video.svg" alt="" width="16" height="16" />
+                        <span>Видеозвонок</span>
+                      </button>
+                    {/if}
 
                     <button class="popup-item" on:click={() => handleOpenChat(call.chatId, call.peerId)}>
                       <img src="/icons/chats.svg" alt="" width="16" height="16" />

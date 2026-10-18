@@ -240,7 +240,7 @@ pub fn resolve_contact_info_internal(
         }
     }
 
-    if (resolved_name.is_none() || avatar_url.is_none()) && id > 0 {
+    if (resolved_name.is_none() || avatar_url.is_none()) && id != 0 {
         if let Some((_, server_user_id, token, identity)) = creds {
             let data_dir_clone = data_dir.clone();
             let contact_path_clone = contact_path.clone();
@@ -250,31 +250,48 @@ pub fn resolve_contact_info_internal(
                     .build()
                     .ok()?;
                 rt.block_on(async {
-                    let client = rumax::MaxClient::new();
-                    client.set_user_id(server_user_id).await;
-                    client.set_token(token).await;
+                    tokio::time::timeout(std::time::Duration::from_secs(3), async {
+                        let client = rumax::MaxClient::new();
+                        client.set_user_id(server_user_id).await;
+                        client.set_token(token).await;
 
-                    if client.connect(identity, false).await.is_ok() {
-                        if client.sync(None).await.is_ok() {
-                            let mut found_name = None;
-                            let mut found_url = None;
-                            if let Ok(resp) = client.fetch_contacts(vec![id as u64]).await {
-                                if let Some(contacts) = resp.payload.get("contacts").and_then(|c| c.as_array()) {
-                                    if let Some(c) = contacts.first() {
-                                        let storage = crate::stores::Storage::new(None);
-                                        let _ = fs::create_dir_all(data_dir_clone.join("contacts"));
-                                        let _ = storage.save(&contact_path_clone, c);
-                                        found_name = extract_contact_name(c);
-                                        found_url = extract_avatar_url(c);
+                        if client.connect(identity, false).await.is_ok() {
+                            if client.sync(None).await.is_ok() {
+                                let mut found_name = None;
+                                let mut found_url = None;
+                                if id > 0 {
+                                    if let Ok(resp) = client.fetch_contacts(vec![id as u64]).await {
+                                        if let Some(contacts) = resp.payload.get("contacts").and_then(|c| c.as_array()) {
+                                            if let Some(c) = contacts.first() {
+                                                let storage = crate::stores::Storage::new(None);
+                                                let _ = fs::create_dir_all(data_dir_clone.join("contacts"));
+                                                let _ = storage.save(&contact_path_clone, c);
+                                                found_name = extract_contact_name(c);
+                                                found_url = extract_avatar_url(c);
+                                            }
+                                        }
+                                    }
+                                } else {
+                                    if let Ok(resp) = client.get_chats(vec![id]).await {
+                                        if let Some(chats) = resp.payload.get("chats").and_then(|c| c.as_array()) {
+                                            if let Some(c) = chats.first() {
+                                                let storage = crate::stores::Storage::new(None);
+                                                let chat_dir = data_dir_clone.join("chats").join(id.to_string());
+                                                let _ = fs::create_dir_all(&chat_dir);
+                                                let _ = storage.save(chat_dir.join("info"), c);
+                                                found_name = extract_contact_name(c);
+                                                found_url = extract_avatar_url(c);
+                                            }
+                                        }
                                     }
                                 }
+                                client.disconnect().await;
+                                return Some((found_name, found_url));
                             }
                             client.disconnect().await;
-                            return Some((found_name, found_url));
                         }
-                        client.disconnect().await;
-                    }
-                    None
+                        None
+                    }).await.ok().flatten()
                 })
             }).join().ok().flatten();
 
@@ -529,6 +546,7 @@ use tauri::Emitter;
 
 pub static GLOBAL_APP_HANDLE: std::sync::OnceLock<tauri::AppHandle> = std::sync::OnceLock::new();
 static PENDING_OPEN_CHAT: std::sync::atomic::AtomicI64 = std::sync::atomic::AtomicI64::new(0);
+static PENDING_CALL_ACTION: std::sync::Mutex<Option<serde_json::Value>> = std::sync::Mutex::new(None);
 
 pub fn set_app_handle(handle: tauri::AppHandle) {
     let _ = GLOBAL_APP_HANDLE.set(handle);
@@ -542,6 +560,11 @@ pub fn check_pending_open_chat() -> Option<i64> {
     } else {
         None
     }
+}
+
+#[tauri::command]
+pub fn check_pending_call_action() -> Option<serde_json::Value> {
+    PENDING_CALL_ACTION.lock().ok().and_then(|mut guard| guard.take())
 }
 
 #[cfg(target_os = "android")]
@@ -577,12 +600,167 @@ pub extern "system" fn Java_org_meowkie_max_MainActivity_notifyCallActionNative<
             _ => return,
         };
 
-        if let Some(app) = GLOBAL_APP_HANDLE.get() {
-            let _ = app.emit("native_call_action", serde_json::json!({
-                "action": action_str,
-                "payload": payload_str
-            }));
+        let action_val = serde_json::json!({
+            "action": action_str,
+            "payload": payload_str
+        });
+
+        if let Ok(mut guard) = PENDING_CALL_ACTION.lock() {
+            *guard = Some(action_val.clone());
         }
+
+        if let Some(app) = GLOBAL_APP_HANDLE.get() {
+            let _ = app.emit("native_call_action", action_val);
+        }
+    }));
+}
+
+pub async fn send_call_reject(
+    vcp_str: Option<&str>,
+    endpoint_opt: Option<&str>,
+    conversation_id_opt: Option<&str>,
+) -> Result<(), String> {
+    let mut ws_url = String::new();
+    if let Some(endpoint) = endpoint_opt {
+        if endpoint.contains("userId=") || endpoint.contains("token=") {
+            if let Ok(mut u) = url::Url::parse(endpoint) {
+                if let Some(cid) = conversation_id_opt {
+                    if !cid.is_empty() && !endpoint.contains("conversationId=") {
+                        u.query_pairs_mut().append_pair("conversationId", cid);
+                    }
+                }
+                ws_url = u.to_string();
+            } else {
+                ws_url = endpoint.to_string();
+            }
+        }
+    }
+
+    if ws_url.is_empty() {
+        if let Some(vcp) = vcp_str {
+            if let Ok(parsed) = crate::commands::decode_call_push(vcp.to_string()) {
+                let base = parsed.get("wse")
+                    .or_else(|| parsed.get("wsEndpoint"))
+                    .or_else(|| parsed.get("endpoint"))
+                    .or_else(|| parsed.get("ws2url"))
+                    .and_then(|v| v.as_str());
+
+                if let Some(base_str) = base {
+                    let mut url = if !base_str.starts_with("ws://") && !base_str.starts_with("wss://") {
+                        url::Url::parse(&format!("wss://{}", base_str)).map_err(|e| e.to_string())?
+                    } else {
+                        url::Url::parse(base_str).map_err(|e| e.to_string())?
+                    };
+
+                    let token = parsed.get("tkn").or_else(|| parsed.get("token")).and_then(|v| v.as_str()).unwrap_or("");
+                    let trnu = parsed.get("trnu").or_else(|| parsed.get("turnUser")).and_then(|v| v.as_str()).unwrap_or("");
+                    let user_id = trnu.split(':').last().unwrap_or("");
+                    let mut conv_id = parsed.get("cid").or_else(|| parsed.get("conversationId")).and_then(|v| {
+                        if let Some(s) = v.as_str() {
+                            Some(s.to_string())
+                        } else if let Some(n) = v.as_u64() {
+                            Some(n.to_string())
+                        } else if let Some(n) = v.as_i64() {
+                            Some(n.to_string())
+                        } else {
+                            None
+                        }
+                    }).unwrap_or_default();
+
+                    if conv_id.is_empty() {
+                        if let Some(cid) = conversation_id_opt {
+                            conv_id = cid.to_string();
+                        }
+                    }
+
+                    {
+                        let mut q = url.query_pairs_mut();
+                        if !user_id.is_empty() {
+                            q.append_pair("userId", user_id);
+                        }
+                        if !conv_id.is_empty() {
+                            q.append_pair("conversationId", &conv_id);
+                        }
+                        if !token.is_empty() {
+                            q.append_pair("token", token);
+                        }
+                        q.append_pair("version", "5");
+                        q.append_pair("capabilities", "3c02f");
+                        q.append_pair("platform", "ANDROID");
+                        q.append_pair("clientType", "ONE_ME");
+                        q.append_pair("appVersion", "sdk-0.2.1.3");
+                        q.append_pair("osVersion", "34");
+                        q.append_pair("device", "Android/Unknown");
+                    }
+                    ws_url = url.to_string();
+                }
+            }
+        }
+    }
+
+    if ws_url.is_empty() {
+        return Err("No endpoint available for rejection".into());
+    }
+
+    let target_url = url::Url::parse(&ws_url).map_err(|e| e.to_string())?;
+    let connect = yawc::WebSocket::connect(target_url);
+    let mut ws = tokio::time::timeout(std::time::Duration::from_secs(5), connect)
+        .await
+        .map_err(|_| "Connect timeout".to_string())?
+        .map_err(|e| format!("Connect error: {e}"))?;
+
+    use futures_util::SinkExt;
+    let reject_msg = serde_json::json!({
+        "command": "hangup",
+        "sequence": 1,
+        "reason": "REJECTED"
+    }).to_string();
+
+    let _ = ws.send(yawc::FrameView::text(reject_msg)).await;
+    tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+    let _ = ws.close().await;
+
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn reject_call(
+    vcp: Option<String>,
+    endpoint: Option<String>,
+    conversation_id: Option<String>,
+) -> Result<(), String> {
+    send_call_reject(vcp.as_deref(), endpoint.as_deref(), conversation_id.as_deref()).await
+}
+
+#[cfg(target_os = "android")]
+#[no_mangle]
+pub extern "system" fn Java_org_meowkie_max_CallDismissReceiver_rejectCallNative<'local>(
+    mut unowned_env: EnvUnowned<'local>,
+    _class: jni::objects::JClass<'local>,
+    vcp: JString<'local>,
+    conversation_id: JString<'local>,
+) {
+    let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let (vcp_str, cid_str) = match unowned_env.with_env(|env| {
+            let v = vcp.try_to_string(env)?;
+            let c = conversation_id.try_to_string(env)?;
+            Ok::<_, jni::errors::Error>((v, c))
+        }).into_outcome() {
+            jni::Outcome::Ok(pair) => pair,
+            _ => return,
+        };
+        if vcp_str.is_empty() && cid_str.is_empty() {
+            return;
+        }
+
+        let rt = match tokio::runtime::Builder::new_current_thread().enable_all().build() {
+            Ok(r) => r,
+            Err(_) => return,
+        };
+
+        rt.block_on(async move {
+            let _ = send_call_reject(Some(&vcp_str), None, Some(&cid_str)).await;
+        });
     }));
 }
 
@@ -592,6 +770,8 @@ pub static GLOBAL_JVM: std::sync::OnceLock<jni::JavaVM> = std::sync::OnceLock::n
 static GLOBAL_NOTIFICATION_CLASS: std::sync::OnceLock<jni::refs::Global<jni::objects::JClass<'static>>> = std::sync::OnceLock::new();
 #[cfg(target_os = "android")]
 pub static GLOBAL_MAIN_ACTIVITY_CLASS: std::sync::OnceLock<jni::refs::Global<jni::objects::JClass<'static>>> = std::sync::OnceLock::new();
+#[cfg(target_os = "android")]
+static GLOBAL_CALL_MGR_CLASS: std::sync::OnceLock<jni::refs::Global<jni::objects::JClass<'static>>> = std::sync::OnceLock::new();
 
 #[cfg(target_os = "android")]
 #[no_mangle]
@@ -613,6 +793,12 @@ pub extern "system" fn Java_org_meowkie_max_MainActivity_initJni<'local>(
             if let Ok(main_activity_class) = env.find_class(jni_str!("org/meowkie/max/MainActivity")) {
                 if let Ok(global_main) = env.new_global_ref(main_activity_class) {
                     let _ = GLOBAL_MAIN_ACTIVITY_CLASS.set(global_main);
+                }
+            }
+
+            if let Ok(call_mgr_class) = env.find_class(jni_str!("org/meowkie/max/CallNotificationManager")) {
+                if let Ok(global_call_mgr) = env.new_global_ref(call_mgr_class) {
+                    let _ = GLOBAL_CALL_MGR_CLASS.set(global_call_mgr);
                 }
             }
 
@@ -764,15 +950,18 @@ pub async fn cancel_notification(chat_id: i64) -> Result<(), String> {
 pub async fn update_call_notification_config(sound: bool, vibration: bool, enabled: Option<bool>) -> Result<(), String> {
     #[cfg(target_os = "android")]
     {
-        let _ = enabled;
-        if let Some(vm) = GLOBAL_JVM.get() {
+        let is_enabled = enabled.unwrap_or(true);
+        if let (Some(vm), Some(mgr_class)) = (GLOBAL_JVM.get(), GLOBAL_CALL_MGR_CLASS.get()) {
             let _ = vm.attach_current_thread(|env| -> Result<(), jni::errors::Error> {
-                let mgr_class = env.find_class(jni_str!("org/meowkie/max/CallNotificationManager"))?;
                 env.call_static_method(
                     mgr_class,
                     jni_str!("syncCallSettings"),
-                    jni_sig!("(ZZ)V"),
-                    &[jni::objects::JValue::Bool(sound), jni::objects::JValue::Bool(vibration)],
+                    jni_sig!("(ZZZ)V"),
+                    &[
+                        jni::objects::JValue::Bool(sound),
+                        jni::objects::JValue::Bool(vibration),
+                        jni::objects::JValue::Bool(is_enabled),
+                    ],
                 )?;
                 Ok(())
             });
@@ -785,9 +974,8 @@ pub async fn update_call_notification_config(sound: bool, vibration: bool, enabl
 pub async fn cancel_call_notification() -> Result<(), String> {
     #[cfg(target_os = "android")]
     {
-        if let Some(vm) = GLOBAL_JVM.get() {
+        if let (Some(vm), Some(mgr_class)) = (GLOBAL_JVM.get(), GLOBAL_CALL_MGR_CLASS.get()) {
             let _ = vm.attach_current_thread(|env| -> Result<(), jni::errors::Error> {
-                let mgr_class = env.find_class(jni_str!("org/meowkie/max/CallNotificationManager"))?;
                 env.call_static_method(
                     mgr_class,
                     jni_str!("cancelCallNotificationFromNative"),
@@ -805,16 +993,20 @@ pub async fn cancel_call_notification() -> Result<(), String> {
 pub async fn show_ongoing_call_notification(
     peer_id: i64,
     peer_name: String,
-    start_time: i64,
+    start_time: Option<i64>,
+    start_time_ms: Option<i64>,
     account: i64,
 ) -> Result<(), String> {
     #[cfg(target_os = "android")]
     {
-        if let Some(vm) = GLOBAL_JVM.get() {
+        let actual_start_time = start_time
+            .or(start_time_ms)
+            .unwrap_or_else(|| chrono::Utc::now().timestamp_millis());
+
+        if let (Some(vm), Some(mgr_class)) = (GLOBAL_JVM.get(), GLOBAL_CALL_MGR_CLASS.get()) {
             let res = vm.attach_current_thread(|env| -> Result<(), jni::errors::Error> {
                 let j_name = env.new_string(&peer_name)?;
                 let j_name_obj = JObject::from(j_name);
-                let mgr_class = env.find_class(jni_str!("org/meowkie/max/CallNotificationManager"))?;
                 env.call_static_method(
                     mgr_class,
                     jni_str!("showOngoingCallNotificationFromNative"),
@@ -822,7 +1014,7 @@ pub async fn show_ongoing_call_notification(
                     &[
                         jni::objects::JValue::Long(peer_id),
                         jni::objects::JValue::Object(&j_name_obj),
-                        jni::objects::JValue::Long(start_time),
+                        jni::objects::JValue::Long(actual_start_time),
                         jni::objects::JValue::Long(account),
                     ],
                 )?;
@@ -840,9 +1032,8 @@ pub async fn show_ongoing_call_notification(
 pub async fn cancel_ongoing_call_notification() -> Result<(), String> {
     #[cfg(target_os = "android")]
     {
-        if let Some(vm) = GLOBAL_JVM.get() {
+        if let (Some(vm), Some(mgr_class)) = (GLOBAL_JVM.get(), GLOBAL_CALL_MGR_CLASS.get()) {
             let _ = vm.attach_current_thread(|env| -> Result<(), jni::errors::Error> {
-                let mgr_class = env.find_class(jni_str!("org/meowkie/max/CallNotificationManager"))?;
                 env.call_static_method(
                     mgr_class,
                     jni_str!("cancelOngoingCallNotificationFromNative"),

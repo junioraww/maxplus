@@ -54,6 +54,7 @@ tauri-plugin-single-instance = { version = "2.4.5", features = ["deep-link"] }
 tauri-plugin-deep-link = "2.4.10"
 zip = { version = "2.2", default-features = false, features = ["deflate"] }
 lz4_flex = { version = "0.11", default-features = false, features = ["frame"] }
+yawc = "0.2"
 
 [profile.dev]
 incremental = true

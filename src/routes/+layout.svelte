@@ -104,33 +104,47 @@
       }
     }
 
-    try {
-      unlistenCallAction = await listen("native_call_action", async (event) => {
-        try {
-          const payloadObj = typeof event.payload?.payload === 'string'
-            ? JSON.parse(event.payload.payload)
-            : event.payload?.payload || {};
-          const action = event.payload?.action;
-          const { CallService } = await import('$lib/services/CallService.js');
-          if (action === 'answer') {
-            if (payloadObj.vcp || payloadObj.conversationId) {
-              await CallService.handleIncomingPush(payloadObj);
-            }
-            await CallService.acceptIncoming();
-          } else if (action === 'dismiss') {
-            CallService.dismissIncomingCall();
-          } else if (action === 'hangup') {
-            CallService.hangup();
-          } else if (action === 'show_incoming') {
-            if (payloadObj.vcp || payloadObj.conversationId) {
-              await CallService.handleIncomingPush(payloadObj);
-            }
+    async function dispatchCallAction(action, payload) {
+      try {
+        const payloadObj = typeof payload === 'string'
+          ? JSON.parse(payload)
+          : payload || {};
+        const { CallService } = await import('$lib/services/CallService.js');
+        if (action === 'answer') {
+          if (payloadObj.vcp || payloadObj.conversationId) {
+            await CallService.handleIncomingPush(payloadObj);
           }
-        } catch (err) {
-          console.error("native_call_action error:", err);
+          await CallService.acceptIncoming();
+        } else if (action === 'dismiss') {
+          CallService.declineIncoming(payloadObj);
+        } else if (action === 'hangup') {
+          CallService.hangup();
+        } else if (action === 'show_incoming') {
+          if (payloadObj.vcp || payloadObj.conversationId) {
+            await CallService.handleIncomingPush(payloadObj);
+          }
         }
+      } catch (err) {
+        console.error("dispatchCallAction error:", err);
+      }
+    }
+
+    const consumePendingCall = async () => {
+      try {
+        const pending = await invoke('check_pending_call_action');
+        if (pending?.action) {
+          await dispatchCallAction(pending.action, pending.payload);
+        }
+      } catch {}
+    };
+
+    try {
+      unlistenCallAction = await listen("native_call_action", () => {
+        consumePendingCall();
       });
     } catch {}
+
+    await consumePendingCall();
   });
 
   function unmountLoader() {

@@ -73,9 +73,15 @@ export class NativeRustPeerConnection extends EventTarget {
     }
 
     try {
-      this.sessionId = await invoke('webrtc_create', { iceServers });
+      const sid = await invoke('webrtc_create', { iceServers });
+      if (this._closed) {
+        invoke('webrtc_close', { sessionId: sid }).catch(() => {});
+        return;
+      }
+      this.sessionId = sid;
       console.log('[NativeRustPeerConnection] session created:', this.sessionId);
     } catch (err) {
+      if (this._closed) return;
       console.error('[NativeRustPeerConnection] webrtc_create failed:', err);
       throw err;
     }
@@ -447,7 +453,6 @@ export class NativeRustPeerConnection extends EventTarget {
   }
 
   async setRemoteDescription(desc) {
-    this.remoteDescription = desc;
     await this._initPromise;
     const sid = this.sessionId;
     if (this._closed || typeof sid !== 'number' || sid < 0) return;
@@ -458,6 +463,7 @@ export class NativeRustPeerConnection extends EventTarget {
         sdpType: type,
         sdp: desc?.sdp || '',
       });
+      this.remoteDescription = desc;
       if (type === 'answer') {
         this.signalingState = 'stable';
       } else if (type === 'offer') {
@@ -480,6 +486,7 @@ export class NativeRustPeerConnection extends EventTarget {
           sdpType: 'offer',
           sdp: desc?.sdp || '',
         });
+        this.remoteDescription = desc;
         this.signalingState = 'have-remote-offer';
         await this.#drainPendingCandidates();
         return;

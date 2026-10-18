@@ -48,6 +48,10 @@ class MediaPipelineHost {
 
   _restartVideoPipeline() {
     if (this.#animFrameId) cancelAnimationFrame(this.#animFrameId);
+    if (this.#processedVideoStream) {
+      this.#processedVideoStream.getTracks().forEach(t => t.stop());
+      this.#processedVideoStream = null;
+    }
     if (!this.#rawVideoTrack || this.#videoPlugins.length === 0) {
       this.#processedVideoStream = this.#rawVideoTrack
         ? new MediaStream([this.#rawVideoTrack])
@@ -58,10 +62,10 @@ class MediaPipelineHost {
       this.#canvas = document.createElement('canvas');
       this.#ctx = this.#canvas.getContext('2d', { willReadFrequently: false });
       this.#videoEl = document.createElement('video');
-      this.#videoEl.srcObject = new MediaStream([this.#rawVideoTrack]);
       this.#videoEl.muted = true;
-      this.#videoEl.play();
     }
+    this.#videoEl.srcObject = new MediaStream([this.#rawVideoTrack]);
+    this.#videoEl.play().catch(() => {});
     const settings = this.#rawVideoTrack.getSettings();
     this.#canvas.width = settings.width || 640;
     this.#canvas.height = settings.height || 480;

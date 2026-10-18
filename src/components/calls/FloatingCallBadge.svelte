@@ -1,6 +1,7 @@
 <script>
   import { activeCall, patchCallState, CALL_PHASE } from '$lib/stores/calls.js';
   import { CallService } from '$lib/services/CallService.js';
+  import { onDestroy } from 'svelte';
   import { scale, fade } from 'svelte/transition';
   import { cubicOut } from 'svelte/easing';
 
@@ -16,12 +17,24 @@
   $: visible = phase === CALL_PHASE.ACTIVE || phase === CALL_PHASE.CONNECTING;
 
   $: if (phase === CALL_PHASE.ACTIVE && !elapsedTimer) {
-    elapsedTimer = setInterval(() => { elapsed = Math.floor((Date.now() - startedAt) / 1000); }, 1000);
+    const start = startedAt || Date.now();
+    elapsed = Math.max(0, Math.floor((Date.now() - start) / 1000));
+    elapsedTimer = setInterval(() => {
+      const s = startedAt || start;
+      elapsed = Math.max(0, Math.floor((Date.now() - s) / 1000));
+    }, 1000);
   } else if (phase !== CALL_PHASE.ACTIVE) {
     clearInterval(elapsedTimer);
     elapsedTimer = null;
     elapsed = 0;
   }
+
+  onDestroy(() => {
+    if (elapsedTimer) {
+      clearInterval(elapsedTimer);
+      elapsedTimer = null;
+    }
+  });
 
   function formatDuration(s) {
     const m = Math.floor(s / 60);

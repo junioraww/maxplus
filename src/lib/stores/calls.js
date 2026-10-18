@@ -1,4 +1,4 @@
-import { writable } from 'svelte/store';
+import { writable, get } from 'svelte/store';
 
 export const CALL_PHASE = Object.freeze({
   IDLE: 'idle',
@@ -67,7 +67,7 @@ const INITIAL_STATE = {
 export const activeCall = writable({ ...INITIAL_STATE });
 
 export function resetCallState() {
-  activeCall.set({ ...INITIAL_STATE, useStubs: initialStubs });
+  activeCall.set({ ...INITIAL_STATE, useStubs: get(callUseStubs) });
 }
 
 export function patchCallState(patch) {
