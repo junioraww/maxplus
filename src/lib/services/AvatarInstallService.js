@@ -1,7 +1,41 @@
 import { invoke } from "@tauri-apps/api/core";
-import { encodeStegoPayload } from "$lib/utils/stego";
-import { getSafeAvatarPreviewUrl, getSafeAvatarInstallUrl } from "$lib/services/uplink";
+import { get } from "svelte/store";
+import API, { currentUserDetails, currentUser } from "$lib/stores/api";
+import { updateContact } from "$lib/stores/contacts";
+import { getCurrentAccount, setAccountContact } from "$lib/stores/accounts";
+import { encodeStegoPayload, decodeStegoPayload } from "$lib/utils/stego";
+import { getAssetUrl } from "$lib/utils/images";
+import { getSafeAvatarInstallUrl } from "$lib/services/uplink";
 import { safeAvatarMapStore } from "$lib/services/AvatarSyncManager";
+
+async function inspectImageCandidate(url, targetId) {
+  if (!url) return null;
+  const assetUrl = await getAssetUrl(url).catch(() => null) || url;
+  const img = new Image();
+  img.crossOrigin = "anonymous";
+  await new Promise((resolve, reject) => {
+    img.onload = resolve;
+    img.onerror = reject;
+    img.src = assetUrl;
+  });
+
+  const w = img.naturalWidth || img.width;
+  const h = img.naturalHeight || img.height;
+  if (!w || !h || w < 64 || h < 64) return null;
+
+  const canvas = typeof OffscreenCanvas !== "undefined"
+    ? new OffscreenCanvas(w, h)
+    : document.createElement("canvas");
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
+  if (!ctx) return null;
+  ctx.drawImage(img, 0, 0, w, h);
+  const imgData = ctx.getImageData(0, 0, w, h);
+  if (decodeStegoPayload(imgData, targetId)) return null;
+
+  return { img, width: w, height: h };
+}
 
 export async function installSafeAvatar(avatarUid, targetId, onProgress) {
   if (!avatarUid || !targetId) {
@@ -9,31 +43,47 @@ export async function installSafeAvatar(avatarUid, targetId, onProgress) {
   }
 
   const cleanUid = String(avatarUid).trim();
-  onProgress?.("Загрузка постера аватарки...");
+  const details = get(currentUserDetails);
+  const currentTargetId = Number(targetId || details?.id || get(currentUser) || 0);
+  const api = get(API);
 
-  const previewUrl = getSafeAvatarPreviewUrl(cleanUid);
-  const img = new Image();
-  img.crossOrigin = "anonymous";
+  onProgress?.("Поиск чистой аватарки...");
 
-  await new Promise((resolve, reject) => {
-    img.onload = resolve;
-    img.onerror = () => reject(new Error("Не удалось загрузить постер аватарки"));
-    img.src = previewUrl;
-  });
+  const historyRes = await api?.fetchUserPhotos?.(currentTargetId, 0, 50).catch(() => null);
+  const candidateUrls = [...new Set([
+    details?.baseRawUrl,
+    details?.baseUrl,
+    details?.avatar,
+    ...(historyRes?.urls || [])
+  ].filter(Boolean))];
 
-  onProgress?.("Подготовка холста 512x512...");
+  let cleanBase = null;
+  for (const url of candidateUrls) {
+    try {
+      cleanBase = await inspectImageCandidate(url, currentTargetId);
+      if (cleanBase) break;
+    } catch {}
+  }
+
+  const size = cleanBase ? Math.min(1024, Math.max(512, Math.min(cleanBase.width, cleanBase.height))) : 512;
+
+  onProgress?.(`Подготовка холста ${size}x${size}...`);
   const canvas = document.createElement("canvas");
-  canvas.width = 512;
-  canvas.height = 512;
-  const ctx = canvas.getContext("2d");
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
   if (!ctx) throw new Error("Не удалось создать контекст холста");
 
-  ctx.drawImage(img, 0, 0, 512, 512);
+  if (cleanBase) {
+    ctx.drawImage(cleanBase.img, 0, 0, size, size);
+  } else {
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, size, size);
+  }
 
   onProgress?.("Внедрение скрытой стеганографии...");
-  const imgData = ctx.getImageData(0, 0, 512, 512);
-  const encoded = encodeStegoPayload(imgData, targetId, cleanUid);
-  if (!encoded) {
+  const imgData = ctx.getImageData(0, 0, size, size);
+  if (!encodeStegoPayload(imgData, currentTargetId, cleanUid)) {
     throw new Error("Не удалось внедрить стеганографию");
   }
   ctx.putImageData(imgData, 0, 0);
@@ -41,9 +91,6 @@ export async function installSafeAvatar(avatarUid, targetId, onProgress) {
   onProgress?.("Подготовка к отправке...");
   const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.92));
   if (!blob) throw new Error("Ошибка создания файла изображения");
-
-  const arrayBuffer = await blob.arrayBuffer();
-  const uint8 = new Uint8Array(arrayBuffer);
 
   onProgress?.("Получение ссылки для загрузки...");
   const uploadReq = await invoke("get_photo_upload", { count: 1, profile: true });
@@ -53,44 +100,31 @@ export async function installSafeAvatar(avatarUid, targetId, onProgress) {
   }
 
   onProgress?.("Загрузка на сервер Max...");
-  const tempFileName = `stego_avatar_${Date.now()}.jpg`;
-  const tempPath = await invoke("save_temp_bytes", {
-    fileName: tempFileName,
-    bytes: Array.from(uint8)
-  }).catch(() => null);
-
-  let photoToken = null;
-  if (tempPath) {
-    const uploaded = await invoke("upload", {
-      uploadUrl,
-      path: tempPath,
-      attachType: "PHOTO",
-      mime: "image/jpeg",
-    }).catch(() => null);
-    photoToken = uploaded?.photoToken || uploaded?.token;
-  }
-
-  if (!photoToken) {
-    const formData = new FormData();
-    formData.append("file", blob, "image.jpg");
-    const uploadRes = await fetch(uploadUrl, { method: "POST", body: formData });
-    const uploadJson = await uploadRes.json();
-    const photos = uploadJson?.photos;
-    if (photos && typeof photos === "object") {
-      const first = Object.values(photos)[0];
-      photoToken = first?.token;
-    }
-  }
+  const formData = new FormData();
+  formData.append("file", blob, "image.jpg");
+  const uploadRes = await fetch(uploadUrl, { method: "POST", body: formData });
+  const uploadJson = await uploadRes.json();
+  const photos = uploadJson?.photos;
+  const photoToken = photos && typeof photos === "object" ? Object.values(photos)[0]?.token : null;
 
   if (!photoToken) {
     throw new Error("Ошибка получения токена фото");
   }
 
   onProgress?.("Обновление профиля...");
-  await invoke("set_profile_photo", { photoToken });
+  const setRes = await invoke("set_profile_photo", { photoToken });
+  const updatedContact = setRes?.profile?.contact || setRes?.contact;
+  if (updatedContact) {
+    currentUserDetails.set(updatedContact);
+    await updateContact(updatedContact).catch(() => {});
+    const account = await getCurrentAccount().catch(() => null);
+    if (account?.id) {
+      await setAccountContact(account.id, updatedContact).catch(() => {});
+    }
+  }
 
   safeAvatarMapStore.update((map) => {
-    map.set(Number(targetId), cleanUid);
+    map.set(Number(currentTargetId), cleanUid);
     try {
       const entries = Array.from(map.entries());
       localStorage.setItem("maxplus_safe_avatar_map", JSON.stringify(entries));

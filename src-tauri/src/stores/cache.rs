@@ -295,3 +295,87 @@ pub async fn delete_chat_cache(
     .await
     .map_err(|e| e.to_string())?
 }
+
+pub fn delete_safe_avatars_cache_sync(
+    app: &AppHandle,
+    account: Option<u64>,
+) -> Result<usize, String> {
+    let accounts: Vec<u64> = if let Some(acc) = account.filter(|&a| a != 0) {
+        vec![acc]
+    } else {
+        let store = super::accounts::load_accounts(app);
+        let mut list = Vec::new();
+        if let Some(cur) = store.get("current").and_then(|v| v.as_u64()) {
+            list.push(cur);
+        }
+        if let Some(arr) = store.get("accounts").and_then(|v| v.as_array()) {
+            for item in arr {
+                if let Some(id) = item.get("id").and_then(|v| v.as_u64()) {
+                    if !list.contains(&id) {
+                        list.push(id);
+                    }
+                }
+            }
+        }
+        if list.is_empty() {
+            list.push(0);
+        }
+        list
+    };
+
+    let mut total_deleted = 0;
+
+    for acc in accounts {
+        let key = crypto_key(app, acc);
+        let storage = Storage::new(key);
+        let paths = Paths::new(app, acc);
+
+        let cached_opt = CACHE_INDEX_CACHE.read().ok().and_then(|g| g.get(&acc).cloned());
+
+        let mut index = match cached_opt {
+            Some(idx) => idx,
+            None => storage
+                .load(paths.cache_index())
+                .unwrap_or(json!({})),
+        };
+
+        let mut to_remove = Vec::new();
+
+        if let Some(map) = index.as_object_mut() {
+            for (src, entry) in map.iter() {
+                if src.contains("/api/avatars/") {
+                    if let Some(arr) = entry.as_array() {
+                        if let Some(file_path) = arr.get(0).and_then(|v| v.as_str()) {
+                            let _ = fs::remove_file(file_path);
+                        }
+                    }
+                    to_remove.push(src.clone());
+                    total_deleted += 1;
+                }
+            }
+            for src in to_remove {
+                map.remove(&src);
+            }
+        }
+
+        if let Ok(mut guard) = CACHE_INDEX_CACHE.write() {
+            guard.insert(acc, index.clone());
+        }
+
+        storage.save_coalesced(paths.cache_index(), &index);
+    }
+
+    Ok(total_deleted)
+}
+
+#[tauri::command]
+pub async fn delete_safe_avatars_cache(
+    app: AppHandle,
+    account: Option<u64>,
+) -> Result<usize, String> {
+    tokio::task::spawn_blocking(move || {
+        delete_safe_avatars_cache_sync(&app, account)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}

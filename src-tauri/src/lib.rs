@@ -259,6 +259,7 @@ pub fn run() {
             stores::cache::get_cached_file,
             stores::cache::set_cached_file,
             stores::cache::delete_chat_cache,
+            stores::cache::delete_safe_avatars_cache,
             stores::generic::common_store_load,
             stores::generic::common_store_save,
             stores::generic::webapp_storage_save_key,
