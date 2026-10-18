@@ -57,8 +57,12 @@ export function getAttachText(chatOrMsg, maybeMsg) {
     return poll.title ? `Опрос: ${poll.title}` : "Опрос";
   }
 
-  const call = attaches.find((x) => x._type === "CALL");
-  if (call) return "Звонок";
+  const call = attaches.find((x) => (x._type || x.type) === "CALL" || x.hangupType != null);
+  if (call) {
+    const hang = (call.hangupType || "").toUpperCase();
+    if (hang === "MISSED" || hang === "CANCELED") return "Пропущенный звонок";
+    return "Звонок";
+  }
 
   const control = attaches.find((x) => x._type === "CONTROL");
   if (control) {

@@ -8,7 +8,7 @@ import { showAlert } from '$lib/utils/alert.js';
 import API, { currentUser, currentRealChats } from '$lib/stores/api.js';
 import { getChat } from '$lib/stores/messages.js';
 import Session, { closeChat } from '$lib/stores/session.js';
-import { getCurrentAccount } from '$lib/stores/accounts.js';
+import { getCurrentAccount, getDevice } from '$lib/stores/accounts.js';
 import { initHandshake, acceptHandshake, processAccept } from '$lib/crypto/asymmetric.js';
 import { startIncomingRingtone, startOutgoingRingback, stopCallAudio, playRejectionTone } from '$lib/services/callAudio.js';
 import { showDesktopCallNotification, cancelDesktopCallNotification } from '$lib/utils/notifications.js';
@@ -256,6 +256,10 @@ class VoiceChannel {
   #listeners = new Map();
   #onClose = null;
 
+  get isOpen() {
+    return Boolean(this.#socket && this.#socket.readyState === WebSocket.OPEN);
+  }
+
   connect(url, onClose) {
     this.#onClose = onClose;
     log('[call:ws2:connect]', url);
@@ -280,25 +284,44 @@ class VoiceChannel {
       }
     };
 
-    this.#socket.onclose = (ev) => {
-      log('[call:ws2:close]', ev.code, ev.reason);
-      if (ev.code !== 1000 && ev.reason) {
-        patchCallState({ errorText: ev.reason });
-      }
-      onClose?.();
-    };
-
-    this.#socket.onerror = (ev) => {
-      log('[call:ws2:error]', ev);
-      onClose?.();
-    };
-
     return new Promise((resolve, reject) => {
+      let isSettled = false;
+      const timer = setTimeout(() => {
+        if (isSettled) return;
+        isSettled = true;
+        reject(new Error('ws2 connect timeout'));
+      }, 10000);
+
       this.#socket.onopen = () => {
+        if (isSettled) return;
+        isSettled = true;
+        clearTimeout(timer);
         log('[call:ws2:open]');
         resolve();
       };
-      setTimeout(() => reject(new Error('ws2 connect timeout')), 10000);
+
+      this.#socket.onclose = (ev) => {
+        log('[call:ws2:close]', ev.code, ev.reason);
+        if (!isSettled) {
+          isSettled = true;
+          clearTimeout(timer);
+          reject(new Error(ev.reason || `ws2 closed with code ${ev.code}`));
+        }
+        if (ev.code !== 1000 && ev.reason) {
+          patchCallState({ errorText: ev.reason });
+        }
+        onClose?.();
+      };
+
+      this.#socket.onerror = (ev) => {
+        log('[call:ws2:error]', ev);
+        if (!isSettled) {
+          isSettled = true;
+          clearTimeout(timer);
+          reject(new Error('ws2 connection error'));
+        }
+        onClose?.();
+      };
     });
   }
 
@@ -407,6 +430,7 @@ class MaxCallSession {
   #screenStream = null;
   #encryption = new CallEncryptionSession();
   #destroyed = false;
+  #isActive = false;
   #conversationId = null;
   #contactPeerId = null;
   #ws2PeerId = null;
@@ -515,6 +539,7 @@ class MaxCallSession {
     this.#pendingOffer = role === 'originator';
     this.#pendingLocalCandidates = [];
     this.#allLocalCandidates = [];
+    this.#isActive = false;
     let myCallUserId = null;
     try {
       const parsedUrl = new URL(endpoint);
@@ -1104,6 +1129,7 @@ class MaxCallSession {
   }
 
   #onCallActivated() {
+    this.#isActive = true;
     patchCallState({ phase: CALL_PHASE.ACTIVE, startedAt: get(activeCall).startedAt || Date.now() });
     if (get(activeCall).mode === CALL_MODE.SECURE && this.#encryption.mode !== 'secure') {
       this.enableSecureMode().catch(() => {});
@@ -1151,6 +1177,7 @@ class MaxCallSession {
     const switchingToSfu = topo === 'SERVER' && this.#topology !== 'SERVER';
     this.#topology = topo;
     if (switchingToSfu) {
+      this.#isActive = true;
       patchCallState({ phase: CALL_PHASE.ACTIVE });
       if (this.#pc && !this.#isSfuPc) {
         await this.#rebuildSfuPc();
@@ -1235,6 +1262,9 @@ class MaxCallSession {
   #buildWs2Url(endpoint) {
     try {
       const u = new URL(endpoint);
+      if (this.#myCallUserId && !u.searchParams.has('userId')) {
+        u.searchParams.set('userId', String(this.#myCallUserId));
+      }
       u.searchParams.set('version', WS2_VERSION);
       u.searchParams.set('capabilities', WS2_CAPABILITIES);
       u.searchParams.set('platform', INTERNAL_PARAMS_PLATFORM);
@@ -1242,7 +1272,11 @@ class MaxCallSession {
       u.searchParams.set('appVersion', `sdk-${INTERNAL_PARAMS_SDK}`);
       u.searchParams.set('osVersion', DEFAULT_OS_VERSION);
       u.searchParams.set('device', DEFAULT_DEVICE);
-      u.searchParams.set('tgt', 'start');
+      if (this.#role === 'originator') {
+        u.searchParams.set('tgt', 'start');
+      } else {
+        u.searchParams.delete('tgt');
+      }
       const built = u.toString();
       log('ws2 url generated:', built);
       return built;
@@ -2447,11 +2481,25 @@ class MaxCallSession {
   }
 
   async hangup() {
+    let reason = 'HUNGUP';
+    if (this.#role === 'originator' && !this.#isActive) {
+      reason = 'CANCELED';
+    } else if (this.#role === 'responder' && !this.#isActive) {
+      reason = 'REJECTED';
+    }
     try {
-      this.#voiceChannel?.sendQuiet('hangup', {
-        reason: 'HUNGUP',
-      });
-    } catch {}
+      if (this.#voiceChannel && this.#voiceChannel.isOpen) {
+        await Promise.race([
+          this.#voiceChannel.send('hangup', { reason }),
+          new Promise(r => setTimeout(r, 600)),
+        ]);
+      }
+    } catch {
+      try {
+        this.#voiceChannel?.sendQuiet('hangup', { reason });
+        await new Promise(r => setTimeout(r, 100));
+      } catch {}
+    }
     this.destroy();
   }
 
@@ -2603,15 +2651,23 @@ function _closeMatchingChat(targetPeerId) {
   } catch {}
 }
 
-function _buildInternalParams(deviceId = '') {
+async function _buildInternalParams(deviceId = '') {
+  let resolvedDeviceId = deviceId;
+  if (!resolvedDeviceId) {
+    try {
+      const dev = await getDevice();
+      resolvedDeviceId = dev?.deviceId || '';
+    } catch {}
+  }
   return JSON.stringify({
     platform: INTERNAL_PARAMS_PLATFORM,
     sdkVersion: INTERNAL_PARAMS_SDK,
     clientAppKey: CLIENT_APP_KEY,
-    deviceId,
+    deviceId: resolvedDeviceId,
     protocolVersion: 5,
     onlyAdminCanRecord: false,
     isWaitForAdminEnabled: false,
+    hexCapability: WS2_CAPABILITIES,
   });
 }
 
@@ -2640,11 +2696,12 @@ export const CallService = {
     });
     try {
       const convId = _genConversationId();
+      const internalParams = await _buildInternalParams();
       const resp = await invoke('begin_call', {
         calleeId: Number(peerId),
         isVideo: false,
         conversationId: convId,
-        internalParams: _buildInternalParams(),
+        internalParams,
       });
       log('begin_call response:', resp);
       const endpoint = this._extractEndpoint(resp);
@@ -2679,11 +2736,12 @@ export const CallService = {
     });
     try {
       const convId = _genConversationId();
+      const internalParams = await _buildInternalParams();
       const resp = await invoke('begin_call', {
         calleeId: Number(peerId),
         isVideo: true,
         conversationId: convId,
-        internalParams: _buildInternalParams(),
+        internalParams,
       });
       log('begin_call response:', resp);
       const endpoint = this._extractEndpoint(resp);
@@ -2702,8 +2760,7 @@ export const CallService = {
 
   async handleIncomingPush(pushData) {
     try {
-      const isCancellation = pushData.type === 'CallFinished' || pushData.type === 'CANCEL' || pushData.action === 'CANCEL' || pushData.status === 'CANCELED' || pushData.reason === 'CANCELED';
-      if (isCancellation) {
+      if (pushData?.type === 'CallFinished') {
         this.dismissIncomingCall();
         return;
       }
@@ -2719,14 +2776,16 @@ export const CallService = {
       const conversationId = pushData.conversationId || pushData.vcId || pushData.conference_id || (convParams?.cid ? String(convParams.cid) : '');
       const callerId = pushData.callerId || pushData.suid || pushData.caller_id || (convParams?.from ? String(convParams.from) : '');
       let endpoint = convParams.endpoint || convParams.ws2url || pushData.endpoint;
-      if (!endpoint && convParams.wse) {
+      const wse = convParams.wse || convParams.wsEndpoint;
+      if (!endpoint && wse) {
         try {
-          const u = new URL(convParams.wse);
-          const myCallId = convParams.trnu ? convParams.trnu.split(':').pop() : '';
-          u.searchParams.set('userId', myCallId);
-          u.searchParams.set('entityType', 'USER');
+          const u = new URL(wse);
+          const trnu = convParams.trnu || convParams.turnUser || '';
+          const myCallId = trnu ? trnu.split(':').pop() : '';
+          if (myCallId) u.searchParams.set('userId', myCallId);
           u.searchParams.set('conversationId', conversationId);
-          if (convParams.tkn) u.searchParams.set('token', convParams.tkn);
+          const tkn = convParams.tkn || convParams.token;
+          if (tkn) u.searchParams.set('token', tkn);
           u.searchParams.set('version', WS2_VERSION);
           u.searchParams.set('capabilities', WS2_CAPABILITIES);
           u.searchParams.set('platform', INTERNAL_PARAMS_PLATFORM);
@@ -2811,9 +2870,16 @@ export const CallService = {
     if (pending?.endpoint) {
       try {
         const ch = new VoiceChannel();
-        ch.connect(pending.endpoint).then(() => {
-          ch.sendQuiet('hangup', { reason: 'REJECTED' });
-          setTimeout(() => ch.close(), 1000);
+        ch.connect(pending.endpoint).then(async () => {
+          try {
+            await Promise.race([
+              ch.send('hangup', { reason: 'REJECTED' }),
+              new Promise(r => setTimeout(r, 600)),
+            ]);
+          } catch {
+            ch.sendQuiet('hangup', { reason: 'REJECTED' });
+          }
+          ch.close();
         }).catch(() => {});
       } catch {}
     }
@@ -2895,10 +2961,11 @@ export const CallService = {
       if (token.includes('/')) {
         token = token.split('/').pop();
       }
+      const internalParams = await _buildInternalParams();
       const resp = await invoke('enter_call_by_link', {
         joinLink: token,
         isVideo: Boolean(isVideo),
-        internalParams: _buildInternalParams(),
+        internalParams,
       });
       log('enter_call_by_link response:', resp);
       const endpoint = this._extractEndpoint(resp);
@@ -3003,13 +3070,23 @@ export const CallService = {
 
   _extractEndpoint(resp) {
     if (!resp) return null;
-    if (resp.endpoint) return resp.endpoint;
+    let endpoint = resp.endpoint || null;
     const raw = resp.internalCallerParams || resp.internalParams || resp.callerParams;
-    if (!raw) return null;
-    try {
-      const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
-      return parsed.endpoint || null;
-    } catch { return null; }
+    if (raw) {
+      try {
+        const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+        if (parsed.endpoint) endpoint = parsed.endpoint;
+        const uid = parsed.id?.internal != null ? parsed.id.internal : parsed.id;
+        if (endpoint && uid != null) {
+          const u = new URL(endpoint);
+          if (!u.searchParams.has('userId')) {
+            u.searchParams.set('userId', String(uid));
+            endpoint = u.toString();
+          }
+        }
+      } catch {}
+    }
+    return endpoint;
   },
 
   _extractConvParams(resp) {
