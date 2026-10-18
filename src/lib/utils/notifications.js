@@ -21,6 +21,7 @@ import { getChat } from "$lib/stores/messages";
 import { getCurrentAccount } from "$lib/stores/accounts";
 import { getContactDirect } from "$lib/stores/contacts";
 import { getMessagePreview } from "$lib/utils/text";
+import Session from "$lib/stores/session";
 
 export const MESSAGES_CHANNEL_ID = 'MESSAGES_CHANNEL_ID';
 

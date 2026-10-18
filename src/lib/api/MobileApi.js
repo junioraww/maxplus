@@ -60,8 +60,8 @@ import {
   getMessagePreview
 } from "$lib/utils/text";
 import { batchDecrypt } from "$lib/crypto/messages.js";
-import { CallService } from "$lib/services/CallService.js";
 import { activeCall, CALL_PHASE } from "$lib/stores/calls.js";
+import { CallService } from "$lib/services/CallService.js";
 
 import BaseAPI from "./BaseApi";
 
@@ -228,6 +228,12 @@ export default class MobileApi extends BaseAPI {
             return [message.chatId, ...filtered];
           });
 
+          const rawAttaches = message.attaches || message.attachments || [];
+          const callAttach = rawAttaches.find(a => (a._type || a.type) === 'CALL' || a.hangupType != null);
+          if (callAttach) {
+            CallService.dismissIncomingCall();
+          }
+
           if (!isOutgoing) {
             if (message.text) {
               const call = get(activeCall);
@@ -380,15 +386,8 @@ export default class MobileApi extends BaseAPI {
           }
         }
       } else if (opc === 137) {
-        const p = response.payload;
-        if (p) {
-          const { CallService } = await import('$lib/services/CallService.js');
-          const isFinished = p.type === 'CallFinished' || p.type === 'CANCEL' || p.action === 'CANCEL' || p.status === 'CANCELED' || p.reason === 'CANCELED';
-          if (isFinished) {
-            CallService.dismissIncomingCall();
-          } else {
-            CallService.handleIncomingPush(p);
-          }
+        if (response.payload) {
+          CallService.handleIncomingPush(response.payload);
         }
       } else if (opc === 159) {
         const contact = response.payload?.profile?.contact || response.payload?.contact;
