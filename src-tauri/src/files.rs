@@ -701,6 +701,9 @@ pub async fn cache_url(
     }
 
     let bytes = resp.bytes().await.map_err(|e| e.to_string())?.to_vec();
+    if bytes.starts_with(b"{\"error\"") || bytes.is_empty() {
+        return Err("Server returned error payload".to_string());
+    }
     let size_kb = (bytes.len() + 1023) / 1024;
     let saved_path = crate::stores::set_cached_file_with_meta(app.clone(), acc, cache_key.clone(), bytes, chat_id, media_type.clone())?;
     if cache_key != src {

@@ -10,12 +10,14 @@ function getStegoWorker() {
     try {
       stegoWorker = new Worker(new URL("../utils/stegoWorker.js", import.meta.url), { type: "module" });
       stegoWorker.onmessage = (e) => {
-        const { foundUid, targetEntityId } = e.data || {};
+        const { foundUid, targetEntityId, key } = e.data || {};
         if (foundUid && targetEntityId) {
           safeAvatarMapStore.update((map) => {
             map.set(Number(targetEntityId), foundUid);
             return map;
           });
+        } else if (!foundUid && key) {
+          MediaPool.scannedStegoKeys.delete(key);
         }
       };
     } catch {
@@ -23,6 +25,23 @@ function getStegoWorker() {
     }
   }
   return stegoWorker;
+}
+
+let mediaPoolHost = null;
+
+function getMediaPoolHost() {
+  if (typeof document === "undefined") return null;
+  if (!mediaPoolHost || !document.body.contains(mediaPoolHost)) {
+    mediaPoolHost = document.getElementById("maxplus-media-pool-host");
+    if (!mediaPoolHost) {
+      mediaPoolHost = document.createElement("div");
+      mediaPoolHost.id = "maxplus-media-pool-host";
+      mediaPoolHost.setAttribute("aria-hidden", "true");
+      mediaPoolHost.style.cssText = "position:fixed;width:1px;height:1px;top:-9999px;left:-9999px;opacity:0.001;pointer-events:none;overflow:hidden;z-index:-1;";
+      document.body.appendChild(mediaPoolHost);
+    }
+  }
+  return mediaPoolHost;
 }
 
 class MediaEntry {
@@ -33,6 +52,10 @@ class MediaEntry {
     this.status = "idle";
     this.error = null;
     this.source = null;
+    this.masterCanvas = null;
+    this.masterCtx = null;
+    this.lastPlayAttempt = 0;
+    this.loadStartTime = 0;
     this.refCount = 0;
     this.consumers = new Set();
     this.visibleConsumers = new Set();
@@ -49,36 +72,21 @@ class MediaPoolEngine {
     this.render = this.render.bind(this);
   }
 
-  getKey(src, type = "auto") {
-    if (!src) return "";
-    return `${type}:${src}`;
+  getKey(src) {
+    if (!src || typeof src !== "string") return "";
+    return src;
   }
 
   getEntry(key) {
     return this.pool.get(key) || null;
   }
 
-  inferType(src) {
-    if (!src || typeof src !== "string") return "image";
-    const clean = src.split("?")[0].toLowerCase();
-    if (
-      clean.endsWith(".mp4") ||
-      clean.endsWith(".webm") ||
-      clean.endsWith(".mov") ||
-      clean.endsWith(".m4v") ||
-      clean.includes("/video")
-    ) {
-      return "video";
-    }
-    return "image";
-  }
-
-  acquire(key, options, consumer) {
+  acquire(key, options = {}, consumer) {
     let entry = this.pool.get(key);
-    const resolvedType = options.type === "auto" || !options.type ? this.inferType(options.src) : options.type;
+    const initialType = options?.type === "image" ? "image" : "video";
 
     if (!entry) {
-      entry = new MediaEntry(key, resolvedType, options.src);
+      entry = new MediaEntry(key, initialType, options.src);
       this.pool.set(key, entry);
       this._load(entry, options);
     } else {
@@ -86,7 +94,7 @@ class MediaPoolEngine {
         clearTimeout(entry.evictionTimer);
         entry.evictionTimer = null;
       }
-      if (entry.status === "error") {
+      if (entry.status === "error" || (entry.status === "loading" && Date.now() - entry.loadStartTime > 6000)) {
         entry.status = "idle";
         entry.error = null;
         this._load(entry, options);
@@ -101,7 +109,8 @@ class MediaPoolEngine {
         if (entry.type === "image") {
           consumer.drawStatic?.(entry.source);
         } else if (entry.type === "video") {
-          consumer.onFrame?.(entry.source);
+          const frameSource = entry.masterCanvas || entry.source;
+          consumer.onFrame?.(frameSource);
         }
       } else if (entry.status === "error") {
         consumer.onError(entry.error);
@@ -145,10 +154,15 @@ class MediaPoolEngine {
       if (entry.type === "video") {
         if (entry.source) {
           if (entry.source.paused) {
-            entry.source.play().then(() => this._ensureRenderLoop()).catch(() => {});
+            const now = Date.now();
+            if (now - entry.lastPlayAttempt > 1000) {
+              entry.lastPlayAttempt = now;
+              entry.source.play().then(() => this._ensureRenderLoop()).catch(() => {});
+            }
           }
           if (entry.status === "ready" && entry.source.videoWidth > 0) {
-            consumer.onFrame?.(entry.source);
+            const masterFrame = entry.masterCanvas || this._updateMasterCanvas(entry, entry.source) || entry.source;
+            consumer.onFrame?.(masterFrame);
           }
         }
         this._ensureRenderLoop();
@@ -163,8 +177,49 @@ class MediaPoolEngine {
     }
   }
 
+  _updateMasterCanvas(entry, video) {
+    const vw = video.videoWidth;
+    const vh = video.videoHeight;
+    if (vw <= 0 || vh <= 0) return null;
+
+    if (!entry.masterCanvas) {
+      const size = 256;
+      if (typeof OffscreenCanvas !== "undefined") {
+        entry.masterCanvas = new OffscreenCanvas(size, size);
+      } else if (typeof document !== "undefined") {
+        entry.masterCanvas = document.createElement("canvas");
+        entry.masterCanvas.width = size;
+        entry.masterCanvas.height = size;
+      }
+      if (entry.masterCanvas) {
+        entry.masterCtx = entry.masterCanvas.getContext("2d", { willReadFrequently: true });
+        if (entry.masterCtx) {
+          entry.masterCtx.imageSmoothingEnabled = true;
+          entry.masterCtx.imageSmoothingQuality = "medium";
+        }
+      }
+    }
+
+    if (!entry.masterCtx) return null;
+
+    let sx = 0;
+    let sy = 0;
+    let sSide = Math.min(vw, vh);
+
+    if (vw > vh) {
+      sx = (vw - vh) / 2;
+    } else if (vh > vw) {
+      sy = (vh - vw) / 2;
+    }
+
+    entry.masterCtx.clearRect(0, 0, 256, 256);
+    entry.masterCtx.drawImage(video, sx, sy, sSide, sSide, 0, 0, 256, 256);
+    return entry.masterCanvas;
+  }
+
   async _load(entry, options) {
     entry.status = "loading";
+    entry.loadStartTime = Date.now();
     const src = options.src;
 
     let localUrl = null;
@@ -176,45 +231,79 @@ class MediaPoolEngine {
     }
 
     if (!localUrl) {
-      this._handleError(entry, new Error("Failed to resolve asset URL"));
+      setTimeout(async () => {
+        if (entry.status !== "loading") return;
+        try {
+          const retryUrl = await getAssetUrl(src);
+          if (retryUrl) {
+            if (entry.type === "video") {
+              this._loadVideo(entry, retryUrl, options);
+            } else {
+              this._loadImage(entry, retryUrl, options.targetEntityId);
+            }
+            return;
+          }
+        } catch {}
+        this._handleError(entry, new Error("Failed to resolve asset URL"));
+      }, 400);
       return;
     }
 
     if (entry.type === "video") {
-      this._loadVideo(entry, localUrl);
+      this._loadVideo(entry, localUrl, options);
     } else {
       this._loadImage(entry, localUrl, options.targetEntityId);
     }
   }
 
-  _loadVideo(entry, url) {
+  _loadVideo(entry, url, options = {}) {
     const video = document.createElement("video");
     video.muted = true;
+    video.defaultMuted = true;
     video.loop = true;
     video.playsInline = true;
+    video.autoplay = true;
     video.crossOrigin = "anonymous";
     video.preload = "auto";
-    video.autoplay = true;
+    video.setAttribute("muted", "");
+    video.setAttribute("playsinline", "");
+    video.setAttribute("webkit-playsinline", "");
+    video.setAttribute("autoplay", "");
+
+    entry.source = video;
+
+    const host = getMediaPoolHost();
+    if (host) {
+      host.appendChild(video);
+    }
+
+    let isDisposed = false;
 
     const markReady = () => {
+      if (isDisposed) return;
+      if (video.videoWidth <= 0 || video.videoHeight <= 0) {
+        return;
+      }
+
       if (entry.status !== "ready") {
-        if (video.videoWidth === 0 || video.videoHeight === 0) {
-          return;
-        }
         entry.status = "ready";
-        entry.source = video;
+        const masterFrame = this._updateMasterCanvas(entry, video) || video;
 
         for (const consumer of entry.consumers) {
           consumer.onReady(entry);
           if (entry.visibleConsumers.has(consumer)) {
-            consumer.onFrame?.(video);
+            consumer.onFrame?.(masterFrame);
           }
         }
       }
 
       if (entry.visibleConsumers.size > 0) {
         if (video.paused) {
-          video.play().then(() => this._ensureRenderLoop()).catch(() => {});
+          const now = Date.now();
+          if (now - entry.lastPlayAttempt > 1000) {
+            entry.lastPlayAttempt = now;
+            video.play().then(() => this._ensureRenderLoop()).catch(() => {});
+          }
         }
         this._ensureRenderLoop();
       }
@@ -227,21 +316,27 @@ class MediaPoolEngine {
       }
     };
 
+    const handleError = () => {
+      if (isDisposed) return;
+      isDisposed = true;
+      video.pause();
+      if (video.parentNode) {
+        video.parentNode.removeChild(video);
+      }
+      entry.type = "image";
+      this._loadImage(entry, url, options.targetEntityId);
+    };
+
     video.addEventListener("loadedmetadata", markReady);
     video.addEventListener("loadeddata", markReady);
     video.addEventListener("canplay", markReady);
     video.addEventListener("canplaythrough", markReady);
+    video.addEventListener("resize", markReady);
     video.addEventListener("playing", handleWakeup);
     video.addEventListener("play", handleWakeup);
     video.addEventListener("timeupdate", handleWakeup);
     video.addEventListener("seeked", handleWakeup);
-    video.addEventListener(
-      "error",
-      () => {
-        this._handleError(entry, new Error("Failed to load video element"));
-      },
-      { once: true }
-    );
+    video.addEventListener("error", handleError, { once: true });
 
     video.src = url;
     video.load();
@@ -284,7 +379,7 @@ class MediaPoolEngine {
 
       if (targetEntityId && !this.scannedStegoKeys.has(entry.key)) {
         this.scannedStegoKeys.add(entry.key);
-        this._inspectStego(bitmap, targetEntityId);
+        this._inspectStego(bitmap, targetEntityId, entry.key);
       }
 
       for (const consumer of entry.consumers) {
@@ -296,18 +391,21 @@ class MediaPoolEngine {
     }
   }
 
-  async _inspectStego(source, targetEntityId) {
+  async _inspectStego(source, targetEntityId, key) {
     if (!targetEntityId || typeof window === "undefined") return;
     try {
       const worker = getStegoWorker();
       if (worker && typeof createImageBitmap === "function") {
         const transferBitmap = await createImageBitmap(source);
-        worker.postMessage({ bitmap: transferBitmap, targetEntityId }, [transferBitmap]);
+        worker.postMessage({ bitmap: transferBitmap, targetEntityId, key }, [transferBitmap]);
         return;
       }
       const sw = source.naturalWidth || source.videoWidth || source.width;
       const sh = source.naturalHeight || source.videoHeight || source.height;
-      if (!sw || !sh || sw < 64 || sh < 64) return;
+      if (!sw || !sh || sw < 64 || sh < 64) {
+        if (key) this.scannedStegoKeys.delete(key);
+        return;
+      }
 
       const canvas = typeof OffscreenCanvas !== "undefined"
         ? new OffscreenCanvas(sw, sh)
@@ -315,10 +413,16 @@ class MediaPoolEngine {
       canvas.width = sw;
       canvas.height = sh;
       const ctx = canvas.getContext("2d");
-      if (!ctx) return;
+      if (!ctx) {
+        if (key) this.scannedStegoKeys.delete(key);
+        return;
+      }
       ctx.drawImage(source, 0, 0, sw, sh);
       const imgData = ctx.getImageData(0, 0, sw, sh);
-      if (!imgData) return;
+      if (!imgData) {
+        if (key) this.scannedStegoKeys.delete(key);
+        return;
+      }
 
       const foundUid = decodeStegoPayload(imgData, targetEntityId);
       if (foundUid) {
@@ -326,8 +430,12 @@ class MediaPoolEngine {
           map.set(Number(targetEntityId), foundUid);
           return map;
         });
+      } else if (key) {
+        this.scannedStegoKeys.delete(key);
       }
-    } catch {}
+    } catch {
+      if (key) this.scannedStegoKeys.delete(key);
+    }
   }
 
   _handleError(entry, err) {
@@ -375,6 +483,7 @@ class MediaPoolEngine {
       if (entry.status !== "ready") {
         if (video.videoWidth > 0 && video.videoHeight > 0) {
           entry.status = "ready";
+          const masterFrame = this._updateMasterCanvas(entry, video) || video;
           for (const consumer of entry.consumers) {
             consumer.onReady(entry);
           }
@@ -386,15 +495,18 @@ class MediaPoolEngine {
 
       if (video.paused || video.readyState < 2) {
         hasPendingVideos = true;
-        if (video.paused) {
+        const now = Date.now();
+        if (video.paused && now - entry.lastPlayAttempt > 1000) {
+          entry.lastPlayAttempt = now;
           video.play().catch(() => {});
         }
         continue;
       }
 
+      const masterFrame = this._updateMasterCanvas(entry, video) || video;
       hasActiveVideos = true;
       for (const consumer of entry.visibleConsumers) {
-        consumer.onFrame?.(video);
+        consumer.onFrame?.(masterFrame);
       }
     }
 
@@ -410,8 +522,20 @@ class MediaPoolEngine {
     const entry = this.pool.get(key);
     if (!entry || entry.refCount > 0) return;
 
+    if (entry.masterCanvas) {
+      if (typeof entry.masterCanvas.width === "number") {
+        entry.masterCanvas.width = 0;
+        entry.masterCanvas.height = 0;
+      }
+      entry.masterCanvas = null;
+      entry.masterCtx = null;
+    }
+
     if (entry.type === "video" && entry.source) {
       entry.source.pause();
+      if (entry.source.parentNode) {
+        entry.source.parentNode.removeChild(entry.source);
+      }
       entry.source.removeAttribute("src");
       entry.source.load();
       entry.source = null;

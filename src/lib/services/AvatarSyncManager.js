@@ -55,7 +55,7 @@ export const AvatarSyncManager = {
 
 export async function inspectAvatarStego(url, targetId) {
   if (!url || !targetId) return;
-  const key = MediaPool.getKey(url, "image");
+  const key = MediaPool.getKey(url);
   MediaPool.acquire(key, { src: url, type: "image", targetEntityId: targetId }, {
     onReady() {},
     onError() {},
