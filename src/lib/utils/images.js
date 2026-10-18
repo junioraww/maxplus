@@ -59,6 +59,11 @@ function setCachedProxied(src, url) {
     proxiedUrlCache.set(src, url);
 }
 
+export function clearSafeAvatarImageCache() {
+    for (const key of localFilePathCache.keys()) if (key.includes("/api/avatars/")) localFilePathCache.delete(key);
+    for (const key of proxiedUrlCache.keys()) if (key.includes("/api/avatars/")) proxiedUrlCache.delete(key);
+}
+
 export async function getLocalFilePath(src) {
     if (!src) return null;
     if (src.startsWith("data:") || src.startsWith("blob:") || src.startsWith("asset:") || src.startsWith("http://asset.localhost/")) {

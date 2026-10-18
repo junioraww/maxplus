@@ -518,6 +518,16 @@ class MediaPoolEngine {
     }
   }
 
+  purgeSafeAvatars() {
+    for (const [key, entry] of this.pool) {
+      if (key.includes("/api/avatars/")) {
+        entry.refCount = 0;
+        this._evict(key);
+      }
+    }
+    this.scannedStegoKeys.clear();
+  }
+
   _evict(key) {
     const entry = this.pool.get(key);
     if (!entry || entry.refCount > 0) return;

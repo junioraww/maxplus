@@ -1,5 +1,8 @@
 import { writable } from "svelte/store";
+import { invoke } from "@tauri-apps/api/core";
 import { MediaPool } from "$lib/services/MediaPool";
+import { clearSafeAvatarImageCache } from "$lib/utils/images";
+import { getCurrentAccount } from "$lib/stores/accounts";
 
 function initMap() {
   const map = new Map();
@@ -62,4 +65,21 @@ export async function inspectAvatarStego(url, targetId) {
     onFrame() {},
     drawStatic() {}
   });
+}
+
+export async function clearAllSafeAvatarCaches() {
+  safeAvatarMapStore.set(new Map());
+  if (typeof localStorage !== "undefined") {
+    try {
+      localStorage.removeItem("maxplus_safe_avatar_map");
+    } catch {}
+  }
+  MediaPool.purgeSafeAvatars();
+  clearSafeAvatarImageCache();
+  try {
+    const acc = await getCurrentAccount().catch(() => null);
+    await invoke("delete_safe_avatars_cache", {
+      account: acc?.id ? Number(acc.id) : null
+    });
+  } catch {}
 }
