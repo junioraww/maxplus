@@ -4,78 +4,114 @@ on:
   workflow_dispatch:
     inputs:
       tag_name:
-        description: 'Release Tag'
+        description: 'Release Tag (e.g. v0.1.7)'
         required: true
         type: string
       name:
         description: 'Release Title'
         required: false
         type: string
-      body:
-        description: 'Release Notes'
-        required: false
-        type: string
-      files_path:
-        description: 'Path or glob to build artifacts to upload'
-        required: false
-        default: 'build_output/*'
-        type: string
 
 jobs:
   publish:
     runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      actions: read
     env:
       CI_ENDPOINT: ${{ vars.SITE_CI_ENDPOINT || secrets.SITE_CI_ENDPOINT || vars.SITE_CI_URL || secrets.SITE_CI_URL }}
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      TAG: ${{ inputs.tag_name }}
+      TITLE: ${{ inputs.name || inputs.tag_name }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Verify Tag Availability
-        id: check_tag
-        env:
-          CI_SECRET: ${{ secrets.SITE_CI_SECRET }}
-          TAG: ${{ inputs.tag_name }}
+      - name: Verify Version
         run: |
-          HTTP_STATUS=$(curl -s -o check_res.json -w "%{http_code}" \
-            -X POST "$CI_ENDPOINT" \
-            -H "X-CI-Secret: $CI_SECRET" \
-            -F "tag_name=$TAG" \
-            -F "name=Check" || true)
-
-          if [ "$HTTP_STATUS" = "409" ]; then
-            echo "Error: Release tag $TAG already exists on target endpoint!"
-            cat check_res.json
+          TAURI_VERSION=$(jq -r .version src-tauri/tauri.conf.json)
+          if [ "${TAG#v}" != "${TAURI_VERSION#v}" ]; then
+            echo "::error::Version mismatch: tauri.conf.json has $TAURI_VERSION, but release tag is $TAG"
             exit 1
           fi
 
-      - name: Gather Release Files
-        id: gather_files
+      - name: Download Artifacts
         run: |
-          mkdir -p release_assets
-          if compgen -G "${{ inputs.files_path }}" > /dev/null; then
-            cp -r ${{ inputs.files_path }} release_assets/
-          fi
-          echo "Assets to publish:"
-          ls -la release_assets/
+          mkdir -p raw_artifacts release_assets
+          TARGET_VERSION="${TAG#v}"
+          WORKFLOWS=(
+            "Build Max+ Android"
+            "Build Max+ Windows"
+            "Build Max+ iOS"
+            "Build Max+ Linux"
+          )
 
-      - name: Publish Release to Web
+          for wf in "${WORKFLOWS[@]}"; do
+            RUN_INFO=$(gh run list --workflow "$wf" --branch main --status success --limit 1 --json databaseId,headSha -q '.[0]')
+            RUN_ID=$(echo "$RUN_INFO" | jq -r '.databaseId // empty')
+            HEAD_SHA=$(echo "$RUN_INFO" | jq -r '.headSha // empty')
+
+            if [ -z "$RUN_ID" ]; then
+              continue
+            fi
+
+            RUN_VER=$(gh api "repos/$GITHUB_REPOSITORY/contents/src-tauri/tauri.conf.json?ref=$HEAD_SHA" -q '.content | @base64d | fromjson | .version' 2>/dev/null || echo "")
+            if [ "${RUN_VER#v}" != "$TARGET_VERSION" ]; then
+              echo "Skipping $wf: build version ($RUN_VER) does not match target ($TARGET_VERSION)"
+              continue
+            fi
+
+            echo "Downloading $wf (run $RUN_ID, version $RUN_VER)..."
+            gh run download "$RUN_ID" --dir raw_artifacts
+          done
+
+          shopt -s globstar nullglob
+          for file in raw_artifacts/**/*; do
+            [ -f "$file" ] || continue
+            case "$file" in
+              *maxplus-android-arm64*/*.apk)
+                cp "$file" "release_assets/maxplus-arm64-${TARGET_VERSION}.apk"
+                ;;
+              *maxplus-android-arm*/*.apk)
+                cp "$file" "release_assets/maxplus-arm-${TARGET_VERSION}.apk"
+                ;;
+              *maxplus-ios*/*.ipa)
+                cp "$file" "release_assets/maxplus-ios-${TARGET_VERSION}.ipa"
+                ;;
+              *maxplus-windows*/*.exe)
+                cp "$file" "release_assets/maxplus-windows-${TARGET_VERSION}.exe"
+                ;;
+              *maxplus-windows*/*.msi)
+                cp "$file" "release_assets/maxplus-windows-${TARGET_VERSION}.msi"
+                ;;
+              *maxplus-linux*/*.AppImage)
+                cp "$file" "release_assets/maxplus-linux-${TARGET_VERSION}.AppImage"
+                ;;
+            esac
+          done
+
+          if [ -z "$(ls -A release_assets)" ]; then
+            echo "::error::No build artifacts found for version $TARGET_VERSION"
+            exit 1
+          fi
+
+          ls -lh release_assets
+
+      - name: Upload to Web
         env:
           CI_SECRET: ${{ secrets.SITE_CI_SECRET }}
-          TAG: ${{ inputs.tag_name }}
-          TITLE: ${{ inputs.name || inputs.tag_name }}
-          NOTES: ${{ inputs.body || 'Production build update' }}
         run: |
-          CURL_CMD=(curl -s -f -X POST "$CI_ENDPOINT" \
+          curl -sS --fail-with-body -X POST "$CI_ENDPOINT" \
             -H "X-CI-Secret: $CI_SECRET" \
             -F "tag_name=$TAG" \
-            -F "name=$TITLE" \
-            -F "body=$NOTES")
+            -F "name=$TITLE"
 
           for file in release_assets/*; do
             if [ -f "$file" ]; then
-              CURL_CMD+=(-F "files=@$file")
+              echo "Uploading $(basename "$file")..."
+              curl -sS --fail-with-body -X POST "$CI_ENDPOINT" \
+                -H "X-CI-Secret: $CI_SECRET" \
+                -F "tag_name=$TAG" \
+                -F "files=@$file"
             fi
           done
-
-          RESPONSE=$("${CURL_CMD[@]}")
-          echo "$RESPONSE"
