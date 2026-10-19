@@ -52,6 +52,11 @@ jobs:
       - name: Generate Icons
         run: bun run tauri icon static/favicon.png
 
+      - name: Fix Swift Package dependencies
+        run: |
+          cargo fetch --manifest-path src-tauri/Cargo.toml
+          find ~/.cargo/registry/src -name "Package.resolved" -delete 2>/dev/null || true
+
       - name: Build iOS
         run: bun tauri ios build --ci --target aarch64 --no-sign
 
