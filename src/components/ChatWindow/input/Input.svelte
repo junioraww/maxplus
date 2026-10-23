@@ -4,6 +4,11 @@
   import { tick, onMount, onDestroy } from "svelte";
   import { get } from "svelte/store";
   import { pluginOn, pluginOff } from "$lib/plugins/events.js";
+  import { getMountStore } from "$lib/plugins/mount-registry";
+
+  const pluginInputLeft = getMountStore("input:action-left");
+  const pluginInputRight = getMountStore("input:action-right");
+  const pluginInputAction = getMountStore("input:action");
 
   import { scrollToBottom } from "$lib/utils/scroll.js";
   import { registerBackHandler } from "$lib/utils/backButton.js";
@@ -36,7 +41,6 @@
   import VideoRecorderPreview from "$components/ChatWindow/input/VideoRecorderPreview.svelte";
   import RecordingBar from "$components/ChatWindow/input/RecordingBar.svelte";
   import { MediaRecorderSession, extractAudioAmplitudes } from "$components/ChatWindow/input/mediaRecorderManager.js";
-  import FormattingToolbar from "$components/ChatWindow/input/FormattingToolbar.svelte";
   import InputContextMenu from "$components/ChatWindow/input/InputContextMenu.svelte";
   import { ComposerFormatState } from "$lib/formatting/composerState.js";
   import { STYLE_KEYS, COMPOSER_STYLES } from "$lib/formatting/constants.js";
@@ -56,7 +60,6 @@
   const composerFormat = new ComposerFormatState();
   let previousMessageText = "";
   let activeFormatStyles = [];
-  let showFormatToolbar = false;
   let formatRevision = 0;
   let backdropEl;
 
@@ -89,7 +92,6 @@
     prevEditingId = null;
     composerFormat.clear();
     formatRevision++;
-    showFormatToolbar = false;
   }
 
   function cancelEdit() {
@@ -99,7 +101,6 @@
     previousMessageText = "";
     composerFormat.clear();
     formatRevision++;
-    showFormatToolbar = false;
     attaches = [];
     tick().then(() => autoResize());
   }
@@ -132,9 +133,7 @@
       if (composerFormat.isStyleActive(STYLE_KEYS.LINK, start, end)) {
         activeFormatStyles = [...activeFormatStyles, STYLE_KEYS.LINK];
       }
-      showFormatToolbar = true;
     } else {
-      showFormatToolbar = false;
       activeFormatStyles = [];
     }
   }
@@ -147,7 +146,6 @@
       if (start < end) {
         savedSelectionRange = { start, end };
         if (currentPlatform === "android") {
-          showFormatToolbar = false;
           const rect = textareaEl.getBoundingClientRect();
           contextMenuState = {
             clientX: Math.max(16, rect.left + (rect.width - 216) / 2),
@@ -155,8 +153,6 @@
             hasSelection: true,
             activeStyles: [...activeFormatStyles],
           };
-        } else {
-          showFormatToolbar = true;
         }
       }
     }
@@ -171,7 +167,6 @@
         if (!savedSelectionRange || savedSelectionRange.start !== start || savedSelectionRange.end !== end) {
           savedSelectionRange = { start, end };
           updateSelectionState();
-          showFormatToolbar = false;
           const rect = textareaEl.getBoundingClientRect();
           contextMenuState = {
             clientX: Math.max(16, rect.left + (rect.width - 216) / 2),
@@ -197,6 +192,7 @@
 
   let contextMenuState = null;
   let savedSelectionRange = null;
+
 
   function restoreSavedSelection() {
     if (!textareaEl || !savedSelectionRange) return;
@@ -227,7 +223,6 @@
 
     savedSelectionRange = { start, end };
     updateSelectionState();
-    showFormatToolbar = false;
 
     contextMenuState = {
       clientX: e.clientX,
@@ -389,6 +384,8 @@
     };
   });
 
+
+
   $: commandFilter = newMessage.startsWith("/") ? newMessage : "";
   $: hasSlash = newMessage.startsWith("/");
   $: isMenuVisible = (showCommandsMenu || (hasSlash && botCommands.length > 0)) && botCommands.length > 0;
@@ -442,27 +439,10 @@
     }
 
     if (
-      showFormatToolbar &&
-      !e.target.closest(".formatting-bar")
-    ) {
-      showFormatToolbar = false;
-    }
-
-    if (
       contextMenuState &&
       !e.target.closest(".dropout-container")
     ) {
       contextMenuState = null;
-    }
-  }
-
-  function handleWindowPointerDown(e) {
-    if (
-      showFormatToolbar &&
-      !e.target.closest(".formatting-bar") &&
-      e.target !== textareaEl
-    ) {
-      showFormatToolbar = false;
     }
   }
 
@@ -598,7 +578,6 @@
     previousMessageText = "";
     composerFormat.clear();
     formatRevision++;
-    showFormatToolbar = false;
 
     if (editingMessage) {
       const targetMsgId = editingMessage.id;
@@ -1584,7 +1563,7 @@
   });
 </script>
 
-<svelte:window on:click={handleWindowClick} on:pointerdown={handleWindowPointerDown} />
+<svelte:window on:click={handleWindowClick} />
 
 <SelectedAttaches {attaches} on:remove={(e) => removeAttach(e.detail.index)} />
 
@@ -1659,6 +1638,11 @@
           on:sendLocked={stopAndSendRecording}
         />
       {:else}
+        {#each $pluginInputLeft as item (item.id)}
+          <div class="plugin-mount-inline plugin-input-left" data-plugin-mount={item.pluginId || item.id}>
+            {@html item.html}
+          </div>
+        {/each}
         <button
           class="button attach-toggle-btn"
           class:active={!!attachesDropout}
@@ -1676,13 +1660,6 @@
         {/if}
 
         <div class="input-container" class:focused={false}>
-          {#if showFormatToolbar}
-            <FormattingToolbar
-              activeStyles={activeFormatStyles}
-              on:toggle={(e) => handleFormatToggle(e.detail.style, e.detail.metadata)}
-              on:close={() => (showFormatToolbar = false)}
-            />
-          {/if}
 
           <div class="textarea-wrapper">
             {#if hasFormatting}
@@ -1757,15 +1734,25 @@
                   }
                   if (e.key === "k" || e.key === "K") {
                     e.preventDefault();
-                    showFormatToolbar = true;
+                    const start = textareaEl.selectionStart ?? 0;
+                    const end = textareaEl.selectionEnd ?? 0;
+                    if (start < end) {
+                      const rect = textareaEl.getBoundingClientRect();
+                      contextMenuState = {
+                        clientX: Math.max(16, rect.left + 24),
+                        clientY: Math.max(16, rect.top - 200),
+                        hasSelection: true,
+                        activeStyles: [...activeFormatStyles],
+                      };
+                    }
                     return;
                   }
                 }
 
                 if (e.key === "Escape") {
-                  if (showFormatToolbar) {
+                  if (contextMenuState) {
                     e.preventDefault();
-                    showFormatToolbar = false;
+                    contextMenuState = null;
                     return;
                   }
                   if (showStickerPanel) {
@@ -1839,6 +1826,16 @@
             {/if}
           </button>
         {/if}
+        {#each $pluginInputRight as item (item.id)}
+          <div class="plugin-mount-inline plugin-input-right" data-plugin-mount={item.pluginId || item.id}>
+            {@html item.html}
+          </div>
+        {/each}
+        {#each $pluginInputAction as item (item.id)}
+          <div class="plugin-mount-inline plugin-input-action" data-plugin-mount={item.pluginId || item.id}>
+            {@html item.html}
+          </div>
+        {/each}
       {/if}
     </div>
   {/if}

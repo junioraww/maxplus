@@ -8,6 +8,11 @@
   import { currentUserDetails } from '$lib/stores/api.js';
   import { CallService } from '$lib/services/CallService.js';
   import ParticipantGrid from '$components/calls/ParticipantGrid.svelte';
+  import { getMountStore } from "$lib/plugins/mount-registry";
+
+  const pluginCallActions = getMountStore('call:action');
+  const pluginCallPanels = getMountStore('call:panel');
+  const pluginCallVideoOverlays = getMountStore('call:video-overlay');
 
   function srcObject(node, stream) {
     node.srcObject = stream || null;
@@ -624,12 +629,30 @@
           {/if}
         </button>
 
+        {#each $pluginCallActions as item (item.id)}
+          <div class="plugin-call-action-wrapper" data-plugin-mount={item.pluginId || item.id}>
+            {@html item.html}
+          </div>
+        {/each}
+
         <button class="ctrl-btn ctrl-btn--hangup" on:click={onHangup} aria-label="Hang up">
           <img src="/icons/call-end.svg" alt="" width="28" height="28" />
         </button>
       </div>
     </div>
   {/if}
+
+  {#each $pluginCallPanels as item (item.id)}
+    <div class="plugin-call-panel-wrapper" data-plugin-mount={item.pluginId || item.id}>
+      {@html item.html}
+    </div>
+  {/each}
+
+  {#each $pluginCallVideoOverlays as item (item.id)}
+    <div class="plugin-call-video-overlay" data-plugin-mount={item.pluginId || item.id}>
+      {@html item.html}
+    </div>
+  {/each}
 
   {#if incomingSecureRequest}
     <div class="secure-req-backdrop" transition:fade={{ duration: 150 }} role="presentation">

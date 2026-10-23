@@ -32,6 +32,14 @@ pub fn android_log(level: i32, tag: &str, msg: &str) {
 }
 
 #[cfg(target_os = "android")]
+static BACKGROUND_SYNC_MUTEX: std::sync::OnceLock<tokio::sync::Mutex<()>> = std::sync::OnceLock::new();
+
+#[cfg(target_os = "android")]
+fn get_background_sync_mutex() -> &'static tokio::sync::Mutex<()> {
+    BACKGROUND_SYNC_MUTEX.get_or_init(|| tokio::sync::Mutex::new(()))
+}
+
+#[cfg(target_os = "android")]
 #[no_mangle]
 pub extern "system" fn Java_org_meowkie_max_ReplyReceiver_sendReplyNative<'local>(
     mut unowned_env: EnvUnowned<'local>,
@@ -87,6 +95,7 @@ pub extern "system" fn Java_org_meowkie_max_ReplyReceiver_sendReplyNative<'local
                     );
 
                     let network_task = async {
+                        let _guard = get_background_sync_mutex().lock().await;
                         let client = rumax::MaxClient::new();
                         client.set_user_id(server_user_id).await;
                         client.set_token(token).await;

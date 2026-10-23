@@ -4,6 +4,11 @@
   import { quintOut, cubicOut } from "svelte/easing";
   import { fade, fly } from "svelte/transition";
   import { panelConfig, CATALOG } from "$lib/stores/panel.js";
+  import { getMountStore } from "$lib/plugins/mount-registry";
+
+  const pluginNavTop = getMountStore("nav:top");
+  const pluginNavItems = getMountStore("nav:item");
+  const pluginNavBottom = getMountStore("nav:bottom");
 
   const dispatch = createEventDispatcher();
 
@@ -179,6 +184,12 @@
   {/if}
 
   <div class="panel">
+    {#each $pluginNavTop as item (item.id)}
+      <div class="plugin-nav-wrapper plugin-nav-top" data-plugin-nav={item.pluginId || item.id}>
+        {@html item.html}
+      </div>
+    {/each}
+
     {#each pages as page, index (page.id || page.name)}
       <div
         animate:flip={{ duration: 220, easing: quintOut }}
@@ -242,6 +253,18 @@
           </div>
           <span class="label">{page.name}</span>
         </div>
+      </div>
+    {/each}
+
+    {#each $pluginNavItems as item (item.id)}
+      <div class="plugin-nav-wrapper plugin-nav-item" data-plugin-nav={item.pluginId || item.id}>
+        {@html item.html}
+      </div>
+    {/each}
+
+    {#each $pluginNavBottom as item (item.id)}
+      <div class="plugin-nav-wrapper plugin-nav-bottom" data-plugin-nav={item.pluginId || item.id}>
+        {@html item.html}
       </div>
     {/each}
   </div>

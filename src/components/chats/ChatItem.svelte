@@ -19,6 +19,11 @@
     getChat
   } from "$lib/stores/messages";
   import { isChatMuted } from "$lib/utils/notifications";
+  import { getMountStore } from "$lib/plugins/mount-registry";
+
+  const pluginChatLeadings = getMountStore("chat-item:leading");
+  const pluginChatBadges = getMountStore("chat-item:badge");
+  const pluginChatTrailings = getMountStore("chat-item:trailing");
 
   import Avatar from "$components/main/Avatar.svelte";
 
@@ -151,6 +156,11 @@
       }
     }}
   >
+    {#each $pluginChatLeadings as item (item.id)}
+      <div class="plugin-mount-inline plugin-chat-leading" data-plugin-mount={item.pluginId || item.id}>
+        {@html item.html}
+      </div>
+    {/each}
     <Avatar
       {chat}
       contactId={peerId}
@@ -166,6 +176,11 @@
           <img src="icons/bot.svg" class="bot-badge-icon" alt="" />
         {/if}
         {title}
+        {#each $pluginChatBadges as item (item.id)}
+          <span class="plugin-mount-inline plugin-chat-badge" data-plugin-mount={item.pluginId || item.id}>
+            {@html item.html}
+          </span>
+        {/each}
       </span>
       <div class="meta">
         {#if muted}
@@ -181,6 +196,11 @@
           </span>
         {/if}
         <span class="time">{timeDisplay}</span>
+        {#each $pluginChatTrailings as item (item.id)}
+          <span class="plugin-mount-inline plugin-chat-trailing" data-plugin-mount={item.pluginId || item.id}>
+            {@html item.html}
+          </span>
+        {/each}
       </div>
     </div>
 

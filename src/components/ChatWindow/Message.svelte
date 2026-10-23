@@ -18,6 +18,11 @@
   import StickerMedia from "$components/ChatWindow/Stickers/StickerMedia.svelte";
   import FormattedText from "$components/ChatWindow/FormattedText.svelte";
   import { transcriptions, toggleTranscriptionExpanded } from "$lib/stores/transcription";
+  import { getMountStore } from "$lib/plugins/mount-registry";
+
+  const pluginMessageHeaders = getMountStore("message:header");
+  const pluginMessageFooters = getMountStore("message:footer");
+  const pluginMessageDecorations = getMountStore("message:decoration");
 
   const dispatch = createEventDispatcher();
 
@@ -319,6 +324,16 @@
   </div>
 
   <div class="message-bubble-container">
+    {#each $pluginMessageHeaders as item (item.id)}
+      <div class="plugin-mount-block plugin-message-header" data-plugin-mount={item.pluginId || item.id}>
+        {@html item.html}
+      </div>
+    {/each}
+    {#each $pluginMessageDecorations as item (item.id)}
+      <div class="plugin-mount-inline plugin-message-decoration" data-plugin-mount={item.pluginId || item.id}>
+        {@html item.html}
+      </div>
+    {/each}
     {#if isStickerOnly}
       <div class="message-bubble sticker-bubble">
         <div class="sticker-wrapper" on:click|stopPropagation={() => dispatch("openStickerPack", { sticker: stickerAttach })}>
@@ -533,6 +548,12 @@
         </div>
       </div>
     {/if}
+
+    {#each $pluginMessageFooters as item (item.id)}
+      <div class="plugin-mount-block plugin-message-footer" data-plugin-mount={item.pluginId || item.id}>
+        {@html item.html}
+      </div>
+    {/each}
 
   {#if transcription && transcription.expanded}
     <div class="transcription-card" class:is-me={isMe}>

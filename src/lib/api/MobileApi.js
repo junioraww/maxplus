@@ -922,7 +922,9 @@ export default class MobileApi extends BaseAPI {
 
   async sendMessage(message, chatId, params) {
     await this.waitSync();
-    return await invoke("send_message", { message, chatId, params });
+    const result = await invoke("send_message", { message, chatId, params });
+    pluginEmit("message:sent", { message, chatId, params, result });
+    return result;
   }
 
   async sendStickerMessage(chatId, stickerId, notify = true) {

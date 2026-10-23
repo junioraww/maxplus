@@ -27,6 +27,9 @@ import { goto } from "$app/navigation";
   import Avatar from "$components/main/Avatar.svelte";
   import SafeAvatarPickerModal from "$components/main/SafeAvatarPickerModal.svelte";
   import API, { currentUser } from "$lib/stores/api";
+  import { getMountStore } from "$lib/plugins/mount-registry";
+
+  const pluginSettingsSections = getMountStore("settings:section");
   import { openDigitalIdApp, openSferumApp } from "$lib/stores/webapp.js";
   import { safeAvatarMapStore } from "$lib/services/AvatarSyncManager";
   import { getSafeAvatarMediaUrl } from "$lib/services/uplink";
@@ -368,6 +371,12 @@ import { goto } from "$app/navigation";
             {/if}
           </div>
         {/each}
+      </div>
+    {/each}
+
+    {#each $pluginSettingsSections as item (item.id)}
+      <div class="plugin-settings-section" data-plugin-mount={item.pluginId || item.id}>
+        {@html item.html}
       </div>
     {/each}
   </div>
