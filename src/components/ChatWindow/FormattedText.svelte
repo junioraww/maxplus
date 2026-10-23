@@ -1,17 +1,24 @@
 <script>
   import { openUrl } from "@tauri-apps/plugin-opener";
   import { openChat } from "$lib/stores/session";
-  import { handleDeepLinkUrl } from "$lib/utils/deepLink.js";
-  import { compileDisplayBlocks } from "$lib/formatting/parser.js";
-  import { STYLE_KEYS } from "$lib/formatting/constants.js";
+  import { handleDeepLinkUrl } from "$lib/utils/deepLink";
+  import { compileDisplayBlocks } from "$lib/formatting/parser";
+  import { STYLE_KEYS } from "$lib/formatting/constants";
   import LinkDropout from "$components/ChatWindow/LinkDropout.svelte";
 
   export let text = "";
   export let elements = [];
   export let deleted = false;
   export let isSystem = false;
+  export let isMe = false;
 
   $: blocks = compileDisplayBlocks(text, elements);
+
+  function getStyleClasses(styles) {
+    let res = "";
+    for (const s of styles) res += ` ${s}-text`;
+    return res;
+  }
 
   let activeLinkModal = null;
   let longPressTimer = null;
@@ -88,104 +95,50 @@
   }
 </script>
 
+{#snippet renderSpans(spans)}
+  {#each spans as span}
+    {#if span.linkUrl}
+      <a
+        class="rich-link{getStyleClasses(span.styles)}"
+        style={span.color ? `color: ${span.color};` : ""}
+        href={span.linkUrl}
+        on:pointerdown={(e) => handleLinkPointerDown(e, span.linkUrl)}
+        on:pointermove={handleLinkPointerMove}
+        on:pointerup={handleLinkPointerUp}
+        on:pointercancel={handleLinkPointerUp}
+        on:contextmenu={(e) => handleLinkContextMenu(e, span.linkUrl)}
+        on:click|preventDefault={() => handleLinkClick(span.linkUrl)}
+      >{span.text}</a>
+    {:else if span.mentionId}
+      <span
+        class="rich-mention{getStyleClasses(span.styles)}"
+        style={span.color ? `color: ${span.color};` : ""}
+        role="button"
+        tabindex="0"
+        on:click|stopPropagation={() => handleMentionClick(span.mentionId)}
+        on:keydown|stopPropagation={(e) => e.key === "Enter" && handleMentionClick(span.mentionId)}
+      >{span.text}</span>
+    {:else}
+      <span
+        class="rich-span{getStyleClasses(span.styles)}"
+        style={span.color ? `color: ${span.color};` : ""}
+      >{span.text}</span>
+    {/if}
+  {/each}
+{/snippet}
+
 <div class="rich-content" class:deleted-content={deleted} class:system-content={isSystem}>
   {#each blocks as block}
     {#if block.isQuote}
       <blockquote class="quote-container">
         <div class="quote-bar"></div>
         <div class="quote-body">
-          {#each block.spans as span}
-            {#if span.linkUrl}
-              <a
-                class="rich-link"
-                class:bold-text={span.styles.has(STYLE_KEYS.BOLD)}
-                class:italic-text={span.styles.has(STYLE_KEYS.ITALIC)}
-                class:underline-text={span.styles.has(STYLE_KEYS.UNDERLINE)}
-                class:strike-text={span.styles.has(STYLE_KEYS.STRIKE)}
-                class:code-text={span.styles.has(STYLE_KEYS.CODE)}
-                class:heading-text={span.styles.has(STYLE_KEYS.HEADING)}
-                href={span.linkUrl}
-                on:pointerdown={(e) => handleLinkPointerDown(e, span.linkUrl)}
-                on:pointermove={handleLinkPointerMove}
-                on:pointerup={handleLinkPointerUp}
-                on:pointercancel={handleLinkPointerUp}
-                on:contextmenu={(e) => handleLinkContextMenu(e, span.linkUrl)}
-                on:click|preventDefault={() => handleLinkClick(span.linkUrl)}
-              >{span.text}</a>
-            {:else if span.mentionId}
-              <span
-                class="rich-mention"
-                class:bold-text={span.styles.has(STYLE_KEYS.BOLD)}
-                class:italic-text={span.styles.has(STYLE_KEYS.ITALIC)}
-                class:underline-text={span.styles.has(STYLE_KEYS.UNDERLINE)}
-                class:strike-text={span.styles.has(STYLE_KEYS.STRIKE)}
-                class:code-text={span.styles.has(STYLE_KEYS.CODE)}
-                class:heading-text={span.styles.has(STYLE_KEYS.HEADING)}
-                role="button"
-                tabindex="0"
-                on:click|stopPropagation={() => handleMentionClick(span.mentionId)}
-                on:keydown|stopPropagation={(e) => e.key === "Enter" && handleMentionClick(span.mentionId)}
-              >{span.text}</span>
-            {:else}
-              <span
-                class="rich-span"
-                class:bold-text={span.styles.has(STYLE_KEYS.BOLD)}
-                class:italic-text={span.styles.has(STYLE_KEYS.ITALIC)}
-                class:underline-text={span.styles.has(STYLE_KEYS.UNDERLINE)}
-                class:strike-text={span.styles.has(STYLE_KEYS.STRIKE)}
-                class:code-text={span.styles.has(STYLE_KEYS.CODE)}
-                class:heading-text={span.styles.has(STYLE_KEYS.HEADING)}
-              >{span.text}</span>
-            {/if}
-          {/each}
+          {@render renderSpans(block.spans)}
         </div>
       </blockquote>
     {:else}
       <p class="paragraph-container" class:system-paragraph={isSystem}>
-        {#each block.spans as span}
-          {#if span.linkUrl}
-            <a
-              class="rich-link"
-              class:bold-text={span.styles.has(STYLE_KEYS.BOLD)}
-              class:italic-text={span.styles.has(STYLE_KEYS.ITALIC)}
-              class:underline-text={span.styles.has(STYLE_KEYS.UNDERLINE)}
-              class:strike-text={span.styles.has(STYLE_KEYS.STRIKE)}
-              class:code-text={span.styles.has(STYLE_KEYS.CODE)}
-              class:heading-text={span.styles.has(STYLE_KEYS.HEADING)}
-              href={span.linkUrl}
-              on:pointerdown={(e) => handleLinkPointerDown(e, span.linkUrl)}
-              on:pointermove={handleLinkPointerMove}
-              on:pointerup={handleLinkPointerUp}
-              on:pointercancel={handleLinkPointerUp}
-              on:contextmenu={(e) => handleLinkContextMenu(e, span.linkUrl)}
-              on:click|preventDefault={() => handleLinkClick(span.linkUrl)}
-            >{span.text}</a>
-          {:else if span.mentionId}
-            <span
-              class="rich-mention"
-              class:bold-text={span.styles.has(STYLE_KEYS.BOLD)}
-              class:italic-text={span.styles.has(STYLE_KEYS.ITALIC)}
-              class:underline-text={span.styles.has(STYLE_KEYS.UNDERLINE)}
-              class:strike-text={span.styles.has(STYLE_KEYS.STRIKE)}
-              class:code-text={span.styles.has(STYLE_KEYS.CODE)}
-              class:heading-text={span.styles.has(STYLE_KEYS.HEADING)}
-              role="button"
-              tabindex="0"
-              on:click|stopPropagation={() => handleMentionClick(span.mentionId)}
-              on:keydown|stopPropagation={(e) => e.key === "Enter" && handleMentionClick(span.mentionId)}
-            >{span.text}</span>
-          {:else}
-            <span
-              class="rich-span"
-              class:bold-text={span.styles.has(STYLE_KEYS.BOLD)}
-              class:italic-text={span.styles.has(STYLE_KEYS.ITALIC)}
-              class:underline-text={span.styles.has(STYLE_KEYS.UNDERLINE)}
-              class:strike-text={span.styles.has(STYLE_KEYS.STRIKE)}
-              class:code-text={span.styles.has(STYLE_KEYS.CODE)}
-              class:heading-text={span.styles.has(STYLE_KEYS.HEADING)}
-            >{span.text}</span>
-          {/if}
-        {/each}
+        {@render renderSpans(block.spans)}
       </p>
     {/if}
   {/each}
@@ -307,5 +260,11 @@
   .deleted-content {
     opacity: 0.7;
     font-style: italic;
+  }
+
+  .rich-link[style*="color:"],
+  .rich-mention[style*="color:"],
+  .rich-span[style*="color:"] {
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
   }
 </style>

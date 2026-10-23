@@ -456,9 +456,7 @@
     position: fixed;
     inset: 0;
     z-index: 30000;
-    background: rgba(0, 0, 0, 0.72);
-    backdrop-filter: blur(16px);
-    -webkit-backdrop-filter: blur(16px);
+    background: rgba(0, 0, 0, 0.82);
     display: flex;
     align-items: flex-end;
     justify-content: center;
@@ -956,8 +954,7 @@
   .preview-overlay {
     position: absolute;
     inset: 0;
-    background: rgba(0, 0, 0, 0.75);
-    backdrop-filter: blur(8px);
+    background: rgba(0, 0, 0, 0.85);
     display: flex;
     align-items: flex-end;
     justify-content: center;
@@ -1043,8 +1040,7 @@
   .apply-overlay {
     position: absolute;
     inset: 0;
-    background: rgba(14, 14, 18, 0.92);
-    backdrop-filter: blur(12px);
+    background: rgba(14, 14, 18, 0.96);
     z-index: 20;
     display: flex;
     flex-direction: column;

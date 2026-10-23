@@ -1,7 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import { get } from 'svelte/store';
-import { pluginOn, pluginOff, pluginEmit } from './events.js';
-import { mountedContent, registerMount, unregisterMount } from './mount-registry.js';
+import { pluginOn, pluginOff, pluginEmit } from './events';
+import { mountedContent, registerMount, unregisterMount } from './mount-registry';
 
 import API, {
   currentUser,
@@ -11,17 +11,18 @@ import API, {
   currentFolders,
   currentPresence,
   serverConfig,
-} from '$lib/stores/api.js';
-import Session, { openChat, closeChat, openSettingsPage, closeSettingsPage } from '$lib/stores/session.js';
-import { panelConfig } from '$lib/stores/panel.js';
-import { activeWebApps, openMiniApp } from '$lib/stores/webapp.js';
+} from '$lib/stores/api';
+import Session, { openChat, closeChat, openSettingsPage, closeSettingsPage } from '$lib/stores/session';
+import { panelConfig } from '$lib/stores/panel';
+import { activeWebApps, openMiniApp } from '$lib/stores/webapp';
 import {
   orderedSetIds, favoriteSetIds, stickerSets,
   stickersById, recentStickerIds, stickersLoading,
-} from '$lib/stores/stickers.js';
-import { CryptoPluginRegistry } from '$lib/crypto/plugins.js';
-import { showAlert } from '$lib/utils/alert.js';
+} from '$lib/stores/stickers';
+import { CryptoPluginRegistry } from '$lib/crypto/plugins';
+import { showAlert } from '$lib/utils/alert';
 import { mediaPipeline } from '$lib/services/MediaPipelineHost';
+import { encodeStegoMessage, parseStegoColors, rgbToHex, hexToRgb, getContrastStyle, STEGO_TYPES } from '$lib/formatting/colorStego';
 
 async function fetchAsset(url, options = {}) {
   const { sha256, type = 'text', headers, mode } = options;
@@ -232,6 +233,25 @@ export function buildPluginContext(manifest, pluginId) {
 
     fetchAsset(url, options) {
       return fetchAsset(url, options);
+    },
+
+    formatting: {
+      encodeColor(text, colorHex) {
+        const { textToSend } = encodeStegoMessage(text, [], [{ start: 0, end: text.length, color: colorHex }]);
+        return textToSend;
+      },
+      decodeColors(rawText, rawElements = []) {
+        return parseStegoColors(rawText, rawElements);
+      },
+      stripColors(rawText) {
+        return parseStegoColors(rawText).cleanText;
+      },
+      getContrastStyle(hex, isMe) {
+        return getContrastStyle(hex, isMe);
+      },
+      rgbToHex,
+      hexToRgb,
+      TYPES: STEGO_TYPES,
     },
 
     _cleanup() {

@@ -7,7 +7,9 @@ export function normalizeRangeList(ranges) {
     const current = sorted[i];
     const prev = result[result.length - 1];
 
-    if (current.start <= prev.end) {
+    const sameMetadata = JSON.stringify(prev.metadata ?? null) === JSON.stringify(current.metadata ?? null);
+
+    if (current.start <= prev.end && sameMetadata) {
       if (current.end > prev.end) {
         prev.end = current.end;
       }
@@ -21,7 +23,11 @@ export function normalizeRangeList(ranges) {
 
 export function appendSpan(ranges, start, end, metadata = null) {
   if (start >= end) return ranges ? [...ranges] : [];
-  const next = ranges ? [...ranges, { start, end, metadata }] : [{ start, end, metadata }];
+  let base = ranges ? [...ranges] : [];
+  if (metadata && metadata.color) {
+    base = clipSpan(base, start, end);
+  }
+  const next = [...base, { start, end, metadata }];
   return normalizeRangeList(next);
 }
 

@@ -1,12 +1,14 @@
-import { SERVER_NAME_TO_STYLE, STYLE_KEYS } from "./constants.js";
+import { SERVER_NAME_TO_STYLE, STYLE_KEYS } from "./constants";
+import { parseStegoColors } from "./colorStego";
 
 const WEB_LINK_PATTERN = /(?:https?:\/\/[^\s<>"'()]+|www\.[^\s<>"'()]+|\bmax\.ru\/[A-Za-z0-9_/-]+)/gi;
 
 export function compileDisplayBlocks(rawText, rawElements = []) {
   if (!rawText) return [];
 
-  const textLength = rawText.length;
-  const elements = Array.isArray(rawElements) ? rawElements : [];
+  const { cleanText, colorSpans, elements: cleanElements } = parseStegoColors(rawText, rawElements);
+  const textLength = cleanText.length;
+  const elements = Array.isArray(cleanElements) ? cleanElements : [];
 
   const parsedRanges = [];
   let hasExplicitLinks = false;
@@ -35,10 +37,19 @@ export function compileDisplayBlocks(rawText, rawElements = []) {
     });
   }
 
+  for (const span of colorSpans) {
+    parsedRanges.push({
+      style: STYLE_KEYS.COLOR,
+      start: span.start,
+      end: span.end,
+      color: span.color,
+    });
+  }
+
   if (!hasExplicitLinks) {
     let match;
     WEB_LINK_PATTERN.lastIndex = 0;
-    while ((match = WEB_LINK_PATTERN.exec(rawText)) !== null) {
+    while ((match = WEB_LINK_PATTERN.exec(cleanText)) !== null) {
       const matchText = match[0];
       const start = match.index;
       const end = start + matchText.length;
@@ -73,10 +84,15 @@ export function compileDisplayBlocks(rawText, rawElements = []) {
     let animojiUrl = null;
     let mentionId = null;
     let mentionName = null;
+    let color = null;
 
     for (const range of parsedRanges) {
       if (range.start <= sliceStart && range.end >= sliceEnd) {
-        activeStyles.add(range.style);
+        if (range.style === STYLE_KEYS.COLOR && range.color) {
+          color = range.color;
+        } else {
+          activeStyles.add(range.style);
+        }
         if (range.style === STYLE_KEYS.LINK && range.attributes?.url) {
           linkUrl = range.attributes.url;
         }
@@ -93,8 +109,9 @@ export function compileDisplayBlocks(rawText, rawElements = []) {
     flatSlices.push({
       start: sliceStart,
       end: sliceEnd,
-      text: rawText.substring(sliceStart, sliceEnd),
+      text: cleanText.substring(sliceStart, sliceEnd),
       styles: activeStyles,
+      color,
       linkUrl,
       animojiUrl,
       mentionId,
@@ -159,7 +176,7 @@ function trimSpanEdges(spans) {
   }
 }
 
-export function compileBackdropSpans(rawText, rawElements = []) {
+export function compileBackdropSpans(rawText, rawElements = [], colorRanges = []) {
   if (!rawText) return [];
 
   const textLength = rawText.length;
@@ -184,6 +201,22 @@ export function compileBackdropSpans(rawText, rawElements = []) {
     });
   }
 
+  for (const cr of (colorRanges || [])) {
+    if (!cr || cr.start >= cr.end) continue;
+    const color = cr.metadata?.color || cr.color;
+    if (!color) continue;
+    const start = Math.max(0, Math.min(Number(cr.start) || 0, textLength));
+    const end = Math.max(0, Math.min(Number(cr.end) || 0, textLength));
+    if (end <= start) continue;
+
+    parsedRanges.push({
+      style: STYLE_KEYS.COLOR,
+      start,
+      end,
+      color,
+    });
+  }
+
   const boundarySet = new Set([0, textLength]);
   for (const range of parsedRanges) {
     boundarySet.add(range.start);
@@ -199,10 +232,15 @@ export function compileBackdropSpans(rawText, rawElements = []) {
 
     const activeStyles = new Set();
     let linkUrl = null;
+    let color = null;
 
     for (const range of parsedRanges) {
       if (range.start <= sliceStart && range.end >= sliceEnd) {
-        activeStyles.add(range.style);
+        if (range.style === STYLE_KEYS.COLOR && range.color) {
+          color = range.color;
+        } else {
+          activeStyles.add(range.style);
+        }
         if (range.style === STYLE_KEYS.LINK && range.linkUrl) {
           linkUrl = range.linkUrl;
         }
@@ -214,6 +252,7 @@ export function compileBackdropSpans(rawText, rawElements = []) {
       end: sliceEnd,
       text: rawText.substring(sliceStart, sliceEnd),
       styles: activeStyles,
+      color,
       linkUrl,
     });
   }

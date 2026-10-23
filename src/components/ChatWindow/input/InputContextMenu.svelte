@@ -1,13 +1,14 @@
 <script>
   import { createEventDispatcher, onMount, onDestroy, tick } from "svelte";
   import { fade } from "svelte/transition";
-  import { STYLE_KEYS } from "$lib/formatting/constants.js";
+  import { STYLE_KEYS } from "$lib/formatting/constants";
   import { registerBackHandler } from "$lib/utils/backButton.js";
 
   export let clientX = 0;
   export let clientY = 0;
   export let hasSelection = false;
   export let activeStyles = [];
+  export let currentColor = null;
   export let isMobile = false;
   export let anchorEl = null;
 
@@ -388,9 +389,34 @@
         <span class="action-icon">
           <svg viewBox="0 0 24 24" class="svg-glyph"><path d="M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H7c-2.76 0-5 2.24-5 5s2.24 5 5 5h4v-1.9H7c-1.71 0-3.1-1.39-3.1-3.1zM8 13h8v-2H8v2zm9-6h-4v1.9h4c1.71 0 3.1 1.39 3.1 3.1s-1.39 3.1-3.1 3.1h-4V17h4c2.76 0 5-2.24 5-5s-2.24-5-5-5z" fill="currentColor"/></svg>
         </span>
-        <span class="action-label">Добавить ссылку...</span>
+        <span class="action-label">Ссылка</span>
         {#if activeStyles.includes(STYLE_KEYS.LINK)}
           <span class="action-check"><svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg></span>
+        {/if}
+      </button>
+
+      <button
+        type="button"
+        class="action-row"
+        class:is-active={activeStyles.includes(STYLE_KEYS.COLOR) || Boolean(currentColor)}
+        on:pointerdown|preventDefault|stopPropagation
+        on:click={(e) => handleSubmenuAction(() => {
+          dispatch("openColorPicker");
+          closeMenu();
+        }, e)}
+      >
+        <span class="action-icon">
+          <svg viewBox="0 0 24 24" class="svg-glyph" fill="currentColor">
+            <path d="M12 22C6.49 22 2 17.51 2 12S6.49 2 12 2s10 4.04 10 9c0 3.31-2.69 6-6 6h-1.77c-.28 0-.5.22-.5.5 0 .12.05.23.13.33.41.47.64 1.06.64 1.67 0 1.38-1.12 2.5-2.5 2.5zm0-18c-4.41 0-8 3.59-8 8s3.59 8 8 8c.28 0 .5-.22.5-.5 0-.16-.08-.28-.14-.35-.41-.46-.63-1.05-.63-1.65 0-1.38 1.12-2.5 2.5-2.5H16c2.21 0 4-1.79 4-4 0-3.86-3.59-7-8-7z"/>
+            <circle cx="6.5" cy="11.5" r="1.5"/>
+            <circle cx="9.5" cy="7.5" r="1.5"/>
+            <circle cx="14.5" cy="7.5" r="1.5"/>
+            <circle cx="17.5" cy="11.5" r="1.5"/>
+          </svg>
+        </span>
+        <span class="action-label">Цвет текста...</span>
+        {#if currentColor}
+          <span class="color-badge" style="background-color: {currentColor};"></span>
         {/if}
       </button>
 
@@ -638,10 +664,34 @@
         <span class="action-icon">
           <svg viewBox="0 0 24 24" class="svg-glyph"><path d="M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H7c-2.76 0-5 2.24-5 5s2.24 5 5 5h4v-1.9H7c-1.71 0-3.1-1.39-3.1-3.1zM8 13h8v-2H8v2zm9-6h-4v1.9h4c1.71 0 3.1 1.39 3.1 3.1s-1.39 3.1-3.1 3.1h-4V17h4c2.76 0 5-2.24 5-5s-2.24-5-5-5z" fill="currentColor"/></svg>
         </span>
-        <span class="action-label">Добавить ссылку...</span>
+        <span class="action-label">Ссылка</span>
         <span class="action-shortcut">{modLabel}K</span>
         {#if activeStyles.includes(STYLE_KEYS.LINK)}
           <span class="action-check"><svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg></span>
+        {/if}
+      </button>
+
+      <button
+        type="button"
+        class="action-row"
+        class:is-active={activeStyles.includes(STYLE_KEYS.COLOR) || Boolean(currentColor)}
+        on:click={() => {
+          dispatch("openColorPicker");
+          closeMenu();
+        }}
+      >
+        <span class="action-icon">
+          <svg viewBox="0 0 24 24" class="svg-glyph" fill="currentColor">
+            <path d="M12 22C6.49 22 2 17.51 2 12S6.49 2 12 2s10 4.04 10 9c0 3.31-2.69 6-6 6h-1.77c-.28 0-.5.22-.5.5 0 .12.05.23.13.33.41.47.64 1.06.64 1.67 0 1.38-1.12 2.5-2.5 2.5zm0-18c-4.41 0-8 3.59-8 8s3.59 8 8 8c.28 0 .5-.22.5-.5 0-.16-.08-.28-.14-.35-.41-.46-.63-1.05-.63-1.65 0-1.38 1.12-2.5 2.5-2.5H16c2.21 0 4-1.79 4-4 0-3.86-3.59-7-8-7z"/>
+            <circle cx="6.5" cy="11.5" r="1.5"/>
+            <circle cx="9.5" cy="7.5" r="1.5"/>
+            <circle cx="14.5" cy="7.5" r="1.5"/>
+            <circle cx="17.5" cy="11.5" r="1.5"/>
+          </svg>
+        </span>
+        <span class="action-label">Цвет текста...</span>
+        {#if currentColor}
+          <span class="color-badge" style="background-color: {currentColor};"></span>
         {/if}
       </button>
 
@@ -897,5 +947,15 @@
 
   .btn-dialog.confirm:hover {
     background: #8e62e3;
+  }
+
+  .color-badge {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    margin-left: auto;
+    border: 2px solid rgba(255, 255, 255, 0.7);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+    flex-shrink: 0;
   }
 </style>

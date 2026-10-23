@@ -40,11 +40,14 @@
   import VideoNoteReviewPanel from "$components/ChatWindow/input/VideoNoteReviewPanel.svelte";
   import VideoRecorderPreview from "$components/ChatWindow/input/VideoRecorderPreview.svelte";
   import RecordingBar from "$components/ChatWindow/input/RecordingBar.svelte";
-  import { MediaRecorderSession, extractAudioAmplitudes } from "$components/ChatWindow/input/mediaRecorderManager.js";
+  import { MediaRecorderSession, extractAudioAmplitudes } from "$components/ChatWindow/input/mediaRecorderManager";
   import InputContextMenu from "$components/ChatWindow/input/InputContextMenu.svelte";
-  import { ComposerFormatState } from "$lib/formatting/composerState.js";
-  import { STYLE_KEYS, COMPOSER_STYLES } from "$lib/formatting/constants.js";
-  import { compileBackdropSpans } from "$lib/formatting/parser.js";
+  import ColorPicker from "$components/ChatWindow/input/ColorPicker.svelte";
+  import { ComposerFormatState } from "$lib/formatting/composerState";
+  import { STYLE_KEYS, COMPOSER_STYLES } from "$lib/formatting/constants";
+  import { compileBackdropSpans } from "$lib/formatting/parser";
+  import { encodeStegoMessage, parseStegoColors } from "$lib/formatting/colorStego";
+  import { lastUsedColor } from "$lib/stores/colorSettings";
 
   export let replyTo;
   export let scrollElement;
@@ -60,11 +63,13 @@
   const composerFormat = new ComposerFormatState();
   let previousMessageText = "";
   let activeFormatStyles = [];
+  let activeColor = null;
+  let showColorPicker = false;
   let formatRevision = 0;
   let backdropEl;
 
   $: backdropSpans = (formatRevision >= 0 && composerFormat.hasAnyFormatting())
-    ? compileBackdropSpans(newMessage, composerFormat.getRawElements(newMessage))
+    ? compileBackdropSpans(newMessage, composerFormat.getRawElements(newMessage), composerFormat.getRanges(STYLE_KEYS.COLOR))
     : [];
   $: hasFormatting = backdropSpans.length > 0;
   $: isLockedOut = isChatSafetyLocked(chat?.id, $safetyLockouts);
@@ -79,9 +84,16 @@
   let prevEditingId = null;
   $: if (editingMessage && editingMessage.id !== prevEditingId) {
     prevEditingId = editingMessage.id;
-    newMessage = editingMessage.text || "";
-    previousMessageText = newMessage;
-    composerFormat.importData(newMessage, editingMessage.elements || []);
+    const { cleanText, colorSpans, elements: cleanElements } = parseStegoColors(
+      editingMessage.text || "",
+      editingMessage.elements || []
+    );
+    newMessage = cleanText;
+    previousMessageText = cleanText;
+    composerFormat.importData(cleanText, cleanElements);
+    for (const cs of colorSpans) {
+      composerFormat.toggleStyle(STYLE_KEYS.COLOR, cs.start, cs.end, { color: cs.color });
+    }
     formatRevision++;
     attaches = Array.isArray(editingMessage.attaches) ? [...editingMessage.attaches] : [];
     tick().then(() => {
@@ -107,13 +119,21 @@
 
   let newMessage = "";
   let attaches = [];
-  let elements = [];
   let isSending = false;
   let showCommandsMenu = false;
   let stickerSuggestions = [];
   let suggestionTimer = null;
 
   function handleComposerInput() {
+    if (newMessage && newMessage.includes("\u200B\u2060")) {
+      const { cleanText, colorSpans } = parseStegoColors(newMessage);
+      if (colorSpans.length > 0) {
+        newMessage = cleanText;
+        for (const cs of colorSpans) {
+          composerFormat.toggleStyle(STYLE_KEYS.COLOR, cs.start, cs.end, { color: cs.color });
+        }
+      }
+    }
     composerFormat.onTextChanged(previousMessageText, newMessage);
     previousMessageText = newMessage;
     formatRevision++;
@@ -133,8 +153,32 @@
       if (composerFormat.isStyleActive(STYLE_KEYS.LINK, start, end)) {
         activeFormatStyles = [...activeFormatStyles, STYLE_KEYS.LINK];
       }
+      const colorRanges = composerFormat.getRanges(STYLE_KEYS.COLOR);
+      const matchColor = colorRanges.find((r) => r.start <= start && r.end >= end);
+      activeColor = matchColor?.metadata?.color || null;
+      if (activeColor) {
+        activeFormatStyles = [...activeFormatStyles, STYLE_KEYS.COLOR];
+      }
     } else {
       activeFormatStyles = [];
+      activeColor = null;
+    }
+  }
+
+  function handleApplyColor(e) {
+    const chosenColor = e.detail?.color;
+    showColorPicker = false;
+    if (!savedSelectionRange || !chosenColor) return;
+    restoreSavedSelection();
+    handleContextMenuFormat(STYLE_KEYS.COLOR, { color: chosenColor });
+  }
+
+  function handleClearColor() {
+    showColorPicker = false;
+    if (!savedSelectionRange) return;
+    restoreSavedSelection();
+    if (composerFormat.isStyleActive(STYLE_KEYS.COLOR, savedSelectionRange.start, savedSelectionRange.end)) {
+      handleContextMenuFormat(STYLE_KEYS.COLOR);
     }
   }
 
@@ -256,6 +300,9 @@
     if (composerFormat.isStyleActive(STYLE_KEYS.LINK, start, end)) {
       composerFormat.toggleStyle(STYLE_KEYS.LINK, start, end);
     }
+    if (composerFormat.isStyleActive(STYLE_KEYS.COLOR, start, end)) {
+      composerFormat.toggleStyle(STYLE_KEYS.COLOR, start, end);
+    }
     formatRevision++;
     textareaEl.focus();
     textareaEl.setSelectionRange(start, end);
@@ -350,18 +397,24 @@
 
   function handlePluginInsert({ text }) {
     if (!text) return;
+    const { cleanText, colorSpans } = parseStegoColors(text);
     if (textareaEl) {
       const start = textareaEl.selectionStart ?? newMessage.length;
       const end = textareaEl.selectionEnd ?? newMessage.length;
-      newMessage = newMessage.slice(0, start) + text + newMessage.slice(end);
+      newMessage = newMessage.slice(0, start) + cleanText + newMessage.slice(end);
+      for (const cs of colorSpans) {
+        composerFormat.toggleStyle(STYLE_KEYS.COLOR, start + cs.start, start + cs.end, { color: cs.color });
+      }
+      formatRevision++;
+      previousMessageText = newMessage;
       tick().then(() => {
-        const pos = start + text.length;
+        const pos = start + cleanText.length;
         textareaEl.setSelectionRange(pos, pos);
         textareaEl.focus();
         autoResize();
       });
     } else {
-      newMessage += text;
+      newMessage += cleanText;
     }
   }
 
@@ -572,8 +625,22 @@
     stickerSuggestions = [];
     isSending = true;
     const formattedPayload = composerFormat.exportData(newMessage);
-    let textToSend = formattedPayload.text;
-    const elementsToSend = formattedPayload.elements;
+    const trimmedLen = formattedPayload.text.length;
+    const leadSp = newMessage.length - newMessage.trimStart().length;
+    const shiftedColorRanges = composerFormat
+      .getRanges(STYLE_KEYS.COLOR)
+      .map((s) => ({
+        start: Math.max(0, s.start - leadSp),
+        end: Math.min(trimmedLen, s.end - leadSp),
+        metadata: s.metadata,
+      }))
+      .filter((s) => s.start < s.end);
+
+    const { textToSend, elementsToSend } = encodeStegoMessage(
+      formattedPayload.text,
+      formattedPayload.elements,
+      shiftedColorRanges
+    );
     newMessage = "";
     previousMessageText = "";
     composerFormat.clear();
@@ -754,7 +821,6 @@
           decodedMessages
         );
         attaches = [];
-        elements.length = 0;
       }
     } catch (e) {
       console.error(e);
@@ -1674,6 +1740,7 @@
                     class:code-text={span.styles.has(STYLE_KEYS.CODE)}
                     class:quote-text={span.styles.has(STYLE_KEYS.QUOTE)}
                     class:link-text={span.styles.has(STYLE_KEYS.LINK) || Boolean(span.linkUrl)}
+                    style={span.color ? `color: ${span.color};` : ''}
                   >{span.text}</span>
                 {/each}
                 {#if newMessage.endsWith("\n")}
@@ -1798,6 +1865,17 @@
           </button>
         </div>
 
+        {#each $pluginInputRight as item (item.id)}
+          <div class="plugin-mount-inline plugin-input-right" data-plugin-mount={item.pluginId || item.id}>
+            {@html item.html}
+          </div>
+        {/each}
+        {#each $pluginInputAction as item (item.id)}
+          <div class="plugin-mount-inline plugin-input-action" data-plugin-mount={item.pluginId || item.id}>
+            {@html item.html}
+          </div>
+        {/each}
+
         {#if newMessage.length || attaches.length || ($forwardDraft && $forwardDraft.messages?.length > 0)}
           <button class="button send-button" class:disabled-cooldown={isLockedOut} disabled={isLockedOut} type="button" on:click={onSend} title="Отправить">
             <svg viewBox="0 0 24 24" width="22" height="22">
@@ -1826,16 +1904,6 @@
             {/if}
           </button>
         {/if}
-        {#each $pluginInputRight as item (item.id)}
-          <div class="plugin-mount-inline plugin-input-right" data-plugin-mount={item.pluginId || item.id}>
-            {@html item.html}
-          </div>
-        {/each}
-        {#each $pluginInputAction as item (item.id)}
-          <div class="plugin-mount-inline plugin-input-action" data-plugin-mount={item.pluginId || item.id}>
-            {@html item.html}
-          </div>
-        {/each}
       {/if}
     </div>
   {/if}
@@ -1856,13 +1924,24 @@
       clientY={contextMenuState?.clientY ?? 0}
       hasSelection={contextMenuState?.hasSelection ?? false}
       activeStyles={contextMenuState?.activeStyles ?? []}
+      currentColor={activeColor}
       anchorEl={textareaEl}
       {isMobile}
       on:format={(e) => handleContextMenuFormat(e.detail.style, e.detail.metadata)}
       on:clearFormat={handleContextMenuClear}
+      on:openColorPicker={() => (showColorPicker = true)}
       on:action={(e) => handleContextMenuAction(e.detail.name)}
       on:restoreSelection={restoreSavedSelection}
       on:close={() => (contextMenuState = null)}
+    />
+  {/if}
+
+  {#if showColorPicker}
+    <ColorPicker
+      initialColor={activeColor || $lastUsedColor || "#FF5252"}
+      on:apply={handleApplyColor}
+      on:clear={handleClearColor}
+      on:close={() => (showColorPicker = false)}
     />
   {/if}
 
@@ -1994,6 +2073,10 @@
     text-underline-offset: 3px;
   }
 
+  .backdrop-span[style*="color:"] {
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+  }
+
   .backdrop-trailing-break {
     display: inline;
     line-height: 22px;
@@ -2035,6 +2118,13 @@
 
   textarea::placeholder {
     color: var(--text-subtle);
+  }
+
+  .plugin-mount-inline {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
   }
 
   .button {

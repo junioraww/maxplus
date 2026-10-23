@@ -472,6 +472,7 @@
                 elements={msg.elements || []}
                 deleted={msg.deleted}
                 {isSystem}
+                {isMe}
               />
             {/if}
 
