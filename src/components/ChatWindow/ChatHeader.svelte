@@ -7,6 +7,11 @@
   import { getChatSettings } from "$lib/stores/messages";
   import { getContact } from "$lib/stores/contacts";
   import { CallService } from "$lib/services/CallService.js";
+  import { getMountStore } from "$lib/plugins/mount-registry";
+
+  const pluginHeaderLeadings = getMountStore("chat:header-leading");
+  const pluginHeaderInfos = getMountStore("chat:header-info");
+  const pluginHeaderActions = getMountStore("chat:header-action");
 
   export let chat;
   export let avatarUserId;
@@ -81,14 +86,29 @@
       class="row"
       on:click={handleProfileClick}
     >
+      {#each $pluginHeaderLeadings as item (item.id)}
+        <div class="plugin-mount-inline plugin-header-leading" data-plugin-mount={item.pluginId || item.id}>
+          {@html item.html}
+        </div>
+      {/each}
       <Avatar size={42} {chat} contactId={avatarUserId} style="margin-left: -8px; cursor: pointer;"/>
       <div class="info">
         <a class="title">{title}</a>
         <a class="presence"><Signature {chat} contactId={avatarUserId} /></a>
+        {#each $pluginHeaderInfos as item (item.id)}
+          <div class="plugin-mount-block plugin-header-info" data-plugin-mount={item.pluginId || item.id}>
+            {@html item.html}
+          </div>
+        {/each}
       </div>
     </div>
   </div>
   <div class="align-right">
+    {#each $pluginHeaderActions as item (item.id)}
+      <div class="plugin-mount-inline plugin-header-action" data-plugin-mount={item.pluginId || item.id}>
+        {@html item.html}
+      </div>
+    {/each}
     {#if canCall}
       <button
         class="header-call-btn"

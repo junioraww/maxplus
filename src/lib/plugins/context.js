@@ -21,6 +21,37 @@ import {
 } from '$lib/stores/stickers.js';
 import { CryptoPluginRegistry } from '$lib/crypto/plugins.js';
 import { showAlert } from '$lib/utils/alert.js';
+import { mediaPipeline } from '$lib/services/MediaPipelineHost';
+
+async function fetchAsset(url, options = {}) {
+  const { sha256, type = 'text', headers, mode } = options;
+  const res = await fetch(url, { headers, mode, cache: 'force-cache' });
+  if (!res.ok) throw new Error(`Failed to fetch asset (${res.status} ${res.statusText})`);
+  const buffer = await res.arrayBuffer();
+  if (sha256) {
+    const hashBuf = await crypto.subtle.digest('SHA-256', buffer);
+    const hashHex = Array.from(new Uint8Array(hashBuf))
+      .map(b => b.toString(16).padStart(2, '0'))
+      .join('');
+    if (hashHex.toLowerCase() !== sha256.toLowerCase()) {
+      throw new Error(`Integrity check failed: expected ${sha256}, got ${hashHex}`);
+    }
+  }
+  if (type === 'arrayBuffer') return buffer;
+  if (type === 'blob') return new Blob([buffer]);
+  const text = new TextDecoder().decode(buffer);
+  if (type === 'json') return JSON.parse(text);
+  if (type === 'script') {
+    const blob = new Blob([buffer], { type: 'application/javascript' });
+    const blobUrl = URL.createObjectURL(blob);
+    try {
+      return await import(/* @vite-ignore */ blobUrl);
+    } finally {
+      URL.revokeObjectURL(blobUrl);
+    }
+  }
+  return text;
+}
 
 function makeStorage(pluginId) {
   return {
@@ -178,6 +209,31 @@ export function buildPluginContext(manifest, pluginId) {
 
     log: makeLog(pluginId),
 
+    media: {
+      registerVideoProcessor(processor) {
+        return mediaPipeline.installVideoPlugin({ id: pluginId, ...processor });
+      },
+      unregisterVideoProcessor() {
+        return mediaPipeline.removeVideoPlugin(pluginId);
+      },
+      registerAudioProcessor(processor) {
+        return mediaPipeline.installAudioPlugin({ id: pluginId, ...processor });
+      },
+      unregisterAudioProcessor() {
+        return mediaPipeline.removeAudioPlugin(pluginId);
+      },
+      listVideoProcessors() {
+        return mediaPipeline.listVideoPlugins();
+      },
+      listAudioProcessors() {
+        return mediaPipeline.listAudioPlugins();
+      },
+    },
+
+    fetchAsset(url, options) {
+      return fetchAsset(url, options);
+    },
+
     _cleanup() {
       for (const el of styleHandles) removeCSS(el);
       styleHandles.length = 0;
@@ -185,6 +241,8 @@ export function buildPluginContext(manifest, pluginId) {
       mountHandles.length = 0;
       for (const { event, cb } of eventBindings) pluginOff(event, cb);
       eventBindings.length = 0;
+      mediaPipeline.removeVideoPlugin(pluginId).catch(() => {});
+      mediaPipeline.removeAudioPlugin(pluginId).catch(() => {});
     },
   };
 

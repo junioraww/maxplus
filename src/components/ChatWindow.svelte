@@ -72,6 +72,10 @@
   import { swipeToClose } from "$components/ChatWindow/swipeToClose.js";
   import { createVirtualScrollManager, DEFAULT_HEIGHT } from "$components/ChatWindow/chatVirtualScroll.js";
   import { createMessagesLoader, BATCH_SIZE } from "$components/ChatWindow/chatMessagesLoader.js";
+  import { getMountStore } from "$lib/plugins/mount-registry";
+
+  const pluginChatBackground = getMountStore("chat:background");
+  const pluginChatFooter = getMountStore("chat:footer");
 
   export let chatId;
   let prevActiveChatId = null;
@@ -1534,6 +1538,12 @@
     class="message-list-container grab-scroll"
     id="scroll"
   >
+    {#each $pluginChatBackground as item (item.id)}
+      <div class="plugin-chat-background" data-plugin-mount={item.pluginId || item.id}>
+        {@html item.html}
+      </div>
+    {/each}
+
     <E2eModal
       {chat}
       {messages}
@@ -1668,6 +1678,12 @@
       {decodedMessages}
     />
   {/if}
+
+  {#each $pluginChatFooter as item (item.id)}
+    <div class="plugin-chat-footer" data-plugin-mount={item.pluginId || item.id}>
+      {@html item.html}
+    </div>
+  {/each}
 
   <ScrollDownButton
     {showScrollDown}

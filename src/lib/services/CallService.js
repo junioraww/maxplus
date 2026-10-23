@@ -3,7 +3,7 @@ import { listen } from '@tauri-apps/api/event';
 import { get } from 'svelte/store';
 import { activeCall, patchCallState, resetCallState, CALL_PHASE, CALL_MODE, callUseStubs } from '$lib/stores/calls.js';
 import { CallEncryptionSession } from '$lib/crypto/callEncryption.js';
-import { mediaPipeline } from '$lib/services/MediaPipelineHost.js';
+import { mediaPipeline } from '$lib/services/MediaPipelineHost';
 import { showAlert } from '$lib/utils/alert.js';
 import API, { currentUser, currentRealChats } from '$lib/stores/api.js';
 import { getChat } from '$lib/stores/messages.js';
@@ -498,6 +498,30 @@ class MaxCallSession {
       this.#encryption.setBypassEncrypt(true);
       this.#encryption.setBypassDecrypt(true);
     }
+    mediaPipeline.onTrackChange = async ({ videoTrack, audioTrack }) => {
+      if (videoTrack && this.#pc && !get(activeCall).screenOn && this.#cameraStream) {
+        const transceivers = typeof this.#pc.getTransceivers === 'function' ? this.#pc.getTransceivers() : [];
+        const transceiver = transceivers.find(t => t.receiver?.track?.kind === 'video' || t.sender?.track?.kind === 'video');
+        const sender = transceiver?.sender || (typeof this.#pc.getSenders === 'function' ? this.#pc.getSenders().find(s => s.track?.kind === 'video') : null);
+        if (sender) {
+          try {
+            await sender.replaceTrack(videoTrack);
+            this.#encryption.applyToSender(sender, 'video');
+          } catch {}
+        }
+      }
+      if (audioTrack && this.#pc && this.#localStream) {
+        const transceivers = typeof this.#pc.getTransceivers === 'function' ? this.#pc.getTransceivers() : [];
+        const transceiver = transceivers.find(t => t.receiver?.track?.kind === 'audio' || t.sender?.track?.kind === 'audio');
+        const sender = transceiver?.sender || (typeof this.#pc.getSenders === 'function' ? this.#pc.getSenders().find(s => s.track?.kind === 'audio') : null);
+        if (sender) {
+          try {
+            await sender.replaceTrack(audioTrack);
+            this.#encryption.applyToSender(sender, 'audio');
+          } catch {}
+        }
+      }
+    };
   }
 
   get encryption() { return this.#encryption; }
@@ -530,7 +554,7 @@ class MaxCallSession {
       const isScreen = Boolean(get(activeCall).screenOn);
       const isVideo = Boolean(get(activeCall).videoOn);
       const track = (isScreen && this.#screenStream?.getVideoTracks()[0])
-        || (isVideo && this.#cameraStream?.getVideoTracks()[0])
+        || (isVideo && (mediaPipeline.getProcessedVideoTrack() || this.#cameraStream?.getVideoTracks()[0]))
         || null;
       if (track) {
         try {
@@ -1379,6 +1403,8 @@ class MaxCallSession {
       }
     }
 
+    mediaPipeline.setSourceTracks(this.#cameraStream?.getVideoTracks()[0] || null, this.#localStream?.getAudioTracks()[0] || null);
+
     if (isVideo) {
       await this.enableCamera(true);
     }
@@ -1514,7 +1540,8 @@ class MaxCallSession {
       this.#encryption.applyToReceiver(e.receiver, track.kind || 'audio');
     };
 
-    const audioTracks = this.#localStream?.getAudioTracks() || [];
+    const processedAudio = mediaPipeline.getProcessedAudioTrack();
+    const audioTracks = processedAudio ? [processedAudio] : (this.#localStream?.getAudioTracks() || []);
     if (audioTracks.length > 0) {
       for (const track of audioTracks) {
         const sender = pc.addTrack(track, this.#localStream);
@@ -1526,7 +1553,8 @@ class MaxCallSession {
       } catch {}
     }
 
-    const videoTracks = (this.#cameraStream?.getVideoTracks() || []).concat(this.#screenStream?.getVideoTracks() || []);
+    const processedVideo = mediaPipeline.getProcessedVideoTrack();
+    const videoTracks = (processedVideo ? [processedVideo] : (this.#cameraStream?.getVideoTracks() || [])).concat(this.#screenStream?.getVideoTracks() || []);
     if (videoTracks.length > 0) {
       for (const track of videoTracks) {
         const sender = pc.addTrack(track, this.#cameraStream || this.#screenStream);
@@ -2313,7 +2341,7 @@ class MaxCallSession {
 
         const rawVideoTrack = this.#cameraStream.getVideoTracks()[0];
         mediaPipeline.setSourceTracks(rawVideoTrack, this.#localStream?.getAudioTracks()[0] || null);
-        const track = rawVideoTrack;
+        const track = mediaPipeline.getProcessedVideoTrack() || rawVideoTrack;
         if (track && this.#pc) {
           const transceivers = typeof this.#pc.getTransceivers === 'function' ? this.#pc.getTransceivers() : [];
           const transceiver = transceivers.find(t => t.receiver?.track?.kind === 'video' || t.sender?.track?.kind === 'video');

@@ -2,11 +2,13 @@
   import { createEventDispatcher } from "svelte";
   import { flip } from "svelte/animate";
   import { quintOut } from "svelte/easing";
+  import { getMountStore } from "$lib/plugins/mount-registry";
 
   export let folders = [];
   export let activeFolder = null;
 
   const dispatch = createEventDispatcher();
+  const pluginChatListHeader = getMountStore("chat-list:header");
 
   let isEditing = false;
   let draggingIndex = null;
@@ -79,6 +81,12 @@
   on:touchend={handleEnd}
   on:touchmove|nonpassive={handleMove}
 />
+
+{#each $pluginChatListHeader as item (item.id)}
+  <div class="plugin-chat-list-header" data-plugin-mount={item.pluginId || item.id}>
+    {@html item.html}
+  </div>
+{/each}
 
 <div class="tabs-container">
   <div class="tabs">

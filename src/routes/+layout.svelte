@@ -32,6 +32,10 @@
   import { initDeepLink } from "$lib/utils/deepLink.js";
   import { initProxyConfig } from "$lib/utils/proxyConfig.js";
   import { handleBackButton, registerBackHandler } from "$lib/utils/backButton.js";
+  import { getMountStore } from "$lib/plugins/mount-registry";
+
+  const pluginGlobalModals = getMountStore("global:modal");
+  const pluginGlobalOverlays = getMountStore("global:overlay");
 
   let settings;
   const legacyUnregisterMap = new Map();
@@ -229,6 +233,18 @@
     onCancel={() => closeVideoCropModal()}
   />
 {/if}
+
+{#each $pluginGlobalModals as item (item.id)}
+  <div class="plugin-global-modal" data-plugin-mount={item.pluginId || item.id}>
+    {@html item.html}
+  </div>
+{/each}
+
+{#each $pluginGlobalOverlays as item (item.id)}
+  <div class="plugin-global-overlay" data-plugin-mount={item.pluginId || item.id}>
+    {@html item.html}
+  </div>
+{/each}
 
 <style>
   main {
