@@ -1,9 +1,9 @@
 import { invoke } from '@tauri-apps/api/core';
 import { get } from 'svelte/store';
-import { validateManifest, PluginLoadError } from './manifest.js';
-import { satisfies } from './semver.js';
-import { buildPluginContext } from './context.js';
-import { pluginStore } from '$lib/stores/plugins.js';
+import { validateManifest, PluginLoadError } from './manifest';
+import { satisfies } from './semver';
+import { buildPluginContext } from './context';
+import { pluginStore } from '$lib/stores/plugins';
 
 const APP_VERSION = __APP_VERSION__;
 const MAXPLUS_API_BASE = 'https://maxplus.dev';
@@ -178,7 +178,7 @@ export async function handlePluginDeepLink(pluginId) {
 
     const entryCode = manifest.entry ? (files.get(manifest.entry) || '') : '';
 
-    const { showPluginImportModal } = await import('$lib/stores/plugins.js');
+    const { showPluginImportModal } = await import('$lib/stores/plugins');
     showPluginImportModal({
       arrayBuffer,
       manifest,
@@ -187,7 +187,7 @@ export async function handlePluginDeepLink(pluginId) {
     });
   } catch (e) {
     console.error('[plugins] deep link error:', e);
-    const { showAlert } = await import('$lib/utils/alert.js');
+    const { showAlert } = await import('$lib/utils/alert');
     showAlert("Не удалось загрузить плагин по ссылке");
   }
 }

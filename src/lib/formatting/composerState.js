@@ -1,10 +1,10 @@
-import { STYLE_KEYS, STYLE_TO_SERVER_NAME, SERVER_NAME_TO_STYLE } from "./constants.js";
+import { STYLE_KEYS, STYLE_TO_SERVER_NAME, SERVER_NAME_TO_STYLE } from "./constants";
 import {
   appendSpan,
   clipSpan,
   isSpanEnclosed,
   shiftSpansOnTextChange,
-} from "./ranges.js";
+} from "./ranges";
 
 export class ComposerFormatState {
   constructor() {

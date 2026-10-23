@@ -9,6 +9,7 @@ export const STYLE_KEYS = {
   LINK: "link",
   MENTION: "mention",
   ANIMOJI: "animoji",
+  COLOR: "color",
 };
 
 export const STYLE_TO_SERVER_NAME = {

@@ -295,9 +295,7 @@
     font-size: 12px;
     font-weight: 600;
     color: #ffffff;
-    background: rgba(0, 0, 0, 0.55);
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
+    background: rgba(0, 0, 0, 0.72);
     padding: 3px 8px;
     border-radius: 8px;
     white-space: nowrap;
