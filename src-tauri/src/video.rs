@@ -100,7 +100,7 @@ fn handle_local_file(request: tiny_http::Request, mut path: &str) {
         }
     };
 
-    let data = if raw_bytes.starts_with(b"ENC") {
+    let mut data = if raw_bytes.starts_with(b"ENC") {
         let Some(key) = get_active_crypto_key() else {
             let _ = request.respond(Response::from_string("Encrypted file locked").with_status_code(403));
             return;
@@ -116,6 +116,13 @@ fn handle_local_file(request: tiny_http::Request, mut path: &str) {
     } else {
         raw_bytes
     };
+
+    if data.starts_with(b"\x1a\x45\xdf\xa3") {
+        let limit = std::cmp::min(data.len(), 4096);
+        if let Some(pos) = data[..limit].windows(4).position(|w| w == b"\x53\xc0\x81\x01") {
+            data[pos + 3] = 0;
+        }
+    }
 
     let file_len = data.len() as u64;
     let mime = detect_mime_from_bytes(&data, path);

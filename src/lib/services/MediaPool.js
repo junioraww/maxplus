@@ -16,8 +16,6 @@ function getStegoWorker() {
             map.set(Number(targetEntityId), foundUid);
             return map;
           });
-        } else if (!foundUid && key) {
-          MediaPool.scannedStegoKeys.delete(key);
         }
       };
     } catch {
@@ -69,6 +67,7 @@ class MediaPoolEngine {
     this.scannedStegoKeys = new Set();
     this.isRendering = false;
     this.rafId = null;
+    this.lastRenderTime = 0;
     this.render = this.render.bind(this);
   }
 
@@ -192,7 +191,7 @@ class MediaPoolEngine {
         entry.masterCanvas.height = size;
       }
       if (entry.masterCanvas) {
-        entry.masterCtx = entry.masterCanvas.getContext("2d", { willReadFrequently: true });
+        entry.masterCtx = entry.masterCanvas.getContext("2d");
         if (entry.masterCtx) {
           entry.masterCtx.imageSmoothingEnabled = true;
           entry.masterCtx.imageSmoothingQuality = "medium";
@@ -403,7 +402,6 @@ class MediaPoolEngine {
       const sw = source.naturalWidth || source.videoWidth || source.width;
       const sh = source.naturalHeight || source.videoHeight || source.height;
       if (!sw || !sh || sw < 64 || sh < 64) {
-        if (key) this.scannedStegoKeys.delete(key);
         return;
       }
 
@@ -414,13 +412,11 @@ class MediaPoolEngine {
       canvas.height = sh;
       const ctx = canvas.getContext("2d");
       if (!ctx) {
-        if (key) this.scannedStegoKeys.delete(key);
         return;
       }
       ctx.drawImage(source, 0, 0, sw, sh);
       const imgData = ctx.getImageData(0, 0, sw, sh);
       if (!imgData) {
-        if (key) this.scannedStegoKeys.delete(key);
         return;
       }
 
@@ -430,12 +426,8 @@ class MediaPoolEngine {
           map.set(Number(targetEntityId), foundUid);
           return map;
         });
-      } else if (key) {
-        this.scannedStegoKeys.delete(key);
       }
-    } catch {
-      if (key) this.scannedStegoKeys.delete(key);
-    }
+    } catch {}
   }
 
   _handleError(entry, err) {
@@ -449,23 +441,31 @@ class MediaPoolEngine {
   _ensureRenderLoop() {
     if (this.isRendering) return;
 
-    let shouldRender = false;
     for (const entry of this.pool.values()) {
-      if (entry.type === "video" && entry.visibleConsumers.size > 0) {
-        shouldRender = true;
+      if (
+        entry.type === "video" &&
+        entry.visibleConsumers.size > 0 &&
+        entry.source &&
+        !entry.source.paused &&
+        entry.source.readyState >= 2
+      ) {
+        this.isRendering = true;
+        this.rafId = requestAnimationFrame(this.render);
         break;
       }
     }
-
-    if (shouldRender) {
-      this.isRendering = true;
-      this.rafId = requestAnimationFrame(this.render);
-    }
   }
 
-  render() {
+  render(timestamp) {
+    if (!this.isRendering) return;
+
+    if (timestamp && timestamp - this.lastRenderTime < 30) {
+      this.rafId = requestAnimationFrame(this.render);
+      return;
+    }
+    this.lastRenderTime = timestamp || Date.now();
+
     let hasActiveVideos = false;
-    let hasPendingVideos = false;
 
     for (const entry of this.pool.values()) {
       if (entry.type !== "video" || entry.visibleConsumers.size === 0) {
@@ -474,9 +474,6 @@ class MediaPoolEngine {
 
       const video = entry.source;
       if (!video) {
-        if (entry.status === "loading") {
-          hasPendingVideos = true;
-        }
         continue;
       }
 
@@ -488,17 +485,15 @@ class MediaPoolEngine {
             consumer.onReady(entry);
           }
         } else {
-          hasPendingVideos = true;
           continue;
         }
       }
 
       if (video.paused || video.readyState < 2) {
-        hasPendingVideos = true;
         const now = Date.now();
         if (video.paused && now - entry.lastPlayAttempt > 1000) {
           entry.lastPlayAttempt = now;
-          video.play().catch(() => {});
+          video.play().then(() => this._ensureRenderLoop()).catch(() => {});
         }
         continue;
       }
@@ -510,7 +505,7 @@ class MediaPoolEngine {
       }
     }
 
-    if (hasActiveVideos || hasPendingVideos) {
+    if (hasActiveVideos) {
       this.rafId = requestAnimationFrame(this.render);
     } else {
       this.isRendering = false;

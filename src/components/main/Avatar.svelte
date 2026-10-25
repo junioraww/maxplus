@@ -20,12 +20,12 @@
   export let isSelf = false;
 
   $: resolvedContactId = contactId ?? userId;
-  $: contact = getContact(resolvedContactId);
-  $: effectiveContactId = resolvedContactId || $contact?.id || (chat?.id ? Number(chat.id) : null);
+  $: contact = isSelf ? null : getContact(resolvedContactId);
+  $: effectiveContactId = resolvedContactId || $contact?.id || (isSelf ? Number($currentUser) : (chat?.id ? Number(chat.id) : null));
   $: isMe = isSelf || Boolean(effectiveContactId && Number(effectiveContactId) === Number($currentUser));
   $: selfDetails = isMe ? $currentUserDetails : null;
 
-  $: isOnline = Boolean(
+  $: isOnline = !isSelf && Boolean(
     $contact?.online ||
     (effectiveContactId && $currentPresence && $currentPresence[effectiveContactId]?.status === 1)
   );

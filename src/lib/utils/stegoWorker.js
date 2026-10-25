@@ -1,4 +1,4 @@
-import { decodeStegoPayload } from "./stego";
+import { decodeStegoPayload } from "./stego.js";
 
 self.onmessage = async (e) => {
   const { bitmap, targetEntityId, key } = e.data || {};

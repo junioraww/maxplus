@@ -260,6 +260,16 @@ fn ensure_mp4_faststart_and_strip_edts(path: &str) {
 async fn convert_media_if_needed(path: &str, is_video: bool) -> String {
     if is_video {
         ensure_mp4_faststart_and_strip_edts(path);
+        let clean_path = path.strip_prefix("file://").unwrap_or(path);
+        if let Ok(mut bytes) = std::fs::read(clean_path) {
+            if bytes.starts_with(b"\x1a\x45\xdf\xa3") {
+                let limit = std::cmp::min(bytes.len(), 4096);
+                if let Some(pos) = bytes[..limit].windows(4).position(|w| w == b"\x53\xc0\x81\x01") {
+                    bytes[pos + 3] = 0;
+                    let _ = std::fs::write(clean_path, bytes);
+                }
+            }
+        }
     }
     path.to_string()
 }
@@ -888,9 +898,15 @@ pub async fn cache_url(
         return Err(format!("HTTP {}", resp.status()));
     }
 
-    let bytes = resp.bytes().await.map_err(|e| e.to_string())?.to_vec();
+    let mut bytes = resp.bytes().await.map_err(|e| e.to_string())?.to_vec();
     if bytes.starts_with(b"{\"error\"") || bytes.is_empty() {
         return Err("Server returned error payload".to_string());
+    }
+    if bytes.starts_with(b"\x1a\x45\xdf\xa3") {
+        let limit = std::cmp::min(bytes.len(), 4096);
+        if let Some(pos) = bytes[..limit].windows(4).position(|w| w == b"\x53\xc0\x81\x01") {
+            bytes[pos + 3] = 0;
+        }
     }
     let size_kb = (bytes.len() + 1023) / 1024;
     let saved_path = crate::stores::set_cached_file_with_meta(app.clone(), acc, cache_key.clone(), bytes, chat_id, media_type.clone())?;
