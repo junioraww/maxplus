@@ -206,6 +206,40 @@ pub async fn webrtc_listen_video(
 }
 
 #[tauri::command]
+pub async fn webrtc_listen_audio(
+    session_id: u32,
+    channel: Channel<InvokeResponseBody>,
+) -> Result<(), String> {
+    #[cfg(target_os = "linux")]
+    {
+        println!("[webrtc:cmd] webrtc_listen_audio for session {}", session_id);
+        let session = NativeWebRtcSession::get(session_id).await?;
+        session.set_audio_channel(channel).await;
+        Ok(())
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        let _ = (session_id, channel);
+        Ok(())
+    }
+}
+
+#[tauri::command]
+pub async fn webrtc_set_use_stubs(session_id: u32, enabled: bool) -> Result<(), String> {
+    #[cfg(target_os = "linux")]
+    {
+        println!("[webrtc:cmd] webrtc_set_use_stubs for session {}: {}", session_id, enabled);
+        let session = NativeWebRtcSession::get(session_id).await?;
+        session.set_use_stubs(enabled).await
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        let _ = (session_id, enabled);
+        Ok(())
+    }
+}
+
+#[tauri::command]
 pub async fn webrtc_listen_candidates(
     session_id: u32,
     channel: Channel<serde_json::Value>,

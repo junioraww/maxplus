@@ -8,11 +8,31 @@
   } from "$lib/stores/deletionSettings";
   import { disableMaxPlusAvatars } from "$lib/stores/avatarSettings";
   import { set as sessionSet } from "$lib/stores/session";
+  import { callRecordSettings } from "$lib/services/callRecorder";
 
   export let isTab = false;
   export let onClose = null;
 
   $: from = $page.url.searchParams.get("from") || "/?card=settings";
+
+  let alwaysRecord = callRecordSettings.always;
+  let saveVideoCall = callRecordSettings.saveVideo;
+  let alwaysSaveVideo = callRecordSettings.alwaysSaveVideo;
+
+  function toggleAlwaysRecord() {
+    alwaysRecord = !alwaysRecord;
+    callRecordSettings.always = alwaysRecord;
+  }
+
+  function toggleSaveVideo() {
+    saveVideoCall = !saveVideoCall;
+    callRecordSettings.saveVideo = saveVideoCall;
+  }
+
+  function toggleAlwaysSaveVideo() {
+    alwaysSaveVideo = !alwaysSaveVideo;
+    callRecordSettings.alwaysSaveVideo = alwaysSaveVideo;
+  }
 </script>
 
 <SettingsPageWrapper title="Расширенные настройки" {from} {isTab} {onClose}>
@@ -110,6 +130,70 @@
           <div
             class="toggle-thumb"
             class:active={$hideMyDeletedMessages}
+          ></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="section-header">
+      <h2>Запись звонков</h2>
+    </div>
+
+    <div class="settings-card">
+      <div
+        class="toggle-row"
+        on:click={toggleAlwaysRecord}
+      >
+        <div class="toggle-info">
+          <span class="toggle-title">Всегда записывать звонки</span>
+          <span class="toggle-desc"
+            >Автоматически начинать запись при ответе на входящий или исходящий звонок</span
+          >
+        </div>
+        <div class="toggle-track" class:active={alwaysRecord}>
+          <div
+            class="toggle-thumb"
+            class:active={alwaysRecord}
+          ></div>
+        </div>
+      </div>
+
+      <div class="card-divider"></div>
+
+      <div
+        class="toggle-row"
+        on:click={toggleSaveVideo}
+      >
+        <div class="toggle-info">
+          <span class="toggle-title">Сохранять видео при записи видеозвонка</span>
+          <span class="toggle-desc"
+            >Записывать видеоряд и экран звонка. Если отключено, пишется только аудио</span
+          >
+        </div>
+        <div class="toggle-track" class:active={saveVideoCall}>
+          <div
+            class="toggle-thumb"
+            class:active={saveVideoCall}
+          ></div>
+        </div>
+      </div>
+
+      <div class="card-divider"></div>
+
+      <div
+        class="toggle-row"
+        on:click={toggleAlwaysSaveVideo}
+      >
+        <div class="toggle-info">
+          <span class="toggle-title">Всегда сохранять звонки как видеофайл</span>
+          <span class="toggle-desc"
+            >Сохранять даже звонки без видео как .webm (с аватарами). Если выключено — звонки без видео сохраняются как .ogg</span
+          >
+        </div>
+        <div class="toggle-track" class:active={alwaysSaveVideo}>
+          <div
+            class="toggle-thumb"
+            class:active={alwaysSaveVideo}
           ></div>
         </div>
       </div>

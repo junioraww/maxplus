@@ -1,10 +1,15 @@
 use crate::webrtc_engine::media::CameraCapturer;
-use crate::webrtc_engine::renderer::FrameSender;
+use crate::webrtc_engine::renderer::{AudioSender, FrameSender};
 use libwebrtc::{
+    audio_frame::AudioFrame,
+    audio_source::{native::NativeAudioSource, AudioSourceOptions},
+    audio_stream::native::NativeAudioStream,
+    audio_track::RtcAudioTrack,
     ice_candidate::IceCandidate,
     media_stream_track::MediaStreamTrack,
     peer_connection::{
-        AnswerOptions, IceGatheringState, OfferOptions, PeerConnection, PeerConnectionState, TrackEvent,
+        AnswerOptions, IceGatheringState, OfferOptions, PeerConnection, PeerConnectionState,
+        TrackEvent,
     },
     peer_connection_factory::{
         native::PeerConnectionFactoryExt, ContinualGatheringPolicy, IceServer, IceTransportsType,
@@ -63,11 +68,18 @@ pub struct NativeWebRtcSession {
     video_sender: Mutex<Option<RtpSender>>,
     camera_enabled: AtomicBool,
     mic_muted: AtomicBool,
+    use_stubs: Arc<AtomicBool>,
     audio_sender: Mutex<Option<RtpSender>>,
+    device_audio_track: RtcAudioTrack,
+    stub_audio_source: NativeAudioSource,
+    stub_audio_track: RtcAudioTrack,
+    stub_audio_running: Arc<AtomicBool>,
     video_channel: Arc<Mutex<Option<FrameSender>>>,
+    audio_channel: Arc<Mutex<Option<AudioSender>>>,
     candidate_channel: Arc<Mutex<Option<Channel<serde_json::Value>>>>,
     state_channel: Arc<Mutex<Option<Channel<String>>>>,
     pending_candidates: Arc<Mutex<Vec<IceCandidate>>>,
+    active_tracks: Arc<Mutex<std::collections::HashSet<String>>>,
 }
 
 static NEXT_SESSION_ID: AtomicU32 = AtomicU32::new(1);
@@ -110,10 +122,15 @@ impl NativeWebRtcSession {
         };
 
         let session_id = NEXT_SESSION_ID.fetch_add(1, Ordering::SeqCst);
-        let candidate_channel: Arc<Mutex<Option<Channel<serde_json::Value>>>> = Arc::new(Mutex::new(None));
+        let candidate_channel: Arc<Mutex<Option<Channel<serde_json::Value>>>> =
+            Arc::new(Mutex::new(None));
         let state_channel: Arc<Mutex<Option<Channel<String>>>> = Arc::new(Mutex::new(None));
         let video_channel: Arc<Mutex<Option<FrameSender>>> = Arc::new(Mutex::new(None));
+        let audio_channel: Arc<Mutex<Option<AudioSender>>> = Arc::new(Mutex::new(None));
         let pending_candidates = Arc::new(Mutex::new(Vec::new()));
+        let active_tracks = Arc::new(Mutex::new(std::collections::HashSet::new()));
+        let use_stubs = Arc::new(AtomicBool::new(false));
+        let stub_audio_running = Arc::new(AtomicBool::new(false));
 
         let _ = factory.acquire_platform_adm();
         factory.set_adm_playout_enabled(true);
@@ -131,11 +148,14 @@ impl NativeWebRtcSession {
             false,
         );
 
-        let audio_track = factory.create_device_audio_track("audio0");
+        let stub_audio_source =
+            NativeAudioSource::new(AudioSourceOptions::default(), 48000, 1, 100);
+        let stub_audio_track = factory.create_audio_track("stub_audio", stub_audio_source.clone());
+        let device_audio_track = factory.create_device_audio_track("audio0");
 
         let audio_sender = pc
             .add_track(
-                MediaStreamTrack::Audio(audio_track),
+                MediaStreamTrack::Audio(device_audio_track.clone()),
                 &["default_stream".to_string()],
             )
             .ok();
@@ -212,56 +232,17 @@ impl NativeWebRtcSession {
         })));
 
         let video_chan_clone = Arc::clone(&video_channel);
+        let audio_chan_clone = Arc::clone(&audio_channel);
+        let at_clone = Arc::clone(&active_tracks);
         let h3 = handle.clone();
         pc.on_track(Some(Box::new(move |ev: TrackEvent| {
-            if let MediaStreamTrack::Video(vtrack) = ev.track {
-                let vchan = video_chan_clone.clone();
-                h3.spawn(async move {
-                    let mut stream = NativeVideoStream::new(vtrack);
-                    while let Some(frame) = stream.next().await {
-                        let lock = vchan.lock().await;
-                        if let Some(sender) = lock.as_ref() {
-                            let buffer = frame.buffer.to_i420();
-                            let width = buffer.width();
-                            let height = buffer.height();
-                            let (stride_y, stride_u, stride_v) = buffer.strides();
-                            let (data_y, data_u, data_v) = buffer.data();
-
-                            let mut y_plane = Vec::with_capacity((width * height) as usize);
-                            for row in 0..height {
-                                let start = (row * stride_y) as usize;
-                                let end = start + width as usize;
-                                if end <= data_y.len() {
-                                    y_plane.extend_from_slice(&data_y[start..end]);
-                                }
-                            }
-
-                            let chroma_w = (width + 1) / 2;
-                            let chroma_h = (height + 1) / 2;
-
-                            let mut u_plane = Vec::with_capacity((chroma_w * chroma_h) as usize);
-                            for row in 0..chroma_h {
-                                let start = (row * stride_u) as usize;
-                                let end = start + chroma_w as usize;
-                                if end <= data_u.len() {
-                                    u_plane.extend_from_slice(&data_u[start..end]);
-                                }
-                            }
-
-                            let mut v_plane = Vec::with_capacity((chroma_w * chroma_h) as usize);
-                            for row in 0..chroma_h {
-                                let start = (row * stride_v) as usize;
-                                let end = start + chroma_w as usize;
-                                if end <= data_v.len() {
-                                    v_plane.extend_from_slice(&data_v[start..end]);
-                                }
-                            }
-
-                            let _ = sender.send_i420(width, height, &y_plane, &u_plane, &v_plane);
-                        }
-                    }
-                });
-            }
+            start_remote_track(
+                ev.track,
+                audio_chan_clone.clone(),
+                video_chan_clone.clone(),
+                at_clone.clone(),
+                h3.clone(),
+            );
         })));
 
         let session = Arc::new(Self {
@@ -274,11 +255,18 @@ impl NativeWebRtcSession {
             video_sender: Mutex::new(video_sender),
             camera_enabled: AtomicBool::new(false),
             mic_muted: AtomicBool::new(false),
+            use_stubs,
             audio_sender: Mutex::new(audio_sender),
+            device_audio_track,
+            stub_audio_source,
+            stub_audio_track,
+            stub_audio_running,
             video_channel,
+            audio_channel,
             candidate_channel,
             state_channel,
             pending_candidates,
+            active_tracks,
         });
 
         get_sessions().lock().await.insert(session_id, Arc::clone(&session));
@@ -301,110 +289,103 @@ impl NativeWebRtcSession {
     }
 
     pub async fn create_offer(&self, ice_restart: bool) -> Result<SessionDescriptionPayload, String> {
-        let options = OfferOptions {
-            ice_restart,
-            offer_to_receive_audio: true,
-            offer_to_receive_video: true,
-        };
+        let mut opts = OfferOptions::default();
+        opts.ice_restart = ice_restart;
+        let sdp = self
+            .pc
+            .create_offer(opts)
+            .await
+            .map_err(|e| e.to_string())?;
 
-        let desc = self.pc.create_offer(options).await.map_err(|e| {
-            eprintln!("[webrtc:err] create_offer failed: {:?}", e);
-            e.to_string()
-        })?;
-
-        let sdp = prioritize_vp8(desc.to_string());
-        println!("[webrtc] create_offer sdp len={}", sdp.len());
+        let modified_sdp = prioritize_vp8(sdp.to_string());
 
         Ok(SessionDescriptionPayload {
             sdp_type: "offer".to_string(),
-            sdp,
+            sdp: modified_sdp,
         })
     }
 
     pub async fn create_answer(&self) -> Result<SessionDescriptionPayload, String> {
-        let desc = self
+        let opts = AnswerOptions::default();
+        let sdp = self
             .pc
-            .create_answer(AnswerOptions::default())
+            .create_answer(opts)
             .await
-            .map_err(|e| {
-                eprintln!("[webrtc:err] create_answer failed: {:?}", e);
-                e.to_string()
-            })?;
+            .map_err(|e| e.to_string())?;
 
-        let sdp = prioritize_vp8(desc.to_string());
-        println!("[webrtc] create_answer sdp len={}", sdp.len());
+        let modified_sdp = prioritize_vp8(sdp.to_string());
 
         Ok(SessionDescriptionPayload {
             sdp_type: "answer".to_string(),
-            sdp,
+            sdp: modified_sdp,
         })
     }
 
-    pub async fn set_local_description(&self, sdp_type: String, sdp: String) -> Result<(), String> {
-        let t = match sdp_type.to_lowercase().as_str() {
+    pub async fn set_local_description(
+        &self,
+        sdp_type: String,
+        sdp: String,
+    ) -> Result<(), String> {
+        let s_type = match sdp_type.to_lowercase().as_str() {
             "offer" => SdpType::Offer,
             "answer" => SdpType::Answer,
             "pranswer" => SdpType::PrAnswer,
             "rollback" => SdpType::Rollback,
             _ => return Err(format!("Unknown SDP type: {}", sdp_type)),
         };
+        let desc = SessionDescription::parse(&normalize_sdp(&sdp), s_type)
+            .map_err(|e| e.to_string())?;
+        self.pc
+            .set_local_description(desc)
+            .await
+            .map_err(|e| e.to_string())
+    }
 
-        if t == SdpType::Rollback {
-            println!("[webrtc] set_local_description rollback");
-            let desc = SessionDescription::parse("", SdpType::Rollback).map_err(|e| e.to_string())?;
-            return self.pc.set_local_description(desc).await.map_err(|e| e.to_string());
+    pub async fn set_remote_description(
+        &self,
+        sdp_type: String,
+        sdp: String,
+    ) -> Result<(), String> {
+        let s_type = match sdp_type.to_lowercase().as_str() {
+            "offer" => SdpType::Offer,
+            "answer" => SdpType::Answer,
+            "pranswer" => SdpType::PrAnswer,
+            "rollback" => SdpType::Rollback,
+            _ => return Err(format!("Unknown SDP type: {}", sdp_type)),
+        };
+        let desc = SessionDescription::parse(&normalize_sdp(&sdp), s_type)
+            .map_err(|e| e.to_string())?;
+        self.pc
+            .set_remote_description(desc)
+            .await
+            .map_err(|e| e.to_string())?;
+
+        let handle = tokio::runtime::Handle::current();
+        for transceiver in self.pc.transceivers() {
+            if let Some(track) = transceiver.receiver().track() {
+                start_remote_track(
+                    track,
+                    self.audio_channel.clone(),
+                    self.video_channel.clone(),
+                    self.active_tracks.clone(),
+                    handle.clone(),
+                );
+            }
         }
-
-        let normalized = normalize_sdp(&sdp);
-        println!("[webrtc] set_local_description type={} len={}", sdp_type, normalized.len());
-
-        let desc = SessionDescription::parse(&normalized, t).map_err(|e| {
-            eprintln!("[webrtc:err] SessionDescription::parse local failed: {} - {}", e.line, e.description);
-            e.to_string()
-        })?;
-        self.pc.set_local_description(desc).await.map_err(|e| {
-            eprintln!("[webrtc:err] pc.set_local_description failed: {:?}", e);
-            e.to_string()
-        })
-    }
-
-    pub async fn set_remote_description(&self, sdp_type: String, sdp: String) -> Result<(), String> {
-        let normalized = normalize_sdp(&sdp);
-        println!("[webrtc] set_remote_description type={} len={}", sdp_type, normalized.len());
-
-        let t = match sdp_type.to_lowercase().as_str() {
-            "offer" => SdpType::Offer,
-            "answer" => SdpType::Answer,
-            "pranswer" => SdpType::PrAnswer,
-            "rollback" => SdpType::Rollback,
-            _ => return Err(format!("Unknown SDP type: {}", sdp_type)),
-        };
-
-        let desc = SessionDescription::parse(&normalized, t).map_err(|e| {
-            eprintln!("[webrtc:err] SessionDescription::parse remote failed: {} - {}", e.line, e.description);
-            e.to_string()
-        })?;
-        self.pc.set_remote_description(desc).await.map_err(|e| {
-            eprintln!("[webrtc:err] pc.set_remote_description failed: {:?}", e);
-            e.to_string()
-        })
+        Ok(())
     }
 
     pub async fn add_ice_candidate(&self, payload: IceCandidatePayload) -> Result<(), String> {
-        let clean_cand = payload.candidate.trim();
-        if clean_cand.is_empty() {
-            return Ok(());
-        }
-        let mid = payload.sdp_mid.unwrap_or_else(|| "0".to_string());
-        let mline = payload.sdp_mline_index.unwrap_or(0);
-        let cand = IceCandidate::parse(&mid, mline, clean_cand).map_err(|e| {
-            eprintln!("[webrtc:err] IceCandidate::parse failed: {} - {}", e.line, e.description);
-            e.to_string()
-        })?;
-        self.pc.add_ice_candidate(cand).await.map_err(|e| {
-            eprintln!("[webrtc:err] pc.add_ice_candidate failed: {:?}", e);
-            e.to_string()
-        })
+        let candidate = IceCandidate::parse(
+            payload.sdp_mid.as_deref().unwrap_or("0"),
+            payload.sdp_mline_index.unwrap_or(0),
+            &payload.candidate,
+        )
+        .map_err(|e| e.to_string())?;
+        self.pc
+            .add_ice_candidate(candidate)
+            .await
+            .map_err(|e| e.to_string())
     }
 
     pub fn create_data_channel(&self, _label: &str) -> Result<(), String> {
@@ -415,13 +396,15 @@ impl NativeWebRtcSession {
         if enabled {
             if !self.camera_enabled.swap(true, Ordering::SeqCst) {
                 let mut capturer = self.capturer.lock().await;
-                capturer.start(self.video_source.clone())?;
+                capturer.start(self.video_source.clone(), Arc::clone(&self.use_stubs))?;
 
                 let mut track_lock = self.video_track.lock().await;
                 if let Some(track) = track_lock.as_ref() {
                     track.set_enabled(true);
                 } else {
-                    let track = self.factory.create_video_track("camera0", self.video_source.clone());
+                    let track = self
+                        .factory
+                        .create_video_track("camera0", self.video_source.clone());
                     let sender_lock = self.video_sender.lock().await;
                     if let Some(sender) = sender_lock.as_ref() {
                         let _ = sender.set_track(Some(MediaStreamTrack::Video(track.clone())));
@@ -435,6 +418,43 @@ impl NativeWebRtcSession {
             let track_lock = self.video_track.lock().await;
             if let Some(track) = track_lock.as_ref() {
                 track.set_enabled(false);
+            }
+        }
+        Ok(())
+    }
+
+    pub async fn set_use_stubs(&self, enabled: bool) -> Result<(), String> {
+        self.use_stubs.store(enabled, Ordering::SeqCst);
+        let sender_lock = self.audio_sender.lock().await;
+        if let Some(sender) = sender_lock.as_ref() {
+            if enabled {
+                self.stub_audio_running.store(true, Ordering::SeqCst);
+                let stub_source = self.stub_audio_source.clone();
+                let running = Arc::clone(&self.stub_audio_running);
+                tokio::spawn(async move {
+                    let mut seed: u32 = 123456789;
+                    let mut interval = tokio::time::interval(std::time::Duration::from_millis(10));
+                    while running.load(Ordering::SeqCst) {
+                        interval.tick().await;
+                        let mut samples = Vec::with_capacity(480);
+                        for _ in 0..480 {
+                            seed = seed.wrapping_mul(1664525).wrapping_add(1013904223);
+                            let val = (((seed >> 16) as i32 % 6000) - 3000) as i16;
+                            samples.push(val);
+                        }
+                        let frame = AudioFrame {
+                            data: std::borrow::Cow::Owned(samples),
+                            sample_rate: 48000,
+                            num_channels: 1,
+                            samples_per_channel: 480,
+                        };
+                        let _ = stub_source.capture_frame(&frame).await;
+                    }
+                });
+                let _ = sender.set_track(Some(MediaStreamTrack::Audio(self.stub_audio_track.clone())));
+            } else {
+                self.stub_audio_running.store(false, Ordering::SeqCst);
+                let _ = sender.set_track(Some(MediaStreamTrack::Audio(self.device_audio_track.clone())));
             }
         }
         Ok(())
@@ -454,6 +474,11 @@ impl NativeWebRtcSession {
     pub async fn set_video_channel(&self, channel: Channel<InvokeResponseBody>) {
         let sender = FrameSender::new(channel);
         *self.video_channel.lock().await = Some(sender);
+    }
+
+    pub async fn set_audio_channel(&self, channel: Channel<InvokeResponseBody>) {
+        let sender = AudioSender::new(channel);
+        *self.audio_channel.lock().await = Some(sender);
     }
 
     pub async fn set_candidates_channel(&self, channel: Channel<serde_json::Value>) {
@@ -483,6 +508,7 @@ impl NativeWebRtcSession {
     }
 
     pub async fn close(&self) {
+        self.stub_audio_running.store(false, Ordering::SeqCst);
         let mut capturer = self.capturer.lock().await;
         capturer.stop();
         let _ = self.factory.stop_recording();
@@ -492,20 +518,36 @@ impl NativeWebRtcSession {
     }
 }
 
+fn normalize_sdp(sdp: &str) -> String {
+    let mut result = sdp
+    .lines()
+    .map(|line| line.trim())
+    .filter(|line| !line.is_empty())
+    .collect::<Vec<_>>()
+    .join("\r\n");
+    if !result.is_empty() {
+        result.push_str("\r\n");
+    }
+    result
+}
+
 fn prioritize_vp8(sdp: String) -> String {
     let mut lines: Vec<String> = sdp
-        .lines()
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty())
-        .collect();
+    .lines()
+    .map(|s| s.trim().to_string())
+    .filter(|s| !s.is_empty())
+    .collect();
     let mut vp8_pt = None;
 
     for line in &lines {
         if line.starts_with("a=rtpmap:") && line.to_uppercase().contains("VP8/90000") {
-            if let Some(pt_str) = line.strip_prefix("a=rtpmap:").and_then(|s| s.split_whitespace().next()) {
-                vp8_pt = Some(pt_str.to_string());
-                break;
-            }
+            if let Some(pt_str) = line
+                .strip_prefix("a=rtpmap:")
+                .and_then(|s| s.split_whitespace().next())
+                {
+                    vp8_pt = Some(pt_str.to_string());
+                    break;
+                }
         }
     }
 
@@ -535,15 +577,83 @@ fn prioritize_vp8(sdp: String) -> String {
     result
 }
 
-fn normalize_sdp(sdp: &str) -> String {
-    let lines: Vec<&str> = sdp
-        .lines()
-        .map(|l| l.trim())
-        .filter(|l| !l.is_empty())
-        .collect();
-    let mut result = lines.join("\r\n");
-    if !result.is_empty() {
-        result.push_str("\r\n");
-    }
-    result
+fn start_remote_track(
+    track: MediaStreamTrack,
+    audio_chan: Arc<Mutex<Option<AudioSender>>>,
+    video_chan: Arc<Mutex<Option<FrameSender>>>,
+    active_tracks: Arc<Mutex<std::collections::HashSet<String>>>,
+    handle: tokio::runtime::Handle,
+) {
+    let track_id = track.id();
+    let at_clone = active_tracks.clone();
+    handle.spawn(async move {
+        {
+            let mut set = at_clone.lock().await;
+            if set.contains(&track_id) {
+                return;
+            }
+            set.insert(track_id.clone());
+        }
+        match track {
+            MediaStreamTrack::Video(vtrack) => {
+                let mut stream = NativeVideoStream::new(vtrack);
+                while let Some(frame) = stream.next().await {
+                    let lock = video_chan.lock().await;
+                    if let Some(sender) = lock.as_ref() {
+                        let buffer = frame.buffer.to_i420();
+                        let width = buffer.width();
+                        let height = buffer.height();
+                        let (stride_y, stride_u, stride_v) = buffer.strides();
+                        let (data_y, data_u, data_v) = buffer.data();
+
+                        let mut y_plane = Vec::with_capacity((width * height) as usize);
+                        for row in 0..height {
+                            let start = (row * stride_y) as usize;
+                            let end = start + width as usize;
+                            if end <= data_y.len() {
+                                y_plane.extend_from_slice(&data_y[start..end]);
+                            }
+                        }
+
+                        let chroma_w = (width + 1) / 2;
+                        let chroma_h = (height + 1) / 2;
+
+                        let mut u_plane = Vec::with_capacity((chroma_w * chroma_h) as usize);
+                        for row in 0..chroma_h {
+                            let start = (row * stride_u) as usize;
+                            let end = start + chroma_w as usize;
+                            if end <= data_u.len() {
+                                u_plane.extend_from_slice(&data_u[start..end]);
+                            }
+                        }
+
+                        let mut v_plane = Vec::with_capacity((chroma_w * chroma_h) as usize);
+                        for row in 0..chroma_h {
+                            let start = (row * stride_v) as usize;
+                            let end = start + chroma_w as usize;
+                            if end <= data_v.len() {
+                                v_plane.extend_from_slice(&data_v[start..end]);
+                            }
+                        }
+
+                        let _ = sender.send_i420(width, height, &y_plane, &u_plane, &v_plane);
+                    }
+                }
+            }
+            MediaStreamTrack::Audio(atrack) => {
+                let mut stream = NativeAudioStream::new(atrack, 48000, 1);
+                let mut chunk = Vec::with_capacity(2048);
+                while let Some(frame) = stream.next().await {
+                    chunk.extend_from_slice(&frame.data);
+                    if chunk.len() >= 1920 {
+                        let lock = audio_chan.lock().await;
+                        if let Some(sender) = lock.as_ref() {
+                            let _ = sender.send_pcm(48000, 1, &chunk);
+                        }
+                        chunk.clear();
+                    }
+                }
+            }
+        }
+    });
 }

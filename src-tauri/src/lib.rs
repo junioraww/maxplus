@@ -2,6 +2,7 @@ mod proxy_auth;
 mod commands;
 mod crypto;
 mod files;
+pub mod media_remux;
 mod media_validator;
 mod notifications;
 mod screen_capture;
@@ -220,6 +221,8 @@ pub fn run() {
             files::read_file,
             files::write_file_string,
             files::write_file_bytes,
+            files::append_file_bytes,
+            files::finalize_call_recording,
             files::save_trace_zip,
             files::save_trace_archive,
             files::save_temp_media,
@@ -316,6 +319,8 @@ pub fn run() {
             webrtc_engine::commands::webrtc_set_camera_enabled,
             webrtc_engine::commands::webrtc_set_mic_muted,
             webrtc_engine::commands::webrtc_listen_video,
+            webrtc_engine::commands::webrtc_listen_audio,
+            webrtc_engine::commands::webrtc_set_use_stubs,
             webrtc_engine::commands::webrtc_listen_candidates,
             webrtc_engine::commands::webrtc_listen_state,
             webrtc_engine::commands::webrtc_create_data_channel,

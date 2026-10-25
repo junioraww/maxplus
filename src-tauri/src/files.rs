@@ -469,6 +469,194 @@ pub async fn write_file_bytes(path: String, content: Vec<u8>) -> Result<(), Stri
 }
 
 #[tauri::command]
+pub async fn append_file_bytes(path: String, content: Vec<u8>) -> Result<(), String> {
+    use tokio::io::AsyncWriteExt;
+    if let Some(parent) = std::path::Path::new(&path).parent() {
+        let _ = tokio::fs::create_dir_all(parent).await;
+    }
+    let mut file = tokio::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&path)
+        .await
+        .map_err(|e| e.to_string())?;
+    file.write_all(&content).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn finalize_call_recording(
+    app: tauri::AppHandle,
+    temp_path: String,
+    name: String,
+    target_path: Option<String>,
+    duration_sec: Option<f64>,
+) -> Result<String, String> {
+    if !std::path::Path::new(&temp_path).exists() {
+        return Err("Temporary recording file does not exist".into());
+    }
+
+    let is_ogg = name.ends_with(".ogg") || target_path.as_deref().unwrap_or("").ends_with(".ogg");
+
+    let source_path = if is_ogg {
+        let ogg_temp = format!("{}.converted.ogg", temp_path);
+        let t_clone = temp_path.clone();
+        let o_clone = ogg_temp.clone();
+        let remux_res = tokio::task::spawn_blocking(move || {
+            crate::media_remux::remux_webm_opus_to_ogg(&t_clone, &o_clone)
+        })
+        .await
+        .map_err(|e| e.to_string())?;
+
+        if remux_res.is_ok() && std::path::Path::new(&ogg_temp).exists() {
+            let _ = tokio::fs::remove_file(&temp_path).await;
+            ogg_temp
+        } else {
+            temp_path.clone()
+        }
+    } else {
+        let t_clone = temp_path.clone();
+        tokio::task::spawn_blocking(move || {
+            crate::media_remux::normalize_webm_and_patch_duration(&t_clone, duration_sec);
+        })
+        .await
+        .map_err(|e| e.to_string())?;
+        temp_path.clone()
+    };
+
+    if let Some(target) = target_path {
+        if !target.is_empty() {
+            #[cfg(target_os = "android")]
+            if target.starts_with("content://") {
+                use tauri_plugin_android_fs::AndroidFsExt;
+                use std::io::Write;
+                let api = app.android_fs_async();
+                let uri = tauri_plugin_android_fs::FsUri::from_uri(&target);
+                let mut out_file = api.open_file_writable(&uri).await.map_err(|e| e.to_string())?;
+                let mut in_file = tokio::fs::File::open(&source_path).await.map_err(|e| e.to_string())?;
+                use tokio::io::AsyncReadExt;
+                let mut buffer = [0u8; 65536];
+                loop {
+                    let bytes_read = in_file.read(&mut buffer).await.map_err(|e| e.to_string())?;
+                    if bytes_read == 0 {
+                        break;
+                    }
+                    out_file.write_all(&buffer[..bytes_read]).map_err(|e| e.to_string())?;
+                }
+                let _ = tokio::fs::remove_file(&source_path).await;
+                return Ok(target);
+            }
+
+            if let Some(parent) = std::path::Path::new(&target).parent() {
+                let _ = tokio::fs::create_dir_all(parent).await;
+            }
+
+            if tokio::fs::rename(&source_path, &target).await.is_err() {
+                let mut in_file = tokio::fs::File::open(&source_path).await.map_err(|e| e.to_string())?;
+                let mut out_file = tokio::fs::File::create(&target).await.map_err(|e| e.to_string())?;
+                tokio::io::copy(&mut in_file, &mut out_file).await.map_err(|e| e.to_string())?;
+                let _ = tokio::fs::remove_file(&source_path).await;
+            }
+            return Ok(target);
+        }
+    }
+
+    #[cfg(target_os = "android")]
+    {
+        use tauri_plugin_android_fs::{AndroidFsExt, PublicGeneralPurposeDir};
+        let api = app.android_fs_async();
+
+        if !api.public_storage().request_permission().await.map_err(|e| e.to_string())? {
+            return Err("Permission denied".into());
+        }
+
+        let mime = if name.ends_with(".webm") {
+            Some("video/webm")
+        } else if name.ends_with(".mp4") {
+            Some("video/mp4")
+        } else if name.ends_with(".ogg") {
+            Some("audio/ogg")
+        } else {
+            None
+        };
+
+        let uri = api
+            .public_storage()
+            .create_new_file_with_pending(
+                None,
+                PublicGeneralPurposeDir::Download,
+                &name,
+                mime,
+            )
+            .await
+            .map_err(|e| e.to_string())?;
+
+        use std::io::Write;
+        let mut out_file = api
+            .open_file_writable(&uri)
+            .await
+            .map_err(|e| e.to_string())?;
+
+        let mut in_file = tokio::fs::File::open(&source_path).await.map_err(|e| e.to_string())?;
+        use tokio::io::AsyncReadExt;
+        let mut buffer = [0u8; 65536];
+        loop {
+            let bytes_read = in_file.read(&mut buffer).await.map_err(|e| e.to_string())?;
+            if bytes_read == 0 {
+                break;
+            }
+            out_file.write_all(&buffer[..bytes_read]).map_err(|e| e.to_string())?;
+        }
+
+        api.public_storage()
+            .set_pending(&uri, false)
+            .await
+            .map_err(|e| e.to_string())?;
+
+        api.public_storage().scan(&uri).await.ok();
+        let _ = tokio::fs::remove_file(&source_path).await;
+
+        Ok(uri.uri.as_str().to_string())
+    }
+
+    #[cfg(not(target_os = "android"))]
+    {
+        let download_dir = dirs::download_dir().unwrap_or_else(|| std::path::PathBuf::from("."));
+        let mut final_path = download_dir.join(&name);
+        if final_path.exists() {
+            let stem = std::path::Path::new(&name)
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("recording");
+            let ext = std::path::Path::new(&name)
+                .extension()
+                .and_then(|s| s.to_str())
+                .unwrap_or("");
+            let timestamp = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_secs())
+                .unwrap_or(0);
+            let unique_name = if ext.is_empty() {
+                format!("{}_{}", stem, timestamp)
+            } else {
+                format!("{}_{}.{}", stem, timestamp, ext)
+            };
+            final_path = download_dir.join(unique_name);
+        }
+
+        let final_str = final_path.to_string_lossy().to_string();
+
+        if tokio::fs::rename(&source_path, &final_path).await.is_err() {
+            let mut in_file = tokio::fs::File::open(&source_path).await.map_err(|e| e.to_string())?;
+            let mut out_file = tokio::fs::File::create(&final_path).await.map_err(|e| e.to_string())?;
+            tokio::io::copy(&mut in_file, &mut out_file).await.map_err(|e| e.to_string())?;
+            let _ = tokio::fs::remove_file(&source_path).await;
+        }
+
+        Ok(final_str)
+    }
+}
+
+#[tauri::command]
 pub async fn save_trace_zip(
     app: tauri::AppHandle,
     name: String,

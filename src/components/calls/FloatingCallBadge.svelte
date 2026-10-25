@@ -122,6 +122,9 @@
         {:else}
           Подключение...
         {/if}
+        {#if $activeCall.isRecording}
+          <span class="rec-dot-floating" title="Запись"></span>
+        {/if}
       </span>
     </div>
 
@@ -235,6 +238,23 @@
     font-size: 11px;
     color: rgba(255,255,255,0.5);
     font-variant-numeric: tabular-nums;
+    display: inline-flex;
+    align-items: center;
+  }
+
+  .rec-dot-floating {
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #ff4444;
+    margin-left: 5px;
+    animation: recPulseFloating 1.2s infinite;
+  }
+
+  @keyframes recPulseFloating {
+    0%, 100% { opacity: 0.8; transform: scale(0.9); }
+    50% { opacity: 1; transform: scale(1.2); }
   }
 
   .badge-actions {

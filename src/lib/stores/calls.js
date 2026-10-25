@@ -62,6 +62,7 @@ const INITIAL_STATE = {
   peerScreenOn: false,
   incomingSecureRequest: null,
   useStubs: initialStubs,
+  isRecording: false,
 };
 
 export const activeCall = writable({ ...INITIAL_STATE });
