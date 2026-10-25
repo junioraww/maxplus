@@ -20,6 +20,10 @@ on:
         required: false
         default: 'build_output/*'
         type: string
+      download_run_id:
+        description: 'Optional GitHub Actions Run ID to automatically download artifacts from'
+        required: false
+        type: string
 
 jobs:
   publish:
@@ -47,6 +51,15 @@ jobs:
             cat check_res.json
             exit 1
           fi
+
+      - name: Download Artifacts from Run
+        if: ${{ inputs.download_run_id != '' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p release_assets
+          gh run download "${{ inputs.download_run_id }}" --dir release_assets/
+          find release_assets/ -mindepth 2 -type f -exec mv -t release_assets/ {} +
 
       - name: Gather Release Files
         id: gather_files

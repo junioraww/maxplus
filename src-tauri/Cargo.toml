@@ -78,4 +78,5 @@ webkit2gtk = { version = "2.0", default-features = false }
 libwebrtc = "0.3"
 nokhwa = { version = "0.10", features = ["input-v4l"] }
 tokio-stream = "0.1"
+rust-ini = "=0.21.1"
 

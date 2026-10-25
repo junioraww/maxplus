@@ -41,7 +41,22 @@ jobs:
             libayatana-appindicator3-dev \
             libjavascriptcoregtk-4.1-dev \
             librsvg2-dev \
-            patchelf
+            patchelf \
+            libgstreamer1.0-dev \
+            libgstreamer-plugins-base1.0-dev \
+            gstreamer1.0-plugins-base \
+            gstreamer1.0-plugins-good \
+            gstreamer1.0-pulseaudio \
+            gstreamer1.0-alsa \
+            gstreamer1.0-gl
+
+      - name: Install Clang 21
+        run: |
+          wget https://apt.llvm.org/llvm.sh
+          chmod +x llvm.sh
+          sudo ./llvm.sh 21 all
+          echo "CC=clang-21" >> $GITHUB_ENV
+          echo "CXX=clang++-21" >> $GITHUB_ENV
 
       - name: Patch Cargo.toml for CI
         run: |
@@ -61,7 +76,37 @@ jobs:
 
       - run: bunx tauri build
 
+      - name: Build Lite AppImage
+        run: |
+          wget -q https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage -O appimagetool
+          chmod +x appimagetool
+          for f in src-tauri/target/release/bundle/appimage/MAX_*; do
+            [ -f "$f" ] && mv "$f" "${f//MAX_/maxplus_}"
+          done
+          for f in src-tauri/target/release/bundle/deb/MAX_*; do
+            [ -f "$f" ] && mv "$f" "${f//MAX_/maxplus_}"
+          done
+          ORIGINAL_APPIMAGE=$(ls src-tauri/target/release/bundle/appimage/*.AppImage | head -n 1)
+          LITE_APPIMAGE="${ORIGINAL_APPIMAGE%.AppImage}-lite.AppImage"
+          $ORIGINAL_APPIMAGE --appimage-extract
+          rm -rf squashfs-root/usr/lib
+          mkdir -p squashfs-root/usr/lib
+          printf '%s\n' \
+            '#!/bin/sh' \
+            'HERE="$(dirname "$(readlink -f "$0")")"' \
+            'export APPDIR="$HERE"' \
+            'export XDG_DATA_DIRS="${HERE}/usr/share:${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"' \
+            'unset GST_PLUGIN_SYSTEM_PATH_1_0' \
+            'unset GST_PLUGIN_PATH_1_0' \
+            'unset GST_PLUGIN_SCANNER' \
+            'exec "${HERE}/usr/bin/maxplus" "$@"' > squashfs-root/AppRun
+          chmod +x squashfs-root/AppRun
+          ARCH=x86_64 ./appimagetool --appimage-extract-and-run squashfs-root "$LITE_APPIMAGE"
+          rm -rf squashfs-root appimagetool
+
       - uses: actions/upload-artifact@v4
         with:
           name: maxplus-linux
-          path: src-tauri/target/release/bundle/appimage/*.AppImage
+          path: |
+            src-tauri/target/release/bundle/appimage/*.AppImage
+            src-tauri/target/release/bundle/deb/*.deb
