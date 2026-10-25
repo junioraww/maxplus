@@ -1,0 +1,59 @@
+name: Build Max+ macOS
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-14
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+    timeout-minutes: 60
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.bun/install/cache
+            node_modules
+          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Patch Cargo.toml for CI
+        run: |
+          sed -i '' 's|path = "../../rumax"|git = "https://github.com/junioraww/rumax.git", branch = "main"|g' src-tauri/Cargo.toml
+          sed -i '' '/libwebrtc/d' src-tauri/Cargo.toml
+          grep rumax src-tauri/Cargo.toml
+
+      - run: bun install --frozen-lockfile
+
+      - run: bun run tauri icon static/favicon.png
+
+      - run: bunx tauri build --target universal-apple-darwin
+
+      - name: Normalize Artifact Names
+        run: |
+          for f in src-tauri/target/universal-apple-darwin/release/bundle/dmg/MAX*; do
+            [ -f "$f" ] && mv "$f" "${f//MAX/maxplus}"
+          done
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: maxplus-macos
+          path: src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg

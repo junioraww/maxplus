@@ -58,7 +58,9 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           mkdir -p release_assets
-          gh run download "${{ inputs.download_run_id }}" --dir release_assets/
+          for run_id in $(echo "${{ inputs.download_run_id }}" | tr ',' ' '); do
+            gh run download "$run_id" --dir release_assets/
+          done
           find release_assets/ -mindepth 2 -type f -exec mv -t release_assets/ {} +
 
       - name: Gather Release Files
