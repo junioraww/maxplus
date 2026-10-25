@@ -6,7 +6,7 @@
   import { currentUser } from "$lib/stores/api";
   import { getChatSettings } from "$lib/stores/messages";
   import { getContact } from "$lib/stores/contacts";
-  import { CallService } from "$lib/services/CallService.js";
+  import { CallService } from "$lib/services/CallService";
   import { getMountStore } from "$lib/plugins/mount-registry";
 
   const pluginHeaderLeadings = getMountStore("chat:header-leading");

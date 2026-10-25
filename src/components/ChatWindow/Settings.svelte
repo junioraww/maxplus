@@ -4,7 +4,7 @@
   import { dict } from '$lib/crypto/text-codec';
   import API from "$lib/stores/api";
   import { isChatMuted } from "$lib/utils/notifications";
-  import { autoDownloadEncryptedMedia } from "$lib/stores/e2eSettings.js";
+  import { autoDownloadEncryptedMedia } from "$lib/stores/e2eSettings";
 
   export let chat;
   export let messages;

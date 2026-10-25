@@ -1,20 +1,20 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { get } from 'svelte/store';
-import { activeCall, patchCallState, resetCallState, CALL_PHASE, CALL_MODE, callUseStubs } from '$lib/stores/calls.js';
-import { CallEncryptionSession } from '$lib/crypto/callEncryption.js';
+import { activeCall, patchCallState, resetCallState, CALL_PHASE, CALL_MODE, callUseStubs } from '$lib/stores/calls';
+import { CallEncryptionSession } from '$lib/crypto/callEncryption';
 import { mediaPipeline } from '$lib/services/MediaPipelineHost';
-import { showAlert } from '$lib/utils/alert.js';
-import API, { currentUser, currentRealChats } from '$lib/stores/api.js';
-import { getChat } from '$lib/stores/messages.js';
-import Session, { closeChat } from '$lib/stores/session.js';
-import { getCurrentAccount, getDevice } from '$lib/stores/accounts.js';
-import { initHandshake, acceptHandshake, processAccept } from '$lib/crypto/asymmetric.js';
-import { startIncomingRingtone, startOutgoingRingback, stopCallAudio, playRejectionTone } from '$lib/services/callAudio.js';
-import { showDesktopCallNotification, cancelDesktopCallNotification } from '$lib/utils/notifications.js';
-import { getContactDirect } from '$lib/stores/contacts.js';
-import { NativeRustPeerConnection } from '$lib/services/NativeRustPeerConnection.js';
-import { createSyntheticAudioStream, createSyntheticVideoStream } from '$lib/utils/mediaFallback.js';
+import { showAlert } from '$lib/utils/alert';
+import API, { currentUser, currentRealChats } from '$lib/stores/api';
+import { getChat } from '$lib/stores/messages';
+import Session, { closeChat } from '$lib/stores/session';
+import { getCurrentAccount, getDevice } from '$lib/stores/accounts';
+import { initHandshake, acceptHandshake, processAccept } from '$lib/crypto/asymmetric';
+import { startIncomingRingtone, startOutgoingRingback, stopCallAudio, playRejectionTone } from '$lib/services/callAudio';
+import { showDesktopCallNotification, cancelDesktopCallNotification } from '$lib/utils/notifications';
+import { getContactDirect } from '$lib/stores/contacts';
+import { NativeRustPeerConnection } from '$lib/services/NativeRustPeerConnection';
+import { createSyntheticAudioStream, createSyntheticVideoStream } from '$lib/utils/mediaFallback';
 
 import { platform } from '@tauri-apps/plugin-os';
 

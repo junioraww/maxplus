@@ -1,6 +1,6 @@
 <script>
-  import { now } from "$lib/stores/session.js";
-  import { formatTimeAgo } from "$lib/utils/time.js";
+  import { now } from "$lib/stores/session";
+  import { formatTimeAgo } from "$lib/utils/time";
 
   export let unixTime;
 

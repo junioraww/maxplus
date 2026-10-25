@@ -3,19 +3,19 @@
   import { platform } from "@tauri-apps/plugin-os";
   import { tick, onMount, onDestroy } from "svelte";
   import { get } from "svelte/store";
-  import { pluginOn, pluginOff } from "$lib/plugins/events.js";
+  import { pluginOn, pluginOff } from "$lib/plugins/events";
   import { getMountStore } from "$lib/plugins/mount-registry";
 
   const pluginInputLeft = getMountStore("input:action-left");
   const pluginInputRight = getMountStore("input:action-right");
   const pluginInputAction = getMountStore("input:action");
 
-  import { scrollToBottom } from "$lib/utils/scroll.js";
-  import { registerBackHandler } from "$lib/utils/backButton.js";
-  import { sendMessage, forwardMessages } from "$components/ChatWindow/actions.js";
+  import { scrollToBottom } from "$lib/utils/scroll";
+  import { registerBackHandler } from "$lib/utils/backButton";
+  import { sendMessage, forwardMessages } from "$components/ChatWindow/actions";
   import Reply from "$components/ChatWindow/input/Reply.svelte";
   import ForwardPreview from "$components/ChatWindow/input/ForwardPreview.svelte";
-  import { forwardDraft, clearForwardDraft } from "$lib/stores/forwardDraft.js";
+  import { forwardDraft, clearForwardDraft } from "$lib/stores/forwardDraft";
   import BotCommandsMenu from "$components/ChatWindow/BotCommandsMenu.svelte";
   import API, { currentUser } from "$lib/stores/api";
   import { getChat } from "$lib/stores/messages";
@@ -23,15 +23,15 @@
   import { showAlert } from "$lib/utils/alert";
   import StickerSuggestionsDropout from "$components/ChatWindow/Stickers/StickerSuggestionsDropout.svelte";
   import StickerPanel from "$components/ChatWindow/Stickers/StickerPanel.svelte";
-  import { generateWaveformFromAmplitudes } from "$lib/utils/waveform.js";
-  import { stopCurrentMedia } from "$lib/stores/mediaPlayback.js";
-  import { computeTextDiff, computeAttachesDiff } from "$lib/utils/diff.js";
+  import { generateWaveformFromAmplitudes } from "$lib/utils/waveform";
+  import { stopCurrentMedia } from "$lib/stores/mediaPlayback";
+  import { computeTextDiff, computeAttachesDiff } from "$lib/utils/diff";
   import { getProxiedMediaUrl } from "$lib/utils/images";
-  import { openVideoCropModal, closeVideoCropModal } from "$lib/stores/videoCrop.js";
-  import { encodeAudioBufferToOggOpus } from "$lib/utils/audioEncoder.js";
-  import { encryptMediaAttachment } from "$lib/crypto/messages.js";
-  import { getCurrentAccount } from "$lib/stores/accounts.js";
-  import { safetyLockouts, isChatSafetyLocked } from "$lib/stores/e2eSafety.js";
+  import { openVideoCropModal, closeVideoCropModal } from "$lib/stores/videoCrop";
+  import { encodeAudioBufferToOggOpus } from "$lib/utils/audioEncoder";
+  import { encryptMediaAttachment } from "$lib/crypto/messages";
+  import { getCurrentAccount } from "$lib/stores/accounts";
+  import { safetyLockouts, isChatSafetyLocked } from "$lib/stores/e2eSafety";
 
   import SelectedAttaches from "$components/ChatWindow/input/SelectedAttaches.svelte";
   import EditingBanner from "$components/ChatWindow/input/EditingBanner.svelte";

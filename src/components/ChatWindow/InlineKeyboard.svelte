@@ -1,8 +1,8 @@
 <script>
   import { openUrl } from "@tauri-apps/plugin-opener";
   import API from "$lib/stores/api";
-  import { openMiniApp } from "$lib/stores/webapp.js";
-  import { processMaxLink } from "$lib/utils/maxLink.js";
+  import { openMiniApp } from "$lib/stores/webapp";
+  import { processMaxLink } from "$lib/utils/maxLink";
 
   let { chat, msg, attach } = $props();
 

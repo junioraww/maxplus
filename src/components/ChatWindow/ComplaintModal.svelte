@@ -3,7 +3,7 @@
   import { fly, fade } from "svelte/transition";
   import API from "$lib/stores/api";
 
-  import { complaintReasons, preloadComplaintReasons } from "$lib/stores/complaints.js";
+  import { complaintReasons, preloadComplaintReasons } from "$lib/stores/complaints";
 
   export let messageId;
   export let chatId;

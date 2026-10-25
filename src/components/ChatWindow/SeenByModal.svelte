@@ -2,7 +2,7 @@
   import { createEventDispatcher, onMount, onDestroy } from "svelte";
   import { fade, scale } from "svelte/transition";
   import API from "$lib/stores/api";
-  import { registerBackHandler } from "$lib/utils/backButton.js";
+  import { registerBackHandler } from "$lib/utils/backButton";
   import SeenByItem from "./SeenByItem.svelte";
 
   export let chat = null;

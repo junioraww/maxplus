@@ -1,7 +1,7 @@
 <script>
   import { onMount, onDestroy, tick } from 'svelte';
   import { invoke } from '@tauri-apps/api/core';
-  import { cropVideoToMp4 } from '$lib/utils/videoEncoder.js';
+  import { cropVideoToMp4 } from '$lib/utils/videoEncoder';
 
   export let isOpen = false;
   export let sourcePath = '';

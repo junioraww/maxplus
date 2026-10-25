@@ -2,8 +2,8 @@
   import { createEventDispatcher, onMount, onDestroy, tick } from "svelte";
   import { fade } from "svelte/transition";
   import { openUrl } from "@tauri-apps/plugin-opener";
-  import { handleDeepLinkUrl } from "$lib/utils/deepLink.js";
-  import { registerBackHandler } from "$lib/utils/backButton.js";
+  import { handleDeepLinkUrl } from "$lib/utils/deepLink";
+  import { registerBackHandler } from "$lib/utils/backButton";
 
   export let url = "";
   export let clientX = 0;

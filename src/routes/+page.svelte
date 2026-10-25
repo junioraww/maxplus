@@ -22,8 +22,8 @@
   import ChatWindow from "$components/ChatWindow.svelte";
   import WebAppManager from "$components/webapp/WebAppManager.svelte";
   import PluginImportModal from "$components/plugins/PluginImportModal.svelte";
-  import { panelConfig, CATALOG } from "$lib/stores/panel.js";
-  import { setPanelNavigation } from "$lib/utils/backButton.js";
+  import { panelConfig, CATALOG } from "$lib/stores/panel";
+  import { setPanelNavigation } from "$lib/utils/backButton";
 
   import * as Caching from "$lib/utils/caching";
   import Session, { openChat, closeSettingsPage } from "$lib/stores/session";
@@ -159,8 +159,8 @@
 
     (async () => {
       try {
-        const { pluginStore } = await import("$lib/stores/plugins.js");
-        const { initPluginSystem } = await import("$lib/plugins/runtime.js");
+        const { pluginStore } = await import("$lib/stores/plugins");
+        const { initPluginSystem } = await import("$lib/plugins/runtime");
         await pluginStore.load();
         await initPluginSystem();
       } catch (e) {

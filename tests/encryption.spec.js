@@ -2,16 +2,16 @@ import { test, expect } from "@playwright/test";
 import {
   SYNTHETIC_CURRENT_USER,
   SYNTHETIC_PEER_USER,
-} from "./fixtures/synthetic.js";
-import { CryptoPluginRegistry } from "../src/lib/crypto/plugins.js";
-import { detectObfuscation } from "../src/lib/crypto/messages.js";
-import { dict } from "../src/lib/crypto/text-codec.js";
+} from "./fixtures/synthetic";
+import { CryptoPluginRegistry } from "../src/lib/crypto/plugins";
+import { detectObfuscation } from "../src/lib/crypto/messages";
+import { dict } from "../src/lib/crypto/text-codec";
 import {
   CallEncryptionSession,
   generateCallKeyPair,
   exportPublicKeyBytes,
   deriveSharedSecret,
-} from "../src/lib/crypto/callEncryption.js";
+} from "../src/lib/crypto/callEncryption";
 
 test.describe("End-to-End Encryption and Obfuscation Detection", () => {
   test("detectObfuscation recognizes Chinese marker prefix and returns zh", async () => {
@@ -500,7 +500,7 @@ test.describe("Encrypted Media Descriptor Structure", () => {
   });
 
   test("extractDominantColor returns deterministic valid hex color fallback", async () => {
-    const { extractDominantColor } = await import("../src/lib/crypto/messages.js");
+    const { extractDominantColor } = await import("../src/lib/crypto/messages");
     const color = await extractDominantColor("/synthetic/path/image.jpg");
     expect(color).toMatch(/^#[0-9a-f]{6}$/i);
     expect(color).not.toBeNull();
@@ -511,7 +511,7 @@ test.describe("Encrypted Media Descriptor Structure", () => {
     globalThis.__TAURI_INTERNALS__ = {
       invoke: async (cmd, args) => "/synthetic/cache/enc_uuid.pdf",
     };
-    const { encryptMediaAttachment } = await import("../src/lib/crypto/messages.js");
+    const { encryptMediaAttachment } = await import("../src/lib/crypto/messages");
 
     const attach = {
       _type: "PHOTO",
@@ -621,7 +621,7 @@ test.describe("Encrypted Media Descriptor Structure", () => {
       },
     };
 
-    const { batchDecrypt } = await import("../src/lib/crypto/messages.js");
+    const { batchDecrypt } = await import("../src/lib/crypto/messages");
     const syntheticMessages = [
       { id: 9101, text: "一丁丂七丄synthetic_encoded_1", sender: 1 },
       { id: 9102, text: "一丁丂七丄synthetic_encoded_2", sender: 2 },

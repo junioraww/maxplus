@@ -1,13 +1,13 @@
 <script>
   import { page } from "$app/stores";
   import SettingsPageWrapper from "$components/settings/SettingsPageWrapper.svelte";
-  import { autoDownloadEncryptedMedia } from "$lib/stores/e2eSettings.js";
+  import { autoDownloadEncryptedMedia } from "$lib/stores/e2eSettings";
   import {
     saveOthersDeletedMessages,
     hideMyDeletedMessages,
-  } from "$lib/stores/deletionSettings.js";
-  import { disableMaxPlusAvatars } from "$lib/stores/avatarSettings.js";
-  import { set as sessionSet } from "$lib/stores/session.js";
+  } from "$lib/stores/deletionSettings";
+  import { disableMaxPlusAvatars } from "$lib/stores/avatarSettings";
+  import { set as sessionSet } from "$lib/stores/session";
 
   export let isTab = false;
   export let onClose = null;

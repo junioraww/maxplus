@@ -1,5 +1,5 @@
 <script>
-  import { activeWebApps } from "$lib/stores/webapp.js";
+  import { activeWebApps } from "$lib/stores/webapp";
   import WebAppSheet from "./WebAppSheet.svelte";
   import WebAppMinimizedDock from "./WebAppMinimizedDock.svelte";
 </script>

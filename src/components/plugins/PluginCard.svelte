@@ -1,6 +1,6 @@
 <script>
-  import { enablePlugin, disablePlugin, uninstallPlugin } from "$lib/plugins/runtime.js";
-  import { PERMISSION_LABELS, CATEGORY_LABELS } from "$lib/plugins/manifest.js";
+  import { enablePlugin, disablePlugin, uninstallPlugin } from "$lib/plugins/runtime";
+  import { PERMISSION_LABELS, CATEGORY_LABELS } from "$lib/plugins/manifest";
   import ConfirmModal from "$components/main/ConfirmModal.svelte";
 
   export let plugin;

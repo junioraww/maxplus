@@ -1,8 +1,8 @@
 <script>
-  import { pluginImportModal, closePluginImportModal } from "$lib/stores/plugins.js";
-  import { installPlugin } from "$lib/plugins/runtime.js";
-  import { PERMISSION_LABELS, CATEGORY_LABELS } from "$lib/plugins/manifest.js";
-  import { showAlert } from "$lib/utils/alert.js";
+  import { pluginImportModal, closePluginImportModal } from "$lib/stores/plugins";
+  import { installPlugin } from "$lib/plugins/runtime";
+  import { PERMISSION_LABELS, CATEGORY_LABELS } from "$lib/plugins/manifest";
+  import { showAlert } from "$lib/utils/alert";
 
   let isInstalling = false;
   let showCode = false;

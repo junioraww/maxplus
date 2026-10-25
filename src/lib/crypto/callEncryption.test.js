@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'bun:test';
-import { CallEncryptionSession } from './callEncryption.js';
+import { CallEncryptionSession } from './callEncryption';
 
 describe('Header-Preserving SFrame CallEncryptionSession', () => {
   const syntheticSecret = 'a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90';

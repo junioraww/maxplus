@@ -4,14 +4,14 @@
   import {
     set as sessionSet,
     get as sessionGet
-  } from "$lib/stores/session.js";
-  import { registerBackHandler } from "$lib/utils/backButton.js";
+  } from "$lib/stores/session";
+  import { registerBackHandler } from "$lib/utils/backButton";
 
   import BackButton from "$components/main/auth/BackButton.svelte";
   import ActionButton from "$components/main/auth/ActionButton.svelte";
 
   import API from "$lib/stores/api";
-  import { parseApiError } from "$lib/api/MobileApi.js";
+  import { parseApiError } from "$lib/api/MobileApi";
 
   let error = "";
   let infoMessage = "";

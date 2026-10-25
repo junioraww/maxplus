@@ -1,7 +1,7 @@
 <script>
-  import { activeCall } from '$lib/stores/calls.js';
-  import { currentUserDetails } from '$lib/stores/api.js';
-  import { CallService } from '$lib/services/CallService.js';
+  import { activeCall } from '$lib/stores/calls';
+  import { currentUserDetails } from '$lib/stores/api';
+  import { CallService } from '$lib/services/CallService';
   import { platform } from '@tauri-apps/plugin-os';
 
   let isLinux = false;

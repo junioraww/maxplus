@@ -19,7 +19,7 @@
   import "$lib/styles/AnimatedPanel.css";
   import Avatar from "$components/main/Avatar.svelte";
   import OpenDevSettingsButton from "$components/main/dev/OpenButton.svelte";
-  import { registerBackHandler } from "$lib/utils/backButton.js";
+  import { registerBackHandler } from "$lib/utils/backButton";
 
   let menu = null;
   let longPressed = false;

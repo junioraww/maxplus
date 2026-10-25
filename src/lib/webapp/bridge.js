@@ -6,7 +6,7 @@ import {
   fetchBiometryStatus,
   requestBiometryAuth,
   updateBiometryTokenValue,
-} from "./storage.js";
+} from "./storage";
 
 const METHOD_SLUGS = {
   WebAppSetupBackButton: "setup_back_button",

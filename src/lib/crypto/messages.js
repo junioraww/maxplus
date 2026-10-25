@@ -1,7 +1,7 @@
 import { invoke, convertFileSrc } from "@tauri-apps/api/core";
-import { CryptoPluginRegistry } from "./plugins.js";
+import { CryptoPluginRegistry } from "./plugins";
 
-import { dict } from "./text-codec.js";
+import { dict } from "./text-codec";
 
 const ZH_BASE = 0x4E00;
 const ZH_COUNT = 2048;

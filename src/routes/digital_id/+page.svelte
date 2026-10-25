@@ -1,8 +1,8 @@
 <script>
   import { onMount, onDestroy } from "svelte";
-  import API, { currentUser, currentUserDetails } from "$lib/stores/api.js";
-  import { openDigitalIdApp, openSferumApp, lastClosedMiniApp } from "$lib/stores/webapp.js";
-  import { fetchDigitalIdProfile, deleteDigitalIdProfile, DOCUMENT_TITLES, resetDigitalIdAuth } from "$lib/services/digitalId.js";
+  import API, { currentUser, currentUserDetails } from "$lib/stores/api";
+  import { openDigitalIdApp, openSferumApp, lastClosedMiniApp } from "$lib/stores/webapp";
+  import { fetchDigitalIdProfile, deleteDigitalIdProfile, DOCUMENT_TITLES, resetDigitalIdAuth } from "$lib/services/digitalId";
   import Avatar from "$components/main/Avatar.svelte";
   import ConfirmModal from "$components/main/ConfirmModal.svelte";
 

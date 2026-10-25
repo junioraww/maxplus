@@ -1,5 +1,5 @@
 import { writable, get } from "svelte/store";
-import { saveChatScroll } from "$lib/stores/chatScroll.js";
+import { saveChatScroll } from "$lib/stores/chatScroll";
 
 export const DEFAULT_HEIGHT = 120;
 export const OVERSCAN = 1500;

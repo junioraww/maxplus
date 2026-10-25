@@ -1,7 +1,7 @@
 <script>
   import { createEventDispatcher, onDestroy } from "svelte";
   import { fade } from "svelte/transition";
-  import { registerBackHandler } from "$lib/utils/backButton.js";
+  import { registerBackHandler } from "$lib/utils/backButton";
 
   const dispatch = createEventDispatcher();
 

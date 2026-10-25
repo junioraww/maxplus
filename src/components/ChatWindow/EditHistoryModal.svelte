@@ -1,7 +1,7 @@
 <script>
   import { createEventDispatcher } from 'svelte';
   import { fade, scale } from 'svelte/transition';
-  import { computeTextDiff } from '$lib/utils/diff.js';
+  import { computeTextDiff } from '$lib/utils/diff';
 
   export let msg = null;
 

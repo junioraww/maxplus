@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { extractMaxUrlInfo, processMaxLink } from "../src/lib/utils/maxLink.js";
+import { extractMaxUrlInfo, processMaxLink } from "../src/lib/utils/maxLink";
 
 test.describe("Max link parser and bot link extractor", () => {
   test("extracts bot target and start payload from standard https max.ru link", () => {

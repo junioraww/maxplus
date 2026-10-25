@@ -2,11 +2,11 @@
   import { onMount } from "svelte";
   import SettingsPageWrapper from "$components/settings/SettingsPageWrapper.svelte";
   import PluginCard from "$components/plugins/PluginCard.svelte";
-  import { pluginStore, showPluginImportModal } from "$lib/stores/plugins.js";
-  import { CATEGORY_LABELS } from "$lib/plugins/manifest.js";
+  import { pluginStore, showPluginImportModal } from "$lib/stores/plugins";
+  import { CATEGORY_LABELS } from "$lib/plugins/manifest";
   import { open } from "@tauri-apps/plugin-dialog";
   import { invoke } from "@tauri-apps/api/core";
-  import { showAlert } from "$lib/utils/alert.js";
+  import { showAlert } from "$lib/utils/alert";
 
   export let onClose = null;
 

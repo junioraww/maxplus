@@ -1,6 +1,6 @@
-import { Mp4Encoder, isWebCodecsMp4Available } from "$lib/utils/mp4Encoder.js";
-import { convertAudioBlobToOggOpus } from "$lib/utils/audioEncoder.js";
-import { generateWaveformFromAmplitudes } from "$lib/utils/waveform.js";
+import { Mp4Encoder, isWebCodecsMp4Available } from "$lib/utils/mp4Encoder";
+import { convertAudioBlobToOggOpus } from "$lib/utils/audioEncoder";
+import { generateWaveformFromAmplitudes } from "$lib/utils/waveform";
 
 export function formatElapsed(ms) {
   const totalSec = Math.floor(ms / 1000);

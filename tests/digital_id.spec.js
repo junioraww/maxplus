@@ -9,7 +9,7 @@ import {
   requestExtApi,
   fetchDigitalIdProfile,
   fetchSecurityStatus,
-} from "../src/lib/services/digitalId.js";
+} from "../src/lib/services/digitalId";
 
 test.describe("digital ID service and parsing", () => {
   let mockStore;

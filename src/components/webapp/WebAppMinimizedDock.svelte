@@ -4,7 +4,7 @@
     minimizedWebApps,
     restoreMiniApp,
     closeMiniApp,
-  } from "$lib/stores/webapp.js";
+  } from "$lib/stores/webapp";
 
   let positions = {};
   let draggingId = null;

@@ -9,8 +9,8 @@
   } from "svelte";
   import { writable, get } from "svelte/store";
   import { fly } from "svelte/transition";
-  import { registerBackHandler } from "$lib/utils/backButton.js";
-  import { parseApiError } from "$lib/utils/errors.js";
+  import { registerBackHandler } from "$lib/utils/backButton";
+  import { parseApiError } from "$lib/utils/errors";
 
   import Message from "$components/ChatWindow/Message.svelte";
   import PinnedMessage from "$components/ChatWindow/PinnedMessage.svelte";
@@ -32,11 +32,11 @@
     closeChat,
     get as sessionGet,
   } from "$lib/stores/session";
-  import { handleReaction } from "$components/ChatWindow/actions.js";
+  import { handleReaction } from "$components/ChatWindow/actions";
   import { convertFileSrc } from "@tauri-apps/api/core";
-  import { getProxiedMediaUrl } from "$lib/utils/images.js";
-  import { scrollToBottom } from "$lib/utils/scroll.js";
-  import { getChatScroll } from "$lib/stores/chatScroll.js";
+  import { getProxiedMediaUrl } from "$lib/utils/images";
+  import { scrollToBottom } from "$lib/utils/scroll";
+  import { getChatScroll } from "$lib/stores/chatScroll";
   import Settings from "$components/ChatWindow/Settings.svelte";
   import E2eModal from "$components/ChatWindow/E2eModal.svelte";
   import Dropout from "$components/ChatWindow/Dropout.svelte";
@@ -49,9 +49,9 @@
   import StickerPackModal from "$components/ChatWindow/Stickers/StickerPackModal.svelte";
   import EditHistoryModal from "$components/ChatWindow/EditHistoryModal.svelte";
   import SeenByModal from "$components/ChatWindow/SeenByModal.svelte";
-  import { computeTextDiff } from "$lib/utils/diff.js";
-  import { clearChatNotification } from "$lib/utils/notifications.js";
-  import { showAlert } from "$lib/utils/alert.js";
+  import { computeTextDiff } from "$lib/utils/diff";
+  import { clearChatNotification } from "$lib/utils/notifications";
+  import { showAlert } from "$lib/utils/alert";
   import {
     selectionState,
     isSelecting,
@@ -60,18 +60,18 @@
     toggleMessageSelection,
     setSelectedMessages,
     clearSelection,
-  } from "$lib/stores/messageSelection.js";
-  import { setForwardDraft } from "$lib/stores/forwardDraft.js";
+  } from "$lib/stores/messageSelection";
+  import { setForwardDraft } from "$lib/stores/forwardDraft";
   import ConfirmModal from "$components/main/ConfirmModal.svelte";
   import ComplaintModal from "$components/ChatWindow/ComplaintModal.svelte";
-  import { copyMessageText, forwardMessages } from "$components/ChatWindow/actions.js";
-  import { hideMyDeletedMessages, saveOthersDeletedMessages } from "$lib/stores/deletionSettings.js";
+  import { copyMessageText, forwardMessages } from "$components/ChatWindow/actions";
+  import { hideMyDeletedMessages, saveOthersDeletedMessages } from "$lib/stores/deletionSettings";
 
   import ChatHeader from "$components/ChatWindow/ChatHeader.svelte";
   import ScrollDownButton from "$components/ChatWindow/ScrollDownButton.svelte";
-  import { swipeToClose } from "$components/ChatWindow/swipeToClose.js";
-  import { createVirtualScrollManager, DEFAULT_HEIGHT } from "$components/ChatWindow/chatVirtualScroll.js";
-  import { createMessagesLoader, BATCH_SIZE } from "$components/ChatWindow/chatMessagesLoader.js";
+  import { swipeToClose } from "$components/ChatWindow/swipeToClose";
+  import { createVirtualScrollManager, DEFAULT_HEIGHT } from "$components/ChatWindow/chatVirtualScroll";
+  import { createMessagesLoader, BATCH_SIZE } from "$components/ChatWindow/chatMessagesLoader";
   import { getMountStore } from "$lib/plugins/mount-registry";
 
   const pluginChatBackground = getMountStore("chat:background");

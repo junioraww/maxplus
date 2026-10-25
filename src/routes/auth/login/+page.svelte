@@ -12,7 +12,7 @@
   import {
     get as sessionGet,
     set as sessionSet,
-  } from "$lib/stores/session.js";
+  } from "$lib/stores/session";
   import API, {
     currentUser
   } from "$lib/stores/api";

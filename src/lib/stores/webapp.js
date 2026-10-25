@@ -1,5 +1,5 @@
 import { writable, derived, get } from "svelte/store";
-import API from "./api.js";
+import API from "./api";
 
 export const activeWebApps = writable([]);
 
@@ -306,5 +306,5 @@ export async function openDigitalIdApp() {
   });
 }
 
-export { resolveWebAppUrl } from "$lib/utils/maxLink.js";
+export { resolveWebAppUrl } from "$lib/utils/maxLink";
 

@@ -1,6 +1,6 @@
 <script>
   import { fade, scale } from "svelte/transition";
-  import { handleEnc, dismissRequest } from "$components/ChatWindow/e2e.js";
+  import { handleEnc, dismissRequest } from "$components/ChatWindow/e2e";
 
   export let gotSecretChatRequest;
 

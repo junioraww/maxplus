@@ -1,7 +1,7 @@
 <script>
   import { createEventDispatcher, onDestroy } from "svelte";
   import { fade } from "svelte/transition";
-  import { generateWaveformFromAmplitudes } from "$lib/utils/waveform.js";
+  import { generateWaveformFromAmplitudes } from "$lib/utils/waveform";
 
   export let reviewAudioUrl = null;
   export let reviewAudioDuration = 0;

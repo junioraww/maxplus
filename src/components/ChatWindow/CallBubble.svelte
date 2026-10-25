@@ -1,7 +1,7 @@
 <script>
-  import { CallService } from '$lib/services/CallService.js';
-  import { currentUser } from '$lib/stores/api.js';
-  import { getContact } from '$lib/stores/contacts.js';
+  import { CallService } from '$lib/services/CallService';
+  import { currentUser } from '$lib/stores/api';
+  import { getContact } from '$lib/stores/contacts';
 
   export let attach = {};
   export let chatId = null;

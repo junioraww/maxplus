@@ -4,7 +4,7 @@ import { goto } from "$app/navigation";
     onMount,
     onDestroy
   } from "svelte";
-  import { registerBackHandler } from "$lib/utils/backButton.js";
+  import { registerBackHandler } from "$lib/utils/backButton";
 
   import {
     platform as getPlatform
@@ -30,7 +30,7 @@ import { goto } from "$app/navigation";
   import { getMountStore } from "$lib/plugins/mount-registry";
 
   const pluginSettingsSections = getMountStore("settings:section");
-  import { openDigitalIdApp, openSferumApp } from "$lib/stores/webapp.js";
+  import { openDigitalIdApp, openSferumApp } from "$lib/stores/webapp";
   import { safeAvatarMapStore } from "$lib/services/AvatarSyncManager";
   import { getSafeAvatarMediaUrl } from "$lib/services/uplink";
   import { disableMaxPlusAvatars } from "$lib/stores/avatarSettings";
