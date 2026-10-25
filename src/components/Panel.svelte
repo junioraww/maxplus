@@ -3,7 +3,7 @@
   import { flip } from "svelte/animate";
   import { quintOut, cubicOut } from "svelte/easing";
   import { fade, fly } from "svelte/transition";
-  import { panelConfig, CATALOG } from "$lib/stores/panel.js";
+  import { panelConfig, CATALOG } from "$lib/stores/panel";
   import { getMountStore } from "$lib/plugins/mount-registry";
 
   const pluginNavTop = getMountStore("nav:top");

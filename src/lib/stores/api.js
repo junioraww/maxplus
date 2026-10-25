@@ -2,12 +2,12 @@ import { writable, get } from "svelte/store";
 import { goto } from "$app/navigation";
 import { page } from "$app/stores";
 
-import MobileApi from "$lib/api/MobileApi.js";
-import * as Accounts from "$lib/stores/accounts.js";
+import MobileApi from "$lib/api/MobileApi";
+import * as Accounts from "$lib/stores/accounts";
 import {
   get as sessionGet,
   set as sessionSet
-} from "$lib/stores/session.js";
+} from "$lib/stores/session";
 
 export const currentUser = writable(undefined);
 export const currentUserDetails = writable(undefined);

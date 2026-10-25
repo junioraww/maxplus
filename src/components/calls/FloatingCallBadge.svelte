@@ -1,6 +1,6 @@
 <script>
-  import { activeCall, patchCallState, CALL_PHASE } from '$lib/stores/calls.js';
-  import { CallService } from '$lib/services/CallService.js';
+  import { activeCall, patchCallState, CALL_PHASE } from '$lib/stores/calls';
+  import { CallService } from '$lib/services/CallService';
   import { onDestroy } from 'svelte';
   import { scale, fade } from 'svelte/transition';
   import { cubicOut } from 'svelte/easing';

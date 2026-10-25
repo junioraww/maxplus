@@ -1,8 +1,8 @@
 import { get } from "svelte/store";
-import { batchDecrypt } from "$lib/crypto/messages.js";
-import { getCurrentAccount } from "$lib/stores/accounts.js";
-import { checkForEncryptionRequest } from "$components/ChatWindow/e2e.js";
-import { computeTextDiff } from "$lib/utils/diff.js";
+import { batchDecrypt } from "$lib/crypto/messages";
+import { getCurrentAccount } from "$lib/stores/accounts";
+import { checkForEncryptionRequest } from "$components/ChatWindow/e2e";
+import { computeTextDiff } from "$lib/utils/diff";
 import { get as sessionGet } from "$lib/stores/session";
 
 export const BATCH_SIZE = 40;

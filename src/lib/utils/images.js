@@ -1,7 +1,7 @@
 import { invoke, convertFileSrc } from '@tauri-apps/api/core';
 import { getCachedFile, setCachedFile } from "$lib/stores/cache";
 import { getCurrentAccount } from "$lib/stores/accounts";
-import { getVideoProxyBase } from './proxyConfig.js';
+import { getVideoProxyBase } from './proxyConfig';
 
 const MAX_CONCURRENT_DOWNLOADS = 16;
 let activeDownloads = 0;

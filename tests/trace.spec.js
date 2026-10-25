@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { sanitizeData } from '../src/lib/services/trace.js';
+import { sanitizeData } from '../src/lib/services/trace';
 
 test.describe('Trace system sensitive data sanitization', () => {
   test('redacts authentication tokens and passwords with [TRIM]', () => {

@@ -4,9 +4,9 @@
   import { cubicOut, cubicInOut } from 'svelte/easing';
   import { get } from 'svelte/store';
 
-  import { activeCall, patchCallState, resetCallState, CALL_PHASE, CALL_MODE, callUseStubs, setCallUseStubs } from '$lib/stores/calls.js';
-  import { currentUserDetails } from '$lib/stores/api.js';
-  import { CallService } from '$lib/services/CallService.js';
+  import { activeCall, patchCallState, resetCallState, CALL_PHASE, CALL_MODE, callUseStubs, setCallUseStubs } from '$lib/stores/calls';
+  import { currentUserDetails } from '$lib/stores/api';
+  import { CallService } from '$lib/services/CallService';
   import ParticipantGrid from '$components/calls/ParticipantGrid.svelte';
   import { getMountStore } from "$lib/plugins/mount-registry";
 

@@ -2,7 +2,7 @@
   import { createEventDispatcher, onMount, onDestroy, tick } from "svelte";
   import { fade } from "svelte/transition";
   import { STYLE_KEYS } from "$lib/formatting/constants";
-  import { registerBackHandler } from "$lib/utils/backButton.js";
+  import { registerBackHandler } from "$lib/utils/backButton";
 
   export let clientX = 0;
   export let clientY = 0;

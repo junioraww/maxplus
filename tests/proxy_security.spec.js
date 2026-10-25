@@ -1,7 +1,7 @@
 import { test, expect } from "@playwright/test";
-import { getProxiedMediaUrl, isProxiedMediaUrl, unwrapProxiedMediaUrl } from "../src/lib/utils/images.js";
-import { resolveWebAppUrl } from "../src/lib/utils/maxLink.js";
-import { setProxyConfig, getVideoProxyBase, getWebAppProxyBase, getProxyConfig } from "../src/lib/utils/proxyConfig.js";
+import { getProxiedMediaUrl, isProxiedMediaUrl, unwrapProxiedMediaUrl } from "../src/lib/utils/images";
+import { resolveWebAppUrl } from "../src/lib/utils/maxLink";
+import { setProxyConfig, getVideoProxyBase, getWebAppProxyBase, getProxyConfig } from "../src/lib/utils/proxyConfig";
 
 test.describe("Proxy security, dynamic port and token handling", () => {
   test("generates proxied media URL with dynamic port and token", () => {

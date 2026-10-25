@@ -2,10 +2,10 @@ import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import { get } from "svelte/store";
 import { goto } from "$app/navigation";
-import { processMaxLink } from "$lib/utils/maxLink.js";
-import Session, { openChat } from "$lib/stores/session.js";
-import API, { currentUser } from "$lib/stores/api.js";
-import { openMiniApp } from "$lib/stores/webapp.js";
+import { processMaxLink } from "$lib/utils/maxLink";
+import Session, { openChat } from "$lib/stores/session";
+import API, { currentUser } from "$lib/stores/api";
+import { openMiniApp } from "$lib/stores/webapp";
 
 let pendingUrls = [];
 let sessionUnsub = null;

@@ -1,13 +1,13 @@
 import { test, expect } from '@playwright/test';
-import { getAttachText } from '../src/lib/utils/attachs.js';
-import { getMessagePreview, escapeHtml } from '../src/lib/utils/text.js';
+import { getAttachText } from '../src/lib/utils/attachs';
+import { getMessagePreview, escapeHtml } from '../src/lib/utils/text';
 import {
   SYNTHETIC_CURRENT_USER,
   SYNTHETIC_PEER_USER,
   syntheticMessages,
   syntheticChats,
   syntheticContacts,
-} from './fixtures/synthetic.js';
+} from './fixtures/synthetic';
 
 test.describe('Message previews and attachment labels', () => {
   test('formats video attachments', () => {
@@ -18,7 +18,7 @@ test.describe('Message previews and attachment labels', () => {
 
 test.describe('Media playback coordinator and waveform', () => {
   test('parseWaveform converts bytes to normalized floats', async () => {
-    const { parseWaveform, generateWaveformFromAmplitudes } = await import('../src/lib/utils/waveform.js');
+    const { parseWaveform, generateWaveformFromAmplitudes } = await import('../src/lib/utils/waveform');
     const bytes = [0, 128, 255, 64];
     const wave = parseWaveform(bytes, 4);
     expect(wave.length).toBe(4);
@@ -36,7 +36,7 @@ test.describe('Media playback coordinator and waveform', () => {
   });
 
   test('media playback snaps speed to 1.0x within threshold and bounds between 0.5x and 4.0x', async () => {
-    const { snapSpeed, setPlaybackSpeed, globalSpeed } = await import('../src/lib/stores/mediaPlayback.js');
+    const { snapSpeed, setPlaybackSpeed, globalSpeed } = await import('../src/lib/stores/mediaPlayback');
     const { get } = await import('svelte/store');
 
     expect(snapSpeed(1.04)).toBe(1.0);
@@ -54,7 +54,7 @@ test.describe('Media playback coordinator and waveform', () => {
   });
 
   test('playback mutual exclusion stops previously playing media', async () => {
-    const { activeMedia, registerAudio, registerVideo, stopCurrentMedia } = await import('../src/lib/stores/mediaPlayback.js');
+    const { activeMedia, registerAudio, registerVideo, stopCurrentMedia } = await import('../src/lib/stores/mediaPlayback');
     const { get } = await import('svelte/store');
 
     let audioPaused = false;
@@ -95,7 +95,7 @@ test.describe('Media playback coordinator and waveform', () => {
 
 test.describe('Transcription store', () => {
   test('handleTranscriptionPush updates transcription state', async () => {
-    const { transcriptions, handleTranscriptionPush } = await import('../src/lib/stores/transcription.js');
+    const { transcriptions, handleTranscriptionPush } = await import('../src/lib/stores/transcription');
     const { get } = await import('svelte/store');
 
     handleTranscriptionPush({
@@ -168,7 +168,7 @@ test.describe('Video note playback and Favorites (chatId = 0) handling', () => {
       stopCurrentMedia,
       updateMediaProgress,
       seekMedia,
-    } = await import('../src/lib/stores/mediaPlayback.js');
+    } = await import('../src/lib/stores/mediaPlayback');
     const { get } = await import('svelte/store');
 
     let played = false;
@@ -244,7 +244,7 @@ test.describe('Video note playback and Favorites (chatId = 0) handling', () => {
       playMedia,
       takeOverFromGlobal,
       stopCurrentMedia,
-    } = await import('../src/lib/stores/mediaPlayback.js');
+    } = await import('../src/lib/stores/mediaPlayback');
     const { get } = await import('svelte/store');
 
     const playlistTrack = {
@@ -400,7 +400,7 @@ test.describe('Video note cropping and media import features', () => {
       pauseCurrentMedia,
       resumeCurrentMedia,
       stopCurrentMedia,
-    } = await import('../src/lib/stores/mediaPlayback.js');
+    } = await import('../src/lib/stores/mediaPlayback');
     const { get } = await import('svelte/store');
 
     let audioPlayed = false;
@@ -460,7 +460,7 @@ test.describe('Video note cropping and media import features', () => {
   });
 
   test('resolvePlayableUrl properly handles localPath and remote audio URLs', async () => {
-    const { resolvePlayableUrl } = await import('../src/lib/stores/mediaPlayback.js');
+    const { resolvePlayableUrl } = await import('../src/lib/stores/mediaPlayback');
 
     const localAttach = {
       _type: 'AUDIO',
@@ -481,7 +481,7 @@ test.describe('Video note cropping and media import features', () => {
 
 
   test('preloadTrack safely preloads next playlist track without throwing', async () => {
-    const { preloadTrack } = await import('../src/lib/stores/mediaPlayback.js');
+    const { preloadTrack } = await import('../src/lib/stores/mediaPlayback');
     const nextItem = {
       id: 'synth_preload_1',
       chatId: 999,
@@ -505,7 +505,7 @@ test.describe('Video note cropping and media import features', () => {
       handOffToGlobal,
       takeOverFromGlobal,
       stopCurrentMedia,
-    } = await import('../src/lib/stores/mediaPlayback.js');
+    } = await import('../src/lib/stores/mediaPlayback');
     const { get } = await import('svelte/store');
 
     let bubblePaused = false;
@@ -584,7 +584,7 @@ test.describe('Video note cropping and media import features', () => {
   });
 
   test('resolvePlayableUrl deduplicates concurrent and repeated calls for same media', async () => {
-    const { resolvePlayableUrl } = await import('../src/lib/stores/mediaPlayback.js');
+    const { resolvePlayableUrl } = await import('../src/lib/stores/mediaPlayback');
 
     const syntheticAttach = {
       _type: 'VIDEO',
@@ -616,7 +616,7 @@ test.describe('Canvas multi-sink and smooth audio cross-fading', () => {
       registerVideoCanvas,
       unregisterVideoCanvas,
       getVideoCanvases,
-    } = await import('../src/lib/stores/mediaPlayback.js');
+    } = await import('../src/lib/stores/mediaPlayback');
 
     const mockCanvas1 = { id: 'canvas1', width: 200, height: 200, getContext: () => null };
     const mockCanvas2 = { id: 'canvas2', width: 110, height: 110, getContext: () => null };
@@ -637,7 +637,7 @@ test.describe('Canvas multi-sink and smooth audio cross-fading', () => {
   });
 
   test('drawVideoFrameToCanvas draws centered square crop to 2D context', async () => {
-    const { drawVideoFrameToCanvas } = await import('../src/lib/stores/mediaPlayback.js');
+    const { drawVideoFrameToCanvas } = await import('../src/lib/stores/mediaPlayback');
 
     let drawCalls = [];
     const mockVideo = {
@@ -679,7 +679,7 @@ test.describe('Canvas multi-sink and smooth audio cross-fading', () => {
       registerVideoCanvas,
       unregisterVideoCanvas,
       renderAllCanvasesForTrack,
-    } = await import('../src/lib/stores/mediaPlayback.js');
+    } = await import('../src/lib/stores/mediaPlayback');
 
     let canvas1Drawn = false;
     let canvas2Drawn = false;
@@ -724,7 +724,7 @@ test.describe('Canvas multi-sink and smooth audio cross-fading', () => {
   });
 
   test('fadeVolume smoothly interpolates volume and completes with callback', async () => {
-    const { fadeVolume } = await import('../src/lib/stores/mediaPlayback.js');
+    const { fadeVolume } = await import('../src/lib/stores/mediaPlayback');
 
     const mockAudio = {
       volume: 1.0,
@@ -747,7 +747,7 @@ test.describe('Canvas multi-sink and smooth audio cross-fading', () => {
       registerGlobalElements,
       playMedia,
       stopCurrentMedia,
-    } = await import('../src/lib/stores/mediaPlayback.js');
+    } = await import('../src/lib/stores/mediaPlayback');
 
     let voicePaused = false;
     let voiceVolumeLog = [];
@@ -832,7 +832,7 @@ test.describe('Canvas multi-sink and smooth audio cross-fading', () => {
       handOffToGlobal,
       takeOverFromGlobal,
       stopCurrentMedia,
-    } = await import('../src/lib/stores/mediaPlayback.js');
+    } = await import('../src/lib/stores/mediaPlayback');
     const { get } = await import('svelte/store');
 
     const mockMasterVideo = {

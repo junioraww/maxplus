@@ -1,5 +1,5 @@
 <script>
-  import { getAttachText } from "$lib/utils/attachs.js";
+  import { getAttachText } from "$lib/utils/attachs";
   import { getContact } from "$lib/stores/contacts";
 
   export let replyTo;

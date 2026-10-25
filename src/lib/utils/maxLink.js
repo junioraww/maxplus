@@ -1,8 +1,8 @@
 import { invoke } from "@tauri-apps/api/core";
 import { goto } from "$app/navigation";
-import { getWebAppProxyBase } from "./proxyConfig.js";
-import { showAlert } from "./alert.js";
-import { parseApiError } from "./errors.js";
+import { getWebAppProxyBase } from "./proxyConfig";
+import { showAlert } from "./alert";
+import { parseApiError } from "./errors";
 
 const RESERVED_SLUGS = new Set([
   "login",
@@ -141,7 +141,7 @@ export async function processMaxLink(targetUrl, { currentUserId, api, onOpenChat
   let chatOpener = onOpenChat;
   if (!chatOpener) {
     try {
-      const session = await import("../stores/session.js");
+      const session = await import("../stores/session");
       chatOpener = session.openChat;
     } catch {}
   }
@@ -149,7 +149,7 @@ export async function processMaxLink(targetUrl, { currentUserId, api, onOpenChat
   let appOpener = onLaunchApp;
   if (!appOpener) {
     try {
-      const webapp = await import("../stores/webapp.js");
+      const webapp = await import("../stores/webapp");
       appOpener = webapp.openMiniApp;
     } catch {}
   }
@@ -178,7 +178,7 @@ export async function processMaxLink(targetUrl, { currentUserId, api, onOpenChat
   if (info.kind === 'get_plugin') {
     if (info.pluginId) {
       try {
-        const { handlePluginDeepLink } = await import('../plugins/runtime.js');
+        const { handlePluginDeepLink } = await import('../plugins/runtime');
         await handlePluginDeepLink(info.pluginId);
       } catch (err) {
         console.error(err);
@@ -261,7 +261,7 @@ export async function processMaxLink(targetUrl, { currentUserId, api, onOpenChat
             if (msg && typeof msg === "object") {
               const msgCopy = { ...msg, status: 1 };
               try {
-                const { getChat } = await import("../stores/messages.js");
+                const { getChat } = await import("../stores/messages");
                 const c = getChat(targetChatId);
                 if (c) {
                   c.receivedMessage?.set(msgCopy);

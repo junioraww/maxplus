@@ -1,4 +1,4 @@
-//import * as Settings from "$lib/stores/settings.js";
+//import * as Settings from "$lib/stores/settings";
 
 const Constants = {
   PHONE_REGEX: /^\+?\d{10,15}$/,

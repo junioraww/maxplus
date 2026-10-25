@@ -1,5 +1,5 @@
 <script>
-  import { getAttachText, getSystemText } from "$lib/utils/attachs.js";
+  import { getAttachText, getSystemText } from "$lib/utils/attachs";
 
   export let chat;
   export let msg;

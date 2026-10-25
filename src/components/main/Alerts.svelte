@@ -1,5 +1,5 @@
 <script>
-  import { alerts, removeAlert } from '$lib/utils/alert.js';
+  import { alerts, removeAlert } from '$lib/utils/alert';
   import { fly, fade } from 'svelte/transition';
   import { flip } from 'svelte/animate';
 

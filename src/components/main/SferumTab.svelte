@@ -1,5 +1,5 @@
 <script>
-  import { openSferumApp } from "$lib/stores/webapp.js";
+  import { openSferumApp } from "$lib/stores/webapp";
 
   let loading = false;
   let error = null;

@@ -16,9 +16,9 @@
 
   let showContactsModal = false;
 
-  import { escapeHtml } from "$lib/utils/text.js";
-  import { debounce } from "$lib/utils/debounce.js";
-  import { openChat } from "$lib/stores/session.js";
+  import { escapeHtml } from "$lib/utils/text";
+  import { debounce } from "$lib/utils/debounce";
+  import { openChat } from "$lib/stores/session";
   import API, {
     currentSessionCalls,
     currentRealChats,
@@ -26,7 +26,7 @@
     currentlySyncing,
     currentFolders,
     currentUser,
-  } from "$lib/stores/api.js";
+  } from "$lib/stores/api";
   import {
     getChat,
   } from "$lib/stores/messages";
@@ -35,9 +35,9 @@
     updateContact
   } from "$lib/stores/contacts";
   import { isChatMuted } from "$lib/utils/notifications";
-  import { forwardDraft, clearForwardDraft } from "$lib/stores/forwardDraft.js";
-  import { forwardMessages } from "$components/ChatWindow/actions.js";
-  import { showAlert } from "$lib/utils/alert.js";
+  import { forwardDraft, clearForwardDraft } from "$lib/stores/forwardDraft";
+  import { forwardMessages } from "$components/ChatWindow/actions";
+  import { showAlert } from "$lib/utils/alert";
 
   let localFolders = [];
   const isAllChatsFolder = (f) => {

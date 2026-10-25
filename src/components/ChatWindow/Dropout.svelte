@@ -2,12 +2,12 @@
   import { createEventDispatcher, onDestroy } from "svelte";
   import { fade, scale, fly } from "svelte/transition";
   import { tick } from "svelte";
-  import { registerBackHandler } from "$lib/utils/backButton.js";
+  import { registerBackHandler } from "$lib/utils/backButton";
 
   import { handleReaction } from "$components/ChatWindow/actions";
   import API, { currentUser, serverConfig } from "$lib/stores/api";
   import { saveChats, getChat } from "$lib/stores/messages";
-  import { reactionEmojis, ensureReactionsLoaded } from "$lib/stores/reactions.js";
+  import { reactionEmojis, ensureReactionsLoaded } from "$lib/stores/reactions";
   import Avatar from "$components/main/Avatar.svelte";
 
   export let activeAt;

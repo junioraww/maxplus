@@ -1,5 +1,5 @@
 <script>
-  import { forwardDraft, clearForwardDraft } from "$lib/stores/forwardDraft.js";
+  import { forwardDraft, clearForwardDraft } from "$lib/stores/forwardDraft";
   import { getContact } from "$lib/stores/contacts";
   import { currentUser, currentUserDetails } from "$lib/stores/api";
   import { getChat } from "$lib/stores/messages";

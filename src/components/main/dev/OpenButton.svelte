@@ -1,5 +1,5 @@
 <script>
-  import { set as sessionSet } from "$lib/stores/session.js";
+  import { set as sessionSet } from "$lib/stores/session";
 
   const open = () => {
     sessionSet("devSettings", true);

@@ -70,7 +70,7 @@
 
 <script>
   import { onMount, onDestroy, tick } from "svelte";
-  import lottie from "lottie-web/build/player/lottie_light.js";
+  import lottie from "lottie-web/build/player/lottie_light";
   import { getAssetUrl } from "$lib/utils/images";
 
   export let url = "";

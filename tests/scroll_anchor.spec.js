@@ -45,7 +45,7 @@ test.describe('Scroll anchor preservation', () => {
   });
 
   test('preserves existing playlist items when parsing media playlist context', async () => {
-    const { buildChatPlaylist } = await import('../src/lib/stores/mediaPlayback.js');
+    const { buildChatPlaylist } = await import('../src/lib/stores/mediaPlayback');
     const syntheticItems = [
       { id: 'synth_1', chatId: 100, messageId: 1001, type: 'voice', duration: 10, time: 1000, attach: { duration: 10 } },
       { id: 'synth_2', chatId: 100, messageId: 1002, type: 'voice', duration: 15, time: 2000, attach: { duration: 15 } },

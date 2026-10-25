@@ -9,8 +9,8 @@ import {
 import { getCurrentAccount } from "$lib/stores/accounts";
 import { encryptMessage } from "$lib/crypto/messages";
 import { get } from "svelte/store";
-import { showAlert } from "$lib/utils/alert.js";
-import { parseApiError } from "$lib/utils/errors.js";
+import { showAlert } from "$lib/utils/alert";
+import { parseApiError } from "$lib/utils/errors";
 
 export async function sendMessage(
   chat,

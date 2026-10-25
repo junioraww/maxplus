@@ -1,7 +1,7 @@
 import { listen } from "@tauri-apps/api/event";
 import { goto } from "$app/navigation";
 import { get } from "svelte/store";
-import { pluginEmit } from "$lib/plugins/events.js";
+import { pluginEmit } from "$lib/plugins/events";
 
 import { invoke } from "$lib/utils/invoke";
 import {
@@ -23,9 +23,9 @@ import {
   syncContacts,
 } from "$lib/utils/caching";
 import { handlePushUpdate } from "$lib/stores/stickers";
-import { ensureReactionsLoaded } from "$lib/stores/reactions.js";
-import { preloadComplaintReasons } from "$lib/stores/complaints.js";
-import { handleTranscriptionPush } from "$lib/stores/transcription.js";
+import { ensureReactionsLoaded } from "$lib/stores/reactions";
+import { preloadComplaintReasons } from "$lib/stores/complaints";
+import { handleTranscriptionPush } from "$lib/stores/transcription";
 import {
   addAccount,
   getAccounts,
@@ -59,9 +59,9 @@ import {
 import {
   getMessagePreview
 } from "$lib/utils/text";
-import { batchDecrypt } from "$lib/crypto/messages.js";
-import { activeCall, CALL_PHASE } from "$lib/stores/calls.js";
-import { CallService } from "$lib/services/CallService.js";
+import { batchDecrypt } from "$lib/crypto/messages";
+import { activeCall, CALL_PHASE } from "$lib/stores/calls";
+import { CallService } from "$lib/services/CallService";
 
 import BaseAPI from "./BaseApi";
 
@@ -76,7 +76,7 @@ function sortFolders(folders, order) {
   });
 }
 
-export { parseApiError } from "$lib/utils/errors.js";
+export { parseApiError } from "$lib/utils/errors";
 
 export default class MobileApi extends BaseAPI {
   resolve_sync = null;

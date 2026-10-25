@@ -3,7 +3,7 @@
   import { invoke as tauriInvoke, Channel } from "@tauri-apps/api/core";
   import { save } from "@tauri-apps/plugin-dialog";
   import { createEventDispatcher, onMount, onDestroy, tick } from "svelte";
-  import { registerBackHandler } from "$lib/utils/backButton.js";
+  import { registerBackHandler } from "$lib/utils/backButton";
 
   import { get } from "svelte/store";
   import { getAssetUrl, getProxiedMediaUrl, isProxiedMediaUrl, unwrapProxiedMediaUrl } from "$lib/utils/images";

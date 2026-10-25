@@ -9,7 +9,7 @@
   import { safeAvatarMapStore } from "$lib/services/AvatarSyncManager";
   import { getSafeAvatarMediaUrl } from "$lib/services/uplink";
   import { disableMaxPlusAvatars } from "$lib/stores/avatarSettings";
-  import { formatTimeAgo } from "$lib/utils/time.js";
+  import { formatTimeAgo } from "$lib/utils/time";
 
   let firstName = "";
   let lastName = "";

@@ -6,7 +6,7 @@
     onDestroy
   } from "svelte";
   import { get } from "svelte/store";
-  import { registerBackHandler } from "$lib/utils/backButton.js";
+  import { registerBackHandler } from "$lib/utils/backButton";
 
   import ConfirmModal from "$components/main/ConfirmModal.svelte";
   import InputModal from "$components/main/InputModal.svelte";
@@ -25,8 +25,8 @@
   import { formatMs } from "$lib/utils/time";
   import { dict } from "$lib/crypto/text-codec";
   import { isChatMuted } from "$lib/utils/notifications";
-  import { CallService } from "$lib/services/CallService.js";
-  import { autoDownloadEncryptedMedia } from "$lib/stores/e2eSettings.js";
+  import { CallService } from "$lib/services/CallService";
+  import { autoDownloadEncryptedMedia } from "$lib/stores/e2eSettings";
   import { switchEnc } from "$components/ChatWindow/e2e";
   import { getChatSettings, getChat } from "$lib/stores/messages";
   import Session, {

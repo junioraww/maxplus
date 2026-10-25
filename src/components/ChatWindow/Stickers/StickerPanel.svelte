@@ -1,6 +1,6 @@
 <script>
   import { onMount, onDestroy, tick, createEventDispatcher } from "svelte";
-  import { registerBackHandler } from "$lib/utils/backButton.js";
+  import { registerBackHandler } from "$lib/utils/backButton";
   import {
     orderedSetIds,
     favoriteSetIds,
@@ -16,7 +16,7 @@
   import StickerSection from "./StickerSection.svelte";
   import StickerCatalogModal from "./StickerCatalogModal.svelte";
   import StickerPackModal from "./StickerPackModal.svelte";
-  import { getMountStore } from "$lib/plugins/mount-registry.js";
+  import { getMountStore } from "$lib/plugins/mount-registry";
 
   const dispatch = createEventDispatcher();
 

@@ -2,10 +2,10 @@
   import { onMount, onDestroy } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
   import { openUrl } from "@tauri-apps/plugin-opener";
-  import { openChat, get as sessionGet } from "$lib/stores/session.js";
-  import { getCurrentAccount } from "$lib/stores/accounts.js";
-  import { currentUser } from "$lib/stores/api.js";
-  import API from "$lib/stores/api.js";
+  import { openChat, get as sessionGet } from "$lib/stores/session";
+  import { getCurrentAccount } from "$lib/stores/accounts";
+  import { currentUser } from "$lib/stores/api";
+  import API from "$lib/stores/api";
   import {
     minimizeMiniApp,
     expandMiniApp,
@@ -15,11 +15,11 @@
     openMiniApp,
     updateAppMeta,
     resolveWebAppUrl,
-  } from "$lib/stores/webapp.js";
-  import { createBridgeClient } from "$lib/webapp/bridge.js";
-  import { processMaxLink } from "$lib/utils/maxLink.js";
+  } from "$lib/stores/webapp";
+  import { createBridgeClient } from "$lib/webapp/bridge";
+  import { processMaxLink } from "$lib/utils/maxLink";
   import ConfirmModal from "$components/main/ConfirmModal.svelte";
-  import { registerBackHandler } from "$lib/utils/backButton.js";
+  import { registerBackHandler } from "$lib/utils/backButton";
 
   export let app;
 

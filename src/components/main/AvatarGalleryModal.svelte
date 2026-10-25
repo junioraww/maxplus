@@ -3,7 +3,7 @@
   import { createEventDispatcher, onMount, onDestroy, tick } from "svelte";
   import { invoke as tauriInvoke, Channel } from "@tauri-apps/api/core";
   import { save } from "@tauri-apps/plugin-dialog";
-  import { registerBackHandler } from "$lib/utils/backButton.js";
+  import { registerBackHandler } from "$lib/utils/backButton";
   import MediaCanvas from "$components/main/MediaCanvas.svelte";
   import API, { currentUserDetails } from "$lib/stores/api";
   import SafeAvatarPickerModal from "$components/main/SafeAvatarPickerModal.svelte";

@@ -23,15 +23,15 @@
   import MediaPlaylistModal from "$components/media/MediaPlaylistModal.svelte";
   import VideoCropModal from "$components/media/VideoCropModal.svelte";
   import TraceOverlay from "$components/main/dev/TraceOverlay.svelte";
-  import { videoCropState, closeVideoCropModal } from "$lib/stores/videoCrop.js";
-  import { activeCall, CALL_PHASE } from '$lib/stores/calls.js';
+  import { videoCropState, closeVideoCropModal } from "$lib/stores/videoCrop";
+  import { activeCall, CALL_PHASE } from '$lib/stores/calls';
   import CallScreen from '$components/calls/CallScreen.svelte';
   import FloatingCallBadge from '$components/calls/FloatingCallBadge.svelte';
 
   import Session, { closeAvatarGallery } from "$lib/stores/session";
-  import { initDeepLink } from "$lib/utils/deepLink.js";
-  import { initProxyConfig } from "$lib/utils/proxyConfig.js";
-  import { handleBackButton, registerBackHandler } from "$lib/utils/backButton.js";
+  import { initDeepLink } from "$lib/utils/deepLink";
+  import { initProxyConfig } from "$lib/utils/proxyConfig";
+  import { handleBackButton, registerBackHandler } from "$lib/utils/backButton";
   import { getMountStore } from "$lib/plugins/mount-registry";
 
   const pluginGlobalModals = getMountStore("global:modal");
@@ -113,7 +113,7 @@
         const payloadObj = typeof payload === 'string'
           ? JSON.parse(payload)
           : payload || {};
-        const { CallService } = await import('$lib/services/CallService.js');
+        const { CallService } = await import('$lib/services/CallService');
         if (action === 'answer') {
           if (payloadObj.vcp || payloadObj.conversationId) {
             await CallService.handleIncomingPush(payloadObj);

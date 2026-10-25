@@ -7,10 +7,10 @@ import {
   acceptHandshake,
   processAccept,
   getEncryptionInfo,
-} from "$lib/crypto/asymmetric.js";
-import { sendMessage } from "$components/ChatWindow/actions.js";
-import { CallService } from "$lib/services/CallService.js";
-import { triggerSafetyLockout } from "$lib/stores/e2eSafety.js";
+} from "$lib/crypto/asymmetric";
+import { sendMessage } from "$components/ChatWindow/actions";
+import { CallService } from "$lib/services/CallService";
+import { triggerSafetyLockout } from "$lib/stores/e2eSafety";
 
 const pendingRequests = new Map();
 const blockedRequests = new Map();

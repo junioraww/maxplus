@@ -1,8 +1,8 @@
 <script>
   import { goto } from "$app/navigation";
   import { onMount, createEventDispatcher } from "svelte";
-  import { swipeToClose } from "$components/ChatWindow/swipeToClose.js";
-  import { registerBackHandler } from "$lib/utils/backButton.js";
+  import { swipeToClose } from "$components/ChatWindow/swipeToClose";
+  import { registerBackHandler } from "$lib/utils/backButton";
 
   export let title = "";
   export let from = "/?card=settings";

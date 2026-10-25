@@ -1,7 +1,7 @@
 <script>
   import { createEventDispatcher } from "svelte";
-  import { currentRealChats } from "$lib/stores/api.js";
-  import { getChat } from "$lib/stores/messages.js";
+  import { currentRealChats } from "$lib/stores/api";
+  import { getChat } from "$lib/stores/messages";
   import ChatItem from "$components/chats/ChatItem.svelte";
   import Search from "$components/main/Search.svelte";
 

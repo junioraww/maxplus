@@ -2,7 +2,7 @@ import { writable, get } from "svelte/store";
 import { invoke } from "@tauri-apps/api/core";
 import { save } from "@tauri-apps/plugin-dialog";
 import { listen } from "@tauri-apps/api/event";
-import { showAlert } from "../utils/alert.js";
+import { showAlert } from "../utils/alert";
 
 export const isTracing = writable(false);
 export const traceSize = writable(0);

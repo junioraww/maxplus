@@ -11,11 +11,11 @@
   } from '$lib/stores/api';
   import { getChat } from '$lib/stores/messages';
   import { getContact, getCachedContacts } from '$lib/stores/contacts';
-  import { activeCall, patchCallState, resetCallState, CALL_PHASE, CALL_MODE } from '$lib/stores/calls.js';
-  import { CallService } from '$lib/services/CallService.js';
+  import { activeCall, patchCallState, resetCallState, CALL_PHASE, CALL_MODE } from '$lib/stores/calls';
+  import { CallService } from '$lib/services/CallService';
   import Avatar from '$components/main/Avatar.svelte';
-  import Session, { openChat } from '$lib/stores/session.js';
-  import { showAlert } from '$lib/utils/alert.js';
+  import Session, { openChat } from '$lib/stores/session';
+  import { showAlert } from '$lib/utils/alert';
 
   let contactsMap = {};
   let unsubMap = new Map();

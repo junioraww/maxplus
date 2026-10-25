@@ -4,7 +4,7 @@
   import {
     set as sessionSet,
     get as sessionGet
-  } from "$lib/stores/session.js";
+  } from "$lib/stores/session";
   import API from "$lib/stores/api";
   import { getDevice } from "$lib/stores/accounts";
 
