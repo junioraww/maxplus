@@ -82,7 +82,7 @@
   }
 
   function handleContextRestored() {
-    ctx = canvasEl.getContext("2d", { willReadFrequently: true });
+    ctx = canvasEl.getContext("2d");
     if (ctx) {
       ctx.imageSmoothingEnabled = true;
       ctx.imageSmoothingQuality = "medium";
@@ -105,7 +105,7 @@
       canvasEl.height = pixelSize;
     }
     if (!ctx) {
-      ctx = canvasEl.getContext("2d", { willReadFrequently: true });
+      ctx = canvasEl.getContext("2d");
       if (ctx) {
         ctx.imageSmoothingEnabled = true;
         ctx.imageSmoothingQuality = "medium";
