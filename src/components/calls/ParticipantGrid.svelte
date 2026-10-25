@@ -52,7 +52,7 @@
   $: selfParticipant = {
     id: $activeCall.myCallUserId || 'local_self',
     name: `${selfName} (Вы)`,
-    avatar: $currentUserDetails?.avatar || $currentUserDetails?.photo || null,
+    avatar: $currentUserDetails?.baseRawUrl || $currentUserDetails?.baseUrl || $currentUserDetails?.avatar || $currentUserDetails?.photo || null,
     muted: $activeCall.muted,
     video: localVideo,
     stream: localStream,
@@ -97,7 +97,7 @@
       <audio autoplay playsinline use:srcObject={p.stream}></audio>
     {/if}
 
-    <div class="participant-tile" class:participant-tile--self={p.isSelf}>
+    <div class="participant-tile" class:participant-tile--self={p.isSelf} class:speaking={p.speaking || p.isSpeaking}>
       {#if p.video && (p.stream || (!p.isSelf && isLinux))}
         {#if !p.isSelf && isLinux}
           <canvas
@@ -226,6 +226,12 @@
 
   .participant-tile--self {
     border-color: rgba(56, 189, 248, 0.3);
+  }
+
+  .participant-tile.speaking {
+    box-shadow: 0 0 0 3px #22c55e, 0 0 18px rgba(34, 197, 94, 0.45);
+    border-color: #22c55e;
+    transition: box-shadow 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   }
 
   .waiting-tile {

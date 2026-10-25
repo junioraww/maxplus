@@ -1378,10 +1378,16 @@ class MaxCallSession {
       patchCallState({ localStream: this.#localStream });
     } else {
       try {
+        let audioConstraint = { echoCancellation: true, noiseSuppression: true, autoGainControl: true };
+        if (typeof navigator !== 'undefined' && navigator.mediaDevices?.enumerateDevices) {
+          const devices = await navigator.mediaDevices.enumerateDevices().catch(() => []);
+          const physicalMic = devices.find(d => d.kind === 'audioinput' && !/virtual|audiorelay/i.test(d.label || ''));
+          if (physicalMic?.deviceId) {
+            audioConstraint = { ...audioConstraint, deviceId: { exact: physicalMic.deviceId } };
+          }
+        }
         try {
-          this.#localStream = await navigator.mediaDevices.getUserMedia({
-            audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
-          });
+          this.#localStream = await navigator.mediaDevices.getUserMedia({ audio: audioConstraint });
         } catch {
           this.#localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
         }
@@ -2296,10 +2302,26 @@ class MaxCallSession {
     this.#cameraToggling = true;
     try {
       if (isLinuxClient) {
+        const useStubs = Boolean(this.#useStubs || get(callUseStubs));
+        if (useStubs) {
+          if (on) {
+            if (!this.#syntheticVideo) {
+              this.#syntheticVideo = createSyntheticVideoStream();
+            }
+            patchCallState({ videoOn: true, localCameraStream: this.#syntheticVideo.stream, cameraLoading: false });
+          } else {
+            if (this.#syntheticVideo) {
+              this.#syntheticVideo.stop();
+              this.#syntheticVideo = null;
+            }
+            patchCallState({ videoOn: false, localCameraStream: null, cameraLoading: false });
+          }
+        } else {
+          patchCallState({ videoOn: on, localCameraStream: null, cameraLoading: false });
+        }
         if (this.#pc && typeof this.#pc.setCameraEnabled === 'function') {
           await this.#pc.setCameraEnabled(on);
         }
-        patchCallState({ videoOn: on, localCameraStream: null, cameraLoading: false });
         if (this.#pc && this.#topology !== 'SERVER') {
           await this.#renegotiate();
         }
@@ -2684,6 +2706,9 @@ class MaxCallSession {
     this.#useStubs = enabled;
     if (!this.#pc) return;
     try {
+      if (typeof this.#pc.setUseStubs === 'function') {
+        await this.#pc.setUseStubs(enabled);
+      }
       const senders = typeof this.#pc.getSenders === 'function' ? this.#pc.getSenders() : [];
       const audioSender = senders.find(s => s.track?.kind === 'audio');
       const videoSender = senders.find(s => s.track?.kind === 'video');
@@ -2726,6 +2751,8 @@ class MaxCallSession {
             await videoSender.replaceTrack(realVideoTrack);
           }
           patchCallState({ localCameraStream: this.#cameraStream });
+        } else if (isLinuxClient) {
+          patchCallState({ localCameraStream: null });
         }
       }
     } catch (err) {

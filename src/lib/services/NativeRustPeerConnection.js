@@ -17,13 +17,31 @@ export class NativeRustPeerConnection extends EventTarget {
     this.ondatachannel = null;
     this.sessionId = null;
 
+    this.useStubs = Boolean(config.useStubs);
+
     const audioSender = {
       track: { kind: 'audio', id: 'audio0', readyState: 'live', enabled: true },
-      replaceTrack: async () => {},
+      replaceTrack: async (newTrack) => {
+        audioSender.track = newTrack;
+        if (this.sessionId != null) {
+          invoke('webrtc_set_use_stubs', {
+            sessionId: this.sessionId,
+            enabled: this.useStubs,
+          }).catch(() => {});
+        }
+      },
     };
     const videoSender = {
       track: { kind: 'video', id: 'camera0', readyState: 'live', enabled: true },
-      replaceTrack: async () => {},
+      replaceTrack: async (newTrack) => {
+        videoSender.track = newTrack;
+        if (this.sessionId != null) {
+          invoke('webrtc_set_use_stubs', {
+            sessionId: this.sessionId,
+            enabled: this.useStubs,
+          }).catch(() => {});
+        }
+      },
     };
     const audioReceiver = {
       track: { kind: 'audio', id: 'rem-audio0', readyState: 'live', enabled: true },
@@ -49,9 +67,25 @@ export class NativeRustPeerConnection extends EventTarget {
     this._receivers = [audioReceiver, videoReceiver];
     this._transceivers = [audioTransceiver, videoTransceiver];
     this._remoteStream = new MediaStream();
+
+    const AudioCtx = typeof window !== 'undefined'
+      ? (window.AudioContext || window.webkitAudioContext)
+      : (typeof globalThis !== 'undefined' ? (globalThis.AudioContext || globalThis.webkitAudioContext) : null);
+
+    this._audioCtx = AudioCtx ? new AudioCtx({ sampleRate: 48000 }) : null;
+    this._audioDest = this._audioCtx?.createMediaStreamDestination ? this._audioCtx.createMediaStreamDestination() : null;
+    if (this._audioDest?.stream) {
+      const audioTrack = this._audioDest.stream.getAudioTracks()[0];
+      if (audioTrack) {
+        this._remoteStream.addTrack(audioTrack);
+      }
+    }
+    this._nextAudioPlayTime = 0;
+
     this._closed = false;
     this._attachedCanvases = new Set();
     this._videoChannel = null;
+    this._audioChannel = null;
     this._candidatesChannel = null;
     this._stateChannel = null;
     this._pendingRemoteCandidates = [];
@@ -115,6 +149,12 @@ export class NativeRustPeerConnection extends EventTarget {
       if (!stateStr) return;
       this.connectionState = stateStr;
       this.iceConnectionState = stateStr === 'connected' ? 'completed' : stateStr;
+      if (stateStr === 'connected' && this.useStubs) {
+        invoke('webrtc_set_use_stubs', {
+          sessionId: this.sessionId,
+          enabled: true,
+        }).catch(() => {});
+      }
       this.onconnectionstatechange?.(new Event('connectionstatechange'));
       this.dispatchEvent(new Event('connectionstatechange'));
       this.oniceconnectionstatechange?.(new Event('iceconnectionstatechange'));
@@ -134,6 +174,28 @@ export class NativeRustPeerConnection extends EventTarget {
       sessionId: this.sessionId,
       channel: this._videoChannel,
     }).catch((e) => console.error('[NativeRustPeerConnection] listen_video error:', e));
+
+    this._audioChannel = new Channel();
+    this._audioChannel.onmessage = (buffer) => {
+      if (!buffer || buffer.byteLength < 10) return;
+      if (!this._remoteTrackDispatched && this._remoteStream.getAudioTracks().length > 0) {
+        this._remoteTrackDispatched = true;
+        const track = this._remoteStream.getAudioTracks()[0];
+        const ev = {
+          track,
+          receiver: this._receivers[0],
+          streams: [this._remoteStream],
+          transceiver: this._transceivers[0],
+        };
+        this.ontrack?.(ev);
+        this.dispatchEvent(new CustomEvent('track', { detail: ev }));
+      }
+      this._renderAudioFrame(buffer);
+    };
+    invoke('webrtc_listen_audio', {
+      sessionId: this.sessionId,
+      channel: this._audioChannel,
+    }).catch((e) => console.error('[NativeRustPeerConnection] listen_audio error:', e));
   }
 
   attachVideoCanvas(canvas) {
@@ -149,7 +211,7 @@ export class NativeRustPeerConnection extends EventTarget {
 
   _setupCanvasRenderer(canvas) {
     if (canvas._glContext) return;
-    const gl = canvas.getContext('webgl', { preserveDrawingBuffer: false, alpha: false });
+    const gl = canvas.getContext('webgl', { preserveDrawingBuffer: true, alpha: false });
     if (!gl) return;
 
     const vsSource = `
@@ -280,6 +342,49 @@ export class NativeRustPeerConnection extends EventTarget {
 
       gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
     }
+  }
+
+  _renderAudioFrame(arrayBuffer) {
+    if (!this._audioCtx || !this._audioDest) return;
+    if (this._audioCtx.state === 'suspended') {
+      this._audioCtx.resume().catch(() => {});
+    }
+    const view = new DataView(arrayBuffer);
+    const sampleRate = view.getUint32(0, true) || 48000;
+    const numChannels = view.getUint32(4, true) || 1;
+    const sampleCount = (arrayBuffer.byteLength - 8) / 2;
+    if (sampleCount <= 0) return;
+    const pcm16 = new Int16Array(arrayBuffer, 8, sampleCount);
+
+    const float32 = new Float32Array(sampleCount);
+    for (let i = 0; i < sampleCount; i++) {
+      float32[i] = pcm16[i] / 32768.0;
+    }
+
+    const audioBuffer = this._audioCtx.createBuffer(numChannels, sampleCount, sampleRate);
+    audioBuffer.getChannelData(0).set(float32);
+
+    const source = this._audioCtx.createBufferSource();
+    source.buffer = audioBuffer;
+    source.connect(this._audioDest);
+    try {
+      source.connect(this._audioCtx.destination);
+    } catch {}
+
+    const now = this._audioCtx.currentTime;
+    const startTime = Math.max(now, this._nextAudioPlayTime);
+    source.start(startTime);
+    this._nextAudioPlayTime = startTime + audioBuffer.duration;
+  }
+
+  async setUseStubs(enabled) {
+    this.useStubs = Boolean(enabled);
+    await this._initPromise;
+    if (this.sessionId == null) return;
+    await invoke('webrtc_set_use_stubs', {
+      sessionId: this.sessionId,
+      enabled: this.useStubs,
+    }).catch((e) => console.error('[NativeRustPeerConnection] setUseStubs error:', e));
   }
 
   async setCameraEnabled(enabled) {
@@ -541,6 +646,11 @@ export class NativeRustPeerConnection extends EventTarget {
       canvas._glContext = null;
     }
     this._attachedCanvases.clear();
+    if (this._audioCtx) {
+      this._audioCtx.close().catch(() => {});
+      this._audioCtx = null;
+      this._audioDest = null;
+    }
     if (this.sessionId != null) {
       invoke('webrtc_close', { sessionId: this.sessionId }).catch(() => {});
       this.sessionId = null;

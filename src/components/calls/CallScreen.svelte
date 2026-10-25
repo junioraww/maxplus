@@ -7,6 +7,7 @@
   import { activeCall, patchCallState, resetCallState, CALL_PHASE, CALL_MODE, callUseStubs, setCallUseStubs } from '$lib/stores/calls';
   import { currentUserDetails } from '$lib/stores/api';
   import { CallService } from '$lib/services/CallService';
+  import { callRecorder, callRecordSettings } from '$lib/services/callRecorder';
   import ParticipantGrid from '$components/calls/ParticipantGrid.svelte';
   import { getMountStore } from "$lib/plugins/mount-registry";
 
@@ -148,9 +149,198 @@
       e.stopPropagation();
       e.preventDefault();
     }
+    const currentPeer = peerName || roomName || 'call';
+    const wasRecording = callRecorder.isRecording;
     try {
       await CallService.hangup();
     } catch {}
+    if (wasRecording) {
+      callRecorder.stop(currentPeer);
+    }
+  }
+
+  let audioContext = null;
+  let micAnalyser = null;
+  let remoteAnalyser = null;
+  let micLevelTimer = null;
+  let isLocalSpeaking = false;
+  let isRemoteSpeaking = false;
+
+  function updateAudioAnalysers() {
+    try {
+      const AudioCtx = typeof window !== 'undefined' ? (window.AudioContext || window.webkitAudioContext) : null;
+      if (!AudioCtx) return;
+      if (!audioContext || audioContext.state === 'closed') {
+        audioContext = new AudioCtx();
+      }
+      if (audioContext.state === 'suspended') {
+        audioContext.resume().catch(() => {});
+      }
+
+      const localSourceStream = screenOn ? localScreenStream : localCameraStream;
+      if (localSourceStream && localSourceStream.getAudioTracks && localSourceStream.getAudioTracks().length > 0 && !micAnalyser) {
+        try {
+          const micSource = audioContext.createMediaStreamSource(localSourceStream);
+          micAnalyser = audioContext.createAnalyser();
+          micAnalyser.fftSize = 256;
+          micSource.connect(micAnalyser);
+        } catch {}
+      }
+
+      if (remoteStream && remoteStream.getAudioTracks && remoteStream.getAudioTracks().length > 0 && !remoteAnalyser) {
+        try {
+          const remSource = audioContext.createMediaStreamSource(remoteStream);
+          remoteAnalyser = audioContext.createAnalyser();
+          remoteAnalyser.fftSize = 256;
+          remSource.connect(remoteAnalyser);
+        } catch {}
+      }
+
+      if (!micLevelTimer) {
+        const pcmBuf = new Uint8Array(256);
+        micLevelTimer = setInterval(() => {
+          if (micAnalyser && !muted) {
+            micAnalyser.getByteTimeDomainData(pcmBuf);
+            let sum = 0;
+            for (let i = 0; i < 256; i++) {
+              const val = (pcmBuf[i] - 128) / 128;
+              sum += val * val;
+            }
+            isLocalSpeaking = Math.sqrt(sum / 256) > 0.035;
+          } else {
+            isLocalSpeaking = false;
+          }
+
+          if (remoteAnalyser) {
+            remoteAnalyser.getByteTimeDomainData(pcmBuf);
+            let sum = 0;
+            for (let i = 0; i < 256; i++) {
+              const val = (pcmBuf[i] - 128) / 128;
+              sum += val * val;
+            }
+            isRemoteSpeaking = Math.sqrt(sum / 256) > 0.035;
+          } else {
+            isRemoteSpeaking = false;
+          }
+        }, 60);
+      }
+    } catch {}
+  }
+
+  $: if (isActive) {
+    updateAudioAnalysers();
+  }
+
+  $: selfAvatarUrl = $currentUserDetails?.baseRawUrl || $currentUserDetails?.baseUrl || $currentUserDetails?.avatar || $currentUserDetails?.photo || null;
+
+  function buildCompositorParticipants() {
+    const list = [];
+    const selfName = $currentUserDetails?.names?.[0]?.firstName
+      ? `${$currentUserDetails.names[0].firstName} ${$currentUserDetails.names[0].lastName || ''}`.trim()
+      : ($currentUserDetails?.name || 'Вы');
+
+    const selfStream = screenOn ? localScreenStream : localCameraStream;
+    list.push({
+      id: $activeCall.myCallUserId || 'self',
+      name: `${selfName} (Вы)`,
+      avatar: selfAvatarUrl,
+      hasVideo: Boolean((videoOn || screenOn) && selfStream),
+      stream: selfStream,
+      canvasElement: null,
+      isMuted: muted,
+      isSpeaking: isLocalSpeaking,
+    });
+
+    if (!isGroupCall) {
+      const remoteCanvas = isLinux && typeof document !== 'undefined'
+        ? document.querySelector('canvas.remote-video')
+        : null;
+
+      list.push({
+        id: conversationId || 'remote',
+        name: peerName || 'Собеседник',
+        avatar: peerAvatar || null,
+        hasVideo: Boolean(hasRemoteVideo || peerVideoOn || peerScreenOn),
+        stream: remoteStream,
+        canvasElement: remoteCanvas,
+        isMuted: false,
+        isSpeaking: isRemoteSpeaking,
+      });
+    } else {
+      const remotes = $activeCall.participants || [];
+      const pStreams = $activeCall.participantStreams || {};
+      for (const p of remotes) {
+        const stream = pStreams[p.id] || null;
+        list.push({
+          id: p.id,
+          name: p.name || peerName || 'Участник',
+          avatar: p.avatar || (remotes.length === 1 ? peerAvatar : null),
+          hasVideo: Boolean(p.videoOn || p.screenOn || p.video),
+          stream,
+          canvasElement: null,
+          isMuted: Boolean(p.muted),
+          isSpeaking: Boolean(p.speaking),
+        });
+      }
+    }
+
+    return list;
+  }
+
+  $: compositorParticipants = (
+    selfAvatarUrl,
+    videoOn,
+    screenOn,
+    localCameraStream,
+    localScreenStream,
+    muted,
+    isLocalSpeaking,
+    hasRemoteVideo,
+    peerVideoOn,
+    peerScreenOn,
+    remoteStream,
+    peerName,
+    peerAvatar,
+    isRemoteSpeaking,
+    $activeCall,
+    buildCompositorParticipants()
+  );
+
+  function startCallRecording() {
+    const remoteList = Object.values($activeCall.participantStreams || {});
+    if ($activeCall.remoteStream && !remoteList.includes($activeCall.remoteStream)) {
+      remoteList.push($activeCall.remoteStream);
+    }
+    callRecorder.start({
+      localStream: $activeCall.localStream,
+      remoteStreams: remoteList,
+      isVideo: Boolean(videoOn || screenOn || peerVideoOn || peerScreenOn || hasRemoteVideo),
+      peerName: peerName || roomName || 'call',
+      participants: compositorParticipants,
+      screenStream: screenOn ? localScreenStream : null,
+      isScreenSharing: Boolean(screenOn || peerScreenOn),
+    });
+  }
+
+  $: if (callRecorder.isRecording) {
+    callRecorder.updateParticipants({
+      participants: compositorParticipants,
+      screenStream: screenOn ? localScreenStream : null,
+      isScreenSharing: Boolean(screenOn || peerScreenOn),
+      remoteStream,
+    });
+  }
+
+  async function onToggleRecord() {
+    if (callRecorder.isRecording) {
+      await callRecorder.stop(peerName || roomName || 'call');
+    } else {
+      startCallRecording();
+    }
+  }
+
+  $: if (isActive && callRecordSettings.always && !callRecorder.isRecording) {
+    startCallRecording();
   }
 
   async function onToggleMute() {
@@ -236,6 +426,17 @@
   onDestroy(() => {
     clearTimeout(hideTimer);
     clearInterval(elapsedTimer);
+    if (micLevelTimer) {
+      clearInterval(micLevelTimer);
+      micLevelTimer = null;
+    }
+    if (audioContext) {
+      audioContext.close().catch(() => {});
+      audioContext = null;
+    }
+    if (callRecorder.isRecording) {
+      callRecorder.stop(peerName || roomName || 'call');
+    }
     if (remoteAudioEl) {
       remoteAudioEl.srcObject = null;
     }
@@ -258,11 +459,13 @@
         {#if isLinux}
           <canvas
             class="remote-video"
+            class:speaking={isRemoteSpeaking}
             use:canvasVideo
           ></canvas>
         {:else}
           <video
             class="remote-video"
+            class:speaking={isRemoteSpeaking}
             autoplay
             playsinline
             webkit-playsinline
@@ -273,6 +476,7 @@
       {:else if screenOn && localScreenStream}
         <video
           class="remote-video"
+          class:speaking={isLocalSpeaking}
           autoplay
           playsinline
           webkit-playsinline
@@ -302,7 +506,7 @@
       {:else}
         <div
           class="avatar-backdrop"
-          style={$currentUserDetails?.avatar || $currentUserDetails?.photo ? `background-image: url('${$currentUserDetails.avatar || $currentUserDetails.photo}')` : ''}
+          style={selfAvatarUrl ? `background-image: url('${selfAvatarUrl}')` : ''}
         >
           <div class="avatar-blur"></div>
         </div>
@@ -312,6 +516,7 @@
     {#if showPip}
       <div
         class="pip-container"
+        class:speaking={isLocalSpeaking}
         style="left: {pipX ?? (window.innerWidth - 124)}px; top: {pipY ?? (window.innerHeight - 200)}px;"
         on:pointerdown={onPipPointerDown}
         on:pointermove={onPipPointerMove}
@@ -420,6 +625,9 @@
         {:else if isConnecting}
           <span class="status-label">Подключение...</span>
         {/if}
+      {/if}
+      {#if $activeCall.isRecording}
+        <div class="rec-badge"><span class="rec-dot-mini"></span> REC</div>
       {/if}
     </div>
 
@@ -532,14 +740,14 @@
   {:else}
     <div class="peer-info" class:hidden={mainVideoActive}>
       {#if peerAvatar}
-        <div class="peer-avatar" class:ringing={isRinging} style="background-image: url('{peerAvatar}')">
+        <div class="peer-avatar" class:ringing={isRinging} class:speaking={isRemoteSpeaking} style="background-image: url('{peerAvatar}')">
           {#if isRinging}
             <div class="ring-pulse ring-1"></div>
             <div class="ring-pulse ring-2"></div>
           {/if}
         </div>
       {:else}
-        <div class="peer-avatar peer-avatar--fallback" class:ringing={isRinging}>
+        <div class="peer-avatar peer-avatar--fallback" class:ringing={isRinging} class:speaking={isRemoteSpeaking}>
           <span>{(peerName || '?')[0].toUpperCase()}</span>
           {#if isRinging}
             <div class="ring-pulse ring-1"></div>
@@ -627,6 +835,16 @@
           {:else}
             <img src="/icons/shield.svg" alt="" width="22" height="22" />
           {/if}
+        </button>
+
+        <button
+          class="ctrl-btn"
+          class:ctrl-btn--recording={$activeCall.isRecording}
+          on:click={onToggleRecord}
+          aria-label={$activeCall.isRecording ? 'Остановить запись' : 'Записать звонок'}
+          title={$activeCall.isRecording ? 'Остановить запись' : 'Записать звонок'}
+        >
+          <div class="rec-icon" class:pulsing={$activeCall.isRecording}></div>
         </button>
 
         {#each $pluginCallActions as item (item.id)}
@@ -1117,6 +1335,21 @@
     justify-content: center;
   }
 
+  .peer-avatar.speaking {
+    box-shadow: 0 0 0 3px #22c55e, 0 0 24px rgba(34, 197, 94, 0.55);
+    transition: box-shadow 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .remote-video.speaking {
+    box-shadow: inset 0 0 0 3px #22c55e;
+    transition: box-shadow 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .pip-container.speaking {
+    box-shadow: 0 0 0 3px #22c55e, 0 0 16px rgba(34, 197, 94, 0.45);
+    transition: box-shadow 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
   .peer-avatar--fallback span {
     font-size: 36px;
     font-weight: 700;
@@ -1273,6 +1506,52 @@
   .ctrl-btn--secure {
     background: rgba(74, 222, 128, 0.18);
     border: 1px solid rgba(74, 222, 128, 0.4);
+  }
+
+  .ctrl-btn--recording {
+    background: rgba(255, 68, 68, 0.2);
+    border: 1px solid rgba(255, 68, 68, 0.4);
+  }
+
+  .rec-icon {
+    width: clamp(12px, 3.2vw, 16px);
+    height: clamp(12px, 3.2vw, 16px);
+    border-radius: 50%;
+    background: #ff4444;
+    transition: transform 0.2s, background 0.2s;
+  }
+
+  .rec-icon.pulsing {
+    animation: recPulse 1.2s infinite;
+  }
+
+  .rec-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    color: #ff4d4f;
+    background: rgba(255, 77, 79, 0.15);
+    border: 1px solid rgba(255, 77, 79, 0.3);
+    padding: 2px 8px;
+    border-radius: 12px;
+    margin-top: 2px;
+  }
+
+  .rec-dot-mini {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #ff4d4f;
+    animation: recPulse 1.2s infinite;
+  }
+
+  @keyframes recPulse {
+    0% { transform: scale(0.9); opacity: 0.8; }
+    50% { transform: scale(1.15); opacity: 1; box-shadow: 0 0 10px rgba(255, 68, 68, 0.8); }
+    100% { transform: scale(0.9); opacity: 0.8; }
   }
 
   .ctrl-btn--hangup {

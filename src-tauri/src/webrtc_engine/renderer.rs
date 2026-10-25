@@ -29,3 +29,30 @@ impl FrameSender {
             .map_err(|e| e.to_string())
     }
 }
+
+pub struct AudioSender {
+    channel: Channel<InvokeResponseBody>,
+}
+
+impl AudioSender {
+    pub fn new(channel: Channel<InvokeResponseBody>) -> Self {
+        Self { channel }
+    }
+
+    pub fn send_pcm(
+        &self,
+        sample_rate: u32,
+        num_channels: u32,
+        pcm: &[i16],
+    ) -> Result<(), String> {
+        let mut buf = Vec::with_capacity(8 + pcm.len() * 2);
+        buf.extend_from_slice(&sample_rate.to_le_bytes());
+        buf.extend_from_slice(&num_channels.to_le_bytes());
+        for &sample in pcm {
+            buf.extend_from_slice(&sample.to_le_bytes());
+        }
+        self.channel
+            .send(InvokeResponseBody::Raw(buf))
+            .map_err(|e| e.to_string())
+    }
+}
