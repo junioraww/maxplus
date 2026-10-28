@@ -135,8 +135,13 @@ import { goto } from "$app/navigation";
       },
       {
         icon: "crypto.svg",
-        text: "Защита пин-кодом",
+        text: "Графический ключ",
         action: () => openSettingsPage("lock"),
+      },
+      {
+        icon: "lock.svg",
+        text: "Облачный пароль",
+        action: () => openSettingsPage("two_factor"),
       },
       {
         icon: "book.svg",
@@ -158,18 +163,6 @@ import { goto } from "$app/navigation";
     ],
     [
       {
-        icon: "logs.svg",
-        text: "Сетевые логи",
-        action: () => openSettingsPage("logs"),
-      },
-      {
-        icon: "about.svg",
-        text: "О приложении",
-        action: () => openSettingsPage("about"),
-      },
-    ],
-    [
-      {
         icon: "phone.svg",
         text: "Плагины",
         action: () => openSettingsPage("plugins"),
@@ -178,6 +171,16 @@ import { goto } from "$app/navigation";
         icon: "params.svg",
         text: "Расширенные настройки",
         action: () => openSettingsPage("advanced"),
+      },
+      {
+        icon: "logs.svg",
+        text: "Сетевые логи",
+        action: () => openSettingsPage("logs"),
+      },
+      {
+        icon: "about.svg",
+        text: "О приложении",
+        action: () => openSettingsPage("about"),
       },
     ],
     [

@@ -77,7 +77,8 @@ function sortFolders(folders, order) {
   });
 }
 
-export { parseApiError } from "$lib/utils/errors";
+import { parseApiError } from "$lib/utils/errors";
+export { parseApiError };
 
 export default class MobileApi extends BaseAPI {
   resolve_sync = null;
@@ -394,11 +395,15 @@ export default class MobileApi extends BaseAPI {
       } else if (opc === 159) {
         const contact = response.payload?.profile?.contact || response.payload?.contact;
         if (contact && contact.id != null) {
-          currentUserDetails.set(contact);
-          updateContact(contact);
+          const fullContact = {
+            ...contact,
+            profileOptions: response.payload?.profile?.profileOptions || contact.profileOptions,
+          };
+          currentUserDetails.set(fullContact);
+          updateContact(fullContact);
           const acc = await getCurrentAccount().catch(() => null);
           if (acc?.id) {
-            await setAccountContact(acc.id, contact).catch(() => {});
+            await setAccountContact(acc.id, fullContact).catch(() => {});
           }
         }
       }
@@ -591,8 +596,12 @@ export default class MobileApi extends BaseAPI {
 
     const contact = payload.profile?.contact || payload.contact;
     if (contact) {
-      await setAccountContact(accountEntry.id, contact);
-      currentUserDetails.set(contact);
+      const fullContact = {
+        ...contact,
+        profileOptions: payload.profile?.profileOptions || contact.profileOptions,
+      };
+      await setAccountContact(accountEntry.id, fullContact);
+      currentUserDetails.set(fullContact);
       currentUser.set(contact.id);
     } else {
       const accountId = payload.accountId || payload.account_id || payload.profile?.id || payload.account?.id || payload.userId || payload.user_id;
@@ -612,6 +621,75 @@ export default class MobileApi extends BaseAPI {
   async checkPassword(password, trackId) {
     const response = await invoke("check_password", { password, trackId });
     return this._handleLoginResponse(response);
+  }
+
+  async twoFactor(action, payload = null) {
+    await this.waitSync();
+    const res = await invoke("two_factor", { action, payload });
+    if (res && (res.error || res.type === "ApiResponse" || res.type === "Error")) {
+      const msg = parseApiError(res);
+      const err = new Error(msg);
+      err.payload = res;
+      throw err;
+    }
+    return res;
+  }
+
+  async getTwoFactorStatus() {
+    try {
+      const details = await this.twoFactor("status");
+      const pwd = details?.password || details || {};
+      const profile = get(currentUserDetails);
+      const profileEnabled = profile?.profileOptions?.includes(2) || false;
+      const enabled = pwd.enabled !== undefined ? Boolean(pwd.enabled) : profileEnabled;
+      return {
+        trackId: details?.trackId || null,
+        enabled,
+        hint: pwd.hint || null,
+        email: pwd.email || null,
+      };
+    } catch (e) {
+      const profile = get(currentUserDetails);
+      if (profile?.profileOptions?.includes(2)) {
+        return {
+          trackId: null,
+          enabled: true,
+          hint: null,
+          email: null,
+        };
+      }
+      throw e;
+    }
+  }
+
+  requestTwoFactorEmailCode(trackId, email) {
+    return this.twoFactor("request_email", { trackId, email });
+  }
+
+  async setupTwoFactorPassword({ password, hint, email, code, trackId }) {
+    const res = await this.twoFactor("setup", { password, hint, email, code, trackId });
+    currentUserDetails.update((c) => {
+      if (!c) return c;
+      const opts = new Set(c.profileOptions || []);
+      opts.add(2);
+      return { ...c, profileOptions: Array.from(opts) };
+    });
+    return res;
+  }
+
+  changeTwoFactorPassword({ currentPassword, newPassword, newHint }) {
+    return this.twoFactor("change", { currentPassword, newPassword, newHint });
+  }
+
+  async removeTwoFactorPassword({ currentPassword }) {
+    const res = await this.twoFactor("disable", { currentPassword });
+    currentUserDetails.update((c) => {
+      if (!c) return c;
+      const opts = new Set(c.profileOptions || []);
+      opts.delete(2);
+      return { ...c, profileOptions: Array.from(opts) };
+    });
+    return res;
   }
 
   async removeAccountOnly(account) {
@@ -741,8 +819,12 @@ export default class MobileApi extends BaseAPI {
       const { chats, contacts, profile, config } = synced;
 
       if (profile.contact) {
-        await setAccountContact(account.id, profile.contact);
-        currentUserDetails.set(profile.contact);
+        const fullContact = {
+          ...profile.contact,
+          profileOptions: profile.profileOptions || profile.contact.profileOptions,
+        };
+        await setAccountContact(account.id, fullContact);
+        currentUserDetails.set(fullContact);
         currentUser.set(profile.contact.id);
       }
 

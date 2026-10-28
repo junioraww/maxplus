@@ -20,13 +20,13 @@
   });
 </script>
 
-<SettingsPageWrapper title="Защита пин-кодом" {from} {onClose}>
+<SettingsPageWrapper title="Графический ключ" {from} {onClose}>
   <div class="container">
     {#if encryption === undefined}
       <div class="status-msg">Загрузка данных...</div>
     {:else if encryption === null}
       <div class="card">
-        <p class="status warning">🔓 Статус: <b>неактивно</b></p>
+        <p class="status warning">Статус: <b>неактивно</b></p>
         <p class="description">
           Шифрует все данные на устройстве и поможет защитить их в случае взлома или кражи телефона.
         </p>
@@ -39,12 +39,12 @@
         {/if}
 
         <button class="primary-btn" on:click={() => goto("/auth/lock?mode=create")}>
-          Установить PIN
+          Установить
         </button>
       </div>
     {:else}
       <div class="card">
-        <p class="status success">🔒 Статус: <b>активно</b></p>
+        <p class="status success">Статус: <b>активно</b></p>
 
         <div class="info-row">
           <span>Версия</span>
@@ -74,6 +74,8 @@
     align-items: center;
     padding: 20px 16px;
     box-sizing: border-box;
+    width: 100%;
+    min-height: 100%;
   }
 
   .card {
@@ -169,5 +171,20 @@
   .status-msg {
     color: #888;
     font-size: 0.95rem;
+  }
+
+  @media (max-width: 400px) {
+    .container {
+      padding: 0;
+      align-items: center;
+    }
+
+    .card {
+      max-width: 100%;
+      border-radius: 0;
+      border-left: none;
+      border-right: none;
+      padding: 20px 16px;
+    }
   }
 </style>

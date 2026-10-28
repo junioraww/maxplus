@@ -128,6 +128,7 @@ pub fn run() {
             commands::resend_auth,
             commands::check_code,
             commands::check_password,
+            commands::two_factor,
             commands::register,
             commands::logout,
             commands::disconnect,

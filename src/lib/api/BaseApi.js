@@ -5,6 +5,12 @@ export default class API {
     closeAllSessions() { throw "closeAllSessions: Unimplemented" }
     checkPassword() { throw "checkPassword: Unimplemented" }
     setPassword() { throw "setPassword: Unimplemented" }
+    twoFactor() { throw "twoFactor: Unimplemented" }
+    getTwoFactorStatus() { throw "getTwoFactorStatus: Unimplemented" }
+    requestTwoFactorEmailCode() { throw "requestTwoFactorEmailCode: Unimplemented" }
+    setupTwoFactorPassword() { throw "setupTwoFactorPassword: Unimplemented" }
+    changeTwoFactorPassword() { throw "changeTwoFactorPassword: Unimplemented" }
+    removeTwoFactorPassword() { throw "removeTwoFactorPassword: Unimplemented" }
 
     _telemetry() { throw "_telemetry: Unimplemented" }
 
