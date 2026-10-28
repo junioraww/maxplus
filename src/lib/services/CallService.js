@@ -10,6 +10,7 @@ import { getChat } from '$lib/stores/messages';
 import Session, { closeChat } from '$lib/stores/session';
 import { getCurrentAccount, getDevice } from '$lib/stores/accounts';
 import { initHandshake, acceptHandshake, processAccept } from '$lib/crypto/asymmetric';
+import { dismissRequest } from '$components/ChatWindow/e2e';
 import { startIncomingRingtone, startOutgoingRingback, stopCallAudio, playRejectionTone } from '$lib/services/callAudio';
 import { showDesktopCallNotification, cancelDesktopCallNotification } from '$lib/utils/notifications';
 import { getContactDirect } from '$lib/stores/contacts';
@@ -637,10 +638,11 @@ class MaxCallSession {
 
     let isAutoSecure = false;
     const targetPeerId = peerId || this.#contactPeerId;
-    const isE2eDisabledForPeer = targetPeerId && isCallE2eDisabled(targetPeerId);
-    if (targetPeerId && !isE2eDisabledForPeer && mode !== CALL_MODE.PLAIN) {
+    const isGroupCall = Boolean(get(activeCall).isGroup || (get(activeCall).participants && get(activeCall).participants.length > 1));
+    if (targetPeerId && !isGroupCall) {
       const resolved = await this.#resolveSharedSecret(targetPeerId);
       if (resolved?.secret) {
+        clearCallE2eDisabled(targetPeerId);
         await this.#encryption.initFromChatSecret(resolved.secret, conversationId, role === 'originator');
         isAutoSecure = true;
         const displayFp = resolved.fingerprint || this.#encryption.fingerprint;
@@ -739,7 +741,7 @@ class MaxCallSession {
           account: Number(account.id),
           chatId: cid,
         }).catch(() => null);
-        const dhSecret = settings?.session?.shared_secret || settings?.keys?.current || null;
+        const dhSecret = settings?.session?.shared_secret || null;
         const password = settings?.password ? String(settings.password).trim() : null;
         if (dhSecret || password) {
           const callFp = await invoke('get_call_encryption_fingerprint', {
@@ -802,8 +804,24 @@ class MaxCallSession {
           showAlert('Запрос на шифрование отправлен...');
           const initPacket = await initHandshake(Number(account.id), Number(targetChatId), 'zh');
           try {
-            await get(API).sendMessage(initPacket, targetChatId, { notify: true });
+            const sendRes = await get(API).sendMessage(initPacket, targetChatId, { notify: true });
+            const sentMsgId = sendRes?.payload?.message?.id || sendRes?.message?.id || sendRes?.id;
+            dismissRequest(targetChatId, sentMsgId);
           } catch {}
+          invoke('get_chat_settings', {
+            account: Number(account.id),
+            chatId: Number(targetChatId),
+          }).then((st) => {
+            if (st?.pending) {
+              const next = { ...st };
+              delete next.pending;
+              invoke('set_chat_settings', {
+                account: Number(account.id),
+                chatId: Number(targetChatId),
+                data: next,
+              }).catch(() => {});
+            }
+          }).catch(() => {});
           return;
         }
       }
@@ -870,6 +888,7 @@ class MaxCallSession {
         clearCallE2eDisabled(targetPeerId);
       }
       const targetChatId = Number(targetReq.chatId || (await this.#resolveTargetChatId(this.#contactPeerId)));
+      dismissRequest(targetChatId, targetReq.messageId, targetReq.handshakeData);
       const replyPacket = await acceptHandshake(Number(account.id), targetChatId, targetReq.handshakeData, 'zh');
       const resolved = await this.#resolveSharedSecret(targetPeerId, targetChatId);
       try {
@@ -893,6 +912,10 @@ class MaxCallSession {
   }
 
   denySecureRequest() {
+    const targetReq = get(activeCall).incomingSecureRequest;
+    if (targetReq?.chatId) {
+      dismissRequest(targetReq.chatId, targetReq.messageId, targetReq.handshakeData);
+    }
     patchCallState({ incomingSecureRequest: null });
   }
 
@@ -902,6 +925,7 @@ class MaxCallSession {
       const targetChatId = Number(data.chatId || (await this.#resolveTargetChatId(this.#contactPeerId)));
       let fp = data.fingerprint;
       if (data.handshakeData && account?.id && targetChatId) {
+        dismissRequest(targetChatId, null, data.handshakeData);
         fp = await processAccept(Number(account.id), targetChatId, data.handshakeData);
       }
       const resolved = await this.#resolveSharedSecret(this.#contactPeerId || get(activeCall).peerId, targetChatId);
@@ -2985,6 +3009,7 @@ export const CallService = {
     if (!pending) return;
     this._pendingIncoming = null;
     _closeMatchingChat(pending.callerId);
+    await this._endActive();
     patchCallState({ phase: CALL_PHASE.CONNECTING, connectionStatus: 'connecting' });
     const session = new MaxCallSession();
     _activeSession = session;
@@ -3194,6 +3219,10 @@ export const CallService = {
   },
 
   denySecureRequest() {
+    const targetReq = get(activeCall).incomingSecureRequest;
+    if (targetReq?.chatId) {
+      dismissRequest(targetReq.chatId, targetReq.messageId, targetReq.handshakeData);
+    }
     if (_activeSession) {
       _activeSession.denySecureRequest();
     } else {

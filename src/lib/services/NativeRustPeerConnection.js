@@ -23,24 +23,12 @@ export class NativeRustPeerConnection extends EventTarget {
       track: { kind: 'audio', id: 'audio0', readyState: 'live', enabled: true },
       replaceTrack: async (newTrack) => {
         audioSender.track = newTrack;
-        if (this.sessionId != null) {
-          invoke('webrtc_set_use_stubs', {
-            sessionId: this.sessionId,
-            enabled: this.useStubs,
-          }).catch(() => {});
-        }
       },
     };
     const videoSender = {
       track: { kind: 'video', id: 'camera0', readyState: 'live', enabled: true },
       replaceTrack: async (newTrack) => {
         videoSender.track = newTrack;
-        if (this.sessionId != null) {
-          invoke('webrtc_set_use_stubs', {
-            sessionId: this.sessionId,
-            enabled: this.useStubs,
-          }).catch(() => {});
-        }
       },
     };
     const audioReceiver = {

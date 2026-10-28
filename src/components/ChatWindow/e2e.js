@@ -2,6 +2,7 @@ import { get } from "svelte/store";
 import { invoke } from "@tauri-apps/api/core";
 import API, { currentUser } from "$lib/stores/api";
 import { getCurrentAccount } from "$lib/stores/accounts";
+import { activeCall, CALL_PHASE } from "$lib/stores/calls";
 import {
   initHandshake,
   acceptHandshake,
@@ -42,11 +43,49 @@ function getRejectedSet(chatId, settings) {
   return set;
 }
 
-export function dismissRequest(chatId, messageId) {
-  if (messageId) {
-    dismissedRequests.add(String(messageId));
+export function dismissRequest(chatId, messageId, handshakeData = null) {
+  const msgId = messageId ? String(messageId) : null;
+  const hsData = handshakeData ? String(handshakeData) : null;
+  if (msgId) {
+    dismissedRequests.add(msgId);
   }
-  pendingRequests.delete(Number(chatId));
+  if (hsData) {
+    dismissedRequests.add(hsData);
+  }
+  if (chatId != null) {
+    const numChatId = Number(chatId);
+    pendingRequests.delete(numChatId);
+    const set = getRejectedSet(numChatId, null);
+    if (msgId) set.add(msgId);
+    if (hsData) set.add(hsData);
+
+    getCurrentAccount().then((account) => {
+      const accId = Number(account?.id || 0);
+      if (!accId) return;
+      invoke("get_chat_settings", {
+        account: accId,
+        chatId: numChatId,
+      }).then((settings) => {
+        const next = { ...settings };
+        delete next.e2e_declined;
+        if (msgId) {
+          next.rejected_handshakes = Array.from(
+            new Set([...(settings?.rejected_handshakes || []), msgId])
+          );
+        }
+        if (hsData) {
+          next.declined_handshakes = Array.from(
+            new Set([...(settings?.declined_handshakes || []), hsData])
+          );
+        }
+        invoke("set_chat_settings", {
+          account: accId,
+          chatId: numChatId,
+          data: next,
+        }).catch(() => {});
+      }).catch(() => {});
+    }).catch(() => {});
+  }
 }
 
 export const pendingRequestStore = {
@@ -69,6 +108,19 @@ export async function checkForEncryptionRequest(
   decodedMessagesStore = null
 ) {
   if (!chat || !decryptedBatch || chat.type === "CHAT") return null;
+
+  const call = get(activeCall);
+  if (call && (call.phase === CALL_PHASE.ACTIVE || call.phase === CALL_PHASE.CONNECTING)) {
+    const callPeerId = Number(call.peerId || 0);
+    const chatIdNum = Number(chat.id || 0);
+    const isCallWithThisPeer = callPeerId && (
+      callPeerId === chatIdNum ||
+      (chat.participants && Object.keys(chat.participants).some((id) => Number(id) === callPeerId))
+    );
+    if (isCallWithThisPeer) {
+      return null;
+    }
+  }
 
   const currentUid = get(currentUser);
   const isSavedMessagesChat = Number(chat.id) === 0 || Number(chat.id) === Number(currentUid);
