@@ -201,10 +201,4 @@
     color: rgba(255, 255, 255, 0.4);
   }
 
-  .loading-state {
-    padding: 24px;
-    text-align: center;
-    color: rgba(255, 255, 255, 0.5);
-    font-size: 14px;
-  }
 </style>

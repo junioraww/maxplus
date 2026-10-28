@@ -472,7 +472,6 @@
                 elements={msg.elements || []}
                 deleted={msg.deleted}
                 {isSystem}
-                {isMe}
               />
             {/if}
 
@@ -608,12 +607,6 @@
 
   .message-row.is-selected {
     background: transparent;
-  }
-
-  .placeholder {
-    height: 80px;
-    width: 100%;
-    opacity: 0;
   }
 
   .message-row.inactive {
@@ -958,11 +951,6 @@
     font-size: 10px;
   }
 
-  .line.deleted-text {
-    opacity: 0.6;
-    text-decoration: line-through;
-  }
-
   .deleted-badge {
     font-size: 10px;
     color: #ef4444;
@@ -1072,7 +1060,7 @@
     }
   }
 
-  .msg-highlight {
+  :global(.msg-highlight) {
     position: absolute;
     top: -3px;
     left: 0;

@@ -1167,7 +1167,7 @@
           class="tg-tab-indicator"
           class:animating={isProgrammaticScroll}
           style="width: {100 / availableTabs.length}%; transform: translateX({indicatorProgress * 100}%);"
-        />
+        ></div>
       </div>
     {/if}
 
@@ -2997,12 +2997,6 @@
   .tg-icon-pin {
     background: rgba(255, 179, 0, 0.15);
     color: #ffb300;
-  }
-
-  .tg-content-transition {
-    display: flex;
-    flex-direction: column;
-    width: 100%;
   }
 
   .tg-invite-row {

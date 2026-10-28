@@ -320,33 +320,6 @@
     transform: scale(0.96);
   }
 
-  .avatar-safe-badge {
-    position: absolute;
-    left: -2px;
-    bottom: -2px;
-    width: 30px;
-    height: 30px;
-    border-radius: 50%;
-    border: 2px solid #26262e;
-    background: #0ea5e9;
-    color: #ffffff;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    box-shadow: 0 3px 8px rgba(0, 0, 0, 0.35);
-    transition: background 0.15s, transform 0.12s, opacity 0.15s;
-  }
-
-  .avatar-safe-badge:hover {
-    background: #38bdf8;
-    transform: scale(1.08);
-  }
-
-  .avatar-safe-badge:active {
-    transform: scale(0.92);
-  }
-
   .avatar-camera-badge {
     position: absolute;
     right: -2px;
@@ -407,15 +380,6 @@
 
   .avatar-action-btn.primary:hover {
     background: rgba(51, 144, 236, 0.28);
-  }
-
-  .avatar-action-btn.safe {
-    background: rgba(14, 165, 233, 0.18);
-    color: #38bdf8;
-  }
-
-  .avatar-action-btn.safe:hover {
-    background: rgba(14, 165, 233, 0.28);
   }
 
   .avatar-action-btn.danger {

@@ -50,7 +50,7 @@
               bind:value={formData[field.key]}
               placeholder={field.placeholder}
               rows={field.rows || 3}
-            />
+            ></textarea>
           {:else}
             <input
               bind:value={formData[field.key]}

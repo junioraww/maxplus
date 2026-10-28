@@ -935,12 +935,6 @@
     transform: scale(1.04);
   }
 
-  .media-tile-loader {
-    width: 100%;
-    height: 100%;
-    display: contents;
-  }
-
   .tile-spinner {
     width: 22px;
     height: 22px;
