@@ -617,7 +617,7 @@
       border-left: none;
       border-right: none;
       border-bottom: none;
-      padding: 16px 16px calc(16px + env(safe-area-inset-bottom, 0px));
+      padding: 16px 16px calc(16px + var(--safe-bottom, 0px));
       box-sizing: border-box;
       gap: 14px;
     }

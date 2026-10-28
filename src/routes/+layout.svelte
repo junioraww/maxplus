@@ -92,6 +92,8 @@
           invoke("plugin:safe-area-insets-css|get_bottom_inset"),
         ]);
 
+        document.documentElement.style.setProperty("--safe-top", `${top}px`);
+        document.documentElement.style.setProperty("--safe-bottom", `${bottom}px`);
         document.documentElement.style.setProperty("--safe-area-top", `${top}px`);
         document.documentElement.style.setProperty("--safe-area-bottom", `${bottom}px`);
         document.documentElement.classList.add("ios-safe-area");

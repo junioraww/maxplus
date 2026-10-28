@@ -482,7 +482,7 @@
     flex-direction: column;
     overflow: hidden;
     position: relative;
-    padding-bottom: max(16px, env(safe-area-inset-bottom, 16px));
+    padding-bottom: max(16px, calc(16px + var(--safe-bottom, 0px)));
   }
 
   @media (min-width: 640px) {

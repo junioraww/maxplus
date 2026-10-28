@@ -225,7 +225,7 @@
   }
 
   .actions-panel {
-    padding: 14px 16px;
+    padding: 14px 16px calc(14px + var(--safe-bottom, 0px));
     background: #212126;
     border-top: 1px solid rgba(255, 255, 255, 0.08);
     flex-shrink: 0;

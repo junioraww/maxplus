@@ -2089,7 +2089,7 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 10px 14px;
+    padding: calc(10px + var(--safe-top, 0px)) 14px 10px;
     background: #212121;
     border-bottom: 1px solid rgba(255, 255, 255, 0.06);
     flex-shrink: 0;
@@ -2275,7 +2275,7 @@
   }
 
   .tg-tab-page-content {
-    padding: 14px 14px calc(24px + env(safe-area-inset-bottom));
+    padding: 14px 14px calc(24px + var(--safe-bottom, 0px));
   }
 
   .tg-hero {
@@ -2750,7 +2750,7 @@
 
   .tg-toast {
     position: absolute;
-    bottom: calc(20px + env(safe-area-inset-bottom));
+    bottom: calc(20px + var(--safe-bottom, 0px));
     left: 50%;
     transform: translateX(-50%);
     background: rgba(30, 30, 30, 0.95);

@@ -17,7 +17,7 @@
     color: white;
     width: 200px;
     height: 40px;
-    top: 20px;
+    top: calc(20px + var(--safe-top, 0px));
     right: 0;
     background: linear-gradient(270deg, #333, #444), #333;
     display: flex;

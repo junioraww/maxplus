@@ -396,10 +396,11 @@ import { goto } from "$app/navigation";
     overflow-y: auto;
     flex-grow: 1;
     min-height: 0;
+    padding-bottom: calc(20px + var(--safe-bottom, 0px));
   }
 
   .info {
-    margin-top: 20px;
+    margin-top: calc(20px + var(--safe-top, 0px));
     top: 0;
     width: 100%;
     display: flex;
@@ -503,10 +504,14 @@ import { goto } from "$app/navigation";
 
   .scanner-icon {
     position: absolute;
-    width: 45px;
+    top: calc(16px + var(--safe-top, 0px));
+    right: 16px;
+    width: 32px;
+    height: 32px;
     cursor: pointer;
     opacity: 0.8;
     transition: opacity 0.1s;
+    z-index: 10;
   }
 
   .scanner-icon:hover {

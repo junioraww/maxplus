@@ -47,7 +47,7 @@
 <style>
   .scroll-down-container {
     position: fixed;
-    bottom: 80px;
+    bottom: calc(80px + var(--safe-bottom, 0px));
     right: 10px;
     width: 55px;
     height: 55px;
@@ -56,19 +56,19 @@
   }
 
   .scroll-down-container.nije {
-    bottom: 20px;
+    bottom: calc(20px + var(--safe-bottom, 0px));
   }
 
   .scroll-down-container.vise {
-    bottom: 140px;
+    bottom: calc(140px + var(--safe-bottom, 0px));
   }
 
   .scroll-down-container.with-stickers {
-    bottom: 420px;
+    bottom: calc(420px + var(--safe-bottom, 0px));
   }
 
   .scroll-down-container.with-stickers.vise {
-    bottom: 480px;
+    bottom: calc(480px + var(--safe-bottom, 0px));
   }
 
   .scroll-down-btn {

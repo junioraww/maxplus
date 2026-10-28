@@ -197,8 +197,8 @@
     align-items: center;
     gap: 10px;
     width: 100%;
-    padding: 5px 0;
-    margin-top: 10px;
+    padding: calc(10px + var(--safe-top, 0px)) 0 5px 0;
+    margin-top: 0;
     margin-bottom: 5px;
   }
 

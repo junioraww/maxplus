@@ -330,7 +330,7 @@
   .tab-header {
     display: flex;
     align-items: center;
-    padding: 12px 16px;
+    padding: calc(12px + var(--safe-top, 0px)) 16px 12px;
     background: #212126;
     border-bottom: 1px solid rgba(255, 255, 255, 0.08);
     flex-shrink: 0;

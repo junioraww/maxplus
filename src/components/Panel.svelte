@@ -390,14 +390,14 @@
 
   .panel {
     background-color: var(--bg-panel);
-    height: 60px;
+    height: calc(60px + var(--safe-bottom, 0px));
     width: 100%;
     display: flex;
     justify-content: center;
-    align-items: center;
+    align-items: flex-start;
     color: #999;
-    padding-top: env(safe-area-inset-top, 4px);
-    padding-bottom: env(safe-area-inset-bottom, 14px);
+    padding-top: 0;
+    padding-bottom: var(--safe-bottom, 0px);
     border-top: 1px solid var(--border-subtle);
     box-sizing: border-box;
     user-select: none;
@@ -413,7 +413,7 @@
     flex: 1 1 0;
     min-width: 0;
     max-width: 110px;
-    height: 100%;
+    height: 60px;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -645,7 +645,7 @@
     display: flex;
     flex-direction: column;
     max-height: 70vh;
-    padding-bottom: env(safe-area-inset-bottom, 20px);
+    padding-bottom: max(16px, var(--safe-bottom, 0px));
     box-shadow: 0 -8px 30px rgba(0, 0, 0, 0.5);
   }
 

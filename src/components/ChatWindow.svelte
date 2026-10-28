@@ -1536,6 +1536,7 @@
     on:mousemove={moveDrag}
     bind:this={scrollElement}
     class="message-list-container grab-scroll"
+    class:no-input={chat.type === "CHANNEL" || showBotStart}
     id="scroll"
   >
     {#each $pluginChatBackground as item (item.id)}
@@ -1748,8 +1749,8 @@
     height: 100%;
     max-height: 100%;
     background-color: var(--bg-chat);
-    padding-top: env(safe-area-inset-top, 10px);
-    padding-bottom: env(safe-area-inset-bottom, 20px);
+    padding-top: 0;
+    padding-bottom: 0;
     box-shadow: -4px 0 24px rgba(0, 0, 0, 0.45);
     will-change: transform;
   }
@@ -1777,6 +1778,10 @@
     flex-direction: column;
     overflow-anchor: none;
     overflow-x: hidden;
+  }
+
+  .message-list-container.no-input {
+    padding-bottom: calc(16px + var(--safe-bottom, 0px));
   }
 
   .message-list-inner {
@@ -1850,7 +1855,7 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 0 12px;
+    padding: var(--safe-top, 0px) 12px 0;
     box-sizing: border-box;
     border-bottom: 1px solid #333;
     z-index: 30;

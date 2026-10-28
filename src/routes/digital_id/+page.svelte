@@ -410,11 +410,11 @@
   }
 
   .header {
-    height: 52px;
+    height: calc(52px + var(--safe-top, 0px));
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 0 16px;
+    padding: var(--safe-top, 0px) 16px 0;
     border-bottom: 1px solid rgba(255, 255, 255, 0.07);
     flex-shrink: 0;
   }
@@ -471,7 +471,7 @@
     flex: 1;
     overflow-y: auto;
     padding: 16px;
-    padding-bottom: 90px;
+    padding-bottom: calc(90px + var(--safe-bottom, 0px));
     display: flex;
     flex-direction: column;
     gap: 16px;

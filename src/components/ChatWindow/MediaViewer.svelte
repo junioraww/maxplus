@@ -1486,7 +1486,7 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: calc(env(safe-area-inset-top, 12px) + 6px) 20px 15px 20px;
+    padding: calc(var(--safe-top, 0px) + 18px) 20px 15px 20px;
     color: white;
     z-index: 10;
     transition: opacity 200ms ease;
