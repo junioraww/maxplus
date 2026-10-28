@@ -373,7 +373,7 @@
     border-radius: 20px 20px 0 0;
     border: 1px solid rgba(255, 255, 255, 0.08);
     border-bottom: none;
-    padding: 0 16px calc(24px + env(safe-area-inset-bottom));
+    padding: 0 16px calc(24px + var(--safe-bottom, 0px));
     box-sizing: border-box;
     max-height: min(90vh, 680px);
     display: flex;
@@ -804,7 +804,7 @@
 
   .tg-toast {
     position: absolute;
-    bottom: calc(20px + env(safe-area-inset-bottom));
+    bottom: calc(20px + var(--safe-bottom, 0px));
     left: 50%;
     transform: translateX(-50%);
     background: rgba(30, 30, 30, 0.95);

@@ -7,6 +7,9 @@ import android.media.projection.MediaProjectionManager
 import android.os.Bundle
 import android.util.Log
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
 
 class MainActivity : TauriActivity() {
   companion object {
@@ -155,12 +158,58 @@ class MainActivity : TauriActivity() {
     }
   }
 
+  private var currentWebView: android.webkit.WebView? = null
+  private var cachedTopDp = 0
+  private var cachedBottomDp = 0
+  private var cachedLeftDp = 0
+  private var cachedRightDp = 0
+
+  private fun applyInsetsToWebView() {
+    val wv = currentWebView ?: return
+    val script = "document.documentElement.style.setProperty('--safe-top', '${cachedTopDp}px');" +
+      "document.documentElement.style.setProperty('--safe-bottom', '${cachedBottomDp}px');" +
+      "document.documentElement.style.setProperty('--safe-left', '${cachedLeftDp}px');" +
+      "document.documentElement.style.setProperty('--safe-right', '${cachedRightDp}px');" +
+      "document.documentElement.style.setProperty('--safe-area-top', '${cachedTopDp}px');" +
+      "document.documentElement.style.setProperty('--safe-area-bottom', '${cachedBottomDp}px');"
+    wv.post {
+      try {
+        wv.evaluateJavascript(script, null)
+      } catch (e: Throwable) {
+        Log.e("MaxPlus", "applyInsetsToWebView error", e)
+      }
+    }
+  }
+
   override fun onCreate(savedInstanceState: Bundle?) {
+    WindowCompat.setDecorFitsSystemWindows(window, false)
+    window.statusBarColor = android.graphics.Color.TRANSPARENT
+    window.navigationBarColor = android.graphics.Color.TRANSPARENT
+    val controller = WindowCompat.getInsetsController(window, window.decorView)
+    controller.isAppearanceLightStatusBars = false
+    controller.isAppearanceLightNavigationBars = false
+
     super.onCreate(savedInstanceState)
     instance = this
     appContext = applicationContext
     AppState.isAppAlive = true
     Log.d("MaxPlus", "MainActivity.onCreate")
+
+    ViewCompat.setOnApplyWindowInsetsListener(window.decorView) { _, windowInsets ->
+      val insets = windowInsets.getInsets(
+        WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout()
+      )
+      val density = resources.displayMetrics.density
+      if (density > 0f) {
+        cachedTopDp = (insets.top / density).toInt()
+        cachedBottomDp = (insets.bottom / density).toInt()
+        cachedLeftDp = (insets.left / density).toInt()
+        cachedRightDp = (insets.right / density).toInt()
+        applyInsetsToWebView()
+      }
+      windowInsets
+    }
+
     try {
       initJni()
     } catch (e: Throwable) {
@@ -172,6 +221,8 @@ class MainActivity : TauriActivity() {
 
   override fun onWebViewCreate(webView: android.webkit.WebView) {
     super.onWebViewCreate(webView)
+    currentWebView = webView
+    applyInsetsToWebView()
     webView.settings.mediaPlaybackRequiresUserGesture = false
     webView.webChromeClient = object : android.webkit.WebChromeClient() {
       override fun onPermissionRequest(request: android.webkit.PermissionRequest) {
@@ -192,6 +243,7 @@ class MainActivity : TauriActivity() {
   override fun onResume() {
     super.onResume()
     AppState.isAppInForeground = true
+    applyInsetsToWebView()
   }
 
   override fun onPause() {
@@ -201,6 +253,7 @@ class MainActivity : TauriActivity() {
   
   override fun onDestroy() {
     super.onDestroy()
+    currentWebView = null
     if (instance == this) {
       instance = null
     }

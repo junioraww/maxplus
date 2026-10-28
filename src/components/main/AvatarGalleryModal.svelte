@@ -991,7 +991,7 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: calc(12px + env(safe-area-inset-top, 0px)) 18px 12px;
+    padding: calc(12px + var(--safe-top, 0px)) 18px 12px;
     color: #ffffff;
     z-index: 20;
     transition: opacity 180ms ease-out;
@@ -1081,7 +1081,7 @@
     position: relative;
     overflow: visible;
     touch-action: none;
-    padding: 0 10px calc(24px + env(safe-area-inset-bottom, 0px));
+    padding: 0 10px calc(24px + var(--safe-bottom, 0px));
   }
 
   .ag-stage {

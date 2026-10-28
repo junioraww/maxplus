@@ -318,7 +318,7 @@
   .actions-panel {
     flex-shrink: 0;
     padding: 14px 16px;
-    padding-bottom: max(14px, env(safe-area-inset-bottom, 14px));
+    padding-bottom: max(14px, calc(14px + var(--safe-bottom, 0px)));
     background: #212126;
     border-top: 1px solid rgba(255, 255, 255, 0.08);
   }

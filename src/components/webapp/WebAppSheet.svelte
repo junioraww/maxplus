@@ -902,7 +902,9 @@
   .sheet-header {
     position: relative;
     flex-shrink: 0;
-    height: 48px;
+    height: calc(48px + var(--safe-top, 0px));
+    padding-top: var(--safe-top, 0px);
+    box-sizing: border-box;
     width: 100%;
     background: #202225;
     border-bottom: 1px solid rgba(255, 255, 255, 0.08);
@@ -912,7 +914,7 @@
 
   .drag-pill {
     position: absolute;
-    top: 6px;
+    top: calc(6px + var(--safe-top, 0px));
     left: 50%;
     transform: translateX(-50%);
     width: 36px;
@@ -924,7 +926,7 @@
 
   .header-bar {
     width: 100%;
-    height: 100%;
+    height: 48px;
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -1021,7 +1023,9 @@
     flex: 1;
     position: relative;
     width: 100%;
-    height: calc(100% - 48px);
+    height: calc(100% - 48px - var(--safe-top, 0px));
+    padding-bottom: var(--safe-bottom, 0px);
+    box-sizing: border-box;
     background: #0f1011;
   }
 

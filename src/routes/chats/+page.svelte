@@ -749,10 +749,10 @@
   }
 
   .header-container {
-    padding: 15px 0 0 0;
+    padding: calc(15px + var(--safe-top, 0px)) 0 0 0;
     position: relative;
     flex-shrink: 0;
-    min-height: 80px;
+    min-height: calc(80px + var(--safe-top, 0px));
   }
 
   .normal-header {
@@ -771,7 +771,7 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 0 10px;
+    padding: var(--safe-top, 0px) 10px 0;
     box-sizing: border-box;
     border-bottom: 1px solid #333;
   }

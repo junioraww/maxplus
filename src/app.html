@@ -101,7 +101,7 @@
 
       .loader-credits {
         position: absolute;
-        bottom: max(24px, env(safe-area-inset-bottom, 24px));
+        bottom: max(24px, calc(var(--safe-bottom, 0px) + 24px));
         left: 20px;
         right: 20px;
         display: flex;

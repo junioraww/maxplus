@@ -18,7 +18,7 @@
   {#if display}
       <div
       class="back"
-      style:top={`${top}px`}
+      style:top={`calc(${top}px + var(--safe-top, 0px))`}
       on:click={goBack}
       ><a>←</a></div>
   {/if}

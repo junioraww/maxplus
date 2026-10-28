@@ -932,8 +932,8 @@
 
   .group-grid-area {
     position: absolute;
-    top: calc(60px + env(safe-area-inset-top, 0px));
-    bottom: calc(100px + env(safe-area-inset-bottom, 0px));
+    top: calc(60px + var(--safe-top, 0px));
+    bottom: calc(100px + var(--safe-bottom, 0px));
     left: 0;
     right: 0;
     z-index: 1003;
@@ -997,7 +997,7 @@
 
   .call-error-banner {
     position: absolute;
-    top: calc(56px + env(safe-area-inset-top, 0px));
+    top: calc(56px + var(--safe-top, 0px));
     left: 16px;
     right: 16px;
     padding: 10px 14px;
@@ -1233,7 +1233,7 @@
 
   .swapped-flip-btn {
     position: absolute;
-    top: calc(70px + env(safe-area-inset-top, 0px));
+    top: calc(70px + var(--safe-top, 0px));
     right: 20px;
     width: 40px;
     height: 40px;
@@ -1270,7 +1270,7 @@
     left: 0;
     right: 0;
     padding: 16px 20px;
-    padding-top: calc(16px + env(safe-area-inset-top, 0px));
+    padding-top: calc(16px + var(--safe-top, 0px));
     display: flex;
     align-items: center;
     gap: 10px;
@@ -1452,7 +1452,7 @@
 
   .incoming-actions {
     position: absolute;
-    bottom: calc(48px + env(safe-area-inset-bottom, 0px));
+    bottom: calc(48px + var(--safe-bottom, 0px));
     left: 0;
     right: 0;
     display: flex;
@@ -1503,7 +1503,7 @@
     bottom: 0;
     left: 0;
     right: 0;
-    padding-bottom: calc(20px + env(safe-area-inset-bottom, 0px));
+    padding-bottom: calc(20px + var(--safe-bottom, 0px));
     padding-left: 8px;
     padding-right: 8px;
     opacity: 0;

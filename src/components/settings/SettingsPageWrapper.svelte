@@ -172,8 +172,8 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    height: 52px;
-    padding: 0 12px;
+    height: calc(52px + var(--safe-top, 0px));
+    padding: var(--safe-top, 0px) 12px 0;
     background: var(--bg-topbar);
     border-bottom: 1px solid var(--border-subtle);
     flex-shrink: 0;
@@ -230,6 +230,7 @@
     -webkit-overflow-scrolling: touch;
     display: flex;
     flex-direction: column;
+    padding-bottom: var(--safe-bottom, 0px);
   }
 
   @keyframes slideInRight {

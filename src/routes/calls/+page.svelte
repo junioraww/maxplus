@@ -979,7 +979,7 @@
     display: flex;
     flex-direction: column;
     height: 100%;
-    padding: 16px 16px 0;
+    padding: calc(16px + var(--safe-top, 0px)) 16px 0;
     color: var(--text-primary, #ffffff);
     overflow: hidden;
     position: relative;
@@ -1248,7 +1248,7 @@
     -webkit-overflow-scrolling: touch;
     box-sizing: border-box;
     cursor: default;
-    padding-bottom: calc(76px + env(safe-area-inset-bottom, 14px));
+    padding-bottom: calc(76px + var(--safe-bottom, 0px));
   }
 
   .loading-box {
@@ -1547,7 +1547,7 @@
     background: var(--bg-surface, #1e2025);
     border-top: 1px solid rgba(255, 255, 255, 0.08);
     border-radius: 24px 24px 0 0;
-    padding: 24px 20px calc(24px + env(safe-area-inset-bottom, 0px));
+    padding: 24px 20px calc(24px + var(--safe-bottom, 0px));
     box-sizing: border-box;
     box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.5);
   }

@@ -126,7 +126,10 @@
     flex-direction: column;
     justify-content: center;
     align-items: center;
-    min-height: 100vh;
+    min-height: 100%;
+    padding-top: var(--safe-top, 0px);
+    padding-bottom: var(--safe-bottom, 0px);
+    box-sizing: border-box;
     text-align: center;
     color: #ddd;
   }

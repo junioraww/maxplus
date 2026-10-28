@@ -100,7 +100,7 @@
 
   .bot-start-footer {
     position: absolute;
-    bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+    bottom: calc(16px + var(--safe-bottom, 0px));
     left: 16px;
     right: 16px;
     display: flex;

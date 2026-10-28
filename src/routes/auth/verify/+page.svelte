@@ -237,12 +237,9 @@
     flex-direction: column;
     justify-content: center;
     align-items: center;
-    min-height: 100vh;
-    text-align: center;
-    color: #ddd;
-    max-width: min(340px, 92%);
-    margin: 0 auto;
-    padding: 20px 0;
+    min-height: 100%;
+    padding: calc(20px + var(--safe-top, 0px)) 0 calc(20px + var(--safe-bottom, 0px));
+    box-sizing: border-box;
     box-sizing: border-box;
   }
 

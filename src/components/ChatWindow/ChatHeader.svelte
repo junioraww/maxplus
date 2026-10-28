@@ -151,7 +151,7 @@
   header {
     display: flex;
     align-items: center;
-    padding: 8px 0;
+    padding: calc(8px + var(--safe-top, 0px)) 0 8px 0;
     cursor: grab;
     flex-shrink: 0;
     background-color: #1e2024;
