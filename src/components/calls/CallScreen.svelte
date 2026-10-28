@@ -92,6 +92,7 @@
   $: mainVideoActive = isActive && (!isSwapped ? (hasRemoteVideo || (screenOn && localScreenStream)) : hasLocalVideo);
   $: showPip = !isGroupCall && isActive && (hasRemoteVideo ? hasLocalVideo : (screenOn ? (videoOn && Boolean(localCameraStream)) : hasLocalVideo));
   $: isSecure = mode === CALL_MODE.SECURE && secureStatus === 'active' && isActive;
+  $: canEncrypt = !isGroupCall && isActive && elapsed > 0;
 
   $: if (remoteAudioEl && remoteStream) {
     if (remoteAudioEl.srcObject !== remoteStream) {
@@ -356,6 +357,7 @@
   }
 
   async function onToggleSecure() {
+    if (!canEncrypt) return;
     await CallService.toggleSecure();
   }
 
@@ -632,7 +634,7 @@
     </div>
 
     <div class="top-bar-right">
-      {#if mode === CALL_MODE.SECURE || secureStatus === 'active' || secureStatus === 'pending'}
+      {#if !isGroupCall && (mode === CALL_MODE.SECURE || secureStatus === 'active' || secureStatus === 'pending')}
         <button type="button" class="secure-badge secure-badge--{secureStatus}" on:click={() => CallService.toggleSecure()} title={secureKeyFingerprint ? `Ключ: ${secureKeyFingerprint}` : 'E2E шифрование'}>
           {#if secureStatus === 'active'}
             {#if secureKeyFingerprint}
@@ -823,19 +825,23 @@
           <img src="/icons/screen-share.svg" alt="" width="24" height="24" />
         </button>
 
-        <button
-          class="ctrl-btn"
-          class:ctrl-btn--secure={isSecure}
-          on:click={onToggleSecure}
-          aria-label={isSecure ? 'E2E активно' : 'Включить E2E'}
-          title={isSecure ? `E2E шифрование активно (код: ${secureKeyFingerprint || 'OK'})` : 'Включить E2E шифрование'}
-        >
-          {#if isSecure}
-            <img src="/icons/shield-check.svg" alt="" width="22" height="22" />
-          {:else}
-            <img src="/icons/shield.svg" alt="" width="22" height="22" />
-          {/if}
-        </button>
+        {#if !isGroupCall}
+          <button
+            class="ctrl-btn ctrl-btn--secure-toggle"
+            class:ctrl-btn--secure={isSecure}
+            class:ctrl-btn--disabled={!canEncrypt}
+            disabled={!canEncrypt}
+            on:click={onToggleSecure}
+            aria-label={isSecure ? 'E2E активно' : 'Включить E2E'}
+            title={!canEncrypt ? 'Ожидание начала разговора' : (isSecure ? `E2E шифрование активно (код: ${secureKeyFingerprint || 'OK'})` : 'Включить E2E шифрование')}
+          >
+            {#if isSecure}
+              <img src="/icons/shield-check.svg" alt="" width="22" height="22" />
+            {:else}
+              <img src="/icons/shield.svg" alt="" width="22" height="22" />
+            {/if}
+          </button>
+        {/if}
 
         <button
           class="ctrl-btn"
@@ -1506,6 +1512,17 @@
   .ctrl-btn--secure {
     background: rgba(74, 222, 128, 0.18);
     border: 1px solid rgba(74, 222, 128, 0.4);
+  }
+
+  .ctrl-btn--secure-toggle {
+    transition: opacity 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .ctrl-btn--secure-toggle:disabled,
+  .ctrl-btn--secure-toggle.ctrl-btn--disabled {
+    opacity: 0.38;
+    cursor: not-allowed;
+    pointer-events: none;
   }
 
   .ctrl-btn--recording {

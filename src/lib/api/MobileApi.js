@@ -2,6 +2,7 @@ import { listen } from "@tauri-apps/api/event";
 import { goto } from "$app/navigation";
 import { get } from "svelte/store";
 import { pluginEmit } from "$lib/plugins/events";
+import { dismissRequest } from "$components/ChatWindow/e2e";
 
 import { invoke } from "$lib/utils/invoke";
 import {
@@ -243,6 +244,7 @@ export default class MobileApi extends BaseAPI {
                     const decrypted = await batchDecrypt(Number(acc.id), Number(message.chatId), [message]).catch(() => null);
                     const dec = decrypted?.[String(message.id)];
                     if (dec?.is_handshake_request && dec.handshake_data) {
+                      dismissRequest(message.chatId, message.id, dec.handshake_data);
                       CallService.handleIncomingChatHandshake({
                         chatId: message.chatId,
                         messageId: message.id,

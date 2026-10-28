@@ -92,6 +92,14 @@ fn get_sessions() -> &'static Arc<Mutex<HashMap<u32, Arc<NativeWebRtcSession>>>>
 
 impl NativeWebRtcSession {
     pub async fn create(ice_servers: Vec<IceServerConfig>) -> Result<Arc<Self>, String> {
+        let existing = {
+            let mut map = get_sessions().lock().await;
+            std::mem::take(&mut *map)
+        };
+        for (_, old_session) in existing {
+            old_session.close().await;
+        }
+
         let factory = PeerConnectionFactory::default();
 
         let mut servers = Vec::new();
@@ -424,37 +432,40 @@ impl NativeWebRtcSession {
     }
 
     pub async fn set_use_stubs(&self, enabled: bool) -> Result<(), String> {
-        self.use_stubs.store(enabled, Ordering::SeqCst);
+        let prev = self.use_stubs.swap(enabled, Ordering::SeqCst);
         let sender_lock = self.audio_sender.lock().await;
         if let Some(sender) = sender_lock.as_ref() {
             if enabled {
-                self.stub_audio_running.store(true, Ordering::SeqCst);
-                let stub_source = self.stub_audio_source.clone();
-                let running = Arc::clone(&self.stub_audio_running);
-                tokio::spawn(async move {
-                    let mut seed: u32 = 123456789;
-                    let mut interval = tokio::time::interval(std::time::Duration::from_millis(10));
-                    while running.load(Ordering::SeqCst) {
-                        interval.tick().await;
-                        let mut samples = Vec::with_capacity(480);
-                        for _ in 0..480 {
-                            seed = seed.wrapping_mul(1664525).wrapping_add(1013904223);
-                            let val = (((seed >> 16) as i32 % 6000) - 3000) as i16;
-                            samples.push(val);
+                if !self.stub_audio_running.swap(true, Ordering::SeqCst) {
+                    let _ = self.factory.stop_recording();
+                    let stub_source = self.stub_audio_source.clone();
+                    let running = Arc::clone(&self.stub_audio_running);
+                    tokio::spawn(async move {
+                        let mut seed: u32 = 123456789;
+                        let mut interval = tokio::time::interval(std::time::Duration::from_millis(10));
+                        while running.load(Ordering::SeqCst) {
+                            interval.tick().await;
+                            let mut samples = Vec::with_capacity(480);
+                            for _ in 0..480 {
+                                seed = seed.wrapping_mul(1664525).wrapping_add(1013904223);
+                                let val = (((seed >> 16) as i32 % 6000) - 3000) as i16;
+                                samples.push(val);
+                            }
+                            let frame = AudioFrame {
+                                data: std::borrow::Cow::Owned(samples),
+                                sample_rate: 48000,
+                                num_channels: 1,
+                                samples_per_channel: 480,
+                            };
+                            let _ = stub_source.capture_frame(&frame).await;
                         }
-                        let frame = AudioFrame {
-                            data: std::borrow::Cow::Owned(samples),
-                            sample_rate: 48000,
-                            num_channels: 1,
-                            samples_per_channel: 480,
-                        };
-                        let _ = stub_source.capture_frame(&frame).await;
-                    }
-                });
-                let _ = sender.set_track(Some(MediaStreamTrack::Audio(self.stub_audio_track.clone())));
-            } else {
+                    });
+                    let _ = sender.set_track(Some(MediaStreamTrack::Audio(self.stub_audio_track.clone())));
+                }
+            } else if prev || self.stub_audio_running.load(Ordering::SeqCst) {
                 self.stub_audio_running.store(false, Ordering::SeqCst);
                 let _ = sender.set_track(Some(MediaStreamTrack::Audio(self.device_audio_track.clone())));
+                let _ = self.factory.start_recording();
             }
         }
         Ok(())
