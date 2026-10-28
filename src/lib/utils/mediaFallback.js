@@ -40,7 +40,7 @@ export function createSyntheticAudioStream() {
   };
 }
 
-export function createSyntheticVideoStream() {
+export function createSyntheticVideoStream(facingMode = 'user') {
   const audioResult = createSyntheticAudioStream();
   const canvas = document.createElement('canvas');
   canvas.width = 640;
@@ -49,6 +49,7 @@ export function createSyntheticVideoStream() {
   const startTime = Date.now();
   const imgData = ctx.createImageData(640, 480);
   const pixelBuffer = new Uint32Array(imgData.data.buffer);
+  const isBack = facingMode === 'environment';
 
   let active = true;
   const renderFrame = () => {
@@ -61,19 +62,19 @@ export function createSyntheticVideoStream() {
 
     const elapsedSec = ((Date.now() - startTime) / 1000).toFixed(1);
     ctx.save();
-    ctx.fillStyle = 'rgba(15, 23, 42, 0.75)';
+    ctx.fillStyle = isBack ? 'rgba(30, 27, 75, 0.85)' : 'rgba(15, 23, 42, 0.75)';
     ctx.beginPath();
     if (ctx.roundRect) {
-      ctx.roundRect(140, 200, 360, 80, 16);
+      ctx.roundRect(100, 200, 440, 80, 16);
       ctx.fill();
     } else {
-      ctx.fillRect(140, 200, 360, 80);
+      ctx.fillRect(100, 200, 440, 80);
     }
-    ctx.fillStyle = '#38bdf8';
-    ctx.font = 'bold 26px sans-serif';
+    ctx.fillStyle = isBack ? '#a78bfa' : '#38bdf8';
+    ctx.font = 'bold 24px sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText(`SIMULATED FEED ${elapsedSec}s`, 320, 240);
+    ctx.fillText(`${isBack ? 'REAR' : 'FRONT'} FEED ${elapsedSec}s`, 320, 240);
     ctx.restore();
   };
 

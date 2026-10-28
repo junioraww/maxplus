@@ -107,7 +107,7 @@
         {:else}
           <video
             class="tile-video"
-            class:mirror={p.isSelf && !$activeCall.screenOn}
+            class:mirror={p.isSelf && !$activeCall.screenOn && $activeCall.cameraFacing !== 'environment'}
             autoplay
             playsinline
             webkit-playsinline
@@ -126,6 +126,17 @@
             {/if}
           </div>
         </div>
+      {/if}
+
+      {#if p.isSelf && p.video && !$activeCall.screenOn && $activeCall.hasMultipleCameras}
+        <button
+          class="tile-flip-btn"
+          on:click|stopPropagation={() => CallService.switchCamera()}
+          aria-label="Сменить камеру"
+          title="Сменить камеру"
+        >
+          <img src="/icons/reload.svg" alt="" width="13" height="13" />
+        </button>
       {/if}
 
       <div class="tile-overlay">
@@ -347,5 +358,31 @@
     font-weight: 500;
     color: rgba(255, 255, 255, 0.45);
     text-align: center;
+  }
+
+  .tile-flip-btn {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    border: none;
+    background: rgba(0, 0, 0, 0.75);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    z-index: 10;
+    padding: 0;
+    transition: background 0.15s, transform 0.15s;
+  }
+
+  .tile-flip-btn:hover {
+    background: rgba(0, 0, 0, 0.9);
+  }
+
+  .tile-flip-btn:active {
+    background: rgba(0, 0, 0, 0.95);
   }
 </style>

@@ -39,6 +39,8 @@
   let remoteStream, localCameraStream, localScreenStream;
   let startedAt, secureKeyFingerprint, secureStatus, incomingSecureRequest;
   let errorText, connectionStatus, serverTopology, conversationId, cameraLoading, peerVideoOn, peerScreenOn;
+  let cameraFacing = 'user';
+  let hasMultipleCameras = false;
   let showDebug = false;
 
   $: ({
@@ -47,7 +49,7 @@
     remoteStream, localCameraStream, localScreenStream,
     startedAt, secureKeyFingerprint, secureStatus, incomingSecureRequest,
     errorText, connectionStatus, serverTopology, conversationId, cameraLoading,
-    peerVideoOn, peerScreenOn,
+    peerVideoOn, peerScreenOn, cameraFacing, hasMultipleCameras,
   } = $activeCall);
 
   let remoteAudioEl;
@@ -390,6 +392,7 @@
   }
 
   function onPipPointerDown(e) {
+    if (e.target?.closest?.('.pip-swap-btn')) return;
     dragging = true;
     dragStartX = e.clientX;
     dragStartY = e.clientY;
@@ -494,13 +497,24 @@
       {#if hasLocalVideo && localEffectiveStream}
         <video
           class="remote-video"
-          class:mirror={!screenOn}
+          class:mirror={!screenOn && cameraFacing !== 'environment'}
           autoplay
           playsinline
           webkit-playsinline
           muted
           use:srcObject={localEffectiveStream}
         ></video>
+        {#if !screenOn && videoOn && hasMultipleCameras}
+          <button
+            class="swapped-flip-btn"
+            class:visible={controlsVisible}
+            on:click|stopPropagation={() => CallService.switchCamera()}
+            aria-label="Сменить камеру"
+            title="Сменить камеру"
+          >
+            <img src="/icons/reload.svg" alt="" width="20" height="20" />
+          </button>
+        {/if}
       {:else if cameraLoading}
         <div class="camera-loading-backdrop">
           <div class="spinner"></div>
@@ -529,7 +543,8 @@
           {#if !hasRemoteVideo && screenOn}
             {#if videoOn && localCameraStream}
               <video
-                class="pip-video mirror"
+                class="pip-video"
+                class:mirror={cameraFacing !== 'environment'}
                 autoplay
                 playsinline
                 webkit-playsinline
@@ -546,7 +561,7 @@
           {:else if hasLocalVideo && localEffectiveStream}
             <video
               class="pip-video"
-              class:mirror={!screenOn}
+              class:mirror={!screenOn && cameraFacing !== 'environment'}
               autoplay
               playsinline
               webkit-playsinline
@@ -599,9 +614,13 @@
 
         <button
           class="pip-swap-btn"
-          on:click|stopPropagation={toggleSwap}
-          aria-label="Поменять местами"
-          title="Поменять местами"
+          class:disabled={!isSwapped && !hasMultipleCameras}
+          disabled={!isSwapped && !hasMultipleCameras}
+          on:pointerdown|stopPropagation
+          on:pointerup|stopPropagation
+          on:click|stopPropagation={!isSwapped ? () => CallService.switchCamera() : toggleSwap}
+          aria-label={!isSwapped ? "Сменить камеру" : "Поменять местами"}
+          title={!isSwapped ? (hasMultipleCameras ? "Сменить камеру" : "Нет другой камеры") : "Поменять местами"}
         >
           <img src="/icons/reload.svg" alt="" width="14" height="14" />
         </button>
@@ -1198,13 +1217,51 @@
     transition: background 0.15s, transform 0.15s;
   }
 
-  .pip-swap-btn:hover {
-    background: rgba(0, 0, 0, 0.85);
-    transform: scale(1.08);
+  .pip-swap-btn:disabled, .pip-swap-btn.disabled {
+    opacity: 0.35;
+    cursor: default;
+    pointer-events: none;
   }
 
-  .pip-swap-btn:active {
-    transform: scale(0.92);
+  .pip-swap-btn:hover:not(:disabled) {
+    background: rgba(0, 0, 0, 0.85);
+  }
+
+  .pip-swap-btn:active:not(:disabled) {
+    background: rgba(0, 0, 0, 0.95);
+  }
+
+  .swapped-flip-btn {
+    position: absolute;
+    top: calc(70px + env(safe-area-inset-top, 0px));
+    right: 20px;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    background: rgba(0, 0, 0, 0.65);
+    backdrop-filter: blur(8px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    z-index: 30;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s, background 0.15s;
+  }
+
+  .swapped-flip-btn.visible {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  .swapped-flip-btn:hover {
+    background: rgba(0, 0, 0, 0.85);
+  }
+
+  .swapped-flip-btn:active {
+    background: rgba(0, 0, 0, 0.95);
   }
 
   .top-bar {
