@@ -10,7 +10,6 @@
   export let elements = [];
   export let deleted = false;
   export let isSystem = false;
-  export let isMe = false;
 
   $: blocks = compileDisplayBlocks(text, elements);
 

@@ -294,7 +294,7 @@
                       muted
                       playsinline
                       class="grid-video"
-                    />
+                    ></video>
                   {:else}
                     <img
                       src={getSafeAvatarPreviewUrl(avatar.avatar_uid)}
@@ -350,7 +350,7 @@
                       muted
                       playsinline
                       class="direct-preview-video"
-                    />
+                    ></video>
                   {:else}
                     <img
                       src={getSafeAvatarPreviewUrl(directPreviewData.avatar_uid)}
@@ -409,7 +409,7 @@
                 muted
                 playsinline
                 class="sheet-media"
-              />
+              ></video>
             {:else}
               <img
                 src={getSafeAvatarPreviewUrl(selectedAvatar.avatar_uid)}

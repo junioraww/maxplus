@@ -1,9 +1,14 @@
+#[cfg(target_os = "android")]
 use serde_json::json;
+#[cfg(target_os = "android")]
 use std::sync::Mutex;
+#[cfg(target_os = "android")]
 use tauri::Emitter;
 
+#[cfg(target_os = "android")]
 static PENDING_SCREEN_CAPTURE: Mutex<Option<tokio::sync::oneshot::Sender<Result<serde_json::Value, String>>>> = Mutex::new(None);
 
+#[cfg(target_os = "android")]
 pub fn on_screen_capture_result(success: bool, port: i32, width: i32, height: i32) {
     if let Ok(mut lock) = PENDING_SCREEN_CAPTURE.lock() {
         if let Some(tx) = lock.take() {
@@ -20,6 +25,7 @@ pub fn on_screen_capture_result(success: bool, port: i32, width: i32, height: i3
     }
 }
 
+#[cfg(target_os = "android")]
 pub fn on_screen_capture_stopped() {
     if let Some(app) = crate::notifications::GLOBAL_APP_HANDLE.get() {
         let _ = app.emit("screen_capture_stopped", ());

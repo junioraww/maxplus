@@ -298,7 +298,7 @@
     on:touchstart|preventDefault|stopPropagation={handleBackdropClick}
     on:touchend|preventDefault|stopPropagation={handleBackdropClick}
     transition:fade={{ duration: 150 }}
-  />
+  ></div>
 
   <div
     class="dropout-container message-actions-dropout"
@@ -443,7 +443,7 @@
           {/if}
 
           {#if (chat?.type === "CHAT" || chat?.type === "GROUP") && readers.length > 0}
-            <div class="divider" />
+            <div class="divider"></div>
             <button type="button" class="action-row seen-by-row" on:click={handleOpenSeenBy}>
               <div class="seen-by-avatars">
                 {#each readers.slice(0, 3) as reader, idx (reader.userId)}
@@ -460,7 +460,7 @@
           {/if}
 
           {#if isMe || !isChannel}
-            <div class="divider" />
+            <div class="divider"></div>
             <button type="button" class="action-row delete-row" on:click={handleDeleteMessage}>
               <svg viewBox="0 0 24 24" class="action-icon"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z" fill="currentColor"/></svg>
               <span class="action-label">Удалить</span>
