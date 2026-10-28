@@ -12,6 +12,7 @@
   import Notifications from "./settings/notifications/+page.svelte";
   import ProfileSettings from "./settings/profile/+page.svelte";
   import LockSettings from "./settings/lock/+page.svelte";
+  import TwoFactorSettings from "./settings/two_factor/+page.svelte";
   import DictionarySettings from "./settings/e2e/dictionary/+page.svelte";
   import AboutSettings from "./settings/about/+page.svelte";
   import SessionsSettings from "./settings/sessions/+page.svelte";
@@ -44,6 +45,7 @@
     profile: ProfileSettings,
     notifications: Notifications,
     lock: LockSettings,
+    two_factor: TwoFactorSettings,
     dictionary: DictionarySettings,
     logs: Logs,
     about: AboutSettings,

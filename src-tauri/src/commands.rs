@@ -481,3 +481,60 @@ pub fn decode_call_push(blob: String) -> Result<Value, String> {
         .map_err(|e| format!("vcp json parse: {e}"))?;
     Ok(parsed)
 }
+
+trait ValueExt {
+    fn str(&self, key: &str) -> Option<&str>;
+    fn str_or<'a>(&'a self, key: &str, default: &'a str) -> &'a str;
+}
+
+impl ValueExt for Value {
+    fn str(&self, key: &str) -> Option<&str> {
+        self.get(key).and_then(|v| v.as_str())
+    }
+
+    fn str_or<'a>(&'a self, key: &str, default: &'a str) -> &'a str {
+        self.str(key).unwrap_or(default)
+    }
+}
+
+#[tauri::command]
+pub async fn two_factor(
+    state: State<'_, AppState>,
+    action: String,
+    payload: Option<Value>,
+) -> Result<Value, Value> {
+    let p = payload.unwrap_or(Value::Null);
+    let resp = match action.as_str() {
+        "status" => state.client.fetch_2fa_status().await,
+        "request_email" => {
+            let track = p.str("trackId").map(String::from);
+            state.client.request_2fa_email_code(track, p.str_or("email", "")).await
+        }
+        "setup" => {
+            let track = p.str("trackId").map(String::from);
+            state.client.setup_2fa(
+                p.str_or("password", ""),
+                p.str("hint"),
+                p.str("email"),
+                p.str("code"),
+                track,
+            ).await
+        }
+        "change" => {
+            state.client.change_2fa(
+                p.str_or("currentPassword", ""),
+                p.str_or("newPassword", ""),
+                p.str("newHint"),
+            ).await
+        }
+        "disable" => {
+            state.client.disable_2fa(p.str_or("currentPassword", "")).await
+        }
+        _ => return Err(json!({ "error": "unknown_action" })),
+    };
+    let payload = resp.map(|r| r.payload).map_err(|e| e.to_json())?;
+    if let Some(err) = payload.get("error") {
+        return Err(json!({ "type": "Error", "text": err }));
+    }
+    Ok(payload)
+}
