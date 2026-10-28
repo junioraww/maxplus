@@ -58,6 +58,8 @@ const INITIAL_STATE = {
   errorText: null,
   connectionStatus: null,
   cameraLoading: false,
+  cameraFacing: 'user',
+  hasMultipleCameras: false,
   peerVideoOn: false,
   peerScreenOn: false,
   incomingSecureRequest: null,

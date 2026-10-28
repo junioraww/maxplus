@@ -451,6 +451,35 @@ function parseParticipant(raw) {
   };
 }
 
+function waitForFirstFrame(stream, timeoutMs = 700) {
+  return new Promise((resolve) => {
+    if (!stream || typeof document === 'undefined') return resolve();
+    const track = stream.getVideoTracks?.[0];
+    if (!track) return resolve();
+
+    let resolved = false;
+    const finish = () => {
+      if (!resolved) {
+        resolved = true;
+        clearTimeout(timer);
+        video.srcObject = null;
+        resolve();
+      }
+    };
+    const timer = setTimeout(finish, timeoutMs);
+    const video = document.createElement('video');
+    video.muted = true;
+    video.playsInline = true;
+    video.srcObject = stream;
+    if (typeof video.requestVideoFrameCallback === 'function') {
+      video.requestVideoFrameCallback(() => finish());
+    } else {
+      video.onloadeddata = () => finish();
+    }
+    video.play().catch(() => finish());
+  });
+}
+
 class MaxCallSession {
   #voiceChannel = null;
   #pc = null;
@@ -459,6 +488,7 @@ class MaxCallSession {
   #slotParticipants = new Map();
   #localStream = null;
   #cameraStream = null;
+  #cameraFacing = 'user';
   #screenStream = null;
   #encryption = new CallEncryptionSession();
   #destroyed = false;
@@ -2330,18 +2360,24 @@ class MaxCallSession {
         if (useStubs) {
           if (on) {
             if (!this.#syntheticVideo) {
-              this.#syntheticVideo = createSyntheticVideoStream();
+              this.#syntheticVideo = createSyntheticVideoStream(this.#cameraFacing);
             }
-            patchCallState({ videoOn: true, localCameraStream: this.#syntheticVideo.stream, cameraLoading: false });
+            patchCallState({ videoOn: true, localCameraStream: this.#syntheticVideo.stream, cameraFacing: this.#cameraFacing, hasMultipleCameras: true, cameraLoading: false });
           } else {
             if (this.#syntheticVideo) {
               this.#syntheticVideo.stop();
               this.#syntheticVideo = null;
             }
-            patchCallState({ videoOn: false, localCameraStream: null, cameraLoading: false });
+            patchCallState({ videoOn: false, localCameraStream: null, cameraFacing: 'user', hasMultipleCameras: false, cameraLoading: false });
           }
         } else {
-          patchCallState({ videoOn: on, localCameraStream: null, cameraLoading: false });
+          let hasMultiple = true;
+          if (navigator.mediaDevices?.enumerateDevices) {
+            const devs = await navigator.mediaDevices.enumerateDevices().catch(() => []);
+            const vInputs = devs.filter(d => d.kind === 'videoinput');
+            if (vInputs.length > 0) hasMultiple = vInputs.length > 1;
+          }
+          patchCallState({ videoOn: on, localCameraStream: null, cameraFacing: this.#cameraFacing, hasMultipleCameras: hasMultiple, cameraLoading: false });
         }
         if (this.#pc && typeof this.#pc.setCameraEnabled === 'function') {
           await this.#pc.setCameraEnabled(on);
@@ -2352,20 +2388,28 @@ class MaxCallSession {
       } else if (on && !this.#cameraStream) {
         patchCallState({ videoOn: true, cameraLoading: true });
         if (this.#useStubs || get(callUseStubs)) {
-          this.#syntheticVideo = createSyntheticVideoStream();
+          this.#syntheticVideo = createSyntheticVideoStream(this.#cameraFacing);
           this.#cameraStream = this.#syntheticVideo.stream;
         } else {
           try {
+            const facingConstraint = { ideal: this.#cameraFacing || 'user' };
             try {
               this.#cameraStream = await navigator.mediaDevices.getUserMedia({
-                video: { width: { ideal: 1280 }, height: { ideal: 720 } },
+                video: { facingMode: facingConstraint, width: { ideal: 1280 }, height: { ideal: 720 } },
                 audio: false,
               });
             } catch {
-              this.#cameraStream = await navigator.mediaDevices.getUserMedia({
-                video: true,
-                audio: false,
-              });
+              try {
+                this.#cameraStream = await navigator.mediaDevices.getUserMedia({
+                  video: { facingMode: facingConstraint },
+                  audio: false,
+                });
+              } catch {
+                this.#cameraStream = await navigator.mediaDevices.getUserMedia({
+                  video: true,
+                  audio: false,
+                });
+              }
             }
           } catch (e) {
             log('[call:media] getUserMedia video failed:', e?.name, e?.message);
@@ -2375,7 +2419,7 @@ class MaxCallSession {
               return;
             }
             try {
-              this.#syntheticVideo = createSyntheticVideoStream();
+              this.#syntheticVideo = createSyntheticVideoStream(this.#cameraFacing);
               this.#cameraStream = this.#syntheticVideo.stream;
             } catch (err) {
               showAlert('Не удалось получить доступ к камере');
@@ -2412,9 +2456,18 @@ class MaxCallSession {
             }
           }
         }
-        patchCallState({ videoOn: true, localCameraStream: this.#cameraStream, cameraLoading: false });
+        let hasMultiple = Boolean(this.#useStubs || get(callUseStubs));
+        if (!hasMultiple && navigator.mediaDevices?.enumerateDevices) {
+          const devs = await navigator.mediaDevices.enumerateDevices().catch(() => []);
+          const vInputs = devs.filter(d => d.kind === 'videoinput');
+          hasMultiple = vInputs.length > 1 || /android|iphone|ipad|mobile/i.test(navigator.userAgent || '');
+        } else if (/android|iphone|ipad|mobile/i.test(navigator.userAgent || '')) {
+          hasMultiple = true;
+        }
+        patchCallState({ videoOn: true, localCameraStream: this.#cameraStream, cameraFacing: this.#cameraFacing, hasMultipleCameras: hasMultiple, cameraLoading: false });
       } else if (!on && this.#cameraStream) {
-        patchCallState({ videoOn: false, localCameraStream: null, cameraLoading: false });
+        this.#cameraFacing = 'user';
+        patchCallState({ videoOn: false, localCameraStream: null, cameraFacing: 'user', hasMultipleCameras: false, cameraLoading: false });
         for (const t of this.#cameraStream.getTracks()) t.stop();
         if (this.#syntheticVideo) {
           this.#syntheticVideo.stop();
@@ -2446,6 +2499,132 @@ class MaxCallSession {
         },
       }).catch(() => {});
       this.#sendSfuDisplayLayout();
+    } finally {
+      this.#cameraToggling = false;
+    }
+  }
+
+  async switchCamera() {
+    if (this.#cameraToggling) return;
+    const isVideo = get(activeCall).videoOn;
+    if (!isVideo && !this.#cameraStream) return;
+    this.#cameraToggling = true;
+    try {
+      const useStubs = Boolean(this.#useStubs || get(callUseStubs));
+      let newStream = null;
+      let effectiveFacing = this.#cameraFacing === 'user' ? 'environment' : 'user';
+
+      if (isLinuxClient && !useStubs && !this.#cameraStream) {
+        this.#cameraFacing = effectiveFacing;
+        patchCallState({
+          cameraFacing: this.#cameraFacing,
+          hasMultipleCameras: true,
+        });
+        return;
+      }
+
+      if (useStubs) {
+        if (this.#syntheticVideo) {
+          this.#syntheticVideo.stop();
+        }
+        this.#syntheticVideo = createSyntheticVideoStream(effectiveFacing);
+        newStream = this.#syntheticVideo.stream;
+      } else {
+        const devices = await navigator.mediaDevices?.enumerateDevices?.().catch(() => []) || [];
+        const videoInputs = devices.filter(d => d.kind === 'videoinput');
+        const currentTrack = this.#cameraStream?.getVideoTracks()?.[0];
+        const currentDeviceId = currentTrack?.getSettings?.()?.deviceId;
+
+        let videoConstraint = { facingMode: { ideal: effectiveFacing } };
+        let nextDev = null;
+        if (videoInputs.length > 1 && currentDeviceId) {
+          const idx = videoInputs.findIndex(d => d.deviceId === currentDeviceId);
+          if (idx !== -1) {
+            nextDev = videoInputs[(idx + 1) % videoInputs.length];
+            if (nextDev?.deviceId) {
+              videoConstraint = { deviceId: { exact: nextDev.deviceId } };
+            }
+          }
+        }
+
+        try {
+          newStream = await navigator.mediaDevices.getUserMedia({
+            video: { ...videoConstraint, width: { ideal: 1280 }, height: { ideal: 720 } },
+            audio: false,
+          });
+        } catch {
+          try {
+            newStream = await navigator.mediaDevices.getUserMedia({
+              video: videoConstraint,
+              audio: false,
+            });
+          } catch {
+            const oldTracks = this.#cameraStream?.getTracks() || [];
+            for (const t of oldTracks) {
+              try { t.stop(); } catch {}
+            }
+            newStream = await navigator.mediaDevices.getUserMedia({
+              video: { facingMode: { ideal: effectiveFacing } },
+              audio: false,
+            });
+          }
+        }
+
+        if (newStream) {
+          const trackSettings = newStream.getVideoTracks()[0]?.getSettings?.();
+          if (trackSettings?.facingMode) {
+            effectiveFacing = trackSettings.facingMode;
+          } else if (nextDev?.label) {
+            if (/back|rear|environment/i.test(nextDev.label)) {
+              effectiveFacing = 'environment';
+            } else if (/front|user/i.test(nextDev.label)) {
+              effectiveFacing = 'user';
+            }
+          }
+        }
+      }
+
+      if (!newStream) return;
+
+      if (!useStubs) {
+        await waitForFirstFrame(newStream);
+      }
+
+      const oldStream = this.#cameraStream;
+      this.#cameraStream = newStream;
+      this.#cameraFacing = effectiveFacing;
+
+      const rawVideoTrack = newStream.getVideoTracks()[0];
+      mediaPipeline.setSourceTracks(rawVideoTrack, this.#localStream?.getAudioTracks()[0] || null);
+      const track = mediaPipeline.getProcessedVideoTrack() || rawVideoTrack;
+
+      if (track && this.#pc && !get(activeCall).screenOn) {
+        const transceivers = typeof this.#pc.getTransceivers === 'function' ? this.#pc.getTransceivers() : [];
+        const transceiver = transceivers.find(t => t.receiver?.track?.kind === 'video' || t.sender?.track?.kind === 'video');
+        let sender = transceiver?.sender;
+        if (!sender) {
+          const senders = typeof this.#pc.getSenders === 'function' ? this.#pc.getSenders() : [];
+          sender = senders.find(s => s.track?.kind === 'video');
+        }
+        if (sender) {
+          await sender.replaceTrack(track);
+          this.#encryption.applyToSender(sender, 'video');
+        }
+      }
+
+      if (oldStream && oldStream !== newStream) {
+        for (const t of oldStream.getTracks()) {
+          try { t.stop(); } catch {}
+        }
+      }
+
+      patchCallState({
+        cameraFacing: effectiveFacing,
+        hasMultipleCameras: true,
+        localCameraStream: newStream,
+      });
+    } catch (e) {
+      log('[call:media] switchCamera failed:', e?.name, e?.message);
     } finally {
       this.#cameraToggling = false;
     }
@@ -2681,6 +2860,8 @@ class MaxCallSession {
     for (const t of (this.#cameraStream?.getTracks() || [])) {
       try { t.stop(); } catch {}
     }
+    this.#cameraStream = null;
+    this.#cameraFacing = 'user';
     for (const t of (this.#screenStream?.getTracks() || [])) {
       try { t.stop(); } catch {}
     }
@@ -3117,6 +3298,14 @@ export const CallService = {
   async toggleVideo() {
     const state = get(activeCall);
     await _activeSession?.enableCamera(!state.videoOn);
+  },
+
+  async switchCamera() {
+    await _activeSession?.switchCamera();
+  },
+
+  async flipCamera() {
+    await _activeSession?.switchCamera();
   },
 
   async createConferenceRoom() {
