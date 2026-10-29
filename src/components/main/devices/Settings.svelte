@@ -7,12 +7,21 @@
 
   import { set as sessionSet } from "$lib/stores/session";
   import { generateDevice } from "$lib/utils/device";
+  import { getCurrentAccount, setAccountMeta } from "$lib/stores/accounts";
   import API from "$lib/stores/api";
 
   let glow = false;
+  let currentDev = null;
+  let currentAccId = null;
+  let telemetryMode = "fake";
 
   onMount(async () => {
     glow = true;
+    const acc = await getCurrentAccount().catch(() => null);
+    if (acc?.id) {
+      currentAccId = acc.id;
+      telemetryMode = acc.meta?.telemetry || (acc.meta?.sendTelemetry === false ? "disabled" : "fake");
+    }
     const device = await getDevice();
     if (device) await update(device, false);
     else await rerollDevice();
@@ -27,12 +36,20 @@
   const writeFile = (path, content) => invoke("write_file_string", { path, content });
 
   function update(device, animate = false) {
+    currentDev = device;
     console.log('Device', device);
     sessionSet("device", device);
     const { deviceId, mtInstance, userAgent } = device;
     setValue('deviceId', deviceId, animate);
     setValue('mtInstance', mtInstance, animate);
     Object.keys(userAgent).forEach(k => setValue(k, userAgent[k], animate));
+  }
+
+  async function toggleTelemetry() {
+    telemetryMode = telemetryMode === "disabled" ? "fake" : "disabled";
+    if (currentAccId) {
+      await setAccountMeta(currentAccId, "telemetry", telemetryMode);
+    }
   }
 
   const sleep = (ms) => new Promise(r => setTimeout(r, ms));
@@ -176,6 +193,12 @@
     </div>
 
     <div class="list">
+      <div class="row telemetry-row" on:click={toggleTelemetry}>
+        <div class="label">Телеметрия</div>
+        <div class="value toggle-val" class:enabled={telemetryMode !== "disabled"}>
+          {telemetryMode === "disabled" ? "Отключена (disabled)" : telemetryMode === "fake" ? "Фейковая (fake)" : "Включена (enabled)"}
+        </div>
+      </div>
       {#each fields as [label, id]}
         <div class="row">
           <div class="label">{label}</div>
@@ -284,6 +307,20 @@
     display: flex;
     flex-direction: column;
     gap: 10px;
+  }
+
+  .telemetry-row {
+    cursor: pointer;
+    user-select: none;
+  }
+
+  .toggle-val {
+    font-weight: 500;
+    color: #ff5555;
+  }
+
+  .toggle-val.enabled {
+    color: #4cd964;
   }
 
   .row {

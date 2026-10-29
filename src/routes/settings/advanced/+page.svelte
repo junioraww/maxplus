@@ -1,4 +1,5 @@
 <script>
+  import { onMount } from "svelte";
   import { page } from "$app/stores";
   import SettingsPageWrapper from "$components/settings/SettingsPageWrapper.svelte";
   import { autoDownloadEncryptedMedia } from "$lib/stores/e2eSettings";
@@ -9,11 +10,45 @@
   import { disableMaxPlusAvatars } from "$lib/stores/avatarSettings";
   import { set as sessionSet } from "$lib/stores/session";
   import { callRecordSettings } from "$lib/services/callRecorder";
+  import { getCurrentAccount, setAccountMeta } from "$lib/stores/accounts";
+  import API from "$lib/stores/api";
 
   export let isTab = false;
   export let onClose = null;
 
   $: from = $page.url.searchParams.get("from") || "/?card=settings";
+
+  let currentAccId = null;
+  let presenceEnabled = true;
+  let telemetryMode = "fake";
+
+  onMount(async () => {
+    const acc = await getCurrentAccount().catch(() => null);
+    if (acc?.id) {
+      currentAccId = acc.id;
+      presenceEnabled = acc.meta?.presence !== false;
+      telemetryMode = acc.meta?.telemetry || (acc.meta?.sendTelemetry === false ? "disabled" : "fake");
+    }
+  });
+
+  async function togglePresence() {
+    presenceEnabled = !presenceEnabled;
+    if (currentAccId) {
+      await setAccountMeta(currentAccId, "presence", presenceEnabled);
+    }
+    if ($API?.setPresence) {
+      await $API.setPresence(presenceEnabled);
+    }
+  }
+
+  async function cycleTelemetry() {
+    const modes = ["fake", "disabled"];
+    const idx = modes.indexOf(telemetryMode);
+    telemetryMode = modes[(idx + 1) % modes.length];
+    if (currentAccId) {
+      await setAccountMeta(currentAccId, "telemetry", telemetryMode);
+    }
+  }
 
   let alwaysRecord = callRecordSettings.always;
   let saveVideoCall = callRecordSettings.saveVideo;
@@ -43,6 +78,47 @@
   {/if}
 
   <div class="content-container">
+    <div class="section-header">
+      <h2>Сеть и активность</h2>
+    </div>
+
+    <div class="settings-card">
+      <div
+        class="toggle-row"
+        on:click={togglePresence}
+      >
+        <div class="toggle-info">
+          <span class="toggle-title">Presence (статус в сети)</span>
+          <span class="toggle-desc"
+            >Передавать статус активности на сервер. При выключении вас не видно онлайн</span
+          >
+        </div>
+        <div class="toggle-track" class:active={presenceEnabled}>
+          <div
+            class="toggle-thumb"
+            class:active={presenceEnabled}
+          ></div>
+        </div>
+      </div>
+
+      <div class="card-divider"></div>
+
+      <div
+        class="toggle-row"
+        on:click={cycleTelemetry}
+      >
+        <div class="toggle-info">
+          <span class="toggle-title">Телеметрия</span>
+          <span class="toggle-desc"
+            >Режим отправки диагностических логов (fake / disabled)</span
+          >
+        </div>
+        <div class="mode-badge" class:disabled={telemetryMode === "disabled"}>
+          {telemetryMode === "disabled" ? "Отключена (disabled)" : telemetryMode === "fake" ? "Фейковая (fake)" : "Включена (enabled)"}
+        </div>
+      </div>
+    </div>
+
     <div class="section-header">
       <h2>Аватарки</h2>
     </div>
@@ -259,6 +335,21 @@
     height: 1px;
     background: rgba(255, 255, 255, 0.06);
     margin: 14px 0;
+  }
+
+  .mode-badge {
+    font-size: 13px;
+    font-weight: 500;
+    color: #4cd964;
+    padding: 4px 8px;
+    border-radius: 6px;
+    background: rgba(76, 217, 100, 0.12);
+    white-space: nowrap;
+  }
+
+  .mode-badge.disabled {
+    color: #ff5555;
+    background: rgba(255, 85, 85, 0.12);
   }
 
   .toggle-row {

@@ -859,6 +859,11 @@ export default class MobileApi extends BaseAPI {
         });
       }
 
+      if (Array.isArray(contacts)) {
+        currentRealContacts.set(contacts.map(c => c.id));
+        contacts.forEach(c => updateContact(c));
+      }
+
       if (requireInfo.size) {
         await syncContacts(contacts, requireInfo);
       }
@@ -958,20 +963,7 @@ export default class MobileApi extends BaseAPI {
       if (sessionGet("sync")) {
         console.log("Синхронизация завершена!");
 
-        try {
-          const response = await invoke("sync_contacts");
-          if (response?.contacts) {
-            currentRealContacts.set(response.contacts.map(c => c.id));
-            response.contacts.forEach(c => updateContact(c));
-          }
-        } catch {}
-
-        this.getCalls().then((calls) => {
-          if (calls) currentSessionCalls.set(calls);
-        }).catch(() => {});
-
         ensureReactionsLoaded().catch(() => {});
-        preloadComplaintReasons().catch(() => {});
       }
     }
   })();
@@ -1031,6 +1023,10 @@ export default class MobileApi extends BaseAPI {
       return await invoke("add_reaction", payload);
     }
     return await invoke("remove_reaction", payload);
+  }
+
+  async setPresence(online) {
+    return await invoke("set_presence", { online: Boolean(online) });
   }
 
   async getDetailedReactions(chatId, messageId, count = 100) {

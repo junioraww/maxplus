@@ -15,6 +15,7 @@ export const getAccount = id => invoke("account_get", { id });
 export const setCurrentAccount = id => invoke("current_set", { id });
 export const init = () => invoke("accounts_init");
 export const getAccountMeta = id => invoke("account_get", { id });
+export const setAccountMeta = (id, key, value) => invoke("account_set_meta", { id: Number(id), key, value });
 export const getAccountContact = id => invoke("account_contact", { id });
 export const setAccountContact = (id, data) => invoke("account_contact", { id, data });
 export const removeAccount = id => invoke("account_delete", { id: Number(id) });

@@ -87,6 +87,8 @@ pub fn accounts_add(
             "version": 1,
             "token": token,
             "device": device,
+            "telemetry": "fake",
+            "presence": true,
             "added": chrono::Utc::now().timestamp_millis()
         }),
     )?;
@@ -232,19 +234,28 @@ pub async fn current_account_meta(app: AppHandle) -> Result<Value, String> {
     ).await
 }
 
-pub fn update_account_token(app: &AppHandle, id: u64, token: &str) -> Result<(), String> {
-    let key = crypto_key(app, id);
-    let storage = Storage::new(key);
+pub fn set_account_meta_field(app: &AppHandle, id: u64, key: &str, value: Value) -> Result<(), String> {
+    let crypto_k = crypto_key(app, id);
+    let storage = Storage::new(crypto_k);
     let meta_path = account_path(app, &id.to_string(), "meta");
     let mut meta = storage.load(&meta_path).unwrap_or(Value::Null);
     if let Value::Object(ref mut map) = meta {
-        map.insert("token".to_string(), Value::String(token.to_string()));
+        map.insert(key.to_string(), value);
         storage.save(meta_path, &meta)?;
         if let Ok(mut guard) = ACCOUNT_CACHE.write() {
             guard.remove(&id);
         }
     }
     Ok(())
+}
+
+pub fn update_account_token(app: &AppHandle, id: u64, token: &str) -> Result<(), String> {
+    set_account_meta_field(app, id, "token", Value::String(token.to_string()))
+}
+
+#[tauri::command]
+pub fn account_set_meta(app: AppHandle, id: u64, key: String, value: Value) -> Result<(), String> {
+    set_account_meta_field(&app, id, &key, value)
 }
 
 #[tauri::command]
