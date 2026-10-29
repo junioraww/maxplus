@@ -186,6 +186,9 @@ export async function sendMessage(
       ...displayMessageEarlyEntry,
       ...message,
       id: message.id || id,
+      elements: (message?.elements && message.elements.length > 0)
+        ? message.elements
+        : (displayMessageEarlyEntry.elements || []),
       text: isDisableControl ? "<b>Вы отключили сквозное шифрование</b>" : (message.text || text),
       sender: message.sender || get(currentUser),
       chatId: chat.id,

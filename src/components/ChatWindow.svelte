@@ -513,6 +513,9 @@
               _messages[idx] = {
                 ...old,
                 ...message,
+                elements: (message?.elements && message.elements.length > 0)
+                  ? message.elements
+                  : (old.elements || []),
                 ...(old.edited || message.status === "EDITED" ? { edited: true } : {}),
                 ...(old.history ? { history: old.history } : {}),
               };

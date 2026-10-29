@@ -125,6 +125,9 @@ export function createMessagesLoader({
       const merged = {
         ...old,
         ...msg,
+        elements: (msg?.elements && msg.elements.length > 0)
+          ? msg.elements
+          : (old.elements || []),
         id: msgId,
         chatId: msg.chatId ?? old.chatId ?? activeChatId,
         ...(isDeletedStatus ? { deleted: true, deleted_at: old.deleted_at || msg.deleted_at || Date.now() } : {}),
