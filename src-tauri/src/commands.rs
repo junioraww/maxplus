@@ -1,4 +1,6 @@
-use crate::stores::{load_sync_state, save_sync_state, save_user_settings, update_account_token};
+use crate::stores::{
+    accounts::account_get, load_sync_state, save_sync_state, save_user_settings, update_account_token,
+};
 use crate::state::AppState;
 use serde_json::{json, Value};
 use std::collections::HashMap;
@@ -168,6 +170,12 @@ delegate_cmd!(share_phone_with_bot(bot_id: u64) => share_phone_with_bot(bot_id))
 delegate_cmd!(submit_external_callback(url: String) => submit_external_callback(url));
 
 #[tauri::command]
+pub async fn set_presence(state: State<'_, AppState>, online: bool) -> Result<(), ()> {
+    state.client.set_presence(online).await;
+    Ok(())
+}
+
+#[tauri::command]
 pub async fn init(
     state: State<'_, AppState>,
     identity: Identity,
@@ -218,6 +226,27 @@ pub async fn sync_client(
     };
 
     state.client.set_user_id(user_id).await;
+
+    if let Ok(meta) = account_get(app.clone(), account_id).await {
+        let telemetry_mode = meta
+            .pointer("/meta/telemetry")
+            .and_then(|v| v.as_str())
+            .unwrap_or_else(|| {
+                if meta.pointer("/meta/sendTelemetry").and_then(|v| v.as_bool()) == Some(false) {
+                    "disabled"
+                } else {
+                    "fake"
+                }
+            });
+        state.client.set_telemetry_mode(telemetry_mode.to_string()).await;
+
+        let presence_enabled = meta
+            .pointer("/meta/presence")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(true);
+        state.client.set_presence(presence_enabled).await;
+    }
+
     state.client.spawn_telemetry_task().await;
 
     if let Err(e) = save_sync_state(&app, account_id, &new_sync_state) {

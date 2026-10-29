@@ -41,6 +41,7 @@ export default class API {
     getVideoById() { throw "getVideoById: Unimplemented" }
     getFileById() { throw "getFileById: Unimplemented" }
     readMessage() { throw "readMessage: Unimplemented" }
+    setPresence() { throw "setPresence: Unimplemented" }
     getCalls() { throw "getCalls: Unimplemented" }
     updateProfile() { throw "updateProfile: Unimplemented" }
     createGroup() { throw "createGroup: Unimplemented" }
