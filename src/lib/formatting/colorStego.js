@@ -1,22 +1,23 @@
-export const ZW_CHARS = ["\u200B", "\u200C", "\u200D", "\u2060"];
+export const COLOR_MARKER = "\u200B";
 
-const CHAR_TO_VAL = {
-  "\u200B": 0,
-  "\u200C": 1,
-  "\u200D": 2,
-  "\u2060": 3,
+const MODIFIER_REGEX = /^https?:\/\/max\.ru\/c\/(\d+)-([0-9a-fA-F]{6})$/i;
+
+const MODIFIER_HANDLERS = {
+  c: {
+    type: "color",
+    encode: (len, val) => `https://max.ru/c/${len}-${val}`,
+    parse: (val) => {
+      const clean = val.replace(/^#/, "").toUpperCase();
+      return /^[0-9A-F]{6}$/.test(clean) ? `#${clean}` : null;
+    },
+  },
 };
 
-export const COLOR_PREFIX = "\u200B\u2060";
-export const COLOR_MID = "\u2060\u200C";
-export const COLOR_SUFFIX = "\u200C\u200B";
-
-export const STEGO_TYPES = {
-  COLOR: "\u200B",
-  TAG_1: "\u200C",
-  TAG_2: "\u200D",
-  TAG_3: "\u2060",
-};
+export function registerModifierHandler(key, handler) {
+  if (key && handler && typeof handler.encode === "function" && typeof handler.parse === "function") {
+    MODIFIER_HANDLERS[key] = handler;
+  }
+}
 
 export function hexToRgb(hex) {
   if (!hex || typeof hex !== "string") return null;
@@ -72,122 +73,177 @@ export function rgbToHsv(r, g, b) {
   return [h, s, v];
 }
 
-export function encodeColorPayload(hexColor) {
-  const rgb = hexToRgb(hexColor);
-  if (!rgb) return "";
-  const num = ((rgb[0] & 0xFF) << 16) | ((rgb[1] & 0xFF) << 8) | (rgb[2] & 0xFF);
-  let payload = "";
-  for (let i = 11; i >= 0; i--) {
-    const val = (num >> (i * 2)) & 0x03;
-    payload += ZW_CHARS[val];
-  }
-  return payload;
+export function getContrastStyle(hex, isMe = false) {
+  return "text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);";
 }
 
-export function decodeColorPayload(payload12) {
-  if (!payload12 || payload12.length !== 12) return null;
-  let num = 0;
-  for (let i = 0; i < 12; i++) {
-    const char = payload12[i];
-    const val = CHAR_TO_VAL[char];
-    if (val === undefined) return null;
-    num = (num << 2) | val;
+function countMarkersBefore(positions, target) {
+  let low = 0;
+  let high = positions.length;
+  while (low < high) {
+    const mid = (low + high) >> 1;
+    if (positions[mid] < target) {
+      low = mid + 1;
+    } else {
+      high = mid;
+    }
   }
-  const r = (num >> 16) & 0xFF;
-  const g = (num >> 8) & 0xFF;
-  const b = num & 0xFF;
-  return rgbToHex(r, g, b);
+  return low;
 }
 
-const ENVELOPE_REGEX = /\u200B\u2060([\u200B\u200C\u200D\u2060]{12,13})\u2060\u200C([\s\S]*?)\u200C\u200B/g;
+function countInsertionsBefore(cleanPositions, cleanPos, isEnd) {
+  let low = 0;
+  let high = cleanPositions.length;
+  while (low < high) {
+    const mid = (low + high) >> 1;
+    const cond = isEnd ? cleanPositions[mid] < cleanPos : cleanPositions[mid] <= cleanPos;
+    if (cond) {
+      low = mid + 1;
+    } else {
+      high = mid;
+    }
+  }
+  return low;
+}
+
+function normalizeColorSpans(spans, maxLen) {
+  let result = [];
+  for (let i = 0; i < spans.length; i++) {
+    const span = spans[i];
+    const start = Math.max(0, Math.min(span.start, maxLen));
+    const end = Math.max(0, Math.min(span.end, maxLen));
+    if (start >= end) continue;
+
+    const next = [];
+    for (let j = 0; j < result.length; j++) {
+      const existing = result[j];
+      if (existing.end <= start || existing.start >= end) {
+        next.push(existing);
+      } else {
+        if (existing.start < start) {
+          next.push({ start: existing.start, end: start, hex: existing.hex });
+        }
+        if (existing.end > end) {
+          next.push({ start: end, end: existing.end, hex: existing.hex });
+        }
+      }
+    }
+    next.push({ start, end, hex: span.hex });
+    next.sort((a, b) => a.start - b.start);
+
+    const merged = [];
+    for (let j = 0; j < next.length; j++) {
+      const item = next[j];
+      const last = merged[merged.length - 1];
+      if (last && last.end >= item.start && last.hex === item.hex) {
+        last.end = Math.max(last.end, item.end);
+      } else {
+        merged.push({ ...item });
+      }
+    }
+    result = merged;
+  }
+  return result.map((s) => ({ ...s, length: s.end - s.start }));
+}
 
 export function parseStegoColors(rawText, rawElements = []) {
   if (!rawText) return { cleanText: "", colorSpans: [], elements: [] };
 
-  ENVELOPE_REGEX.lastIndex = 0;
-  if (!ENVELOPE_REGEX.test(rawText)) {
+  const elements = Array.isArray(rawElements) ? rawElements : [];
+  if (elements.length === 0 || !rawText.includes(COLOR_MARKER)) {
     return {
       cleanText: rawText,
       colorSpans: [],
-      elements: Array.isArray(rawElements) ? rawElements : [],
+      elements: [...elements],
     };
   }
 
-  ENVELOPE_REGEX.lastIndex = 0;
-  let cleanText = "";
-  let lastRawIndex = 0;
-  const colorSpans = [];
-  const cuts = [];
+  const detected = [];
+  for (let i = 0; i < elements.length; i++) {
+    const el = elements[i];
+    if (
+      el &&
+      el.type === "LINK" &&
+      Number(el.length) === 1 &&
+      typeof el.attributes?.url === "string"
+    ) {
+      const match = el.attributes.url.match(MODIFIER_REGEX);
+      if (!match) continue;
 
-  let match;
-  while ((match = ENVELOPE_REGEX.exec(rawText)) !== null) {
-    const matchStart = match.index;
-    const matchEnd = matchStart + match[0].length;
-    const rawPayload = match[1];
-    const innerText = match[2];
-    const headerLen = 2 + rawPayload.length + 2;
+      const rawPos = Number(el.from) || 0;
+      if (rawText[rawPos] !== COLOR_MARKER) continue;
 
-    let colorHex = null;
-    if (rawPayload.length === 13) {
-      const typeTag = rawPayload[0];
-      if (typeTag === STEGO_TYPES.COLOR) {
-        colorHex = decodeColorPayload(rawPayload.slice(1));
-      }
-    } else if (rawPayload.length === 12) {
-      colorHex = decodeColorPayload(rawPayload);
-    }
+      const targetLen = parseInt(match[1], 10);
+      if (!Number.isFinite(targetLen) || targetLen <= 0) continue;
 
-    cleanText += rawText.slice(lastRawIndex, matchStart);
-    const colorStartInClean = cleanText.length;
-    cleanText += innerText;
-    const colorEndInClean = cleanText.length;
+      const parsedValue = MODIFIER_HANDLERS.c.parse(match[2], targetLen);
+      if (!parsedValue) continue;
 
-    if (colorHex && colorEndInClean > colorStartInClean) {
-      colorSpans.push({
-        start: colorStartInClean,
-        end: colorEndInClean,
-        color: colorHex,
+      detected.push({
+        elementIndex: i,
+        rawPos,
+        length: targetLen,
+        type: "color",
+        value: parsedValue,
       });
     }
-
-    cuts.push({
-      rawStart: matchStart,
-      rawEnd: matchStart + headerLen,
-      cutLen: headerLen,
-    });
-    cuts.push({
-      rawStart: matchEnd - 2,
-      rawEnd: matchEnd,
-      cutLen: 2,
-    });
-
-    lastRawIndex = matchEnd;
   }
-  cleanText += rawText.slice(lastRawIndex);
+
+  if (detected.length === 0) {
+    return {
+      cleanText: rawText,
+      colorSpans: [],
+      elements: [...elements],
+    };
+  }
+
+  detected.sort((a, b) => a.rawPos - b.rawPos);
+  const colorIndexSet = new Set(detected.map((d) => d.elementIndex));
+  const markerPositions = detected.map((d) => d.rawPos);
+
+  const textChunks = [];
+  let lastRaw = 0;
+  for (let i = 0; i < markerPositions.length; i++) {
+    const pos = markerPositions[i];
+    textChunks.push(rawText.slice(lastRaw, pos));
+    lastRaw = pos + 1;
+  }
+  textChunks.push(rawText.slice(lastRaw));
+  const cleanText = textChunks.join("");
 
   function mapRawToClean(rawPos) {
-    let cleanPos = rawPos;
-    for (const cut of cuts) {
-      if (rawPos >= cut.rawEnd) {
-        cleanPos -= cut.cutLen;
-      } else if (rawPos > cut.rawStart) {
-        cleanPos -= (rawPos - cut.rawStart);
-      }
+    const removed = countMarkersBefore(markerPositions, rawPos);
+    return Math.max(0, Math.min(rawPos - removed, cleanText.length));
+  }
+
+  const colorSpans = [];
+  for (let i = 0; i < detected.length; i++) {
+    const d = detected[i];
+    if (d.type === "color") {
+      const cleanStart = mapRawToClean(d.rawPos);
+      const cleanEnd = Math.max(cleanStart, Math.min(cleanStart + d.length, cleanText.length));
+      colorSpans.push({
+        start: cleanStart,
+        end: cleanEnd,
+        color: d.value,
+      });
     }
-    return Math.max(0, Math.min(cleanPos, cleanText.length));
   }
 
   const mappedElements = [];
-  for (const el of (rawElements || [])) {
+  for (let i = 0; i < elements.length; i++) {
+    if (colorIndexSet.has(i)) continue;
+    const el = elements[i];
     if (!el || typeof el !== "object") continue;
-    const rawFrom = Number(el.from) || 0;
-    const rawLen = Number(el.length) || 0;
-    const rawTo = rawFrom + rawLen;
+
+    const rawFrom = Math.max(0, Math.min(Number(el.from) || 0, rawText.length));
+    const rawLen = Math.max(0, Number(el.length) || 0);
+    const rawTo = Math.min(rawFrom + rawLen, rawText.length);
+    if (rawTo <= rawFrom) continue;
 
     const cleanFrom = mapRawToClean(rawFrom);
     const cleanTo = mapRawToClean(rawTo);
     const cleanLen = cleanTo - cleanFrom;
-
     if (cleanLen > 0) {
       mappedElements.push({
         ...el,
@@ -205,15 +261,23 @@ export function encodeStegoMessage(cleanText, cleanElements = [], colorRanges = 
     return { textToSend: "", elementsToSend: [] };
   }
 
-  const validSpans = (colorRanges || [])
-    .filter((r) => r && r.start < r.end && (r.metadata?.color || r.color))
-    .map((r) => ({
-      start: Math.max(0, Math.min(r.start, cleanText.length)),
-      end: Math.max(0, Math.min(r.end, cleanText.length)),
-      color: r.metadata?.color || r.color,
-    }))
-    .filter((r) => r.start < r.end)
-    .sort((a, b) => a.start - b.start);
+  const rawSpans = [];
+  const inputRanges = Array.isArray(colorRanges) ? colorRanges : [];
+  for (let i = 0; i < inputRanges.length; i++) {
+    const r = inputRanges[i];
+    if (!r || r.start >= r.end) continue;
+    const rawColor = String(r.metadata?.color || r.color || "").trim();
+    if (!rawColor) continue;
+    const hexMatch = rawColor.replace(/^#/, "").match(/^([a-fA-F0-9]{6})$|^([a-fA-F0-9]{3})$/);
+    if (!hexMatch) continue;
+    const hex = (hexMatch[1] || (hexMatch[2][0] + hexMatch[2][0] + hexMatch[2][1] + hexMatch[2][1] + hexMatch[2][2] + hexMatch[2][2])).toUpperCase();
+    const start = Math.max(0, Math.min(Number(r.start) || 0, cleanText.length));
+    const end = Math.max(0, Math.min(Number(r.end) || 0, cleanText.length));
+    if (start >= end) continue;
+    rawSpans.push({ start, end, hex });
+  }
+
+  const validSpans = normalizeColorSpans(rawSpans, cleanText.length);
 
   if (validSpans.length === 0) {
     return {
@@ -222,61 +286,72 @@ export function encodeStegoMessage(cleanText, cleanElements = [], colorRanges = 
     };
   }
 
-  let textToSend = "";
-  let lastEnd = 0;
-  const insertions = [];
+  validSpans.sort((a, b) => a.start - b.start || a.end - b.end);
 
-  for (const span of validSpans) {
-    const payload = encodeColorPayload(span.color);
-    if (!payload) continue;
+  const cleanPositions = new Array(validSpans.length);
+  const textChunks = [];
+  let lastClean = 0;
+  let currentRawLength = 0;
+  const rawPositions = new Array(validSpans.length);
 
-    textToSend += cleanText.slice(lastEnd, span.start);
-    insertions.push({ cleanPos: span.start, added: 17, isStart: true });
-
-    textToSend += COLOR_PREFIX + STEGO_TYPES.COLOR + payload + COLOR_MID;
-    textToSend += cleanText.slice(span.start, span.end);
-
-    insertions.push({ cleanPos: span.end, added: 2, isStart: false });
-    textToSend += COLOR_SUFFIX;
-
-    lastEnd = span.end;
+  for (let i = 0; i < validSpans.length; i++) {
+    const span = validSpans[i];
+    const prefix = cleanText.slice(lastClean, span.start);
+    textChunks.push(prefix);
+    currentRawLength += prefix.length;
+    rawPositions[i] = currentRawLength;
+    textChunks.push(COLOR_MARKER);
+    currentRawLength += 1;
+    cleanPositions[i] = span.start;
+    lastClean = span.start;
   }
-  textToSend += cleanText.slice(lastEnd);
+  textChunks.push(cleanText.slice(lastClean));
+  const textToSend = textChunks.join("");
 
-  function mapCleanToRaw(cleanPos, isRangeEnd = false) {
-    let rawPos = cleanPos;
-    for (const ins of insertions) {
-      if (isRangeEnd ? cleanPos > ins.cleanPos : cleanPos >= ins.cleanPos) {
-        rawPos += ins.added;
-      }
-    }
-    return rawPos;
+  function mapCleanToRaw(cleanPos, isEnd = false) {
+    const shift = countInsertionsBefore(cleanPositions, cleanPos, isEnd);
+    return cleanPos + shift;
   }
 
-  const elementsToSend = [];
-  for (const el of (cleanElements || [])) {
+  const colorElements = new Array(validSpans.length);
+  for (let i = 0; i < validSpans.length; i++) {
+    const span = validSpans[i];
+    colorElements[i] = {
+      type: "LINK",
+      from: rawPositions[i],
+      length: 1,
+      attributes: {
+        url: MODIFIER_HANDLERS.c.encode(span.length, span.hex),
+      },
+    };
+  }
+
+  const mappedCleanElements = [];
+  const srcElements = Array.isArray(cleanElements) ? cleanElements : [];
+  for (let i = 0; i < srcElements.length; i++) {
+    const el = srcElements[i];
     if (!el || typeof el !== "object") continue;
-    const cleanFrom = Number(el.from) || 0;
-    const cleanLen = Number(el.length) || 0;
-    const cleanTo = cleanFrom + cleanLen;
 
-    const rawFrom = mapCleanToRaw(cleanFrom, false);
-    const rawTo = mapCleanToRaw(cleanTo, true);
-    const rawLen = rawTo - rawFrom;
+    const cFrom = Math.max(0, Math.min(Number(el.from) || 0, cleanText.length));
+    const cLen = Math.max(0, Number(el.length) || 0);
+    const cTo = Math.min(cFrom + cLen, cleanText.length);
+    if (cTo <= cFrom) continue;
 
-    if (rawLen > 0) {
-      elementsToSend.push({
-        ...el,
-        from: rawFrom,
-        length: rawLen,
-      });
-    }
+    const rFrom = mapCleanToRaw(cFrom, false);
+    const rTo = mapCleanToRaw(cTo, true);
+    const rLen = rTo - rFrom;
+    if (rLen <= 0) continue;
+
+    mappedCleanElements.push({
+      ...el,
+      from: rFrom,
+      length: rLen,
+    });
   }
+
+  const elementsToSend = [...colorElements, ...mappedCleanElements].sort(
+    (a, b) => (Number(a.from) || 0) - (Number(b.from) || 0)
+  );
 
   return { textToSend, elementsToSend };
 }
-
-export function getContrastStyle(hex, isMe = false) {
-  return "text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);";
-}
-

@@ -32,6 +32,14 @@ export class ComposerFormatState {
     return isSpanEnclosed(ranges, start, end);
   }
 
+  setStyle(styleKey, start, end, metadata = null) {
+    if (start >= end) return;
+    const ranges = this.getRanges(styleKey);
+    const clipped = clipSpan(ranges, start, end);
+    const appended = appendSpan(clipped, start, end, metadata);
+    this.styles.set(styleKey, appended);
+  }
+
   toggleStyle(styleKey, start, end, metadata = null) {
     if (start >= end) return;
     const ranges = this.getRanges(styleKey);

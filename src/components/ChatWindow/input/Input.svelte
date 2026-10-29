@@ -48,6 +48,7 @@
   import { compileBackdropSpans } from "$lib/formatting/parser";
   import { encodeStegoMessage, parseStegoColors } from "$lib/formatting/colorStego";
   import { lastUsedColor } from "$lib/stores/colorSettings";
+  import { composerSelection } from "$lib/stores/composerSelection";
 
   export let replyTo;
   export let scrollElement;
@@ -92,7 +93,7 @@
     previousMessageText = cleanText;
     composerFormat.importData(cleanText, cleanElements);
     for (const cs of colorSpans) {
-      composerFormat.toggleStyle(STYLE_KEYS.COLOR, cs.start, cs.end, { color: cs.color });
+      composerFormat.setStyle(STYLE_KEYS.COLOR, cs.start, cs.end, { color: cs.color });
     }
     formatRevision++;
     attaches = Array.isArray(editingMessage.attaches) ? [...editingMessage.attaches] : [];
@@ -125,15 +126,6 @@
   let suggestionTimer = null;
 
   function handleComposerInput() {
-    if (newMessage && newMessage.includes("\u200B\u2060")) {
-      const { cleanText, colorSpans } = parseStegoColors(newMessage);
-      if (colorSpans.length > 0) {
-        newMessage = cleanText;
-        for (const cs of colorSpans) {
-          composerFormat.toggleStyle(STYLE_KEYS.COLOR, cs.start, cs.end, { color: cs.color });
-        }
-      }
-    }
     composerFormat.onTextChanged(previousMessageText, newMessage);
     previousMessageText = newMessage;
     formatRevision++;
@@ -280,7 +272,11 @@
     if (!textareaEl || !savedSelectionRange) return;
     const { start, end } = savedSelectionRange;
     if (start >= end) return;
-    composerFormat.toggleStyle(style, start, end, metadata);
+    if (style === STYLE_KEYS.COLOR && metadata?.color) {
+      composerFormat.setStyle(style, start, end, metadata);
+    } else {
+      composerFormat.toggleStyle(style, start, end, metadata);
+    }
     formatRevision++;
     textareaEl.focus();
     textareaEl.setSelectionRange(start, end);
@@ -395,15 +391,18 @@
     contextMenuState = null;
   }
 
-  function handlePluginInsert({ text }) {
-    if (!text) return;
-    const { cleanText, colorSpans } = parseStegoColors(text);
+  function handlePluginInsert(payload) {
+    const rawText = typeof payload === "string" ? payload : payload?.text || payload?.textToSend || "";
+    if (!rawText) return;
+    const rawElements = payload?.elements || payload?.elementsToSend || [];
+    const { cleanText, colorSpans } = parseStegoColors(rawText, rawElements);
     if (textareaEl) {
       const start = textareaEl.selectionStart ?? newMessage.length;
       const end = textareaEl.selectionEnd ?? newMessage.length;
       newMessage = newMessage.slice(0, start) + cleanText + newMessage.slice(end);
+      composerFormat.onTextChanged(previousMessageText, newMessage);
       for (const cs of colorSpans) {
-        composerFormat.toggleStyle(STYLE_KEYS.COLOR, start + cs.start, start + cs.end, { color: cs.color });
+        composerFormat.setStyle(STYLE_KEYS.COLOR, start + cs.start, start + cs.end, { color: cs.color });
       }
       formatRevision++;
       previousMessageText = newMessage;
@@ -418,8 +417,39 @@
     }
   }
 
+  function handlePluginReplaceSelection(payload) {
+    const rawText = typeof payload === "string" ? payload : payload?.text || payload?.textToSend || "";
+    if (!rawText) return;
+    const rawElements = payload?.elements || payload?.elementsToSend || [];
+    const { cleanText, colorSpans } = parseStegoColors(rawText, rawElements);
+
+    const start = savedSelectionRange?.start ?? textareaEl?.selectionStart ?? newMessage.length;
+    const end = savedSelectionRange?.end ?? textareaEl?.selectionEnd ?? start;
+
+    newMessage = newMessage.slice(0, start) + cleanText + newMessage.slice(end);
+    composerFormat.onTextChanged(previousMessageText, newMessage);
+
+    for (const cs of colorSpans) {
+      composerFormat.setStyle(STYLE_KEYS.COLOR, start + cs.start, start + cs.end, { color: cs.color });
+    }
+
+    formatRevision++;
+    previousMessageText = newMessage;
+    savedSelectionRange = { start, end: start + cleanText.length };
+
+    tick().then(() => {
+      if (textareaEl) {
+        textareaEl.setSelectionRange(start, start + cleanText.length);
+        textareaEl.focus();
+      }
+      autoResize();
+      syncScroll();
+    });
+  }
+
   onMount(() => {
     pluginOn("input:insert", handlePluginInsert);
+    pluginOn("input:replace-selection", handlePluginReplaceSelection);
     document.addEventListener("selectionchange", handleDocSelectionChange);
     const handleViewportResize = () => {
       autoResize();
@@ -430,12 +460,27 @@
     window.visualViewport?.addEventListener("scroll", handleViewportResize);
     return () => {
       pluginOff("input:insert", handlePluginInsert);
+      pluginOff("input:replace-selection", handlePluginReplaceSelection);
       document.removeEventListener("selectionchange", handleDocSelectionChange);
       window.removeEventListener("resize", handleViewportResize);
       window.visualViewport?.removeEventListener("resize", handleViewportResize);
       window.visualViewport?.removeEventListener("scroll", handleViewportResize);
     };
   });
+
+  $: {
+    const start = savedSelectionRange?.start ?? textareaEl?.selectionStart ?? 0;
+    const end = savedSelectionRange?.end ?? textareaEl?.selectionEnd ?? 0;
+    const hasSelection = end > start && start >= 0 && end <= newMessage.length;
+    const selectedText = hasSelection ? newMessage.slice(start, end) : "";
+    composerSelection.set({
+      text: newMessage,
+      selectedText,
+      selectionStart: start,
+      selectionEnd: end,
+      hasSelection,
+    });
+  }
 
 
 

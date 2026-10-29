@@ -22,7 +22,8 @@ import {
 import { CryptoPluginRegistry } from '$lib/crypto/plugins';
 import { showAlert } from '$lib/utils/alert';
 import { mediaPipeline } from '$lib/services/MediaPipelineHost';
-import { encodeStegoMessage, parseStegoColors, rgbToHex, hexToRgb, getContrastStyle, STEGO_TYPES } from '$lib/formatting/colorStego';
+import { composerSelection } from '$lib/stores/composerSelection';
+import { encodeStegoMessage, parseStegoColors, rgbToHex, hexToRgb, getContrastStyle } from '$lib/formatting/colorStego';
 
 async function fetchAsset(url, options = {}) {
   const { sha256, type = 'text', headers, mode } = options;
@@ -141,6 +142,19 @@ export function buildPluginContext(manifest, pluginId) {
         recentStickerIds,
         stickersLoading,
       },
+      composerSelection,
+    },
+
+    input: {
+      getSelection() {
+        return get(composerSelection);
+      },
+      replaceSelection(data) {
+        pluginEmit('input:replace-selection', data);
+      },
+      insert(data) {
+        pluginEmit('input:insert', data);
+      },
     },
 
     get api() {
@@ -237,21 +251,31 @@ export function buildPluginContext(manifest, pluginId) {
 
     formatting: {
       encodeColor(text, colorHex) {
-        const { textToSend } = encodeStegoMessage(text, [], [{ start: 0, end: text.length, color: colorHex }]);
-        return textToSend;
+        const res = encodeStegoMessage(text, [], [{ start: 0, end: text.length, color: colorHex }]);
+        return {
+          ...res,
+          toString() {
+            return this.textToSend;
+          },
+          [Symbol.toPrimitive]() {
+            return this.textToSend;
+          },
+        };
+      },
+      encodeMessage(cleanText, colorSpans = [], elements = []) {
+        return encodeStegoMessage(cleanText, elements, colorSpans);
       },
       decodeColors(rawText, rawElements = []) {
         return parseStegoColors(rawText, rawElements);
       },
-      stripColors(rawText) {
-        return parseStegoColors(rawText).cleanText;
+      stripColors(rawText, rawElements = []) {
+        return parseStegoColors(rawText, rawElements).cleanText;
       },
       getContrastStyle(hex, isMe) {
         return getContrastStyle(hex, isMe);
       },
       rgbToHex,
       hexToRgb,
-      TYPES: STEGO_TYPES,
     },
 
     _cleanup() {
