@@ -1,8 +1,11 @@
+import "$lib/utils/browserShim";
 import { writable, get } from "svelte/store";
 import { goto } from "$app/navigation";
 import { page } from "$app/stores";
 
 import MobileApi from "$lib/api/MobileApi";
+import MockApi from "$lib/api/MockApi";
+import { isBrowserMode } from "$lib/utils/browserShim";
 import * as Accounts from "$lib/stores/accounts";
 import {
   get as sessionGet,
@@ -17,7 +20,7 @@ export const currentFolders = writable([]);
 export const currentPresence = writable({});
 export const serverConfig = writable({});
 
-const API = new MobileApi();
+const API = isBrowserMode() ? new MockApi() : new MobileApi();
 export default writable(API);
 
 export const currentRealChats = writable([]);

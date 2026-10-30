@@ -120,6 +120,7 @@
     {:else}
       <span
         class="rich-span{getStyleClasses(span.styles)}"
+        class:code-block={span.styles.has(STYLE_KEYS.CODE) && span.text.includes("\n")}
         style={span.color ? `color: ${span.color};` : ""}
       >{span.text}</span>
     {/if}
@@ -219,11 +220,26 @@
   }
 
   .code-text {
-    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-family: "JetBrains Mono", "Fira Code", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
     font-size: 0.88em;
-    padding: 2px 5px;
-    border-radius: 4px;
-    background: rgba(0, 0, 0, 0.25);
+    padding: 2px 6px;
+    border-radius: 5px;
+    background: rgba(0, 0, 0, 0.32);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    box-decoration-break: clone;
+    -webkit-box-decoration-break: clone;
+  }
+
+  .code-text.code-block {
+    display: block;
+    margin: 6px 0;
+    padding: 10px 14px;
+    border-radius: 8px;
+    background: rgba(18, 22, 28, 0.7);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    overflow-x: auto;
+    line-height: 1.5;
+    tab-size: 2;
   }
 
   .heading-text {
