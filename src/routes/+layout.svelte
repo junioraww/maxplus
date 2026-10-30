@@ -1,4 +1,5 @@
 <script>
+  import '$lib/utils/browserShim';
   import '../app.css';
 
   import { onBackButtonPress } from "@tauri-apps/api/app";
