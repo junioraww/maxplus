@@ -1,5 +1,4 @@
 import { invoke } from "@tauri-apps/api/core";
-import { goto } from "$app/navigation";
 import { getWebAppProxyBase } from "./proxyConfig";
 import { showAlert } from "./alert";
 import { parseApiError } from "./errors";
@@ -190,6 +189,7 @@ export async function processMaxLink(targetUrl, { currentUserId, api, onOpenChat
   if (info.kind === 'get_avatar') {
     if (info.avatarId) {
       try {
+        const { goto } = await import("$app/navigation");
         goto(`/settings/profile?avatar=${encodeURIComponent(info.avatarId)}`);
       } catch (err) {
         console.error(err);

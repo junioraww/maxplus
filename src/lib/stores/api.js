@@ -21,6 +21,9 @@ export const currentPresence = writable({});
 export const serverConfig = writable({});
 
 const API = isBrowserMode() ? new MockApi() : new MobileApi();
+if (typeof window !== "undefined") {
+  window.__API = API;
+}
 export default writable(API);
 
 export const currentRealChats = writable([]);

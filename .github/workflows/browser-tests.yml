@@ -16,6 +16,8 @@ jobs:
 
       - run: bun install --frozen-lockfile
 
+      - run: bun x svelte-kit sync
+
       - run: bun x playwright install --with-deps firefox
 
       - run: bun x playwright test
