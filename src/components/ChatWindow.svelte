@@ -8,7 +8,7 @@
     afterUpdate,
   } from "svelte";
   import { writable, get } from "svelte/store";
-  import { fly } from "svelte/transition";
+  import { fly, slide } from "svelte/transition";
   import { registerBackHandler } from "$lib/utils/backButton";
   import { parseApiError } from "$lib/utils/errors";
 
@@ -186,6 +186,8 @@
     return undefined;
   })();
 
+  let unreadAnchorId = null;
+  let showUnreadSeparator = false;
   $: unreadBadgeCount = Math.max(0, Number(chat?.newMessages ?? 0));
   $: chatSettings = getChatSettings(chat?.id ?? chatId);
 
@@ -258,6 +260,9 @@
   let isProgrammaticScroll = false;
   let readTimer = null;
   let lastReadMessageId = null;
+  let readMarkTime = 0;
+  let unreadStartTime = 0;
+  let sessionInitialUnread = 0;
 
   async function updateVisibleMessages() {
     visibleMessages = virtualScroll.calculateVisibleMessages({
@@ -265,7 +270,7 @@
       messagesList: $messages,
     });
     if (userHasScrolled) {
-      await scheduleRead();
+      checkUnreadMessagesOnScroll();
     }
   }
 
@@ -286,6 +291,172 @@
     savePositionTimeout = setTimeout(saveCurrentPosition, 200);
   }
 
+  function removeUnreadSeparatorSafely() {
+    if (!showUnreadSeparator) return;
+    const sep = document.getElementById("unread-separator");
+    const isAbove = sep && scrollElement && (sep.offsetTop + sep.offsetHeight <= scrollElement.scrollTop);
+    const distanceFromBottom = scrollElement
+      ? scrollElement.scrollHeight - scrollElement.scrollTop - scrollElement.clientHeight
+      : 0;
+    const isNearEnd = distanceFromBottom <= 35;
+
+    showUnreadSeparator = false;
+
+    if (isNearEnd && scrollElement) {
+      requestAnimationFrame(() => {
+        if (scrollElement) {
+          scrollElement.scrollTop = scrollElement.scrollHeight;
+        }
+      });
+    } else if (isAbove && scrollElement) {
+      const anchor = virtualScroll.captureScrollAnchor(scrollElement, visibleMessages);
+      if (anchor) {
+        requestAnimationFrame(() => {
+          virtualScroll.restoreScrollAnchor(scrollElement, anchor);
+        });
+      }
+    }
+  }
+
+  function resolveUnreadState(unreadCount) {
+    sessionInitialUnread = unreadCount;
+    const myId = Number($currentUser);
+    const peerMsgs = ($messages || []).filter((m) => Number(m.sender) !== myId && !m.deleted);
+
+    let firstUnread = null;
+    if (unreadCount > 0 && peerMsgs.length > 0) {
+      firstUnread = peerMsgs.length >= unreadCount
+        ? peerMsgs[peerMsgs.length - unreadCount]
+        : peerMsgs[0];
+    }
+
+    unreadAnchorId = firstUnread ? firstUnread.id : null;
+    showUnreadSeparator = Boolean(firstUnread && unreadCount > 0);
+
+    if (firstUnread) {
+      unreadStartTime = Number(firstUnread.time || 0);
+      const idx = peerMsgs.findIndex((m) => String(m.id) === String(firstUnread.id));
+      if (idx > 0) {
+        readMarkTime = Number(peerMsgs[idx - 1].time || 0);
+      } else {
+        readMarkTime = Math.max(0, unreadStartTime - 1);
+      }
+    } else {
+      unreadStartTime = 0;
+      const lastMsg = ($messages || []).filter((m) => !m.deleted).pop();
+      readMarkTime = lastMsg ? Number(lastMsg.time || 0) : Number(chat?.participants?.[myId] || 0);
+    }
+  }
+
+  function isMessageReadOnScreen(rect, containerRect) {
+    if (rect.bottom <= containerRect.top) return true;
+    if (rect.top >= containerRect.bottom - 2) return false;
+    const h = rect.bottom - rect.top;
+    if (h <= 0) return false;
+    const visibleTop = Math.max(rect.top, containerRect.top);
+    const visibleBottom = Math.min(rect.bottom, containerRect.bottom);
+    const visibleHeight = Math.max(0, visibleBottom - visibleTop);
+    return visibleHeight >= Math.min(h * 0.7, containerRect.height * 0.5);
+  }
+
+  function checkUnreadMessagesOnScroll() {
+    if (isInitialMounting || isProgrammaticScroll) return;
+    if ($chatSettings?.reader === false) return;
+    if (!chat || !scrollElement || !$messages || $messages.length === 0) return;
+
+    const myId = Number($currentUser);
+    const containerRect = scrollElement.getBoundingClientRect();
+    const distanceFromBottom = scrollElement.scrollHeight - scrollElement.scrollTop - scrollElement.clientHeight;
+
+    let candidate = null;
+    let highestVisibleTime = readMarkTime;
+
+    for (let i = $messages.length - 1; i >= 0; i--) {
+      const m = $messages[i];
+      if (m.deleted) continue;
+      if (unreadStartTime && Number(m.time || 0) < unreadStartTime) continue;
+
+      const el = document.getElementById("m-" + m.id);
+      if (!el) continue;
+
+      const rect = el.getBoundingClientRect();
+      if (isMessageReadOnScreen(rect, containerRect)) {
+        candidate = m;
+        highestVisibleTime = Math.max(highestVisibleTime, Number(m.time || 0));
+        break;
+      }
+    }
+
+    if (!candidate || highestVisibleTime <= readMarkTime) {
+      return;
+    }
+
+    readMarkTime = highestVisibleTime;
+    let targetMsg = candidate;
+    if (Number(candidate.sender) === myId) {
+      const peerMsg = $messages
+        .filter((m) => Number(m.sender) !== myId && !m.deleted && Number(m.time) <= highestVisibleTime)
+        .pop();
+      if (peerMsg) {
+        targetMsg = peerMsg;
+      }
+    }
+    lastReadMessageId = targetMsg.id;
+
+    const peerMessages = $messages.filter(
+      (m) => Number(m.sender) !== myId && !m.deleted
+    );
+
+    let remaining;
+    if (loader.all_loaded_newer) {
+      const unreadPeerMsgs = peerMessages.filter(
+        (m) => Number(m.time || 0) >= unreadStartTime
+      );
+      remaining = unreadPeerMsgs.filter(
+        (m) => Number(m.time || 0) > readMarkTime
+      ).length;
+    } else {
+      const unreadPeerMsgs = peerMessages.filter(
+        (m) => Number(m.time || 0) >= unreadStartTime
+      );
+      const readCount = unreadPeerMsgs.filter(
+        (m) => Number(m.time || 0) <= readMarkTime
+      ).length;
+      remaining = Math.max(0, sessionInitialUnread - readCount);
+    }
+
+    unreadBadgeCount = remaining;
+
+    let updatedChat = null;
+    getChat(chat.id).chatInfo.update((current) => {
+      if (!current) return current;
+      updatedChat = {
+        ...current,
+        newMessages: remaining,
+        participants: {
+          ...(current.participants || {}),
+          [myId]: candidate.time,
+        },
+      };
+      return updatedChat;
+    });
+
+    if (updatedChat) {
+      saveChats([ updatedChat ]).catch(() => {});
+    }
+
+    if (remaining === 0) {
+      removeUnreadSeparatorSafely();
+      if (distanceFromBottom <= 50) {
+        showScrollDown = false;
+      }
+    }
+
+    $API.readMessage(chat.id, targetMsg.id, remaining).catch((e) => {
+      console.error("readMessage failed", e);
+    });
+  }
+
   function handleScroll(event) {
     if (isInitialMounting || isProgrammaticScroll) return;
 
@@ -293,13 +464,16 @@
     queueSavePosition();
     const target = event.currentTarget;
     const distanceFromBottom = target.scrollHeight - target.scrollTop - target.clientHeight;
-    showScrollDown = !loader.all_loaded_newer || distanceFromBottom > 50;
+    showScrollDown = !loader.all_loaded_newer || unreadBadgeCount > 0 || distanceFromBottom > 50;
+
+    checkUnreadMessagesOnScroll();
 
     if (!updateScheduled) {
       updateScheduled = true;
       requestAnimationFrame(async () => {
         await updateVisibleMessages();
         updateScheduled = false;
+        checkUnreadMessagesOnScroll();
       });
     }
 
@@ -320,59 +494,6 @@
         setTimeout(() => (scrollBottomLoaderTimeout = null), 500);
       }, 200);
     }
-  }
-
-  function getLowestVisibleMessageId() {
-    if (!scrollElement) return null;
-    let lowest = null;
-    let lowestTop = -Infinity;
-
-    for (const key in visibleMessages) {
-      const entry = $messages.find((x) => String(x.id) === String(key));
-      if (!entry || Number(entry.sender) === Number($currentUser)) continue;
-
-      const el = visibleMessages[key];
-      if (!el) continue;
-
-      const rect = el.getBoundingClientRect();
-      if (rect.bottom < 0 || rect.top > window.innerHeight) continue;
-
-      if (rect.top > lowestTop) {
-        lowestTop = rect.top;
-        lowest = el;
-      }
-    }
-
-    return lowest?.id?.replace("m-", "") || null;
-  }
-
-  function scheduleRead() {
-    if (readTimer) clearTimeout(readTimer);
-
-    readTimer = setTimeout(async () => {
-      if (!$chatSettings?.reader) return;
-
-      const msgId = getLowestVisibleMessageId();
-      if (!msgId) return;
-      if (msgId === lastReadMessageId) return;
-
-      const myId = Number($currentUser);
-      const myMark = Number(chat?.participants?.[myId] || 0);
-      const msg = $messages.find((x) => String(x.id) === String(msgId));
-      if (!msg) return;
-
-      if (myMark > 0 && Number(msg.time || 0) <= myMark) return;
-
-      if (!chat?.newMessages || chat.newMessages <= 0) return;
-
-      lastReadMessageId = msgId;
-
-      try {
-        await $API.readMessage(chat.id, msgId);
-      } catch (e) {
-        console.error("readMessage failed", e);
-      }
-    }, 500);
   }
 
 
@@ -659,25 +780,38 @@
     isInitialMounting = true;
     isProgrammaticScroll = true;
 
-    const targetChatId = chat?.id ?? chatId;
+    const targetChatId = chatId ?? chat?.id;
+    const currentChat = get(getChat(targetChatId).chatInfo) || chat;
+    const unreadCount = Number(currentChat?.newMessages || 0);
+    const savedPos = getChatScroll(targetChatId);
+    const hasSavedScroll = savedPos && !savedPos.wasAtBottom && savedPos.bottomMessageTime;
+
     clearChatNotification(targetChatId);
 
     virtualScroll.setupResizeObserver();
-    startAutoScrollIfAtBottom();
-
-    const unreadCount = Number(chat?.newMessages || 0);
-    const savedPos = getChatScroll(targetChatId);
-    const hasSavedScroll = savedPos && !savedPos.wasAtBottom && savedPos.bottomMessageTime;
+    startAutoScrollIfAtBottom(hasSavedScroll, unreadCount);
 
     let initialFrom = Date.now() + sessionGet("drift");
     if (hasSavedScroll) {
       initialFrom = Number(savedPos.bottomMessageTime) + 1;
       loader.all_loaded_newer = false;
       showScrollDown = true;
-      await loader.loadHistory(true, initialFrom, 35, 35);
+      await loader.loadHistory(true, initialFrom, BATCH_SIZE, BATCH_SIZE);
+    } else if (unreadCount > 0) {
+      const myId = Number($currentUser);
+      const myMark = Number(currentChat?.participants?.[myId] || 0);
+      if (myMark > 0 && unreadCount >= BATCH_SIZE) {
+        initialFrom = myMark + 1;
+        loader.all_loaded_newer = false;
+        showScrollDown = true;
+        await loader.loadHistory(true, initialFrom, BATCH_SIZE, BATCH_SIZE);
+      } else {
+        loader.all_loaded_newer = true;
+        await loader.loadHistory(true, initialFrom, BATCH_SIZE, 0);
+      }
     } else {
       loader.all_loaded_newer = true;
-      await loader.loadHistory(true, initialFrom, 40, 0);
+      await loader.loadHistory(true, initialFrom, BATCH_SIZE, 0);
     }
 
     await tick();
@@ -685,57 +819,55 @@
     virtualScroll.measureAllHeights(innerList);
     virtualScroll.computeCumulativeHeights($messages);
 
+    resolveUnreadState(unreadCount);
+
+    let positioned = false;
     if (hasSavedScroll) {
-      let targetId = savedPos.bottomMessageId;
-      if (targetId && !document.getElementById("m-" + targetId) && $messages.length > 0) {
-        const targetTime = Number(savedPos.bottomMessageTime);
-        if (targetTime) {
-          let closest = null;
-          let minDiff = Infinity;
-          for (const m of $messages) {
-            const diff = Math.abs(Number(m.time) - targetTime);
-            if (diff < minDiff) {
-              minDiff = diff;
-              closest = m;
+      const isSavedScrollOlderThanUnread = !unreadStartTime || Number(savedPos.bottomMessageTime) < unreadStartTime;
+      if (isSavedScrollOlderThanUnread) {
+        let targetId = savedPos.bottomMessageId;
+        if (targetId && !document.getElementById("m-" + targetId) && $messages.length > 0) {
+          const targetTime = Number(savedPos.bottomMessageTime);
+          if (targetTime) {
+            let closest = null;
+            let minDiff = Infinity;
+            for (const m of $messages) {
+              const diff = Math.abs(Number(m.time) - targetTime);
+              if (diff < minDiff) {
+                minDiff = diff;
+                closest = m;
+              }
+            }
+            if (closest) {
+              targetId = closest.id;
             }
           }
-          if (closest) {
-            targetId = closest.id;
+        }
+        if (targetId) {
+          positioned = await scrollToMessage(targetId, {
+            offset: savedPos.offset != null ? savedPos.offset : 40,
+          });
+        }
+        if (!positioned && savedPos.scrollTop != null && scrollElement) {
+          scrollElement.scrollTop = savedPos.scrollTop;
+          positioned = true;
+        }
+        if (!positioned && !loader.all_loaded_newer) {
+          const msgs = $messages;
+          if (msgs.length > 0) {
+            const mid = msgs[Math.floor(msgs.length / 2)].id;
+            await scrollToMessage(mid, { offset: 40 });
+            positioned = true;
           }
         }
       }
-      let restored = false;
-      if (targetId) {
-        restored = await scrollToMessage(targetId, {
-          offset: savedPos.offset || 40,
-        });
-      }
-      if (!restored && !loader.all_loaded_newer) {
-        const msgs = $messages;
-        if (msgs.length > 0) {
-          const mid = msgs[Math.floor(msgs.length / 2)].id;
-          await scrollToMessage(mid, { offset: 40 });
-        }
-      } else if (!restored) {
-        await scrollToBottomDirect();
-      }
-    } else if (unreadCount > 0) {
-      const targetId = getFirstUnreadMessageId();
-      let anchorId = targetId;
-      if (targetId) {
-        const idx = $messages.findIndex((m) => String(m.id) === String(targetId));
-        if (idx > 0 && $messages[idx - 1]) {
-          anchorId = $messages[idx - 1].id;
-        }
-      }
-      let positioned = false;
-      if (anchorId) {
-        positioned = await scrollToMessage(anchorId, { offset: 40 });
-      }
-      if (!positioned) {
-        await scrollToBottomDirect();
-      }
-    } else {
+    }
+
+    if (!positioned && unreadCount > 0) {
+      positioned = await scrollToUnreadBanner();
+    }
+
+    if (!positioned) {
       await scrollToBottomDirect();
     }
 
@@ -744,13 +876,69 @@
 
     await new Promise((r) => setTimeout(r, 60));
     allRendered = true;
+    await tick();
+    if (!hasSavedScroll && unreadCount === 0 && scrollElement) {
+      scrollElement.scrollTop = scrollElement.scrollHeight;
+      showScrollDown = false;
+    }
     isInitialMounting = false;
     isProgrammaticScroll = false;
     window.addEventListener("mouseup", stopDrag);
     window.addEventListener("blur", stopDrag);
   });
 
+  async function scrollToUnreadBanner() {
+    if (!scrollElement) return false;
+    await tick();
+    let sep = document.getElementById("unread-separator");
+    if (!sep && unreadAnchorId) {
+      await makeVisible(unreadAnchorId);
+      sep = document.getElementById("unread-separator");
+    }
+    if (!sep) return false;
+
+    isProgrammaticScroll = true;
+    let containerRect = scrollElement.getBoundingClientRect();
+    let sepRect = sep.getBoundingClientRect();
+    let delta = sepRect.bottom - (containerRect.bottom - 2);
+    scrollElement.scrollTop = Math.max(0, scrollElement.scrollTop + delta);
+
+    await tick();
+    await updateVisibleMessages();
+    await tick();
+
+    sep = document.getElementById("unread-separator");
+    if (sep) {
+      containerRect = scrollElement.getBoundingClientRect();
+      sepRect = sep.getBoundingClientRect();
+      delta = sepRect.bottom - (containerRect.bottom - 2);
+      if (Math.abs(delta) > 2) {
+        scrollElement.scrollTop = Math.max(0, scrollElement.scrollTop + delta);
+      }
+    }
+
+    const distanceFromBottom = scrollElement.scrollHeight - scrollElement.scrollTop - scrollElement.clientHeight;
+    showScrollDown = !loader.all_loaded_newer || (unreadBadgeCount > 0 && distanceFromBottom > 10) || distanceFromBottom > 50;
+
+    setTimeout(() => {
+      isProgrammaticScroll = false;
+    }, 150);
+    return true;
+  }
+
   async function jumpToBottom() {
+    unreadBadgeCount = 0;
+    removeUnreadSeparatorSafely();
+    let updatedChat = null;
+    getChat(chat.id).chatInfo.update((c) => {
+      if (!c) return c;
+      updatedChat = { ...c, newMessages: 0 };
+      return updatedChat;
+    });
+    if (updatedChat) {
+      saveChats([ updatedChat ]).catch(() => {});
+    }
+
     if (!loader.all_loaded_newer) {
       loader.all_loaded_newer = true;
       await loader.loadHistory(true, Date.now() + sessionGet("drift"), 40, 0);
@@ -761,6 +949,14 @@
     showScrollDown = false;
     await tick();
     await updateVisibleMessages();
+
+    const latest = $messages[$messages.length - 1];
+    if (latest && $chatSettings?.reader !== false) {
+      lastReadMessageId = latest.id;
+      $API.readMessage(chat.id, latest.id, 0).catch((e) => {
+        console.error("readMessage failed", e);
+      });
+    }
   }
 
   let holdSelectTimer = null;
@@ -1239,23 +1435,29 @@
     scrollAnchorBeforeMediaChange = null;
   });
 
-  function startAutoScrollIfAtBottom() {
+  function startAutoScrollIfAtBottom(hasSavedScroll, initialUnreadCount) {
     if (!scrollElement) return;
     lastClientHeight = scrollElement.clientHeight;
 
     scrollResizeObserver = new ResizeObserver(() => {
-      if (!scrollElement || isInitialMounting || isProgrammaticScroll || !loader.all_loaded_newer) return;
+      if (!scrollElement || isProgrammaticScroll) return;
       const { scrollTop, scrollHeight, clientHeight } = scrollElement;
-      const heightDelta = clientHeight - lastClientHeight;
-      lastClientHeight = clientHeight;
+      const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
 
-      const atBottom = scrollHeight - scrollTop - clientHeight < Math.max(28, Math.abs(heightDelta) + 8);
-      if (atBottom && userHasScrolled) {
-        scrollToBottom(scrollElement, false);
+      if (!userHasScrolled && !hasSavedScroll && initialUnreadCount === 0) {
+        scrollElement.scrollTop = scrollHeight;
+        showScrollDown = false;
+        return;
+      }
+
+      if (distanceFromBottom <= 30 && unreadBadgeCount === 0) {
+        showScrollDown = false;
       }
     });
 
-    scrollResizeObserver.observe(scrollElement);
+    if (innerList) {
+      scrollResizeObserver.observe(innerList);
+    }
   }
 
   async function scrollToBottomDirect() {
@@ -1266,6 +1468,7 @@
     await updateVisibleMessages();
     await tick();
     scrollElement.scrollTop = scrollElement.scrollHeight;
+    showScrollDown = false;
     setTimeout(() => {
       isProgrammaticScroll = false;
     }, 150);
@@ -1292,7 +1495,7 @@
     if (targetEl) {
       elRect = targetEl.getBoundingClientRect();
       const diff = elRect.top - containerRect.top - offset;
-      if (Math.abs(diff) > 2) {
+      if (Math.abs(diff) >= 0.5) {
         scrollElement.scrollTop = Math.max(0, scrollElement.scrollTop + diff);
       }
     }
@@ -1303,21 +1506,6 @@
     return true;
   }
 
-  function getFirstUnreadMessageId() {
-    const unreadCount = Number(chat?.newMessages || 0);
-    if (unreadCount <= 0 || !$messages || $messages.length === 0) return null;
-
-    const myId = Number($currentUser);
-    const myMark = Number(chat?.participants?.[myId] || 0);
-
-    if (myMark > 0) {
-      const found = $messages.find((m) => m.time > myMark && Number(m.sender) !== myId);
-      if (found) return found.id;
-    }
-
-    const unreadIdx = Math.max(0, $messages.length - unreadCount);
-    return $messages[unreadIdx]?.id || null;
-  }
 
   async function makeVisible(id) {
     if (!visibleMessages[id]) {
@@ -1567,6 +1755,17 @@
       <div style={"flex-shrink: 0; height: " + (chat.pinnedMessage ? "60px" : "10px")}></div>
 
       {#each uniqueMessages as msg (msg.id)}
+        {#if showUnreadSeparator && unreadAnchorId && String(msg.id) === String(unreadAnchorId)}
+          <div
+            id="unread-separator"
+            class="unread-separator"
+            out:slide={{ duration: 250 }}
+          >
+            <div class="unread-separator-line"></div>
+            <span class="unread-separator-text">Непрочитанные сообщения</span>
+            <div class="unread-separator-line"></div>
+          </div>
+        {/if}
         <div
           class="message-wrapper"
           class:is-selected={$selectionState.selected.has(String(msg.id))}
@@ -1919,5 +2118,30 @@
     width: 16px;
     height: 16px;
     cursor: pointer;
+  }
+
+  .unread-separator {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 8px 16px;
+    gap: 12px;
+    width: 100%;
+    box-sizing: border-box;
+    user-select: none;
+    flex-shrink: 0;
+  }
+
+  .unread-separator-line {
+    flex: 1;
+    height: 1px;
+    background: rgba(82, 136, 236, 0.4);
+  }
+
+  .unread-separator-text {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--accent-color, #5288ec);
+    white-space: nowrap;
   }
 </style>

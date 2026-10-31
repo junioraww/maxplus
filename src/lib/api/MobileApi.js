@@ -1834,16 +1834,34 @@ export default class MobileApi extends BaseAPI {
     return response.chat;
   }
 
-  async readMessage(chatId, messageId) {
+  async readMessage(chatId, messageId, remainingCount) {
     await this.waitSync();
-    const response = await invoke("read_message", {
-      chatId, messageId
-    });
+    let response = null;
+    try {
+      response = await invoke("read_message", {
+        chatId: Number(chatId),
+        messageId: String(messageId),
+      });
+    } catch (e) {
+      console.error("read_message invoke error:", e);
+    }
 
+    let updatedChat = null;
     getChat(chatId).chatInfo.update(chat => {
       if (!chat) return chat;
-      return { ...chat, newMessages: response.unread };
+      const unread = response?.unread != null
+        ? Number(response.unread)
+        : (remainingCount != null ? Number(remainingCount) : chat.newMessages);
+      const mark = response?.mark != null ? Number(response.mark) : Date.now();
+      const myId = Number(get(currentUser));
+      const participants = { ...(chat.participants || {}), [myId]: mark };
+      updatedChat = { ...chat, newMessages: unread, participants };
+      return updatedChat;
     });
+
+    if (updatedChat) {
+      await saveChats([ updatedChat ]).catch(() => {});
+    }
 
     return response;
   }

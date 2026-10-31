@@ -222,6 +222,7 @@ export function createVirtualScrollManager() {
         bottomMessageId: bottomMsg.id,
         bottomMessageTime: bottomMsg.time,
         offset: bottomOffset,
+        scrollTop: scrollElement.scrollTop,
         lastSeenTime: Date.now(),
       });
     }

@@ -9,7 +9,7 @@ import {
   serverConfig,
 } from "$lib/stores/api";
 import { set as sessionSet } from "$lib/stores/session";
-import { getChat } from "$lib/stores/messages";
+import { getChat, saveChats } from "$lib/stores/messages";
 import { updateContact } from "$lib/stores/contacts";
 
 const DEFAULT_USER_ID = 10001;
@@ -71,8 +71,8 @@ export default class MockApi extends BaseAPI {
     ];
 
     this.messages = {};
-    this.generateMockMessages(50001, 80);
-    this.generateMockMessages(50002, 40);
+    this.generateMockMessages(50002, 40, Date.now() - 3600 * 1000);
+    this.generateMockMessages(50001, 80, Date.now() - 1200 * 1000);
   }
 
   createMockMessage(chatId, i, msgTime) {
@@ -167,12 +167,12 @@ export default class MockApi extends BaseAPI {
     };
   }
 
-  generateMockMessages(chatId, count = 80) {
+  generateMockMessages(chatId, count = 80, startTime = null) {
     const list = [];
-    const baseTime = Date.now() - count * 60 * 1000;
+    const baseTime = startTime != null ? startTime : (Date.now() - (count + 1200) * 1000);
 
     for (let i = 1; i <= count; i++) {
-      const msgTime = baseTime + i * 60 * 1000;
+      const msgTime = baseTime + i * 1000;
       list.push(this.createMockMessage(chatId, i, msgTime));
     }
 
@@ -182,6 +182,15 @@ export default class MockApi extends BaseAPI {
     const foundChat = this.chats.find((c) => c.id === chatId);
     if (foundChat && last) {
       foundChat.lastMessage = last;
+      if (foundChat.newMessages === 0) {
+        foundChat.participants[this.currentUserId] = last.time;
+      } else {
+        const peerMsgs = list.filter((m) => m.sender !== this.currentUserId);
+        const unreadIdx = Math.max(0, peerMsgs.length - foundChat.newMessages - 1);
+        if (peerMsgs[unreadIdx]) {
+          foundChat.participants[this.currentUserId] = peerMsgs[unreadIdx].time;
+        }
+      }
     }
 
     return list;
@@ -312,14 +321,88 @@ export default class MockApi extends BaseAPI {
     return { messageId: newId, status: "ok" };
   }
 
-  async readMessage(chatId, messageId) {
+  async readMessage(chatId, messageId, remainingCount) {
     const list = this.messages[chatId] || [];
+    let readMsg = null;
     for (const m of list) {
-      if (m.id <= messageId) {
+      if (String(m.id) === String(messageId)) {
+        readMsg = m;
+        break;
+      }
+    }
+    if (!readMsg) {
+      readMsg = list.find((m) => Number(m.id) === Number(messageId));
+    }
+    const markTime = readMsg ? Number(readMsg.time) : Date.now();
+    for (const m of list) {
+      if (Number(m.time) <= markTime) {
         m.status = 2;
       }
     }
-    return true;
+
+    const targetChat = this.chats.find((c) => String(c.id) === String(chatId));
+    let remaining = remainingCount != null ? Number(remainingCount) : 0;
+    if (targetChat) {
+      targetChat.participants = {
+        ...(targetChat.participants || {}),
+        [this.currentUserId]: markTime,
+      };
+      if (remainingCount == null) {
+        remaining = list.filter(
+          (m) => Number(m.sender) !== this.currentUserId && !m.deleted && Number(m.time) > markTime
+        ).length;
+      }
+      targetChat.newMessages = remaining;
+      const store = getChat(chatId);
+      if (store?.chatInfo) {
+        store.chatInfo.set({ ...targetChat });
+      }
+      await saveChats([ targetChat ]).catch(() => {});
+    }
+
+    return { unread: remaining, mark: markTime };
+  }
+
+  addIncomingMessages(chatId, count = 1) {
+    const targetChat = this.chats.find((c) => String(c.id) === String(chatId));
+    if (!targetChat) return [];
+
+    if (!this.messages[chatId]) {
+      this.messages[chatId] = [];
+    }
+
+    const list = this.messages[chatId];
+    const lastMsg = list.length > 0 ? list[list.length - 1] : null;
+    const baseTime = lastMsg ? Number(lastMsg.time) : (Date.now() - (count + 1000) * 1000);
+    const created = [];
+
+    for (let i = 1; i <= count; i++) {
+      const msgTime = baseTime + i * 100;
+      const msgId = Number(chatId) * 1000 + list.length + 1;
+      const msg = {
+        id: msgId,
+        chatId: Number(chatId),
+        sender: PEER_USER_ID,
+        text: `Synthetic incoming unread message #${i} of ${count}`,
+        elements: [],
+        attaches: [],
+        time: msgTime,
+        status: 1,
+        history: [],
+      };
+      list.push(msg);
+      created.push(msg);
+    }
+
+    targetChat.lastMessage = created[created.length - 1];
+    targetChat.newMessages = (targetChat.newMessages || 0) + count;
+
+    const store = getChat(chatId);
+    if (store?.chatInfo) {
+      store.chatInfo.set({ ...targetChat });
+    }
+
+    return created;
   }
 
   async pinMessage(chatId, messageId) {

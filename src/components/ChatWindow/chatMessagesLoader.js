@@ -243,8 +243,6 @@ export function createMessagesLoader({
     } finally {
       loadingNewer = false;
     }
-
-    onAnchorRestore();
   }
 
   return {
