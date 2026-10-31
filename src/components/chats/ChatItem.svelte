@@ -98,28 +98,90 @@
   $: isMe = String(shownMessage?.sender) === String($currentUser) || String(shownMessage?.from) === String($currentUser);
   $: isRead = shownMessage?.read;
 
-  let pressTimer;
+  let pressTimer = null;
   let isLongPress = false;
+  let startX = 0;
+  let startY = 0;
+  let hasMoved = false;
 
-  function handleStart() {
+  function handleTouchStart(e) {
+    const touch = e.touches[0];
+    if (!touch) return;
+    startX = touch.clientX;
+    startY = touch.clientY;
+    hasMoved = false;
     isLongPress = false;
+    clearTimeout(pressTimer);
     pressTimer = setTimeout(() => {
       isLongPress = true;
       dispatch("longpress", chat);
-      if (navigator.vibrate) navigator.vibrate(50);
-    }, 250);
+      if (typeof navigator !== "undefined" && navigator.vibrate) {
+        navigator.vibrate(50);
+      }
+    }, 500);
   }
 
-  function handleEnd() {
+  function handleTouchMove(e) {
+    if (!pressTimer && !isLongPress) return;
+    const touch = e.touches[0];
+    if (!touch) return;
+    if (Math.abs(touch.clientX - startX) > 8 || Math.abs(touch.clientY - startY) > 8) {
+      hasMoved = true;
+      clearTimeout(pressTimer);
+      pressTimer = null;
+    }
+  }
+
+  function handleTouchEnd(e) {
     clearTimeout(pressTimer);
+    pressTimer = null;
+    if (isLongPress) {
+      e?.stopPropagation?.();
+      setTimeout(() => {
+        isLongPress = false;
+      }, 400);
+    }
   }
 
-  function handleMove() {
+  function handleMouseDown(e) {
+    if (e.button !== 0) return;
+    startX = e.clientX;
+    startY = e.clientY;
+    hasMoved = false;
+    isLongPress = false;
     clearTimeout(pressTimer);
+    pressTimer = setTimeout(() => {
+      isLongPress = true;
+      dispatch("longpress", chat);
+    }, 500);
   }
 
-  function handleClick() {
-    if (isLongPress) return;
+  function handleMouseMove(e) {
+    if (!pressTimer && !isLongPress) return;
+    if (Math.abs(e.clientX - startX) > 8 || Math.abs(e.clientY - startY) > 8) {
+      hasMoved = true;
+      clearTimeout(pressTimer);
+      pressTimer = null;
+    }
+  }
+
+  function handleMouseUp(e) {
+    clearTimeout(pressTimer);
+    pressTimer = null;
+    if (isLongPress) {
+      e?.stopPropagation?.();
+      setTimeout(() => {
+        isLongPress = false;
+      }, 400);
+    }
+  }
+
+  function handleClick(e) {
+    if (isLongPress || hasMoved) {
+      e.stopPropagation();
+      e.preventDefault();
+      return;
+    }
 
     if (selectionMode) {
       dispatch("toggle", chat);
@@ -132,11 +194,12 @@
 <div
   class="chat-item"
   class:selected={isSelected}
-  on:mousedown={handleStart}
-  on:touchstart|passive={handleStart}
-  on:mouseup={handleEnd}
-  on:touchend={handleEnd}
-  on:touchmove|passive={handleMove}
+  on:mousedown={handleMouseDown}
+  on:mousemove={handleMouseMove}
+  on:mouseup={handleMouseUp}
+  on:touchstart|passive={handleTouchStart}
+  on:touchmove|passive={handleTouchMove}
+  on:touchend={handleTouchEnd}
   on:click={handleClick}
   on:contextmenu|preventDefault={() => dispatch("longpress", chat)}
 >
