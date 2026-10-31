@@ -3,10 +3,11 @@ import { defineConfig } from "@playwright/test";
 export default defineConfig({
   testDir: "./tests",
   fullyParallel: false,
+  workers: 1,
   reporter: "list",
   timeout: 30000,
   webServer: {
-    command: "bun run dev --port 5173",
+    command: "bun x svelte-kit sync && bun run dev --port 5173",
     port: 5173,
     reuseExistingServer: true,
   },

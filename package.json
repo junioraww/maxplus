@@ -4,6 +4,7 @@
   "description": "",
   "type": "module",
   "scripts": {
+    "prepare": "svelte-kit sync",
     "start": "rm -rf node_modules/.vite && tauri dev",
     "dev": "vite dev",
     "build": "vite build",

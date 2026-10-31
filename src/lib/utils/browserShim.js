@@ -177,20 +177,21 @@ export function initBrowserShim() {
     switch (cmd) {
       case "accounts_get": {
         const accs = getStoreItem("accounts", [DEFAULT_ACCOUNT]);
-        return accs;
+        return Array.isArray(accs) && accs.length > 0 ? accs : [DEFAULT_ACCOUNT];
       }
       case "accounts_init":
         return true;
       case "current_get": {
         const current = getStoreItem("current_account_id", DEFAULT_ACCOUNT.id);
-        return current;
+        return current || DEFAULT_ACCOUNT.id;
       }
       case "current_set": {
         setStoreItem("current_account_id", args.id);
         return true;
       }
       case "current_account_meta": {
-        const accs = getStoreItem("accounts", [DEFAULT_ACCOUNT]);
+        const raw = getStoreItem("accounts", [DEFAULT_ACCOUNT]);
+        const accs = Array.isArray(raw) && raw.length > 0 ? raw : [DEFAULT_ACCOUNT];
         const curId = getStoreItem("current_account_id", DEFAULT_ACCOUNT.id);
         return accs.find((a) => a.id === curId) || accs[0] || DEFAULT_ACCOUNT;
       }
@@ -238,7 +239,7 @@ export function initBrowserShim() {
         return true;
       }
       case "get_chat_settings": {
-        return getStoreItem("chat_settings_" + args.chatId, {});
+        return getStoreItem("chat_settings_" + args.chatId, { reader: true });
       }
       case "set_chat_settings": {
         setStoreItem("chat_settings_" + args.chatId, args.data);

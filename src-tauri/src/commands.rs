@@ -99,7 +99,7 @@ delegate_cmd!(sync_contacts() => sync_contacts());
 
 delegate_cmd!(add_reaction(chat_id: i64, message_id: String, reaction: String) => add_reaction(chat_id, p(message_id)?, reaction));
 delegate_cmd!(remove_reaction(chat_id: i64, message_id: String) => remove_reaction(chat_id, p(message_id)?));
-delegate_cmd!(read_message(chat_id: i64, message_id: String) => read_message(chat_id, p(message_id)?));
+delegate_cmd!(read_message(chat_id: i64, message_id: String, mark: Option<u64>) => read_message(chat_id, p(message_id)?, mark));
 delegate_cmd!(pin_message(chat_id: i64, message_id: String, notify: bool) => pin_message(chat_id, p(message_id)?, notify));
 delegate_cmd!(delete_message(chat_id: i64, message_id: String, for_me: bool) => delete_message(chat_id, p(message_id)?, for_me));
 #[tauri::command]
