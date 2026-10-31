@@ -1,14 +1,22 @@
 <script>
+  import { setContext } from "svelte";
+  import { writable } from "svelte/store";
+
   export let index = 0;
   export let active = 0;
+  export let isVisibleOnScreen = true;
 
   $: isCurrent = index === active;
+  const panelActiveStore = writable(isCurrent || isVisibleOnScreen);
+  $: $panelActiveStore = isCurrent || isVisibleOnScreen;
+  setContext("panelActive", panelActiveStore);
 </script>
 
 <div
   class="page-card"
   class:inactive={!isCurrent}
-  style="transform: translateX({(index - active) * 100}vw)"
+  style="left: {index * 100}%;"
+  aria-hidden={!isCurrent}
 >
   <slot />
 </div>
@@ -20,11 +28,11 @@
     top: 0;
     left: 0;
     width: 100%;
-    height: calc(100% - 60px - var(--safe-bottom, 0px));
-    transition: transform 0.22s ease-out;
+    height: 100%;
     display: flex;
     flex-direction: column;
     background: var(--bg-app, #17181c);
+    box-sizing: border-box;
   }
 
   .page-card.inactive {

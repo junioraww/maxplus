@@ -25,6 +25,7 @@
   import PluginImportModal from "$components/plugins/PluginImportModal.svelte";
   import { panelConfig, CATALOG } from "$lib/stores/panel";
   import { setPanelNavigation } from "$lib/utils/backButton";
+  import { panelSlider } from "$lib/utils/panelSlider";
 
   import * as Caching from "$lib/utils/caching";
   import Session, { openChat, closeSettingsPage } from "$lib/stores/session";
@@ -65,6 +66,27 @@
   let active = 0;
   let mountedCards = new Set();
 
+  let dragOffset = 0;
+  let isDragging = false;
+  let isSnapping = false;
+
+  function ensureNeighborCardsMounted(idx) {
+    let changed = false;
+    const targets = [idx - 1, idx, idx + 1];
+    for (const t of targets) {
+      if (t >= 0 && t < pages.length) {
+        const id = pages[t]?.id;
+        if (id && !mountedCards.has(id)) {
+          mountedCards.add(id);
+          changed = true;
+        }
+      }
+    }
+    if (changed) {
+      mountedCards = new Set(mountedCards);
+    }
+  }
+
   $: {
     if (pages.length > 0) {
       if (activeId) {
@@ -96,20 +118,20 @@
         activeId = pages[active]?.id;
       }
 
-      if (activeId && !mountedCards.has(activeId)) {
-        mountedCards.add(activeId);
-        mountedCards = new Set(mountedCards);
-      }
+      ensureNeighborCardsMounted(active);
     }
   }
 
   const openCard = ({ detail }) => {
     active = detail.index;
     activeId = detail.page?.id || pages[active]?.id;
-    if (activeId && !mountedCards.has(activeId)) {
-      mountedCards.add(activeId);
-      mountedCards = new Set(mountedCards);
-    }
+    dragOffset = 0;
+    isDragging = false;
+    isSnapping = true;
+    ensureNeighborCardsMounted(active);
+    setTimeout(() => {
+      isSnapping = false;
+    }, 280);
   };
 
   function goToDefaultPanel() {
@@ -117,11 +139,70 @@
     const defIndex = pages.findIndex((p) => p.id === defId);
     active = defIndex !== -1 ? defIndex : 0;
     activeId = pages[active]?.id || defId;
-    if (activeId && !mountedCards.has(activeId)) {
-      mountedCards.add(activeId);
-      mountedCards = new Set(mountedCards);
-    }
+    dragOffset = 0;
+    isDragging = false;
+    isSnapping = true;
+    ensureNeighborCardsMounted(active);
+    setTimeout(() => {
+      isSnapping = false;
+    }, 280);
   }
+
+  function handleDragStart() {
+    isDragging = true;
+    isSnapping = false;
+  }
+
+  function handleDragMove(offset) {
+    dragOffset = offset;
+  }
+
+  function handleDragEnd(targetIndex, finalOffset, containerWidth) {
+    const oldActive = active;
+    isDragging = false;
+
+    if (targetIndex === oldActive) {
+      if (finalOffset === 0) {
+        dragOffset = 0;
+        return;
+      }
+      isSnapping = true;
+      dragOffset = 0;
+      setTimeout(() => {
+        isSnapping = false;
+      }, 280);
+      return;
+    }
+
+    const offsetDelta = (targetIndex - oldActive) * containerWidth;
+    const initialSnapOffset = finalOffset + offsetDelta;
+
+    active = targetIndex;
+    activeId = pages[targetIndex]?.id;
+    ensureNeighborCardsMounted(targetIndex);
+
+    dragOffset = initialSnapOffset;
+    isSnapping = false;
+
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        isSnapping = true;
+        dragOffset = 0;
+        setTimeout(() => {
+          isSnapping = false;
+        }, 280);
+      });
+    });
+  }
+
+  $: visibleIndices = (() => {
+    const set = new Set([active]);
+    if ((isDragging || isSnapping) && dragOffset !== 0) {
+      if (dragOffset < 0) set.add(active + 1);
+      if (dragOffset > 0) set.add(active - 1);
+    }
+    return set;
+  })();
 
   onMount(() => {
     const cleanupNav = setPanelNavigation({
@@ -183,16 +264,40 @@
   class:has-chat={$Session.openedChats.length > 0}
   class:has-overlay={!!$Session.settingsPage}
 >
-  {#each pages as pageItem, index (pageItem.id)}
-    <Card {index} {active}>
-      {#if mountedCards.has(pageItem.id)}
-        <svelte:component
-          this={pageItem.component}
-          {...(pageItem.id === "logs" || pageItem.id === "notifications" ? { isTab: true } : {})}
-        />
-      {/if}
-    </Card>
-  {/each}
+  <div
+    class="panels-slider"
+    use:panelSlider={{
+      getPagesCount: () => pages.length,
+      getActive: () => active,
+      canDrag: () => pages.length > 1 && $Session.openedChats.length === 0 && !$Session.settingsPage,
+      onPrepare: () => ensureNeighborCardsMounted(active),
+      onDragStart: handleDragStart,
+      onDragMove: handleDragMove,
+      onDragEnd: handleDragEnd,
+    }}
+  >
+    <div
+      class="panels-track"
+      class:dragging={isDragging}
+      class:snapping={isSnapping}
+      style="transform: translate3d(calc({-active * 100}% + {dragOffset}px), 0, 0);"
+    >
+      {#each pages as pageItem, index (pageItem.id)}
+        <Card
+          {index}
+          {active}
+          isVisibleOnScreen={visibleIndices.has(index)}
+        >
+          {#if mountedCards.has(pageItem.id)}
+            <svelte:component
+              this={pageItem.component}
+              {...(pageItem.id === "logs" || pageItem.id === "notifications" ? { isTab: true } : {})}
+            />
+          {/if}
+        </Card>
+      {/each}
+    </div>
+  </div>
 
   {#each $Session.openedChats as chatId (chatId)}
     <ChatWindow {chatId}/>
@@ -223,6 +328,34 @@
   .container.has-chat,
   .container.has-overlay {
     z-index: 20;
+  }
+
+  .panels-slider {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: calc(100% - 60px - var(--safe-bottom, 0px));
+    overflow: hidden;
+    touch-action: pan-y;
+  }
+
+  .panels-track {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    will-change: transform;
+    transition: transform 0.28s cubic-bezier(0.25, 1, 0.5, 1);
+  }
+
+  .panels-track.dragging {
+    transition: none;
+  }
+
+  .panels-track.snapping {
+    transition: transform 0.28s cubic-bezier(0.25, 1, 0.5, 1);
   }
 
   .settings-page-overlay {

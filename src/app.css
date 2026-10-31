@@ -48,7 +48,7 @@ html {
 
 #app .page-card {
   width: 100%;
-  height: calc(100% - 60px - var(--safe-bottom, 0px));
+  height: 100%;
 }
 
 #app .chat-window,
