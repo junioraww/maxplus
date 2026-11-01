@@ -275,8 +275,11 @@
       chatMatchesFolder(chat, folder, myId, contactIds)
     );
     return filtered.sort((a, b) => {
-      const timeA = a.lastEventTime || a.lastMessage?.time || 0;
-      const timeB = b.lastEventTime || b.lastMessage?.time || 0;
+      const pinA = a.favIndex || (a.pinned ? 1 : 0);
+      const pinB = b.favIndex || (b.pinned ? 1 : 0);
+      if (pinA !== pinB) return pinB - pinA;
+      const timeA = a.lastMessage?.time || a.lastEventTime || 0;
+      const timeB = b.lastMessage?.time || b.lastEventTime || 0;
       return timeB - timeA;
     });
   }
@@ -295,8 +298,11 @@
         chatMatchesFolder(chat, folder, $currentUser, contactIdSet)
       );
       filtered.sort((a, b) => {
-        const timeA = a.lastEventTime || a.lastMessage?.time || 0;
-        const timeB = b.lastEventTime || b.lastMessage?.time || 0;
+        const pinA = a.favIndex || (a.pinned ? 1 : 0);
+        const pinB = b.favIndex || (b.pinned ? 1 : 0);
+        if (pinA !== pinB) return pinB - pinA;
+        const timeA = a.lastMessage?.time || a.lastEventTime || 0;
+        const timeB = b.lastMessage?.time || b.lastEventTime || 0;
         return timeB - timeA;
       });
       result.set(folder.id, filtered);
