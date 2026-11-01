@@ -93,12 +93,7 @@
     await refreshAccounts();
   }
 
-  async function addNew(e) {
-    try {
-      await $API.disconnect();
-    } catch (e) {
-      console.error(e);
-    }
+  function addNew() {
     goto("/auth/login");
   }
 

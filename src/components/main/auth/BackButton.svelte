@@ -13,8 +13,7 @@
   }
 </script>
 
-{#await _condition()}
-{:then display}
+{#await _condition() then display}
   {#if display}
       <div
       class="back"
