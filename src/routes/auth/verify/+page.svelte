@@ -238,9 +238,10 @@
     justify-content: center;
     align-items: center;
     min-height: 100%;
-    padding: calc(20px + var(--safe-top, 0px)) 0 calc(20px + var(--safe-bottom, 0px));
+    padding: calc(20px + var(--safe-top, 0px)) 16px calc(20px + var(--safe-bottom, 0px));
     box-sizing: border-box;
-    box-sizing: border-box;
+    text-align: center;
+    color: #ddd;
   }
 
   .auth-page h1 {
@@ -262,6 +263,7 @@
     font-size: 13.5px;
     color: #a0a0a8;
     line-height: 1.4;
+    max-width: min(340px, 90%);
   }
 
   .form {
@@ -269,9 +271,13 @@
     flex-direction: column;
     gap: 0.75rem;
     width: 100%;
+    max-width: min(300px, 90%);
+    box-sizing: border-box;
   }
 
   input {
+    width: 100%;
+    box-sizing: border-box;
     padding: 0.75rem;
     border-radius: 8px;
     border: 1px solid #333;

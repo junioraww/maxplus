@@ -114,11 +114,12 @@
     flex-direction: column;
     justify-content: center;
     align-items: center;
-    height: 100vh;
+    min-height: 100%;
+    padding: calc(20px + var(--safe-top, 0px)) 16px calc(20px + var(--safe-bottom, 0px));
+    box-sizing: border-box;
     text-align: center;
     color: #ddd;
-    max-width: min(340px, 90%);
-    margin: 0 auto;
+    width: 100%;
   }
 
   .auth-page h1 {
@@ -131,6 +132,7 @@
     margin: 10px 0 6px 0;
     font-size: 14px;
     color: #8e8e93;
+    max-width: min(340px, 90%);
   }
 
   .hint {
@@ -138,6 +140,7 @@
     color: #4a90e2;
     margin-bottom: 8px;
     word-break: break-word;
+    max-width: min(340px, 90%);
   }
 
   .form {
@@ -145,6 +148,8 @@
     flex-direction: column;
     gap: 0.75rem;
     width: 100%;
+    max-width: min(300px, 90%);
+    box-sizing: border-box;
   }
 
   .input-wrapper {

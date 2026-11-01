@@ -1,6 +1,6 @@
 <script>
   import { onMount } from "svelte";
-  import { fade } from "svelte/transition";
+  import { fade, scale } from "svelte/transition";
   import SettingsPageWrapper from "$components/settings/SettingsPageWrapper.svelte";
   import { page } from "$app/stores";
   import { get } from "svelte/store";
