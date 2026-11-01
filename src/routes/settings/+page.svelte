@@ -134,6 +134,11 @@ import { goto } from "$app/navigation";
         action: () => openSettingsPage("notifications"),
       },
       {
+        icon: "shield.svg",
+        text: "Конфиденциальность",
+        action: () => openSettingsPage("privacy"),
+      },
+      {
         icon: "crypto.svg",
         text: "Графический ключ",
         action: () => openSettingsPage("lock"),

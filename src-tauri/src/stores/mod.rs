@@ -54,3 +54,13 @@ pub fn save_user_settings(
     }
     storage.save(paths.user_settings(), &current)
 }
+
+pub fn load_user_settings(
+    app: &AppHandle,
+    account: u64,
+) -> Result<Value, String> {
+    let key = crypto_key(app, account);
+    let paths = Paths::new(app, account);
+    let storage = Storage::new(key);
+    Ok(storage.load(paths.user_settings()).unwrap_or(json!({})))
+}

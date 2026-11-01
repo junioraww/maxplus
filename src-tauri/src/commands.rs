@@ -1,5 +1,5 @@
 use crate::stores::{
-    accounts::account_get, load_sync_state, save_sync_state, save_user_settings, update_account_token,
+    accounts::account_get, load_sync_state, load_user_settings, save_sync_state, save_user_settings, update_account_token,
 };
 use crate::state::AppState;
 use serde_json::{json, Value};
@@ -148,7 +148,7 @@ delegate_cmd!(send_button_callback(chat_id: i64, message_id: String, callback_id
 delegate_cmd!(send_bot_start(chat_id: i64, start_payload: Option<String>) => send_bot_start(chat_id, start_payload));
 delegate_cmd!(get_bot_info(bot_id: u64) => get_bot_info(bot_id));
 delegate_cmd!(get_chat_bot_commands(chat_id: i64) => get_chat_bot_commands(chat_id));
-delegate_cmd!(suspend_bot(bot_id: u64) => suspend_bot(bot_id));
+delegate_cmd!(suspend_bot(bot_id: u64, value: Option<bool>) => suspend_bot(bot_id, value));
 delegate_cmd!(set_chat_mute(chat_id: i64, dont_disturb_until: i64) => set_chat_mute(chat_id, dont_disturb_until));
 delegate_cmd!(get_folders(folder_sync: Option<i64>) => get_folders(folder_sync));
 delegate_cmd!(get_folder_by_id(folder_ids: Vec<String>) => get_folder_by_id(folder_ids));
@@ -303,6 +303,42 @@ pub async fn update_user_settings(
     let r = state.client.update_user_settings(settings.clone()).await.map_err(|e| e.to_json())?;
     let settings_val = serde_json::to_value(&settings).unwrap_or(json!({}));
     let _ = save_user_settings(&app, account_id, &settings_val);
+    Ok(r.payload)
+}
+
+#[tauri::command]
+pub async fn get_user_settings(
+    app: AppHandle,
+    account_id: u64,
+) -> Result<Value, String> {
+    load_user_settings(&app, account_id)
+}
+
+#[tauri::command]
+pub async fn get_blacklist(
+    state: State<'_, AppState>,
+    from: Option<i64>,
+    count: Option<i64>,
+) -> Result<Value, Value> {
+    let r = state.client.get_blacklist(from.unwrap_or(0), count.unwrap_or(100)).await.map_err(|e| e.to_json())?;
+    Ok(r.payload)
+}
+
+#[tauri::command]
+pub async fn add_to_blacklist(
+    state: State<'_, AppState>,
+    contact_id: u64,
+) -> Result<Value, Value> {
+    let r = state.client.add_to_blacklist(contact_id).await.map_err(|e| e.to_json())?;
+    Ok(r.payload)
+}
+
+#[tauri::command]
+pub async fn remove_from_blacklist(
+    state: State<'_, AppState>,
+    contact_id: u64,
+) -> Result<Value, Value> {
+    let r = state.client.remove_from_blacklist(contact_id).await.map_err(|e| e.to_json())?;
     Ok(r.payload)
 }
 

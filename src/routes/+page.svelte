@@ -18,6 +18,7 @@
   import SessionsSettings from "./settings/sessions/+page.svelte";
   import PluginsSettings from "./settings/plugins/+page.svelte";
   import AdvancedSettings from "./settings/advanced/+page.svelte";
+  import PrivacySettings from "./settings/privacy/+page.svelte";
   import Panel from "$components/Panel.svelte";
   import Card from "$components/main/Card.svelte";
   import ChatWindow from "$components/ChatWindow.svelte";
@@ -45,6 +46,7 @@
   const SETTINGS_PAGES = {
     profile: ProfileSettings,
     notifications: Notifications,
+    privacy: PrivacySettings,
     lock: LockSettings,
     two_factor: TwoFactorSettings,
     dictionary: DictionarySettings,

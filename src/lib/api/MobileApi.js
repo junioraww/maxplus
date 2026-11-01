@@ -57,6 +57,7 @@ import {
   applyUserConfig,
   loadAccountNotificationSettings
 } from "$lib/utils/notifications";
+import { applyPrivacyConfig, loadPrivacySettings } from "$lib/stores/privacySettings";
 import {
   getMessagePreview
 } from "$lib/utils/text";
@@ -926,6 +927,7 @@ export default class MobileApi extends BaseAPI {
 
       if (config?.user) {
         applyUserConfig(config.user, account.id);
+        applyPrivacyConfig(config.user, account.id);
       }
 
       const entryBanners = config?.server?.["settings-entry-banners"];
@@ -1161,9 +1163,12 @@ export default class MobileApi extends BaseAPI {
     return await invoke("get_chat_bot_commands", { chatId });
   }
 
-  async suspendBot(botId) {
+  async suspendBot(botId, value = true) {
     await this.waitSync();
-    return await invoke("suspend_bot", { botId });
+    return await invoke("suspend_bot", {
+      botId: Number(botId),
+      value: Boolean(value),
+    });
   }
 
   async resolveLink(link) {
@@ -1190,6 +1195,21 @@ export default class MobileApi extends BaseAPI {
     await this.waitSync();
     const account = await getCurrentAccount();
     return await invoke("update_user_settings", { accountId: account.id, settings });
+  }
+
+  async getBlacklist(from = 0, count = 100) {
+    await this.waitSync();
+    return await invoke("get_blacklist", { from, count });
+  }
+
+  async addToBlacklist(contactId) {
+    await this.waitSync();
+    return await invoke("add_to_blacklist", { contactId: Number(contactId) });
+  }
+
+  async removeFromBlacklist(contactId) {
+    await this.waitSync();
+    return await invoke("remove_from_blacklist", { contactId: Number(contactId) });
   }
 
   async getFolders(folderSync = null) {
@@ -1800,7 +1820,11 @@ export default class MobileApi extends BaseAPI {
     await this.waitSync();
     const chatId = chat.id;
 
-    await invoke("leave_group", { chatId, forAll: true });
+    await invoke("delete_chat", {
+      chatId: Number(chatId),
+      lastEventTime: chat.lastEventTime || Date.now(),
+      forAll: true,
+    });
 
     try {
       const account = await getCurrentAccount();

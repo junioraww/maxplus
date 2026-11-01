@@ -932,7 +932,12 @@
   async function deleteChat() {
     closeChat();
     closeModal();
-    $API.deleteChatForAll(chat);
+    try {
+      await $API.deleteChatForAll(chat);
+    } catch (e) {
+      console.error(e);
+      showToast("Не удалось удалить чат");
+    }
   }
 
   async function leaveChat() {
