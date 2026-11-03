@@ -50,7 +50,7 @@
     bottom: 24px;
     left: 16px;
     right: 16px;
-    z-index: 9999;
+    z-index: var(--z-toast, 10);
 
     display: flex;
     flex-direction: column;

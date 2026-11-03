@@ -106,7 +106,7 @@
     display: flex;
     justify-content: center;
     align-items: center;
-    z-index: 100;
+    z-index: var(--z-modal, 7);
     padding: 16px;
   }
 

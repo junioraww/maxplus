@@ -426,7 +426,7 @@
     font-size: 0.8rem;
     font-weight: 500;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
-    z-index: 2000;
+    z-index: var(--z-toast, 10);
     pointer-events: none;
   }
 

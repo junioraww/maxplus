@@ -206,6 +206,7 @@
   $: stickerAttach = effectiveAttaches?.find(x => x._type === "STICKER");
   $: isStickerOnly = stickerAttach && (!lines || lines.length === 0 || (lines.length === 1 && !lines[0]?.trim())) && (!effectiveAttaches || effectiveAttaches.length === 1) && !linkedMsg;
   $: isVideoNoteOnly = effectiveAttaches?.some(x => x._type === "VIDEO" && x.videoType === 1) && (!lines || lines.length === 0 || (lines.length === 1 && !lines[0]?.trim())) && (!effectiveAttaches || effectiveAttaches.length === 1) && !linkedMsg;
+  $: isPollOnly = effectiveAttaches?.some(x => (x._type || x.type) === "POLL") && (!lines || lines.length === 0 || (lines.length === 1 && !lines[0]?.trim())) && effectiveAttaches.length === 1 && !linkedMsg;
 
   let pressTimer = null;
   let isLongPress = false;
@@ -213,7 +214,7 @@
   let startY = 0;
 
   function handleTouchStart(e) {
-    if (e.target.closest("button, a, .rich-link, .link-dropout-card, .dropout-backdrop, input, textarea, .avatar-msg-btn")) return;
+    if (e.target.closest("button, a, .rich-link, .link-dropout-card, .dropout-backdrop, input, textarea, .avatar-msg-btn, .poll-container")) return;
     const touch = e.touches[0];
     if (!touch) return;
     startX = touch.clientX;
@@ -257,7 +258,7 @@
   function handleMouseUp() {}
 
   function handleContextMenu(e) {
-    if (e.target.closest("input, textarea, a, .rich-link, .link-dropout-card, .dropout-backdrop")) return;
+    if (e.target.closest("input, textarea, a, .rich-link, .link-dropout-card, .dropout-backdrop, .poll-container")) return;
     e.preventDefault();
     dispatch("contextmenu", { msg, e });
   }
@@ -276,7 +277,7 @@
       dispatch("toggleSelect", { id: msg.id });
       return;
     }
-    if (e.target.closest("button, a, .rich-link, .link-dropout-card, .dropout-backdrop, input, textarea, .avatar-msg-btn, .avatar-wrapper, .media-download-badge, .voice-play-btn, .edited-badge, .sticker-wrapper")) return;
+    if (e.target.closest("button, a, .rich-link, .link-dropout-card, .dropout-backdrop, input, textarea, .avatar-msg-btn, .avatar-wrapper, .media-download-badge, .voice-play-btn, .edited-badge, .sticker-wrapper, .poll-container, .poll-result-bar, .poll-option-btn, .poll-cancel-btn")) return;
     const windowSel = typeof window !== "undefined" ? window.getSelection() : null;
     if (windowSel && !windowSel.isCollapsed && windowSel.toString().trim()) return;
     dispatch("messageClick", { msg, e });
@@ -290,6 +291,7 @@
   class:is-deleted={msg.deleted}
   class:is-sticker={isStickerOnly}
   class:is-video-note={isVideoNoteOnly}
+  class:is-poll={isPollOnly}
   class:is-channel={chat.type === "CHANNEL"}
   class:is-selected={selected}
   class:selection-active={selectionMode}
@@ -379,7 +381,7 @@
         {/if}
       </div>
     {:else}
-      <div class="message-bubble" class:is-row={isInlineRow}>
+      <div class="message-bubble" class:is-row={isInlineRow} class:is-poll={isPollOnly}>
         <div class="bubble-content">
           {#if linkedMsg}
             {#if linkedType === "FORWARD"}
@@ -1073,6 +1075,24 @@
   .message-row.is-sticker .message-bubble-container,
   .message-row.is-video-note .message-bubble-container {
     background: transparent !important;
+  }
+
+  .message-row.is-poll .message-bubble-container {
+    max-width: min(380px, 92%);
+    width: 100%;
+  }
+
+  .message-row.is-poll .message-bubble {
+    padding: 4px 12px 6px 12px;
+    width: 100%;
+  }
+
+  .message-row.is-poll :global(.attachments-container) {
+    margin-top: 0 !important;
+  }
+
+  .message-row.is-poll .bubble-content {
+    width: 100%;
   }
 
   .message-row.is-video-note .message-bubble {

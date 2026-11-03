@@ -193,7 +193,7 @@
     width: 100%;
     height: 100%;
     background: rgba(0, 0, 0, 0.65);
-    z-index: 100;
+    z-index: var(--z-modal, 7);
     display: flex;
     justify-content: center;
     align-items: center;

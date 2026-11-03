@@ -7,7 +7,6 @@
   } from "svelte";
   import { get } from "svelte/store";
   import { registerBackHandler } from "$lib/utils/backButton";
-
   import ConfirmModal from "$components/main/ConfirmModal.svelte";
   import InputModal from "$components/main/InputModal.svelte";
   import Signature from "$components/main/Signature.svelte";
@@ -2072,7 +2071,7 @@
     position: fixed;
     inset: 0;
     background: rgba(0, 0, 0, 0.65);
-    z-index: 100;
+    z-index: var(--z-modal, 7);
     display: flex;
     justify-content: flex-end;
   }
