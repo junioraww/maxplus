@@ -1534,7 +1534,7 @@
   .sheet-backdrop {
     position: fixed;
     inset: 0;
-    z-index: 300;
+    z-index: var(--z-modal, 7);
     background: rgba(0, 0, 0, 0.72);
     display: flex;
     align-items: flex-end;

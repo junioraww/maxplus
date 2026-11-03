@@ -329,7 +329,7 @@
 
   .container.has-chat,
   .container.has-overlay {
-    z-index: 20;
+    z-index: var(--z-chat, 3);
   }
 
   .panels-slider {
@@ -366,7 +366,7 @@
     left: 0;
     width: 100%;
     height: 100%;
-    z-index: 15;
+    z-index: var(--z-chat, 3);
     overflow: hidden;
   }
 </style>

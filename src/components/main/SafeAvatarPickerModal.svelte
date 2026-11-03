@@ -455,7 +455,7 @@
   .avatar-modal-backdrop {
     position: fixed;
     inset: 0;
-    z-index: 30000;
+    z-index: var(--z-picker, 9);
     background: rgba(0, 0, 0, 0.82);
     display: flex;
     align-items: flex-end;

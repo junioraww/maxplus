@@ -120,7 +120,7 @@
 <style>
   .trace-bubble {
     position: fixed;
-    z-index: 99999;
+    z-index: var(--z-toast, 10);
     display: flex;
     align-items: center;
     gap: 8px;

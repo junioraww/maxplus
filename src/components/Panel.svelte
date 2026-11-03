@@ -312,7 +312,7 @@
   .edit-backdrop {
     position: fixed;
     inset: 0;
-    z-index: 998;
+    z-index: var(--z-modal-backdrop, 6);
     background: rgba(0, 0, 0, 0.45);
   }
 
@@ -321,14 +321,14 @@
     bottom: 0;
     left: 0;
     width: 100%;
-    z-index: 2;
+    z-index: var(--z-panel, 2);
     display: flex;
     flex-direction: column;
     align-items: center;
   }
 
   .panel-container.editing {
-    z-index: 999;
+    z-index: var(--z-dropdown, 6);
   }
 
   .edit-toolbar {
@@ -628,7 +628,7 @@
     position: fixed;
     inset: 0;
     background: rgba(0, 0, 0, 0.65);
-    z-index: 1100;
+    z-index: var(--z-modal, 7);
     display: flex;
     align-items: flex-end;
     justify-content: center;

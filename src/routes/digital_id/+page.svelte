@@ -779,7 +779,7 @@
     border-radius: 8px;
     font-size: 13px;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
-    z-index: 1000;
+    z-index: var(--z-toast, 10);
     pointer-events: none;
   }
 </style>

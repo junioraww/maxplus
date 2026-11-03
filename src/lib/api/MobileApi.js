@@ -1031,6 +1031,37 @@ export default class MobileApi extends BaseAPI {
     return await invoke("set_presence", { online: Boolean(online) });
   }
 
+  async votePoll(chatId, messageId, pollId, answerIds) {
+    await this.waitSync();
+    return await invoke("vote_poll", {
+      chatId: Number(chatId),
+      messageId: String(messageId),
+      pollId: Number(pollId),
+      answerIds: (answerIds || []).map(Number),
+    });
+  }
+
+  async getPollUpdates(chatId, messageId, pollId) {
+    await this.waitSync();
+    return await invoke("get_poll_updates", {
+      chatId: Number(chatId),
+      messageId: String(messageId),
+      pollId: Number(pollId),
+    });
+  }
+
+  async getPollVoters(chatId, messageId, pollId, answerId, from = 0, count = 50) {
+    await this.waitSync();
+    return await invoke("get_poll_voters", {
+      chatId: Number(chatId),
+      messageId: String(messageId),
+      pollId: Number(pollId),
+      answerId: Number(answerId),
+      from: Number(from),
+      count: Number(count),
+    });
+  }
+
   async getDetailedReactions(chatId, messageId, count = 100) {
     await this.waitSync();
     return await invoke("get_detailed_reactions", {

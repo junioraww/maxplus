@@ -977,7 +977,7 @@
     inset: 0;
     width: 100vw;
     height: 100dvh;
-    z-index: 20000;
+    z-index: var(--z-viewer, 8);
     display: flex;
     flex-direction: column;
     user-select: none;

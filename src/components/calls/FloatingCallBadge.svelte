@@ -161,7 +161,7 @@
 <style>
   .floating-badge {
     position: fixed;
-    z-index: 900;
+    z-index: var(--z-dock, 6);
     display: flex;
     align-items: center;
     gap: 12px;

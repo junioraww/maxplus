@@ -168,6 +168,9 @@ delegate_cmd!(send_sticker_message(chat_id: i64, sticker_id: i64, notify: Option
 delegate_cmd!(open_web_app(bot_id: u64, start_param: Option<String>, chat_id: Option<i64>) => open_web_app(bot_id, start_param, chat_id));
 delegate_cmd!(share_phone_with_bot(bot_id: u64) => share_phone_with_bot(bot_id));
 delegate_cmd!(submit_external_callback(url: String) => submit_external_callback(url));
+delegate_cmd!(vote_poll(chat_id: i64, message_id: String, poll_id: i64, answer_ids: Vec<i64>) => vote_poll(chat_id, p(message_id)?, poll_id, answer_ids));
+delegate_cmd!(get_poll_updates(chat_id: i64, message_id: String, poll_id: i64) => get_poll_updates(chat_id, p(message_id)?, poll_id));
+delegate_cmd!(get_poll_voters(chat_id: i64, message_id: String, poll_id: i64, answer_id: i64, from: Option<i64>, count: Option<i32>) => get_poll_voters(chat_id, p(message_id)?, poll_id, answer_id, from, count));
 
 #[tauri::command]
 pub async fn set_presence(state: State<'_, AppState>, online: bool) -> Result<(), ()> {

@@ -1948,7 +1948,7 @@
     flex-direction: column;
     overflow: hidden;
     color: #ccc;
-    z-index: 20;
+    z-index: var(--z-chat, 3);
     top: 0;
     left: 0;
     right: 0;
@@ -2049,7 +2049,7 @@
   .chat-header-container {
     position: relative;
     width: 100%;
-    z-index: 25;
+    z-index: var(--z-header, 4);
     flex-shrink: 0;
   }
 
@@ -2066,7 +2066,7 @@
     padding: var(--safe-top, 0px) 12px 0;
     box-sizing: border-box;
     border-bottom: 1px solid #333;
-    z-index: 30;
+    z-index: var(--z-floating, 5);
   }
 
   .action-left {

@@ -7,14 +7,28 @@
   export let confirmText = "Удалить";
   export let cancelText = "Отмена";
   export let isDangerous = true;
+  export let onConfirm = null;
+  export let onCancel = null;
 
   const dispatch = createEventDispatcher();
+
+  function handleCancel() {
+    if (onCancel) onCancel();
+    dispatch("cancel");
+    dispatch("close");
+  }
+
+  function handleConfirm() {
+    if (onConfirm) onConfirm();
+    dispatch("confirm");
+    dispatch("close");
+  }
 </script>
 
 <div
   class="modal-backdrop"
   transition:fade={{ duration: 200 }}
-  on:click={() => dispatch("cancel")}
+  on:click={handleCancel}
 >
   <div
     class="modal"
@@ -28,13 +42,11 @@
     </div>
 
     <div class="footer">
-      <button class="btn cancel" on:click={() => dispatch("cancel")}
-        >{cancelText}</button
-      >
+      <button class="btn cancel" on:click={handleCancel}>{cancelText}</button>
       <button
         class="btn confirm"
         class:danger={isDangerous}
-        on:click={() => dispatch("confirm")}
+        on:click={handleConfirm}
       >
         {confirmText}
       </button>
@@ -49,8 +61,8 @@
     left: 0;
     width: 100%;
     height: 100%;
-    background: rgba(0, 0, 0, 0.65);
-    z-index: 200;
+    background: rgba(0, 0, 0, 0.72);
+    z-index: var(--z-modal, 7);
     display: flex;
     justify-content: center;
     align-items: center;
