@@ -921,7 +921,7 @@
   .call-overlay {
     position: fixed;
     inset: 0;
-    z-index: 1000;
+    z-index: var(--z-call, 9);
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -1674,7 +1674,7 @@
   .secure-req-backdrop {
     position: fixed;
     inset: 0;
-    z-index: 2000;
+    z-index: var(--z-modal, 7);
     display: flex;
     align-items: center;
     justify-content: center;

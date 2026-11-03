@@ -185,7 +185,7 @@
     position: fixed;
     inset: 0;
     background: rgba(0, 0, 0, 0.75);
-    z-index: 1000;
+    z-index: var(--z-modal, 7);
     display: flex;
     align-items: center;
     justify-content: center;

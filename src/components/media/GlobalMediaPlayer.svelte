@@ -179,7 +179,7 @@
     right: 20px;
     width: 110px;
     height: 110px;
-    z-index: 9999;
+    z-index: var(--z-floating, 4);
     cursor: grab;
     user-select: none;
     touch-action: none;

@@ -15,7 +15,7 @@
   import { add as addLog } from '$lib/stores/logs';
   import { showAlert } from '$lib/utils/alert';
   import Alerts from '$components/main/Alerts.svelte';
-    import ProfileModal from "$components/ProfileModal.svelte";
+  import ProfileModal from "$components/ProfileModal.svelte";
   import AvatarGalleryModal from "$components/main/AvatarGalleryModal.svelte";
   import DevSettings from "$components/main/dev/Settings.svelte";
   import AddContactModal from "$components/main/AddContactModal.svelte";

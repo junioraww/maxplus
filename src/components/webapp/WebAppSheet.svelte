@@ -850,7 +850,7 @@
   .sheet-container {
     position: fixed;
     inset: 0;
-    z-index: 1200;
+    z-index: var(--z-sheet, 7);
     display: flex;
     flex-direction: column;
     justify-content: flex-end;
@@ -1079,7 +1079,7 @@
     position: fixed;
     inset: 0;
     background: rgba(0, 0, 0, 0.65);
-    z-index: 1500;
+    z-index: var(--z-modal, 7);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -1201,7 +1201,7 @@
   .drag-shield {
     position: absolute;
     inset: 0;
-    z-index: 1000;
+    z-index: var(--z-modal, 7);
     cursor: grabbing;
     background: transparent;
   }

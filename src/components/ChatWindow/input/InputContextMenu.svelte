@@ -718,17 +718,17 @@
   .dropout-backdrop {
     position: fixed;
     inset: 0;
-    z-index: 2999;
+    z-index: var(--z-dropdown-backdrop, 4);
     background: transparent;
   }
 
   .dropout-container {
     position: fixed;
-    z-index: 3000;
+    z-index: var(--z-dropdown, 5);
   }
 
   .submenu-container {
-    z-index: 3001;
+    z-index: var(--z-dropdown, 5);
   }
 
   .telegram-dropout-card {

@@ -339,7 +339,7 @@
   .color-picker-backdrop {
     position: fixed;
     inset: 0;
-    z-index: 2500;
+    z-index: var(--z-modal, 7);
     background: rgba(0, 0, 0, 0.65);
     display: flex;
     align-items: center;

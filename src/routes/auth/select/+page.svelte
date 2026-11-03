@@ -375,7 +375,7 @@
 
   .context-menu {
     position: fixed;
-    z-index: 1000;
+    z-index: var(--z-dropdown, 5);
 
     min-width: 210px;
 

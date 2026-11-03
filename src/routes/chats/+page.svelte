@@ -895,7 +895,7 @@
     position: fixed;
     inset: 0;
     background: rgba(0, 0, 0, 0.65);
-    z-index: 1100;
+    z-index: var(--z-modal, 7);
     display: flex;
     justify-content: center;
     align-items: flex-end;

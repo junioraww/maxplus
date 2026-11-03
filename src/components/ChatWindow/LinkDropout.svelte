@@ -160,13 +160,13 @@
   .dropout-backdrop {
     position: fixed;
     inset: 0;
-    z-index: 3999;
+    z-index: var(--z-dropdown-backdrop, 4);
     background: transparent;
   }
 
   .link-dropout-card {
     position: fixed;
-    z-index: 4000;
+    z-index: var(--z-dropdown, 5);
     max-width: 290px;
     min-width: 220px;
     background: #1c1e2a;

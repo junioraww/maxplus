@@ -235,7 +235,7 @@
   .dock-container {
     position: fixed;
     inset: 0;
-    z-index: 1000;
+    z-index: var(--z-dock, 6);
     pointer-events: none;
     overflow: hidden;
   }

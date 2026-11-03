@@ -36,6 +36,7 @@
   import SelectedAttaches from "$components/ChatWindow/input/SelectedAttaches.svelte";
   import EditingBanner from "$components/ChatWindow/input/EditingBanner.svelte";
   import AttachesMenu from "$components/ChatWindow/input/AttachesMenu.svelte";
+  import PollCreateModal from "$components/ChatWindow/PollCreateModal.svelte";
   import VoiceReviewPanel from "$components/ChatWindow/input/VoiceReviewPanel.svelte";
   import VideoNoteReviewPanel from "$components/ChatWindow/input/VideoNoteReviewPanel.svelte";
   import VideoRecorderPreview from "$components/ChatWindow/input/VideoRecorderPreview.svelte";
@@ -66,6 +67,7 @@
   let activeFormatStyles = [];
   let activeColor = null;
   let showColorPicker = false;
+  let showPollModal = false;
   let formatRevision = 0;
   let backdropEl;
 
@@ -796,6 +798,11 @@
 
     let mediaDescriptor = null;
     for (const attach of attaches) {
+      if ((attach._type || attach.type) === "POLL") {
+        _attaches.push(attach);
+        continue;
+      }
+
       attach.uploading = true;
       attach.progress = 5;
       attaches = attaches;
@@ -1179,6 +1186,11 @@
   async function selectFile(type) {
     attachesDropout = null;
 
+    if (type === "POLL") {
+      showPollModal = true;
+      return;
+    }
+
     if (type === "VOICE_NOTE") {
       await importVoiceFromFile();
       return;
@@ -1200,6 +1212,20 @@
       mime,
     });
     attaches = attaches;
+  }
+
+  async function handleCreatePoll(event) {
+    showPollModal = false;
+    const { title, options, settings } = event.detail;
+
+    const pollAttach = {
+      _type: "POLL",
+      title,
+      settings,
+      answers: options.map((text) => ({ text })),
+    };
+
+    attaches = [...attaches, pollAttach];
   }
 
   function removeAttach(index) {
@@ -1987,6 +2013,13 @@
       on:apply={handleApplyColor}
       on:clear={handleClearColor}
       on:close={() => (showColorPicker = false)}
+    />
+  {/if}
+
+  {#if showPollModal}
+    <PollCreateModal
+      on:create={handleCreatePoll}
+      on:close={() => (showPollModal = false)}
     />
   {/if}
 

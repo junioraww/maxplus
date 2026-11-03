@@ -282,7 +282,7 @@
   .detail-backdrop {
     position: fixed;
     inset: 0;
-    z-index: 1050;
+    z-index: var(--z-modal, 7);
     background: rgba(0, 0, 0, 0.6);
     display: flex;
     align-items: flex-end;
