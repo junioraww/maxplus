@@ -35,6 +35,7 @@
   import { handleReaction } from "$components/ChatWindow/actions";
   import { convertFileSrc } from "@tauri-apps/api/core";
   import { getProxiedMediaUrl } from "$lib/utils/images";
+  import { getAttachType } from "$lib/utils/mediaUtils";
   import { scrollToBottom } from "$lib/utils/scroll";
   import { getChatScroll } from "$lib/stores/chatScroll";
   import Settings from "$components/ChatWindow/Settings.svelte";
@@ -1608,8 +1609,50 @@
 
   let viewerOriginEl = null;
 
-  $: if (viewerOpen) {
+  let isUnsentMediaViewer = false;
+
+  $: if (viewerOpen && !isUnsentMediaViewer) {
     allMedia = computeAllMedia();
+  }
+
+  function handleUnsentMediaPreview(e) {
+    const { attach, attaches, originEl } = e.detail || {};
+    if (!attach || !attaches) return;
+
+    const mediaAttaches = attaches.filter((a) => {
+      const t = getAttachType(a);
+      return t === "PHOTO" || t === "VIDEO";
+    });
+
+    if (mediaAttaches.length === 0) return;
+
+    const list = mediaAttaches.map((a, idx) => {
+      const type = getAttachType(a);
+      const local = a.localPath || a.path || "";
+      const base = local || a.baseUrl || a.url || "";
+      return {
+        _type: type,
+        type,
+        uid: String(local || base || `unsent_${idx}`),
+        localPath: local,
+        baseUrl: base,
+        path: local,
+        name: a.name || (local ? local.split("/").pop() : (type === "PHOTO" ? "photo.jpg" : "video.mp4")),
+        time: Date.now() / 1000,
+        duration: a.duration || 0,
+        width: a.width,
+        height: a.height
+      };
+    });
+
+    const targetKey = String(attach.localPath || attach.path || attach.baseUrl || attach.url || "");
+    const targetIdx = list.findIndex((m) => targetKey && (m.localPath === targetKey || m.baseUrl === targetKey || m.uid === targetKey));
+
+    allMedia = list;
+    viewerIndex = targetIdx !== -1 ? targetIdx : 0;
+    viewerOriginEl = originEl || null;
+    isUnsentMediaViewer = true;
+    viewerOpen = true;
   }
 
   function openMedia(attach, originEl = null) {
@@ -1664,6 +1707,7 @@
       on:close={() => {
         viewerOpen = false;
         viewerOriginEl = null;
+        isUnsentMediaViewer = false;
       }}
     />
   {/if}
@@ -1885,6 +1929,7 @@
       {chatSettings}
       {botCommands}
       {decodedMessages}
+      on:previewMedia={handleUnsentMediaPreview}
     />
   {/if}
 

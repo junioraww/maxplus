@@ -12,6 +12,7 @@ fn common_store_path(app: &AppHandle, store: &str) -> Result<PathBuf, String> {
         "dictionary" => Ok(app_dir.join("data").join("dictionary")),
         "credits_cache" => Ok(app_dir.join("data").join("common").join("credits_cache")),
         "plugin_meta" => Ok(app_dir.join("data").join("common").join("plugin_meta")),
+        "stories_cache" => Ok(app_dir.join("data").join("common").join("stories_cache")),
         _ => Err(format!("Unknown common store: {store}")),
     }
 }

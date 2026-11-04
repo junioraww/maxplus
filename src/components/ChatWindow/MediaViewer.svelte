@@ -1472,7 +1472,7 @@
     width: 100vw;
     height: 100dvh;
     background: rgba(0, 0, 0, 0.96);
-    z-index: var(--z-viewer, 8);
+    z-index: var(--z-viewer, 100);
     display: flex;
     flex-direction: column;
     user-select: none;

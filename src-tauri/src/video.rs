@@ -3,7 +3,7 @@ use reqwest::header::{
     IF_RANGE, LAST_MODIFIED, RANGE,
 };
 use std::collections::HashMap;
-use std::io::{Cursor, Read};
+use std::io::{Cursor, Read, Seek, SeekFrom};
 use std::sync::{Arc, LazyLock, OnceLock, RwLock};
 use std::thread;
 use std::time::Duration;
@@ -74,6 +74,158 @@ fn detect_mime_from_bytes(bytes: &[u8], path: &str) -> String {
     "application/octet-stream".to_string()
 }
 
+fn parse_range(rh: Option<&str>, file_len: u64) -> Option<(u64, u64)> {
+    let range_spec = rh?.strip_prefix("bytes=")?;
+    let parts: Vec<&str> = range_spec.split('-').collect();
+    if parts.len() != 2 {
+        return None;
+    }
+    let s_str = parts[0].trim();
+    let e_str = parts[1].trim();
+    let (start, end) = if s_str.is_empty() {
+        let suffix = e_str.parse::<u64>().unwrap_or(0);
+        let s = file_len.saturating_sub(suffix);
+        let e = file_len.saturating_sub(1);
+        (s, e)
+    } else if e_str.is_empty() {
+        let s = s_str.parse::<u64>().unwrap_or(0);
+        let e = file_len.saturating_sub(1);
+        (s, e)
+    } else {
+        let s = s_str.parse::<u64>().unwrap_or(0);
+        let e = e_str.parse::<u64>().unwrap_or(file_len.saturating_sub(1));
+        (s, std::cmp::min(e, file_len.saturating_sub(1)))
+    };
+    if start <= end && start < file_len {
+        Some((start, end))
+    } else {
+        None
+    }
+}
+
+fn respond_with_file_stream(request: tiny_http::Request, mut file: std::fs::File, file_len: u64, mime: &str) {
+    let mut range_header = None;
+    for h in request.headers() {
+        if h.field.as_str().as_str().eq_ignore_ascii_case("Range") {
+            range_header = Some(h.value.to_string());
+            break;
+        }
+    }
+
+    let mut headers = vec![
+        Header::from_bytes(&b"Access-Control-Allow-Origin"[..], b"*").unwrap(),
+        Header::from_bytes(&b"Accept-Ranges"[..], b"bytes").unwrap(),
+        Header::from_bytes(&b"Content-Type"[..], mime.as_bytes()).unwrap(),
+        Header::from_bytes(&b"Content-Disposition"[..], b"inline").unwrap(),
+        Header::from_bytes(&b"Cache-Control"[..], b"public, max-age=31536000, immutable").unwrap(),
+    ];
+
+    if let Some((start, end)) = parse_range(range_header.as_deref(), file_len) {
+        let length = (end - start + 1) as usize;
+        if file.seek(SeekFrom::Start(start)).is_ok() {
+            headers.push(
+                Header::from_bytes(
+                    &b"Content-Range"[..],
+                    format!("bytes {}-{}/{}", start, end, file_len).as_bytes(),
+                )
+                .unwrap(),
+            );
+            headers.push(
+                Header::from_bytes(
+                    &b"Content-Length"[..],
+                    length.to_string().as_bytes(),
+                )
+                .unwrap(),
+            );
+            let res = Response::new(
+                206.into(),
+                headers,
+                file.take(length as u64),
+                Some(length),
+                None,
+            );
+            let _ = request.respond(res);
+            return;
+        }
+    }
+
+    headers.push(Header::from_bytes(
+        &b"Content-Length"[..],
+        file_len.to_string().as_bytes(),
+    ).unwrap());
+
+    let _ = file.seek(SeekFrom::Start(0));
+    let res = Response::new(
+        200.into(),
+        headers,
+        file,
+        Some(file_len as usize),
+        None,
+    );
+    let _ = request.respond(res);
+}
+
+fn respond_with_bytes(request: tiny_http::Request, data: Vec<u8>, mime: &str) {
+    let file_len = data.len() as u64;
+    let mut range_header = None;
+    for h in request.headers() {
+        if h.field.as_str().as_str().eq_ignore_ascii_case("Range") {
+            range_header = Some(h.value.to_string());
+            break;
+        }
+    }
+
+    let mut headers = vec![
+        Header::from_bytes(&b"Access-Control-Allow-Origin"[..], b"*").unwrap(),
+        Header::from_bytes(&b"Accept-Ranges"[..], b"bytes").unwrap(),
+        Header::from_bytes(&b"Content-Type"[..], mime.as_bytes()).unwrap(),
+        Header::from_bytes(&b"Content-Disposition"[..], b"inline").unwrap(),
+        Header::from_bytes(&b"Cache-Control"[..], b"public, max-age=31536000, immutable").unwrap(),
+    ];
+
+    if let Some((start, end)) = parse_range(range_header.as_deref(), file_len) {
+        let length = (end - start + 1) as usize;
+        let slice = data[start as usize..start as usize + length].to_vec();
+        headers.push(
+            Header::from_bytes(
+                &b"Content-Range"[..],
+                format!("bytes {}-{}/{}", start, end, file_len).as_bytes(),
+            )
+            .unwrap(),
+        );
+        headers.push(
+            Header::from_bytes(
+                &b"Content-Length"[..],
+                length.to_string().as_bytes(),
+            )
+            .unwrap(),
+        );
+        let res = Response::new(
+            206.into(),
+            headers,
+            Cursor::new(slice),
+            Some(length),
+            None,
+        );
+        let _ = request.respond(res);
+        return;
+    }
+
+    headers.push(Header::from_bytes(
+        &b"Content-Length"[..],
+        file_len.to_string().as_bytes(),
+    ).unwrap());
+
+    let res = Response::new(
+        200.into(),
+        headers,
+        Cursor::new(data),
+        Some(file_len as usize),
+        None,
+    );
+    let _ = request.respond(res);
+}
+
 fn handle_local_file(request: tiny_http::Request, mut path: &str) {
     if let Some(stripped) = path.strip_prefix("file://") {
         path = stripped;
@@ -91,8 +243,8 @@ fn handle_local_file(request: tiny_http::Request, mut path: &str) {
         path
     };
 
-    let raw_bytes = match std::fs::read(path) {
-        Ok(b) => b,
+    let mut file = match std::fs::File::open(path) {
+        Ok(f) => f,
         Err(e) => {
             eprintln!("[VideoProxy] File Not Found: {} (error: {})", path, e);
             let _ = request.respond(Response::from_string("File Not Found").with_status_code(404));
@@ -100,117 +252,48 @@ fn handle_local_file(request: tiny_http::Request, mut path: &str) {
         }
     };
 
-    let mut data = if raw_bytes.starts_with(b"ENC") {
+    let file_len = match file.metadata() {
+        Ok(m) => m.len(),
+        Err(_) => {
+            let _ = request.respond(Response::from_string("File metadata error").with_status_code(500));
+            return;
+        }
+    };
+
+    let mut magic = [0u8; 16];
+    let magic_read = file.read(&mut magic).unwrap_or(0);
+    let is_enc = magic_read >= 3 && &magic[0..3] == b"ENC";
+
+    if is_enc {
+        let mut raw_bytes = Vec::new();
+        if file.seek(SeekFrom::Start(0)).is_err() || file.read_to_end(&mut raw_bytes).is_err() {
+            let _ = request.respond(Response::from_string("Read error").with_status_code(500));
+            return;
+        }
         let Some(key) = get_active_crypto_key() else {
             let _ = request.respond(Response::from_string("Encrypted file locked").with_status_code(403));
             return;
         };
-
-        match crate::stores::Storage::decrypt(&raw_bytes, &key) {
+        let mut data = match crate::stores::Storage::decrypt(&raw_bytes, &key) {
             Ok(d) => d,
             Err(_) => {
                 let _ = request.respond(Response::from_string("Decryption error").with_status_code(500));
                 return;
             }
-        }
-    } else {
-        raw_bytes
-    };
-
-    if data.starts_with(b"\x1a\x45\xdf\xa3") {
-        let limit = std::cmp::min(data.len(), 4096);
-        if let Some(pos) = data[..limit].windows(4).position(|w| w == b"\x53\xc0\x81\x01") {
-            data[pos + 3] = 0;
-        }
-    }
-
-    let file_len = data.len() as u64;
-    let mime = detect_mime_from_bytes(&data, path);
-
-    let mut range_header = None;
-    for h in request.headers() {
-        if h.field.as_str().as_str().eq_ignore_ascii_case("Range") {
-            range_header = Some(h.value.to_string());
-            break;
-        }
-    }
-
-    let mut headers = vec![
-        Header::from_bytes(&b"Access-Control-Allow-Origin"[..], b"*").unwrap(),
-        Header::from_bytes(&b"Accept-Ranges"[..], b"bytes").unwrap(),
-        Header::from_bytes(&b"Content-Type"[..], mime.as_bytes()).unwrap(),
-        Header::from_bytes(&b"Content-Disposition"[..], b"inline").unwrap(),
-        Header::from_bytes(&b"Cache-Control"[..], b"public, max-age=31536000, immutable").unwrap(),
-    ];
-
-    if let Some(rh) = range_header {
-        if let Some(range_spec) = rh.strip_prefix("bytes=") {
-            let parts: Vec<&str> = range_spec.split('-').collect();
-            if parts.len() == 2 {
-                let s_str = parts[0].trim();
-                let e_str = parts[1].trim();
-
-                let (start, end) = if s_str.is_empty() {
-                    let suffix = e_str.parse::<u64>().unwrap_or(0);
-                    let s = file_len.saturating_sub(suffix);
-                    let e = file_len.saturating_sub(1);
-                    (s, e)
-                } else if e_str.is_empty() {
-                    let s = s_str.parse::<u64>().unwrap_or(0);
-                    let e = file_len.saturating_sub(1);
-                    (s, e)
-                } else {
-                    let s = s_str.parse::<u64>().unwrap_or(0);
-                    let e = e_str.parse::<u64>().unwrap_or(file_len.saturating_sub(1));
-                    (s, std::cmp::min(e, file_len.saturating_sub(1)))
-                };
-
-                if start <= end && start < file_len {
-                    let length = (end - start + 1) as usize;
-                    let slice = data[start as usize..start as usize + length].to_vec();
-
-                    headers.push(
-                        Header::from_bytes(
-                            &b"Content-Range"[..],
-                            format!("bytes {}-{}/{}", start, end, file_len).as_bytes(),
-                        )
-                        .unwrap(),
-                    );
-                    headers.push(
-                        Header::from_bytes(
-                            &b"Content-Length"[..],
-                            length.to_string().as_bytes(),
-                        )
-                        .unwrap(),
-                    );
-
-                    let res = Response::new(
-                        206.into(),
-                        headers,
-                        Cursor::new(slice),
-                        Some(length),
-                        None,
-                    );
-                    let _ = request.respond(res);
-                    return;
-                }
+        };
+        if data.starts_with(b"\x1a\x45\xdf\xa3") {
+            let limit = std::cmp::min(data.len(), 4096);
+            if let Some(pos) = data[..limit].windows(4).position(|w| w == b"\x53\xc0\x81\x01") {
+                data[pos + 3] = 0;
             }
         }
+        let mime = detect_mime_from_bytes(&data, path);
+        respond_with_bytes(request, data, &mime);
+        return;
     }
 
-    headers.push(Header::from_bytes(
-        &b"Content-Length"[..],
-        file_len.to_string().as_bytes(),
-    ).unwrap());
-
-    let res = Response::new(
-        200.into(),
-        headers,
-        Cursor::new(data),
-        Some(file_len as usize),
-        None,
-    );
-    let _ = request.respond(res);
+    let mime = detect_mime_from_bytes(&magic[..magic_read], path);
+    respond_with_file_stream(request, file, file_len, &mime);
 }
 
 fn handle_request(request: tiny_http::Request, client: &reqwest::blocking::Client, token: &str) {

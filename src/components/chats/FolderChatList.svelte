@@ -32,8 +32,17 @@
 
   function handleListScroll(e) {
     const el = e.currentTarget;
+    dispatch("scroll", { scrollTop: el.scrollTop });
     if (el.scrollHeight - el.scrollTop - el.clientHeight < 400) {
       loadMore();
+    }
+  }
+
+  function handleWheel(e) {
+    if (listEl && listEl.scrollTop <= 0 && e.deltaY < -15) {
+      dispatch("wheelUp");
+    } else if (e.deltaY > 15) {
+      dispatch("wheelDown");
     }
   }
 
@@ -70,6 +79,7 @@
   bind:this={listEl}
   class="chat-list-inner"
   on:scroll={handleListScroll}
+  on:wheel={handleWheel}
 >
   {#if loading}
     <div class="state">Загрузка...</div>

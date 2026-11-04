@@ -91,7 +91,7 @@
           {@html item.html}
         </div>
       {/each}
-      <Avatar size={42} {chat} contactId={avatarUserId} style="margin-left: -8px; cursor: pointer;"/>
+      <Avatar size={42} {chat} contactId={avatarUserId} allowStories={true} style="margin-left: -8px; cursor: pointer;"/>
       <div class="info">
         <a class="title">{title}</a>
         <a class="presence"><Signature {chat} contactId={avatarUserId} /></a>
