@@ -4,12 +4,18 @@
   export let mode = "camera";
   export let canUndoOverlay = false;
   export let canRedoOverlay = false;
+  export let canUndoDoodle = false;
+  export let canRedoDoodle = false;
   export let activeDrawer = "none";
   export let isAttachmentMode = false;
   export let mediaType = null;
   export let isAudioMuted = false;
 
   const dispatch = createEventDispatcher();
+
+  $: isDrawing = activeDrawer === "drawing";
+  $: effectiveCanUndo = isDrawing ? canUndoDoodle : canUndoOverlay;
+  $: effectiveCanRedo = isDrawing ? canRedoDoodle : canRedoOverlay;
 
   function handleAudioChange(e) {
     const file = e.target.files?.[0];
@@ -35,8 +41,8 @@
       <button
         type="button"
         class="header-icon-btn"
-        disabled={!canUndoOverlay}
-        on:click={() => dispatch("undo")}
+        disabled={!effectiveCanUndo}
+        on:click={() => dispatch(isDrawing ? "undoDoodle" : "undo")}
         title="Отменить действие (Undo)"
         aria-label="Undo"
       >
@@ -46,8 +52,8 @@
       <button
         type="button"
         class="header-icon-btn"
-        disabled={!canRedoOverlay}
-        on:click={() => dispatch("redo")}
+        disabled={!effectiveCanRedo}
+        on:click={() => dispatch(isDrawing ? "redoDoodle" : "redo")}
         title="Повторить действие (Redo)"
         aria-label="Redo"
       >
@@ -113,18 +119,16 @@
         <img src="/icons/stories/filters.svg" alt="" width="18" height="18" />
       </button>
 
-      {#if isAttachmentMode}
-        <button
-          type="button"
-          class="header-icon-btn"
-          class:active={activeDrawer === "crop"}
-          on:click={() => dispatch("toggleDrawer", "crop")}
-          title="Кадрирование (Crop)"
-          aria-label="Кадрирование"
-        >
-          <img src="/icons/stories/crop.svg" alt="" width="18" height="18" />
-        </button>
-      {/if}
+      <button
+        type="button"
+        class="header-icon-btn"
+        class:active={activeDrawer === "crop"}
+        on:click={() => dispatch("toggleDrawer", "crop")}
+        title="Кадрирование"
+        aria-label="Кадрирование"
+      >
+        <img src="/icons/stories/crop.svg" alt="" width="18" height="18" />
+      </button>
 
       {#if mediaType === "video"}
         <button
@@ -160,14 +164,15 @@
 
 <style>
   .composer-header {
-    height: 52px;
-    padding: 0 12px;
+    height: calc(52px + var(--safe-area-top, var(--safe-top, 0px)));
+    padding: var(--safe-area-top, var(--safe-top, 0px)) 12px 0 12px;
     display: flex;
     align-items: center;
     justify-content: space-between;
     background: linear-gradient(180deg, rgba(0, 0, 0, 0.85) 0%, rgba(0, 0, 0, 0) 100%);
     z-index: var(--z-header, 4);
     flex-shrink: 0;
+    box-sizing: border-box;
   }
 
   .header-icon-btn.close-btn {

@@ -14,6 +14,10 @@
   import { getContact, getContactDisplayName } from "$lib/stores/contacts";
   import { getProxiedMediaUrl } from "$lib/utils/images";
   import Avatar from "$components/main/Avatar.svelte";
+  import { registerBackHandler } from "$lib/utils/backButton";
+
+  let unregisterViewerBack = null;
+  let unregisterStatsBack = null;
 
   let stories = [];
   let currentIndex = 0;
@@ -459,9 +463,35 @@
     closeStoriesViewer();
   }
 
+  $: if (active && !unregisterViewerBack) {
+    unregisterViewerBack = registerBackHandler(() => {
+      handleClose();
+    });
+  } else if (!active && unregisterViewerBack) {
+    unregisterViewerBack();
+    unregisterViewerBack = null;
+  }
+
+  $: if (statsModalOpen && !unregisterStatsBack) {
+    unregisterStatsBack = registerBackHandler(() => {
+      closeStats();
+    });
+  } else if (!statsModalOpen && unregisterStatsBack) {
+    unregisterStatsBack();
+    unregisterStatsBack = null;
+  }
+
   onDestroy(() => {
     stopPlayback();
     activeStoryId = null;
+    if (unregisterStatsBack) {
+      unregisterStatsBack();
+      unregisterStatsBack = null;
+    }
+    if (unregisterViewerBack) {
+      unregisterViewerBack();
+      unregisterViewerBack = null;
+    }
   });
 </script>
 
@@ -487,7 +517,7 @@
             <div class="progress-track">
               <div
                 class="progress-fill"
-                style="width: {i < currentIndex ? 100 : i === currentIndex ? progressRatio * 100 : 0}%;"
+                style="transform: scaleX({i < currentIndex ? 1 : i === currentIndex ? progressRatio : 0});"
               ></div>
             </div>
           {/each}
@@ -539,6 +569,7 @@
                 src={currentMedia.src}
                 autoplay
                 playsinline
+                poster="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg'/>"
                 on:loadeddata={handleVideoLoadedMetadata}
                 on:waiting={handleVideoWaiting}
                 on:stalled={handleVideoWaiting}
@@ -727,7 +758,7 @@
 
   .progress-bar-row {
     position: absolute;
-    top: 10px;
+    top: calc(10px + var(--safe-area-top, var(--safe-top, 0px)));
     left: 12px;
     right: 12px;
     display: flex;
@@ -744,14 +775,16 @@
   }
 
   .progress-fill {
+    width: 100%;
     height: 100%;
     background: #ffffff;
-    transition: width 0.08s linear;
+    transform-origin: left center;
+    will-change: transform;
   }
 
   .viewer-header {
     position: absolute;
-    top: 22px;
+    top: calc(22px + var(--safe-area-top, var(--safe-top, 0px)));
     left: 14px;
     right: 14px;
     display: flex;
@@ -859,7 +892,7 @@
 
   .reaction-tray {
     position: absolute;
-    bottom: 24px;
+    bottom: calc(24px + var(--safe-area-bottom, var(--safe-bottom, 0px)));
     left: 50%;
     transform: translateX(-50%);
     display: flex;
@@ -901,7 +934,7 @@
     background: #181920;
     border-top-left-radius: 20px;
     border-top-right-radius: 20px;
-    padding: 16px;
+    padding: 16px 16px calc(16px + var(--safe-area-bottom, var(--safe-bottom, 0px))) 16px;
     z-index: var(--z-sheet, 7);
     display: flex;
     flex-direction: column;
