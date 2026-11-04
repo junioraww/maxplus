@@ -116,14 +116,18 @@
       class="trim-handle trim-handle-left"
       style="left: {(trimStart / safeDuration) * 100}%;"
     >
-      <div class="handle-bar"></div>
+      <div class="handle-bracket bracket-left">
+        <span class="grip-line"></span>
+      </div>
     </div>
 
     <div
       class="trim-handle trim-handle-right"
       style="left: {(trimEnd / safeDuration) * 100}%;"
     >
-      <div class="handle-bar"></div>
+      <div class="handle-bracket bracket-right">
+        <span class="grip-line"></span>
+      </div>
     </div>
 
     <div
@@ -190,7 +194,7 @@
     position: absolute;
     top: 0;
     bottom: 0;
-    width: 24px;
+    width: 28px;
     transform: translateX(-50%);
     display: flex;
     align-items: center;
@@ -199,12 +203,30 @@
     z-index: var(--z-floating, 5);
   }
 
-  .trim-handle .handle-bar {
-    width: 4px;
-    height: 20px;
-    background: #2481cc;
-    border-radius: 2px;
-    box-shadow: 0 0 4px rgba(36, 129, 204, 0.8);
+  .handle-bracket {
+    width: 14px;
+    height: 100%;
+    background: #3b82f6;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 0 8px rgba(0, 0, 0, 0.4);
+    box-sizing: border-box;
+  }
+  .bracket-left {
+    border-top-left-radius: 8px;
+    border-bottom-left-radius: 8px;
+  }
+  .bracket-right {
+    border-top-right-radius: 8px;
+    border-bottom-right-radius: 8px;
+  }
+
+  .grip-line {
+    width: 2px;
+    height: 14px;
+    background: rgba(255, 255, 255, 0.9);
+    border-radius: 1px;
   }
 
   .timeline-playhead {

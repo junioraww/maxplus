@@ -468,6 +468,7 @@ function waitForFirstFrame(stream, timeoutMs = 700) {
     };
     const timer = setTimeout(finish, timeoutMs);
     const video = document.createElement('video');
+    video.poster = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg'/>";
     video.muted = true;
     video.playsInline = true;
     video.srcObject = stream;

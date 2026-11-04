@@ -11,9 +11,6 @@
   export let mediaUrl = "";
   export let isVideoStory = false;
 
-  export let cropAspects = [];
-  export let cropAspectMode = "original";
-
   export let textBgOptions = [];
   export let selectedTextBg = "rgba(0,0,0,0.7)";
   export let presetColors = [];
@@ -24,9 +21,11 @@
 
   export let doodleColor = "#ff4444";
   export let doodleSize = 6;
-  export let canUndoDoodle = false;
-  export let canRedoDoodle = false;
   export let doodleCanvas = null;
+
+  export let cropModified = false;
+
+  let bgDropdownOpen = false;
 
   const dispatch = createEventDispatcher();
 </script>
@@ -56,24 +55,6 @@
         />
         <button
           type="button"
-          class="action-text-btn"
-          disabled={!canUndoDoodle}
-          on:click={() => doodleCanvas?.undo()}
-          title="Отменить штрих"
-        >
-          Undo
-        </button>
-        <button
-          type="button"
-          class="action-text-btn"
-          disabled={!canRedoDoodle}
-          on:click={() => doodleCanvas?.redo()}
-          title="Повторить штрих"
-        >
-          Redo
-        </button>
-        <button
-          type="button"
           class="action-text-btn danger"
           on:click={() => doodleCanvas?.clear()}
           title="Очистить"
@@ -91,40 +72,28 @@
       </div>
 
     {:else if activeDrawer === "filters"}
-      <div class="filters-scroll-row">
-        {#each filters as f}
-          <button
-            type="button"
-            class="filter-card"
-            class:active={selectedFilter === f.id}
-            on:click={() => dispatch("selectFilter", f.id)}
-          >
-            <div class="filter-sample">
-              {#if filterThumbnailUrl}
-                <img src={filterThumbnailUrl} alt="" style="filter: {f.css};" />
-              {:else if mediaUrl && !isVideoStory}
-                <img src={mediaUrl} alt="" style="filter: {f.css};" />
-              {:else}
-                <div class="filter-sample-fallback" style="filter: {f.css};"></div>
-              {/if}
-            </div>
-            <span class="filter-name">{f.name}</span>
-          </button>
-        {/each}
-      </div>
-
-    {:else if activeDrawer === "crop"}
-      <div class="crop-options-row">
-        {#each cropAspects as aspect}
-          <button
-            type="button"
-            class="crop-aspect-btn"
-            class:active={cropAspectMode === aspect.id}
-            on:click={() => dispatch("selectCrop", aspect.id)}
-          >
-            {aspect.label}
-          </button>
-        {/each}
+      <div class="filters-drawer-row">
+        <div class="filters-scroll-row">
+          {#each filters as f}
+            <button
+              type="button"
+              class="filter-card"
+              class:active={selectedFilter === f.id}
+              on:click={() => dispatch("selectFilter", f.id)}
+            >
+              <div class="filter-sample">
+                {#if filterThumbnailUrl}
+                  <img src={filterThumbnailUrl} alt="" style="filter: {f.css};" />
+                {:else if mediaUrl && !isVideoStory}
+                  <img src={mediaUrl} alt="" style="filter: {f.css};" />
+                {:else}
+                  <div class="filter-sample-fallback" style="filter: {f.css};"></div>
+                {/if}
+              </div>
+              <span class="filter-name">{f.name}</span>
+            </button>
+          {/each}
+        </div>
         <button
           type="button"
           class="drawer-done-btn"
@@ -137,20 +106,41 @@
 
     {:else if activeDrawer === "text"}
       <div class="text-drawer-row">
-        <div class="text-drawer-scrollable">
-          <div class="bg-mode-group">
-            {#each textBgOptions as bgOpt}
-              <button
-                type="button"
-                class="bg-mode-btn"
-                class:active={selectedTextBg === bgOpt.value}
-                on:click={() => dispatch("setTextBg", bgOpt.value)}
-              >
-                {bgOpt.label}
-              </button>
-            {/each}
-          </div>
+        <div class="bg-dropdown-wrap">
+          <button
+            type="button"
+            class="drawer-dropdown-btn"
+            on:click={() => {
+              bgDropdownOpen = !bgDropdownOpen;
+              if (bgDropdownOpen) fontDropdownOpen = false;
+            }}
+          >
+            <span>
+              {textBgOptions.find((b) => b.value === selectedTextBg)?.label || "Фон"}
+            </span>
+            <img src="/icons/chevron-down.svg" alt="" width="14" height="14" />
+          </button>
 
+          {#if bgDropdownOpen}
+            <div class="drawer-dropdown-list" transition:fade={{ duration: 120 }}>
+              {#each textBgOptions as bgOpt}
+                <button
+                  type="button"
+                  class="dropdown-item"
+                  class:active={selectedTextBg === bgOpt.value}
+                  on:click={() => {
+                    dispatch("setTextBg", bgOpt.value);
+                    bgDropdownOpen = false;
+                  }}
+                >
+                  <span>{bgOpt.label}</span>
+                </button>
+              {/each}
+            </div>
+          {/if}
+        </div>
+
+        <div class="text-drawer-scrollable">
           <div class="color-swatches-group">
             {#each presetColors as c}
               <button
@@ -175,8 +165,11 @@
         <div class="font-dropdown-wrap">
           <button
             type="button"
-            class="font-select-btn"
-            on:click={() => (fontDropdownOpen = !fontDropdownOpen)}
+            class="drawer-dropdown-btn"
+            on:click={() => {
+              fontDropdownOpen = !fontDropdownOpen;
+              if (fontDropdownOpen) bgDropdownOpen = false;
+            }}
           >
             <span style="font-family: {selectedFontFamily};">
               {availableFonts.find((f) => f.family === selectedFontFamily)?.name || "Шрифт"}
@@ -185,11 +178,11 @@
           </button>
 
           {#if fontDropdownOpen}
-            <div class="font-dropdown-list" transition:fade={{ duration: 120 }}>
+            <div class="drawer-dropdown-list font-list" transition:fade={{ duration: 120 }}>
               {#each availableFonts as font}
                 <button
                   type="button"
-                  class="font-item"
+                  class="dropdown-item"
                   class:active={selectedFontFamily === font.family}
                   on:click={() => {
                     dispatch("setTextFont", font.family);
@@ -212,40 +205,53 @@
           <img src="/icons/check.svg" alt="" width="18" height="18" />
         </button>
       </div>
+
+    {:else if activeDrawer === "crop"}
+      <div class="crop-drawer-row" transition:fly={{ y: 20, duration: 160 }}>
+        <button
+          type="button"
+          class="action-text-btn"
+          on:click={() => dispatch("cropCancel")}
+        >
+          Отмена
+        </button>
+        {#if cropModified}
+          <button
+            type="button"
+            class="action-text-btn"
+            on:click={() => dispatch("cropReset")}
+          >
+            Сбросить
+          </button>
+        {/if}
+        <button
+          type="button"
+          class="drawer-done-btn"
+          on:click={() => dispatch("cropApply")}
+          title="Применить"
+        >
+          <img src="/icons/check.svg" alt="" width="18" height="18" />
+        </button>
+      </div>
     {/if}
   </div>
 {/if}
 
 <style>
   .story-drawer {
-    position: absolute;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    background: rgba(22, 23, 28, 0.96);
-    backdrop-filter: blur(16px);
-    border-top: 1px solid rgba(255, 255, 255, 0.12);
-    padding: 10px 14px;
-    z-index: var(--z-sheet, 7);
+    width: 100%;
+    display: flex;
+    align-items: center;
     box-sizing: border-box;
-  }
-
-  .story-drawer.has-trimmer {
-    bottom: 74px;
   }
 
   .drawing-action-row {
     display: flex;
     align-items: center;
     justify-content: flex-start;
-    gap: 8px;
-    overflow-x: auto;
-    scrollbar-width: none;
-    -webkit-overflow-scrolling: touch;
+    gap: 10px;
+    width: 100%;
     flex-wrap: nowrap;
-  }
-  .drawing-action-row::-webkit-scrollbar {
-    display: none;
   }
 
   .color-preview-circle {
@@ -270,7 +276,7 @@
     background: rgba(255, 255, 255, 0.1);
     border: none;
     color: #ffffff;
-    font-size: 12px;
+    font-size: 13px;
     font-weight: 600;
     cursor: pointer;
     transition: background 0.16s;
@@ -289,8 +295,8 @@
   }
 
   .drawer-done-btn {
-    width: 32px;
-    height: 32px;
+    width: 34px;
+    height: 34px;
     border-radius: 50%;
     background: #10b981;
     border: none;
@@ -300,14 +306,30 @@
     justify-content: center;
     cursor: pointer;
     flex-shrink: 0;
+    margin-left: auto;
+    transition: transform 0.14s ease, background 0.14s ease;
+  }
+  .drawer-done-btn:active {
+    transform: scale(0.92);
+  }
+
+  .filters-drawer-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
   }
 
   .filters-scroll-row {
     display: flex;
+    align-items: center;
     gap: 12px;
     overflow-x: auto;
     scrollbar-width: none;
-    justify-content: center;
+    justify-content: flex-start;
+    padding: 2px 4px;
+    flex: 1;
+    min-width: 0;
   }
   .filters-scroll-row::-webkit-scrollbar {
     display: none;
@@ -317,13 +339,13 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 6px;
+    gap: 4px;
     background: transparent;
     border: none;
     cursor: pointer;
     color: rgba(255, 255, 255, 0.7);
     font-size: 11px;
-    padding: 4px;
+    padding: 2px;
     border-radius: 8px;
     transition: transform 0.15s, color 0.15s;
     flex-shrink: 0;
@@ -337,8 +359,8 @@
   }
 
   .filter-sample {
-    width: 48px;
-    height: 48px;
+    width: 44px;
+    height: 44px;
     border-radius: 50%;
     overflow: hidden;
     border: 2px solid transparent;
@@ -358,48 +380,18 @@
     background: linear-gradient(135deg, #f59e0b, #ec4899);
   }
 
-  .crop-options-row {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-    overflow-x: auto;
-  }
-
-  .crop-aspect-btn {
-    background: rgba(255, 255, 255, 0.08);
-    border: 1px solid rgba(255, 255, 255, 0.15);
-    color: rgba(255, 255, 255, 0.85);
-    padding: 6px 14px;
-    border-radius: 8px;
-    font-size: 13px;
-    font-weight: 500;
-    cursor: pointer;
-    transition: all 0.15s ease;
-  }
-  .crop-aspect-btn:hover {
-    background: rgba(255, 255, 255, 0.14);
-    color: #ffffff;
-  }
-  .crop-aspect-btn.active {
-    background: #ffffff;
-    color: #000000;
-    border-color: #ffffff;
-    font-weight: 600;
-  }
-
   .text-drawer-row {
     display: flex;
     align-items: center;
-    justify-content: space-between;
     gap: 8px;
     position: relative;
+    width: 100%;
   }
 
   .text-drawer-scrollable {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 10px;
     overflow-x: auto;
     scrollbar-width: none;
     -webkit-overflow-scrolling: touch;
@@ -410,69 +402,13 @@
     display: none;
   }
 
-  .bg-mode-group {
-    display: flex;
-    gap: 4px;
-    background: rgba(255, 255, 255, 0.08);
-    padding: 3px;
-    border-radius: 8px;
-    flex-shrink: 0;
-  }
-
-  .bg-mode-btn {
-    background: transparent;
-    border: none;
-    color: rgba(255, 255, 255, 0.65);
-    font-size: 11px;
-    font-weight: 600;
-    padding: 4px 8px;
-    border-radius: 6px;
-    cursor: pointer;
-    transition: background 0.16s, color 0.16s;
-    white-space: nowrap;
-  }
-  .bg-mode-btn.active {
-    background: rgba(255, 255, 255, 0.22);
-    color: #ffffff;
-  }
-
-  .color-swatches-group {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    flex-shrink: 0;
-  }
-
-  .preset-color-dot {
-    width: 22px;
-    height: 22px;
-    border-radius: 50%;
-    border: 2px solid transparent;
-    cursor: pointer;
-    transition: transform 0.15s, border-color 0.15s;
-    flex-shrink: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
-  .preset-color-dot:hover {
-    transform: scale(1.15);
-  }
-  .preset-color-dot.active {
-    border-color: #ffffff;
-    box-shadow: 0 0 6px rgba(255, 255, 255, 0.7);
-  }
-  .custom-picker-dot {
-    background: rgba(255, 255, 255, 0.12);
-    border: 1px solid rgba(255, 255, 255, 0.2);
-  }
-
+  .bg-dropdown-wrap,
   .font-dropdown-wrap {
     position: relative;
     flex-shrink: 0;
   }
 
-  .font-select-btn {
+  .drawer-dropdown-btn {
     background: rgba(255, 255, 255, 0.1);
     border: 1px solid rgba(255, 255, 255, 0.15);
     color: #ffffff;
@@ -484,12 +420,13 @@
     align-items: center;
     gap: 6px;
     cursor: pointer;
+    white-space: nowrap;
   }
 
-  .font-dropdown-list {
+  .drawer-dropdown-list {
     position: absolute;
     bottom: 100%;
-    right: 0;
+    left: 0;
     margin-bottom: 8px;
     background: rgba(22, 23, 28, 0.98);
     backdrop-filter: blur(16px);
@@ -499,13 +436,18 @@
     display: flex;
     flex-direction: column;
     gap: 2px;
-    min-width: 140px;
+    min-width: 130px;
     max-height: 200px;
     overflow-y: auto;
     z-index: var(--z-dropdown, 6);
   }
 
-  .font-item {
+  .drawer-dropdown-list.font-list {
+    left: auto;
+    right: 0;
+  }
+
+  .dropdown-item {
     width: 100%;
     background: transparent;
     border: none;
@@ -517,8 +459,15 @@
     text-align: left;
     white-space: nowrap;
   }
-  .font-item:hover, .font-item.active {
+  .dropdown-item:hover, .dropdown-item.active {
     background: rgba(255, 255, 255, 0.12);
     color: #ffffff;
+  }
+
+  .crop-drawer-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
   }
 </style>

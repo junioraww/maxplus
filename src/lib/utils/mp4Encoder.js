@@ -31,13 +31,17 @@ export class Mp4Encoder {
   #audioBitrate;
   #sampleRate = 48000;
   #hasAudio = false;
+  #mirror = false;
+  #startTime = 0;
+  #lastVideoTimestampUs = -1;
 
-  constructor({ width = 480, height = 480, fps = 30, videoBitrate = 1_500_000, audioBitrate = 64_000 } = {}) {
+  constructor({ width = 480, height = 480, fps = 30, videoBitrate = 1_500_000, audioBitrate = 64_000, mirror = false } = {}) {
     this.#width = width;
     this.#height = height;
     this.#fps = fps;
     this.#videoBitrate = videoBitrate;
     this.#audioBitrate = audioBitrate;
+    this.#mirror = mirror;
   }
 
   async start(mediaStream) {
@@ -49,6 +53,7 @@ export class Mp4Encoder {
     this.#target = new ArrayBufferTarget();
 
     this.#videoEl = document.createElement('video');
+    this.#videoEl.poster = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg'/>";
     this.#videoEl.muted = true;
     this.#videoEl.playsInline = true;
     this.#videoEl.srcObject = mediaStream;
@@ -80,6 +85,7 @@ export class Mp4Encoder {
         frameRate: this.#fps,
       },
       fastStart: 'in-memory',
+      firstTimestampBehavior: 'offset',
     };
     if (this.#hasAudio) {
       muxerOpts.audio = {
@@ -147,6 +153,8 @@ export class Mp4Encoder {
     this.#running = true;
     this.#frameCount = 0;
     this.#audioSampleCount = 0;
+    this.#startTime = performance.now();
+    this.#lastVideoTimestampUs = -1;
 
     const frameIntervalMs = 1000 / this.#fps;
     const keyInterval = this.#fps * 2;
@@ -155,19 +163,50 @@ export class Mp4Encoder {
       const vw = this.#videoEl?.videoWidth || 0;
       const vh = this.#videoEl?.videoHeight || 0;
       if (vw > 0 && vh > 0) {
-        const size = Math.min(vw, vh);
-        const sx = Math.floor((vw - size) / 2);
-        const sy = Math.floor((vh - size) / 2);
-        this.#ctx.drawImage(this.#videoEl, sx, sy, size, size, 0, 0, this.#width, this.#height);
+        const targetAspect = this.#width / this.#height;
+        const videoAspect = vw / vh;
+        let sx = 0;
+        let sy = 0;
+        let sw = vw;
+        let sh = vh;
+        if (videoAspect > targetAspect) {
+          sh = vh;
+          sw = vh * targetAspect;
+          sx = Math.floor((vw - sw) / 2);
+          sy = 0;
+        } else {
+          sw = vw;
+          sh = vw / targetAspect;
+          sx = 0;
+          sy = Math.floor((vh - sh) / 2);
+        }
+        if (this.#mirror) {
+          this.#ctx.save();
+          this.#ctx.translate(this.#width, 0);
+          this.#ctx.scale(-1, 1);
+          this.#ctx.drawImage(this.#videoEl, sx, sy, sw, sh, 0, 0, this.#width, this.#height);
+          this.#ctx.restore();
+        } else {
+          this.#ctx.drawImage(this.#videoEl, sx, sy, sw, sh, 0, 0, this.#width, this.#height);
+        }
       } else {
         this.#ctx.fillStyle = '#000000';
         this.#ctx.fillRect(0, 0, this.#width, this.#height);
       }
 
-      const timestampUs = Math.round(this.#frameCount * (1_000_000 / this.#fps));
+      const now = performance.now();
+      let timestampUs = Math.round((now - this.#startTime) * 1000);
+      if (timestampUs <= this.#lastVideoTimestampUs) {
+        timestampUs = this.#lastVideoTimestampUs + 1000;
+      }
+      const durationUs = this.#lastVideoTimestampUs >= 0
+        ? timestampUs - this.#lastVideoTimestampUs
+        : Math.round(1_000_000 / this.#fps);
+      this.#lastVideoTimestampUs = timestampUs;
+
       const frame = new VideoFrame(this.#canvas, {
         timestamp: timestampUs,
-        duration: Math.round(1_000_000 / this.#fps),
+        duration: durationUs,
       });
       if (this.#videoEncoder?.state === 'configured') {
         this.#videoEncoder.encode(frame, { keyFrame: this.#frameCount % keyInterval === 0 });
@@ -221,7 +260,7 @@ export class Mp4Encoder {
           description: new Uint8Array([0x11, 0x88]),
         },
       };
-      const durationUs = Math.round((Math.max(1, this.#frameCount) / this.#fps) * 1_000_000);
+      const durationUs = Math.max(1, this.#lastVideoTimestampUs > 0 ? this.#lastVideoTimestampUs : 1_000_000);
       this.#muxer.addAudioChunkRaw(dummyAacFrame, 'key', 0, durationUs, audioMeta);
     }
 

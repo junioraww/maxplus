@@ -1,10 +1,12 @@
 <script>
   import { invoke, convertFileSrc } from "@tauri-apps/api/core";
   import { platform } from "@tauri-apps/plugin-os";
-  import { tick, onMount, onDestroy } from "svelte";
+  import { tick, onMount, onDestroy, createEventDispatcher } from "svelte";
   import { get } from "svelte/store";
   import { pluginOn, pluginOff } from "$lib/plugins/events";
   import { getMountStore } from "$lib/plugins/mount-registry";
+
+  const dispatch = createEventDispatcher();
 
   const pluginInputLeft = getMountStore("input:action-left");
   const pluginInputRight = getMountStore("input:action-right");
