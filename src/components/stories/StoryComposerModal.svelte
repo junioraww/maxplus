@@ -11,7 +11,9 @@
   } from "$lib/stores/stories";
   import { getProxiedMediaUrl } from "$lib/utils/images";
   import { cropVideoToMp4 } from "$lib/utils/videoEncoder";
-  import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
+  import { registerBackHandler } from "$lib/utils/backButton";
+  import { Mp4Encoder, isWebCodecsMp4Available } from "$lib/utils/mp4Encoder";
+  import StoryCropOverlay from "./StoryCropOverlay.svelte";
   import {
     createGifDecoder,
     renderGifToVideoBlob,
@@ -45,11 +47,24 @@
 
   let isRecording = false;
   let mediaRecorder = null;
+  let mp4Encoder = null;
   let recordedChunks = [];
   let recordStartTime = 0;
   let recordTimerId = null;
   let recordDurationSec = 0;
   const MAX_RECORD_SEC = 60;
+
+  let cropRect = { x: 0, y: 0, w: 1, h: 1 };
+  let unregModalBack = null;
+  let unregEditBack = null;
+  let unregDrawerBack = null;
+  let unregLayerBack = null;
+
+  function formatRecordTimer(sec) {
+    const m = Math.floor(sec / 60).toString().padStart(2, "0");
+    const s = (sec % 60).toString().padStart(2, "0");
+    return `${m}:${s}`;
+  }
 
   let capturedMedia = null;
   let mediaType = null;
@@ -151,27 +166,102 @@
   let isPublishing = false;
   let statusMessage = "";
 
+  let cropOverlayRef = null;
+  let currentCropDraft = { x: 0, y: 0, w: 1, h: 1 };
+  let isCropModified = false;
+  let dismissedOverlayOnPointerDown = false;
+
   $: composerState = $storyComposerState;
   $: isAttachmentMode = !!composerState?.onSave;
   $: mediaAspect = mediaNaturalWidth && mediaNaturalHeight ? mediaNaturalWidth / mediaNaturalHeight : 9 / 16;
   $: targetAspect = !isAttachmentMode
     ? 9 / 16
-    : cropAspectMode === "1:1"
-    ? 1
-    : cropAspectMode === "4:5"
-    ? 4 / 5
-    : cropAspectMode === "16:9"
-    ? 16 / 9
-    : cropAspectMode === "9:16"
-    ? 9 / 16
-    : mediaAspect;
+    : (cropRect.w && cropRect.h && (cropRect.w < 0.999 || cropRect.h < 0.999)
+      ? (mediaAspect * (cropRect.w / cropRect.h))
+      : mediaAspect);
   $: isNon916 = !isAttachmentMode && Math.abs(mediaAspect - 9 / 16) > 0.03;
+
+  $: isCropApplied = (cropRect.w < 0.999 || cropRect.h < 0.999 || cropRect.x > 0.001 || cropRect.y > 0.001);
+  $: mediaClipStyle = (isCropApplied && activeDrawer !== "crop")
+    ? `clip-path: inset(${cropRect.y * 100}% ${(1 - cropRect.x - cropRect.w) * 100}% ${(1 - cropRect.y - cropRect.h) * 100}% ${cropRect.x * 100}%);`
+    : "";
+
+  $: imgBounds = (() => {
+    const cW = previewWidth || 360;
+    const cH = previewHeight || 640;
+    const cAspect = cW / (cH || 1);
+    const nW = mediaNaturalWidth || 1080;
+    const nH = mediaNaturalHeight || 1920;
+    const mAspect = nW / (nH || 1);
+
+    if (isAttachmentMode) {
+      return { x: 0, y: 0, w: cW, h: cH };
+    }
+
+    let w = cW;
+    let h = cH;
+    let x = 0;
+    let y = 0;
+
+    if (mAspect > cAspect) {
+      w = cW;
+      h = cW / mAspect;
+      y = (cH - h) / 2;
+    } else {
+      h = cH;
+      w = cH * mAspect;
+      x = (cW - w) / 2;
+    }
+    return { x: Math.round(x), y: Math.round(y), w: Math.round(w), h: Math.round(h) };
+  })();
 
   $: isDrawingMode = activeDrawer === "drawing";
   $: isFilterDrawerOpen = activeDrawer === "filters";
   $: isStickerPickerOpen = activeDrawer === "stickers";
   $: linkModalOpen = activeDrawer === "link";
   $: hasTrimmer = (mediaType === "video" || isGif || isPhotoToVideo);
+
+  $: if (isOpen && !unregModalBack) {
+    unregModalBack = registerBackHandler(() => {
+      handleClose();
+    });
+  } else if (!isOpen && unregModalBack) {
+    unregModalBack();
+    unregModalBack = null;
+  }
+
+  $: if (isOpen && mode === "edit" && !unregEditBack) {
+    unregEditBack = registerBackHandler(() => {
+      if (composerState?.file || composerState?.attach || isAttachmentMode) {
+        handleClose();
+      } else {
+        mode = "camera";
+        startCamera();
+      }
+    });
+  } else if ((!isOpen || mode !== "edit") && unregEditBack) {
+    unregEditBack();
+    unregEditBack = null;
+  }
+
+  $: if (isOpen && activeDrawer !== "none" && !unregDrawerBack) {
+    unregDrawerBack = registerBackHandler(() => {
+      currentCropDraft = { ...cropRect };
+      activeDrawer = "none";
+    });
+  } else if ((!isOpen || activeDrawer === "none") && unregDrawerBack) {
+    unregDrawerBack();
+    unregDrawerBack = null;
+  }
+
+  $: if (isOpen && selectedLayerId && !unregLayerBack) {
+    unregLayerBack = registerBackHandler(() => {
+      selectedLayerId = null;
+    });
+  } else if ((!isOpen || !selectedLayerId) && unregLayerBack) {
+    unregLayerBack();
+    unregLayerBack = null;
+  }
 
   $: if (isOpen && composerState?.isOpen && (composerState.file || composerState.attach)) {
     loadExternalMedia(composerState.file, composerState.attach);
@@ -207,6 +297,22 @@
     stopCamera();
     stopVideoRecording();
     stopPlaybackLoop();
+    if (unregLayerBack) {
+      unregLayerBack();
+      unregLayerBack = null;
+    }
+    if (unregDrawerBack) {
+      unregDrawerBack();
+      unregDrawerBack = null;
+    }
+    if (unregEditBack) {
+      unregEditBack();
+      unregEditBack = null;
+    }
+    if (unregModalBack) {
+      unregModalBack();
+      unregModalBack = null;
+    }
     if (resizeObserver) {
       resizeObserver.disconnect();
       resizeObserver = null;
@@ -257,19 +363,19 @@
     mediaType = meta.mediaType;
     mediaFile = file;
 
-    const path = meta.path && !meta.path.startsWith("blob:") ? meta.path : undefined;
+    const path = target?.path || (typeof source === "string" ? source : meta.path);
     capturedMedia = {
       blob: file,
-      path,
+      path: path && !path.startsWith("blob:") ? path : undefined,
       name: meta.name || (meta.isVideo ? (meta.isGif ? "media.gif" : "media.mp4") : "media.jpg"),
       isVideo: meta.isVideo,
       isGif: meta.isGif
     };
 
-    if (path) {
-      mediaUrl = getProxiedMediaUrl(path);
-    } else if (file) {
+    if (file) {
       mediaUrl = URL.createObjectURL(file);
+    } else if (path) {
+      mediaUrl = getProxiedMediaUrl(path);
     } else if (target?.url || target?.baseUrl) {
       mediaUrl = target.url || target.baseUrl;
     }
@@ -284,11 +390,21 @@
         console.warn("Failed to decode GIF:", err);
       }
     } else if (meta.isVideo) {
-      videoDuration = 0;
-      trimStart = 0;
-      trimEnd = 0;
+      if (target?.duration && !isNaN(target.duration) && isFinite(target.duration) && target.duration > 0) {
+        videoDuration = Number(target.duration);
+        trimStart = 0;
+        trimEnd = Math.min(videoDuration, 60);
+      } else {
+        videoDuration = 0;
+        trimStart = 0;
+        trimEnd = 0;
+      }
       videoCurrentTime = 0;
     }
+
+    cropRect = { x: 0, y: 0, w: 1, h: 1 };
+    currentCropDraft = { ...cropRect };
+    isCropModified = false;
 
     resetFraming();
     mode = "edit";
@@ -302,7 +418,11 @@
     stopCamera();
     try {
       cameraStream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode, width: { ideal: 1080 }, height: { ideal: 1920 } },
+        video: {
+          facingMode: { ideal: facingMode },
+          width: { ideal: 1280 },
+          height: { ideal: 720 }
+        },
         audio: true
       });
       if (videoPreviewEl) {
@@ -311,7 +431,11 @@
     } catch (err) {
       try {
         cameraStream = await navigator.mediaDevices.getUserMedia({
-          video: true,
+          video: {
+            facingMode: { ideal: facingMode },
+            width: { ideal: 1280 },
+            height: { ideal: 720 }
+          },
           audio: false
         });
         if (videoPreviewEl) {
@@ -320,6 +444,9 @@
       } catch (_) {}
     }
   }
+
+  let cameraFreezeSnapshotUrl = "";
+  let isProcessingRecord = false;
 
   function stopCamera() {
     if (cameraStream) {
@@ -332,6 +459,16 @@
   }
 
   function toggleCamera() {
+    if (videoPreviewEl && videoPreviewEl.videoWidth > 0) {
+      try {
+        const freezeCanvas = document.createElement("canvas");
+        freezeCanvas.width = videoPreviewEl.videoWidth;
+        freezeCanvas.height = videoPreviewEl.videoHeight;
+        const freezeCtx = freezeCanvas.getContext("2d");
+        freezeCtx.drawImage(videoPreviewEl, 0, 0);
+        cameraFreezeSnapshotUrl = freezeCanvas.toDataURL("image/jpeg", 0.7);
+      } catch (_) {}
+    }
     facingMode = facingMode === "user" ? "environment" : "user";
     startCamera();
   }
@@ -346,6 +483,11 @@
     if (selectedFilter !== "none") {
       const f = FILTERS.find((x) => x.id === selectedFilter);
       if (f && f.css !== "none") ctx.filter = f.css;
+    }
+
+    if (facingMode === "user") {
+      ctx.translate(canvas.width, 0);
+      ctx.scale(-1, 1);
     }
 
     ctx.drawImage(videoPreviewEl, 0, 0, canvas.width, canvas.height);
@@ -368,20 +510,51 @@
     }, "image/jpeg", 0.95);
   }
 
-  function startVideoRecording() {
+  async function startVideoRecording() {
     if (isRecording || !cameraStream) return;
+    isRecording = true;
+    recordStartTime = performance.now();
+    recordDurationSec = 0;
+    recordTimerId = setInterval(() => {
+      recordDurationSec = Math.min(
+        MAX_RECORD_SEC,
+        Math.floor((performance.now() - recordStartTime) / 1000)
+      );
+      if (recordDurationSec >= MAX_RECORD_SEC) {
+        stopVideoRecording();
+      }
+    }, 250);
+
+    if (isWebCodecsMp4Available()) {
+      try {
+        mp4Encoder = new Mp4Encoder({
+          width: 540,
+          height: 960,
+          fps: 30,
+          mirror: facingMode === "user"
+        });
+        await mp4Encoder.start(cameraStream);
+        return;
+      } catch (err) {
+        mp4Encoder = null;
+      }
+    }
+
     recordedChunks = [];
-    let mimeType = "video/webm;codecs=vp9,opus";
-    if (!MediaRecorder.isTypeSupported(mimeType)) {
-      mimeType = "video/webm";
+    let mimeType = "video/mp4;codecs=avc1,mp4a.40.2";
+    if (typeof MediaRecorder !== "undefined") {
+      if (!MediaRecorder.isTypeSupported(mimeType)) mimeType = "video/mp4;codecs=avc1";
+      if (!MediaRecorder.isTypeSupported(mimeType)) mimeType = "video/mp4";
+      if (!MediaRecorder.isTypeSupported(mimeType)) mimeType = "video/webm;codecs=vp8,opus";
+      if (!MediaRecorder.isTypeSupported(mimeType)) mimeType = "video/webm";
     }
     try {
-      mediaRecorder = new MediaRecorder(cameraStream, { mimeType });
+      mediaRecorder = new MediaRecorder(cameraStream, mimeType ? { mimeType } : {});
       mediaRecorder.ondataavailable = (e) => {
         if (e.data && e.data.size > 0) recordedChunks.push(e.data);
       };
       mediaRecorder.onstop = () => {
-        const fullBlob = new Blob(recordedChunks, { type: mimeType });
+        const fullBlob = new Blob(recordedChunks, { type: mimeType || "video/mp4" });
         stopCamera();
         capturedMedia = {
           blob: fullBlob,
@@ -393,29 +566,51 @@
         resetFraming();
         mode = "edit";
       };
-      mediaRecorder.start(100);
-      isRecording = true;
-      recordStartTime = performance.now();
-      recordDurationSec = 0;
-      recordTimerId = setInterval(() => {
-        recordDurationSec = Math.floor((performance.now() - recordStartTime) / 1000);
-        if (recordDurationSec >= MAX_RECORD_SEC) {
-          stopVideoRecording();
-        }
-      }, 250);
-    } catch (_) {}
+      mediaRecorder.start();
+    } catch (_) {
+      isRecording = false;
+      if (recordTimerId) {
+        clearInterval(recordTimerId);
+        recordTimerId = null;
+      }
+    }
   }
 
-  function stopVideoRecording() {
+  async function stopVideoRecording() {
     if (!isRecording) return;
     isRecording = false;
     if (recordTimerId) {
       clearInterval(recordTimerId);
       recordTimerId = null;
     }
+
+    isProcessingRecord = true;
+    if (mp4Encoder) {
+      try {
+        const mp4Blob = await mp4Encoder.stop();
+        mp4Encoder = null;
+        stopCamera();
+        capturedMedia = {
+          blob: mp4Blob,
+          name: `video_${Date.now()}.mp4`,
+          isVideo: true
+        };
+        mediaType = "video";
+        mediaUrl = URL.createObjectURL(mp4Blob);
+        resetFraming();
+        mode = "edit";
+      } catch (err) {
+        mp4Encoder = null;
+      } finally {
+        isProcessingRecord = false;
+      }
+      return;
+    }
+
     if (mediaRecorder && mediaRecorder.state !== "inactive") {
       mediaRecorder.stop();
     }
+    isProcessingRecord = false;
   }
 
   function initGifDecoder(arrayBuffer) {
@@ -465,21 +660,15 @@
 
   async function handlePickGalleryMedia() {
     try {
-      const selected = await openFileDialog({
-        multiple: false,
-        directory: false,
-        filters: [
-          {
-            name: "Медиафайлы",
-            extensions: ["mp4", "mov", "webm", "mkv", "avi", "jpg", "jpeg", "png", "webp", "gif"]
-          }
-        ]
-      });
-      if (!selected) return;
-      await processSelectedPath(selected);
-    } catch (_) {
-      fallbackFileInput?.click();
-    }
+      const response = await invoke("pick").catch(() => null);
+      if (response && response !== "CANCEL") {
+        const { uri, mime_type: mime } = response;
+        const filePath = decodeURIComponent(uri);
+        await loadMediaSource({ path: filePath, mime });
+        return;
+      }
+    } catch (_) {}
+    fallbackFileInput?.click();
   }
 
   async function processSelectedPath(filePath) {
@@ -489,7 +678,7 @@
   async function handleFileSelected(e) {
     const file = e.target.files?.[0];
     if (file) {
-      await loadMediaSource(file.path || file);
+      await loadMediaSource(file);
     }
   }
 
@@ -619,6 +808,9 @@
   function handleVideoTimeUpdate(e) {
     const cur = e.currentTarget.currentTime;
     videoCurrentTime = cur;
+    if ((!filterThumbnailUrl || filterThumbnailUrl.length < 500) && cur > 0.05) {
+      generateVideoThumbnail();
+    }
     if (!isVideoSeeking && trimEnd > trimStart && cur >= trimEnd) {
       isVideoSeeking = true;
       e.currentTarget.currentTime = trimStart;
@@ -667,15 +859,33 @@
   let mediaPointerDownX = 0;
   let mediaPointerDownY = 0;
 
+  function isCanvasBlack(ctx, width, height) {
+    try {
+      const data = ctx.getImageData(0, 0, Math.min(width, 32), Math.min(height, 32)).data;
+      for (let i = 0; i < data.length; i += 4) {
+        if (data[i] > 15 || data[i + 1] > 15 || data[i + 2] > 15) {
+          return false;
+        }
+      }
+    } catch {}
+    return true;
+  }
+
   function generateVideoThumbnail() {
     if (!videoMainEl || videoMainEl.videoWidth === 0) return;
     try {
       const snapCanvas = document.createElement("canvas");
-      snapCanvas.width = 180;
-      snapCanvas.height = Math.round(180 * (videoMainEl.videoHeight / videoMainEl.videoWidth));
+      snapCanvas.width = 120;
+      snapCanvas.height = Math.round(120 * (videoMainEl.videoHeight / videoMainEl.videoWidth));
       const snapCtx = snapCanvas.getContext("2d");
       snapCtx.drawImage(videoMainEl, 0, 0, snapCanvas.width, snapCanvas.height);
-      filterThumbnailUrl = snapCanvas.toDataURL("image/jpeg", 0.7);
+      if (isCanvasBlack(snapCtx, snapCanvas.width, snapCanvas.height)) {
+        return;
+      }
+      const url = snapCanvas.toDataURL("image/jpeg", 0.75);
+      if (url && url.length > 500) {
+        filterThumbnailUrl = url;
+      }
     } catch (_) {}
   }
 
@@ -720,15 +930,17 @@
   }
 
   function handleMediaPointerDown(e) {
-    if (isDrawingMode || activeDrawer === "drawing") return;
+    if (isDrawingMode || activeDrawer === "drawing" || activeDrawer === "crop") return;
     if (e.target.closest(".overlay-item-wrapper") || e.target.closest(".interactive-ctrl")) {
       return;
     }
+    const hadActiveSelection = Boolean(selectedLayerId || editingLayerId || activeDrawer === "text");
     selectedLayerId = null;
     editingLayerId = null;
     if (activeDrawer === "text") {
       activeDrawer = "none";
     }
+    dismissedOverlayOnPointerDown = hadActiveSelection;
 
     mediaPointerDownX = e.clientX;
     mediaPointerDownY = e.clientY;
@@ -763,7 +975,11 @@
   }
 
   function handleMediaClick(e) {
-    if (isDrawingMode || activeDrawer === "drawing") return;
+    if (dismissedOverlayOnPointerDown) {
+      dismissedOverlayOnPointerDown = false;
+      return;
+    }
+    if (isDrawingMode || activeDrawer === "drawing" || activeDrawer === "crop") return;
     if (e.target.closest(".overlay-item-wrapper") || e.target.closest(".interactive-ctrl")) {
       return;
     }
@@ -1026,26 +1242,12 @@
     let targetW = 1080;
     let targetH = 1920;
 
+    const origW = mediaNaturalWidth || 1080;
+    const origH = mediaNaturalHeight || 1920;
+
     if (isAttachmentMode) {
-      const origW = mediaNaturalWidth || 1080;
-      const origH = mediaNaturalHeight || 1080;
-      if (cropAspectMode === "1:1") {
-        const s = Math.min(origW, origH);
-        targetW = s;
-        targetH = s;
-      } else if (cropAspectMode === "4:5") {
-        targetW = Math.min(origW, Math.round(origH * 4 / 5));
-        targetH = Math.round(targetW * 5 / 4);
-      } else if (cropAspectMode === "16:9") {
-        targetH = Math.min(origH, Math.round(origW * 9 / 16));
-        targetW = Math.round(targetH * 16 / 9);
-      } else if (cropAspectMode === "9:16") {
-        targetW = Math.min(origW, Math.round(origH * 9 / 16));
-        targetH = Math.round(targetW * 16 / 9);
-      } else {
-        targetW = origW;
-        targetH = origH;
-      }
+      targetW = Math.max(1, Math.round(origW * cropRect.w));
+      targetH = Math.max(1, Math.round(origH * cropRect.h));
     }
 
     canvas.width = targetW;
@@ -1107,32 +1309,42 @@
 
         let baseW = canvas.width;
         let baseH = canvas.width / imgRatio;
+
         if (isAttachmentMode) {
-          if (cropAspectMode === "original") {
-            baseW = canvas.width;
-            baseH = canvas.height;
+          const sx = cropRect.x * img.width;
+          const sy = cropRect.y * img.height;
+          const sw = cropRect.w * img.width;
+          const sh = cropRect.h * img.height;
+          ctx.drawImage(img, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
+        } else {
+          if (cropRect.w < 0.999 || cropRect.h < 0.999 || cropRect.x > 0.001 || cropRect.y > 0.001) {
+            const sx = cropRect.x * img.width;
+            const sy = cropRect.y * img.height;
+            const sw = cropRect.w * img.width;
+            const sh = cropRect.h * img.height;
+            const cropRatio = sw / sh;
+            let fitW = canvas.width;
+            let fitH = canvas.width / cropRatio;
+            if (fitH > canvas.height) {
+              fitH = canvas.height;
+              fitW = canvas.height * cropRatio;
+            }
+            const posX = (canvas.width - fitW) / 2;
+            const posY = (canvas.height - fitH) / 2;
+            ctx.drawImage(img, sx, sy, sw, sh, posX, posY, fitW, fitH);
           } else {
-            if (baseH < canvas.height) {
+            if (baseH < canvas.height && !isNon916) {
+              baseH = canvas.height;
+              baseW = canvas.height * imgRatio;
+            } else if (baseH > canvas.height) {
               baseH = canvas.height;
               baseW = canvas.height * imgRatio;
             }
-          }
-        } else {
-          if (baseH < canvas.height && !isNon916) {
-            baseH = canvas.height;
-            baseW = canvas.height * imgRatio;
-          } else if (baseH > canvas.height) {
-            baseH = canvas.height;
-            baseW = canvas.height * imgRatio;
+            const posX = (canvas.width - baseW * exportZoom) / 2 + exportPanX;
+            const posY = (canvas.height - baseH * exportZoom) / 2 + exportPanY;
+            ctx.drawImage(img, posX, posY, baseW * exportZoom, baseH * exportZoom);
           }
         }
-
-        const finalW = baseW * exportZoom;
-        const finalH = baseH * exportZoom;
-        const finalX = (canvas.width - finalW) / 2 + exportPanX;
-        const finalY = (canvas.height - finalH) / 2 + exportPanY;
-
-        ctx.drawImage(img, finalX, finalY, finalW, finalH);
         ctx.filter = "none";
 
         if (selectedFilter !== "none") {
@@ -1173,14 +1385,51 @@
         photoVideoDuration || 5
       );
     }
-    if (trimStart > 0.05 || (videoDuration > 0 && trimEnd < videoDuration - 0.05)) {
-      statusMessage = "Обрезка видео...";
+    const hasLayers = layers && layers.length > 0;
+    const hasDoodle = Boolean(doodleCanvas?.hasContent?.());
+    const hasFilter = selectedFilter && selectedFilter !== "none";
+    const hasTrim = trimStart > 0.05 || (videoDuration > 0 && trimEnd < videoDuration - 0.05);
+    const hasCrop = cropRect.w < 0.999 || cropRect.h < 0.999 || cropRect.x > 0.001 || cropRect.y > 0.001;
+
+    if (hasTrim || hasCrop || hasLayers || hasDoodle || hasFilter) {
+      statusMessage = "Обработка видео...";
       if (videoMainEl) {
         try {
+          const vw = videoMainEl.videoWidth || 720;
+          const vh = videoMainEl.videoHeight || 1280;
+          const cx = Math.round(cropRect.x * vw);
+          const cy = Math.round(cropRect.y * vh);
+          const cw = Math.round(cropRect.w * vw);
+          const ch = Math.round(cropRect.h * vh);
+
+          let targetWidth = 720;
+          let targetHeight = 1280;
+          if (isAttachmentMode) {
+            targetWidth = Math.min(1280, cw);
+            targetHeight = Math.round(targetWidth * (ch / cw));
+            if (targetHeight > 1280) {
+              targetHeight = 1280;
+              targetWidth = Math.round(targetHeight * (cw / ch));
+            }
+          }
+          targetWidth = Math.round(targetWidth / 2) * 2;
+          targetHeight = Math.round(targetHeight / 2) * 2;
+
+          const filterCss = selectedFilter !== "none" ? FILTERS.find(x => x.id === selectedFilter)?.css : "none";
+
           const cutBytes = await cropVideoToMp4(videoMainEl, {
             startSec: trimStart,
-            endSec: trimEnd,
-            cropSize: Math.min(videoMainEl.videoWidth || 720, videoMainEl.videoHeight || 1280)
+            endSec: trimEnd > 0 ? trimEnd : (videoDuration || 15),
+            cropX: cx,
+            cropY: cy,
+            cropWidth: cw,
+            cropHeight: ch,
+            targetWidth,
+            targetHeight,
+            layers,
+            doodleCanvas,
+            previewWidth,
+            filterCss
           });
           return new Blob([cutBytes], { type: "video/mp4" });
         } catch {}
@@ -1333,6 +1582,8 @@
       {mode}
       {canUndoOverlay}
       {canRedoOverlay}
+      {canUndoDoodle}
+      {canRedoDoodle}
       {activeDrawer}
       {isAttachmentMode}
       {mediaType}
@@ -1340,6 +1591,8 @@
       on:close={handleClose}
       on:undo={undoOverlay}
       on:redo={redoOverlay}
+      on:undoDoodle={() => doodleCanvas?.undo()}
+      on:redoDoodle={() => doodleCanvas?.redo()}
       on:toggleDrawer={(e) => toggleDrawer(e.detail)}
       on:toggleMute={() => {
         isAudioMuted = !isAudioMuted;
@@ -1365,9 +1618,33 @@
             autoplay
             playsinline
             muted
+            poster="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg'/>"
             class="camera-stream-video"
+            class:mirror={facingMode === "user"}
+            on:playing={() => (cameraFreezeSnapshotUrl = "")}
             style="filter: {selectedFilter !== 'none' ? FILTERS.find(x => x.id === selectedFilter)?.css : 'none'};"
           ></video>
+
+          {#if cameraFreezeSnapshotUrl}
+            <img
+              src={cameraFreezeSnapshotUrl}
+              alt=""
+              class="camera-stream-video camera-freeze-frame"
+            />
+          {/if}
+
+          {#if isProcessingRecord}
+            <div class="camera-processing-overlay" transition:fade={{ duration: 150 }}>
+              <div class="processing-spinner"></div>
+            </div>
+          {/if}
+
+          {#if isRecording}
+            <div class="camera-record-badge">
+              <div class="record-pulse-dot"></div>
+              <span>{formatRecordTimer(recordDurationSec)} / 00:{MAX_RECORD_SEC < 10 ? '0' : ''}{MAX_RECORD_SEC}</span>
+            </div>
+          {/if}
 
           <div class="camera-floating-controls">
             <button
@@ -1396,6 +1673,17 @@
               title="Нажмите для фото, удерживайте для видео"
               aria-label="Сделать снимок или записать видео"
             >
+              {#if isRecording}
+                <svg class="shutter-progress-ring" viewBox="0 0 80 80">
+                  <circle
+                    cx="40"
+                    cy="40"
+                    r="36"
+                    class="progress-ring-circle"
+                    style="stroke-dashoffset: {226.19 * (1 - recordDurationSec / MAX_RECORD_SEC)};"
+                  />
+                </svg>
+              {/if}
               <div class="shutter-inner-dot"></div>
             </button>
 
@@ -1403,10 +1691,10 @@
               type="button"
               class="camera-switch-btn"
               on:click={toggleCamera}
-              title="Переключить камеру"
-              aria-label="Переключить камеру"
+              title="Сменить камеру"
+              aria-label="Сменить камеру"
             >
-              <img src="/icons/stories/flip.svg" alt="" width="22" height="22" />
+              <img src="/icons/flip-camera.svg" alt="" width="22" height="22" />
             </button>
           </div>
         </div>
@@ -1441,7 +1729,7 @@
                 width={mediaNaturalWidth || 720}
                 height={mediaNaturalHeight || 1280}
                 class="story-main-media"
-                style="filter: {selectedFilter !== 'none' ? FILTERS.find(x => x.id === selectedFilter)?.css : 'none'};"
+                style="{mediaClipStyle} filter: {selectedFilter !== 'none' ? FILTERS.find(x => x.id === selectedFilter)?.css : 'none'};"
               ></canvas>
             {:else if mediaType === "video"}
               <video
@@ -1452,6 +1740,7 @@
                 muted={isAudioMuted}
                 playsinline
                 preload="metadata"
+                poster="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg'/>"
                 on:loadedmetadata={handleVideoLoadedMetadata}
                 on:loadeddata={generateVideoThumbnail}
                 on:canplay={handleVideoCanPlay}
@@ -1459,15 +1748,15 @@
                 on:pause={stopPlayheadSync}
                 on:ended={handleVideoEnded}
                 on:timeupdate={handleVideoTimeUpdate}
-                style="filter: {selectedFilter !== 'none' ? FILTERS.find(x => x.id === selectedFilter)?.css : 'none'};"
+                style="{mediaClipStyle} filter: {selectedFilter !== 'none' ? FILTERS.find(x => x.id === selectedFilter)?.css : 'none'};"
               ></video>
             {:else}
               <img
                 src={mediaUrl}
-                alt="Story content"
+                alt=""
                 class="story-main-media"
                 on:load={handleImageLoad}
-                style="filter: {selectedFilter !== 'none' ? FILTERS.find(x => x.id === selectedFilter)?.css : 'none'};"
+                style="{mediaClipStyle} filter: {selectedFilter !== 'none' ? FILTERS.find(x => x.id === selectedFilter)?.css : 'none'};"
               />
             {/if}
 
@@ -1504,7 +1793,7 @@
             {/each}
           </div>
 
-          {#if isNon916 && !isAttachmentMode}
+          {#if isNon916 && !isAttachmentMode && activeDrawer !== "crop"}
             <div class="framing-guides-overlay" aria-hidden="true">
               <div class="framing-badge">9:16</div>
             </div>
@@ -1515,44 +1804,26 @@
               <img src="/icons/stories/play.svg" alt="" width="38" height="38" />
             </div>
           {/if}
+
+          {#if activeDrawer === "crop"}
+            <StoryCropOverlay
+              bind:this={cropOverlayRef}
+              crop={cropRect}
+              containerWidth={previewWidth}
+              containerHeight={previewHeight}
+              imageBounds={imgBounds}
+              on:change={(e) => {
+                currentCropDraft = e.detail.crop;
+                isCropModified = e.detail.isModified;
+              }}
+            />
+          {/if}
         </div>
 
-        <StoryDrawer
-          {activeDrawer}
-          hasTrimmer={mediaType === "video" || isGif}
-          filters={FILTERS}
-          {selectedFilter}
-          {filterThumbnailUrl}
-          {mediaUrl}
-          isVideoStory={mediaType === "video"}
-          cropAspects={CROP_ASPECTS}
-          {cropAspectMode}
-          textBgOptions={TEXT_BG_OPTIONS}
-          {selectedTextBg}
-          presetColors={PRESET_COLORS}
-          {selectedTextColor}
-          {availableFonts}
-          {selectedFontFamily}
-          bind:fontDropdownOpen
-          {doodleColor}
-          bind:doodleSize
-          {canUndoDoodle}
-          {canRedoDoodle}
-          {doodleCanvas}
-          on:selectFilter={(e) => (selectedFilter = e.detail)}
-          on:selectCrop={(e) => selectCropAspect(e.detail)}
-          on:setTextBg={(e) => setTextBg(e.detail)}
-          on:setTextColor={(e) => setTextColor(e.detail)}
-          on:setTextFont={(e) => setTextFont(e.detail)}
-          on:openColorPicker={(e) => openColorPicker(e.detail)}
-          on:finishText={finishTextEditing}
-          on:close={() => (activeDrawer = "none")}
-        />
-
-        {#if mediaType === "video" || isGif}
+        {#if hasTrimmer}
           <div class="video-trimmer-section interactive-ctrl">
             <StoryTrimmer
-              videoDuration={videoDuration || 15}
+              videoDuration={videoDuration || photoVideoDuration || 5}
               currentTime={videoCurrentTime}
               {trimStart}
               {trimEnd}
@@ -1576,72 +1847,123 @@
 
     {#if mode === "edit"}
       <div class="composer-dedicated-footer">
-        <div class="footer-control-row">
-          {#if mediaType === "photo"}
-            <div class="sliding-switch-container">
-              <div
-                class="sliding-switch-pill"
-                style="transform: translateX({isPhotoToVideo ? '100%' : '0%'});"
-              ></div>
-              <button
-                type="button"
-                class="switch-tab-btn"
-                class:active={!isPhotoToVideo}
-                on:click={() => (isPhotoToVideo = false)}
-              >
-                Фото
-              </button>
-              <button
-                type="button"
-                class="switch-tab-btn"
-                class:active={isPhotoToVideo}
-                on:click={() => (isPhotoToVideo = true)}
-              >
-                Видео
-              </button>
-            </div>
-          {/if}
+        {#if activeDrawer !== "none"}
+          <StoryDrawer
+            {activeDrawer}
+            {hasTrimmer}
+            filters={FILTERS}
+            {selectedFilter}
+            {filterThumbnailUrl}
+            {mediaUrl}
+            isVideoStory={mediaType === "video"}
+            textBgOptions={TEXT_BG_OPTIONS}
+            {selectedTextBg}
+            presetColors={PRESET_COLORS}
+            {selectedTextColor}
+            {availableFonts}
+            {selectedFontFamily}
+            bind:fontDropdownOpen
+            {doodleColor}
+            bind:doodleSize
+            {doodleCanvas}
+            cropModified={isCropModified}
+            on:selectFilter={(e) => (selectedFilter = e.detail)}
+            on:setTextBg={(e) => setTextBg(e.detail)}
+            on:setTextColor={(e) => setTextColor(e.detail)}
+            on:setTextFont={(e) => setTextFont(e.detail)}
+            on:openColorPicker={(e) => openColorPicker(e.detail)}
+            on:finishText={finishTextEditing}
+            on:close={() => (activeDrawer = "none")}
+            on:cropApply={() => {
+              cropRect = { ...currentCropDraft };
+              activeDrawer = "none";
+            }}
+            on:cropReset={() => {
+              cropOverlayRef?.reset?.();
+              cropRect = { x: 0, y: 0, w: 1, h: 1 };
+              currentCropDraft = { ...cropRect };
+              isCropModified = false;
+            }}
+            on:cropCancel={() => {
+              currentCropDraft = { ...cropRect };
+              activeDrawer = "none";
+            }}
+          />
+        {:else}
+          <div class="footer-control-row">
+            {#if mediaType === "photo"}
+              <div class="sliding-switch-container">
+                <div
+                  class="sliding-switch-pill"
+                  style="transform: translateX({isPhotoToVideo ? '100%' : '0%'});"
+                ></div>
+                <button
+                  type="button"
+                  class="switch-tab-btn"
+                  class:active={!isPhotoToVideo}
+                  on:click={() => (isPhotoToVideo = false)}
+                >
+                  Фото
+                </button>
+                <button
+                  type="button"
+                  class="switch-tab-btn"
+                  class:active={isPhotoToVideo}
+                  on:click={() => {
+                    isPhotoToVideo = true;
+                    if (!videoDuration || videoDuration <= 0) {
+                      videoDuration = photoVideoDuration || 5;
+                      trimStart = 0;
+                      trimEnd = videoDuration;
+                    }
+                  }}
+                >
+                  Видео
+                </button>
+              </div>
+            {/if}
 
-          {#if !composerState?.onSave}
-            <div class="sliding-switch-container">
-              <div
-                class="sliding-switch-pill"
-                style="transform: translateX({audience === 2 ? '100%' : '0%'});"
-              ></div>
-              <button
-                type="button"
-                class="switch-tab-btn"
-                class:active={audience === 1}
-                on:click={() => (audience = 1)}
-              >
-                Все
-              </button>
-              <button
-                type="button"
-                class="switch-tab-btn"
-                class:active={audience === 2}
-                on:click={() => (audience = 2)}
-              >
-                Контакты
-              </button>
-            </div>
-          {/if}
-        </div>
+            {#if !composerState?.onSave}
+              <div class="sliding-switch-container">
+                <div
+                  class="sliding-switch-pill"
+                  style="transform: translateX({audience === 2 ? '100%' : '0%'});"
+                ></div>
+                <button
+                  type="button"
+                  class="switch-tab-btn"
+                  class:active={audience === 1}
+                  on:click={() => (audience = 1)}
+                >
+                  Все
+                </button>
+                <button
+                  type="button"
+                  class="switch-tab-btn"
+                  class:active={audience === 2}
+                  on:click={() => (audience = 2)}
+                >
+                  Контакты
+                </button>
+              </div>
+            {/if}
+          </div>
 
-        <button
-          type="button"
-          class="composer-send-btn"
-          disabled={isPublishing}
-          on:click={handlePublish}
-        >
-          {#if isPublishing}
-            <div class="btn-spinner"></div>
-            <span>{statusMessage}</span>
-          {:else}
-            <span>{composerState?.onSave ? "Сохранить" : "Залить"}</span>
-            <img src="/icons/send.svg" alt="" width="18" height="18" />
-          {/if}
-        </button>
+          <button
+            type="button"
+            class="composer-send-btn"
+            disabled={isPublishing}
+            on:click={handlePublish}
+          >
+            {#if isPublishing}
+              <div class="btn-spinner"></div>
+              <span>{composerState?.onSave ? "Сохранить" : "Залить"}</span>
+            {:else}
+              <span>{composerState?.onSave ? "Сохранить" : "Залить"}</span>
+              <img src="/icons/send.svg" alt="" width="18" height="18" />
+            {/if}
+          </button>
+        {/if}
       </div>
     {/if}
 
@@ -1739,7 +2061,7 @@
   }
 
   .composer-middle-workspace.has-trimmer {
-    padding-bottom: 74px;
+    padding-bottom: 98px;
   }
 
   .camera-stream-wrapper {
@@ -1752,15 +2074,85 @@
     background: #000000;
   }
 
+  .camera-freeze-frame {
+    position: absolute;
+    inset: 0;
+    filter: blur(14px) brightness(0.9);
+    transform: scale(1.05);
+    z-index: 1;
+    pointer-events: none;
+  }
+
+  .camera-processing-overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.45);
+    backdrop-filter: blur(12px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10;
+    pointer-events: all;
+  }
+
+  .processing-spinner {
+    width: 44px;
+    height: 44px;
+    border: 3px solid rgba(255, 255, 255, 0.2);
+    border-top-color: #3b82f6;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
+
   .camera-stream-video {
     width: 100%;
     height: 100%;
     object-fit: cover;
   }
+  .camera-stream-video.mirror {
+    transform: scaleX(-1);
+  }
+
+  .camera-record-badge {
+    position: absolute;
+    top: calc(16px + var(--safe-area-top, var(--safe-top, 0px)));
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(0, 0, 0, 0.65);
+    backdrop-filter: blur(8px);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    padding: 6px 14px;
+    border-radius: 20px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: #ffffff;
+    font-size: 13px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    z-index: var(--z-header, 4);
+  }
+
+  .record-pulse-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #ef4444;
+    animation: pulseDot 1s infinite;
+  }
+
+  @keyframes pulseDot {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.3; transform: scale(0.85); }
+  }
 
   .camera-floating-controls {
     position: absolute;
-    bottom: 32px;
+    bottom: calc(32px + var(--safe-area-bottom, var(--safe-bottom, 0px)));
     left: 0;
     right: 0;
     display: flex;
@@ -1771,6 +2163,7 @@
   }
 
   .camera-shutter-btn {
+    position: relative;
     width: 76px;
     height: 76px;
     border-radius: 50%;
@@ -1802,13 +2195,30 @@
     border-radius: 8px;
   }
 
+  .shutter-progress-ring {
+    position: absolute;
+    inset: -6px;
+    width: calc(100% + 12px);
+    height: calc(100% + 12px);
+    transform: rotate(-90deg);
+    pointer-events: none;
+  }
+
+  .progress-ring-circle {
+    fill: none;
+    stroke: #ef4444;
+    stroke-width: 4px;
+    stroke-dasharray: 226.19;
+    stroke-linecap: round;
+    transition: stroke-dashoffset 0.25s linear;
+  }
+
   @keyframes shutterPulse {
     0%, 100% { transform: scale(1); }
     50% { transform: scale(1.08); }
   }
 
-  .gallery-picker-btn,
-  .camera-switch-btn {
+  .gallery-picker-btn {
     width: 48px;
     height: 48px;
     border-radius: 50%;
@@ -1820,6 +2230,25 @@
     justify-content: center;
     cursor: pointer;
     backdrop-filter: blur(8px);
+  }
+
+  .camera-switch-btn {
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    background: rgba(0, 0, 0, 0.75);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    color: #ffffff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: transform 0.15s, background-color 0.15s;
+    backdrop-filter: blur(8px);
+  }
+  .camera-switch-btn:hover {
+    background: rgba(0, 0, 0, 0.85);
+    transform: scale(1.08);
   }
 
   .story-preview-wrapper {
@@ -1986,7 +2415,7 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 6px 10px calc(6px + env(safe-area-inset-bottom, 0px)) 10px;
+    padding: 6px 10px calc(6px + var(--safe-area-bottom, var(--safe-bottom, env(safe-area-inset-bottom, 0px)))) 10px;
     z-index: var(--z-header, 4);
     flex-shrink: 0;
     gap: 6px;
@@ -2168,12 +2597,14 @@
     border-top-right-radius: 20px;
     width: 100%;
     max-width: 500px;
-    height: 60vh;
+    height: 52vh;
+    max-height: 480px;
     display: flex;
     flex-direction: column;
     overflow: hidden;
     position: absolute;
     bottom: 0;
+    padding-bottom: var(--safe-area-bottom, var(--safe-bottom, env(safe-area-inset-bottom, 0px)));
   }
   .sticker-sheet-header {
     display: flex;
@@ -2197,7 +2628,16 @@
   }
   .sticker-sheet-content {
     flex: 1;
-    overflow-y: auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .sticker-sheet-content :global(.sticker-panel-wrapper) {
+    height: 100% !important;
+    max-height: 100% !important;
+    flex: 1;
+    border-top: none;
   }
 
   .color-picker-portal {

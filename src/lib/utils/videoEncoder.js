@@ -15,13 +15,19 @@ export async function cropVideoToMp4(videoEl, options = {}) {
     cropX = 0,
     cropY = 0,
     cropSize = Math.min(videoEl.videoWidth || 480, videoEl.videoHeight || 480),
+    cropWidth = null,
+    cropHeight = null,
+    targetWidth = null,
+    targetHeight = null,
     startSec = 0,
     endSec = videoEl.duration || 1,
     targetFps = 30,
   } = options;
 
-  const width = 480;
-  const height = 480;
+  const actualCropW = cropWidth ?? cropSize;
+  const actualCropH = cropHeight ?? cropSize;
+  const width = targetWidth ?? (cropWidth ? cropWidth : 480);
+  const height = targetHeight ?? (cropHeight ? cropHeight : 480);
   const duration = Math.max(0.1, endSec - startSec);
   const { Muxer, ArrayBufferTarget } = await import('mp4-muxer');
   const target = new ArrayBufferTarget();
@@ -41,6 +47,7 @@ export async function cropVideoToMp4(videoEl, options = {}) {
       sampleRate: targetSampleRate,
     },
     fastStart: 'in-memory',
+    firstTimestampBehavior: 'offset',
   });
 
   let audioPcm = null;
@@ -75,6 +82,18 @@ export async function cropVideoToMp4(videoEl, options = {}) {
   canvas.height = height;
   const ctx = canvas.getContext('2d', { alpha: false });
 
+  let overlayCanvas = null;
+  if ((options.layers && options.layers.length > 0) || (options.doodleCanvas && typeof options.doodleCanvas.hasContent === 'function' && options.doodleCanvas.hasContent())) {
+    try {
+      overlayCanvas = document.createElement('canvas');
+      overlayCanvas.width = width;
+      overlayCanvas.height = height;
+      const overlayCtx = overlayCanvas.getContext('2d');
+      const { renderStoryLayersToCanvas } = await import('$lib/utils/storyCompositor');
+      await renderStoryLayersToCanvas(overlayCtx, options.layers || [], width, height, options.previewWidth || 360, options.doodleCanvas || null);
+    } catch {}
+  }
+
   if (typeof VideoEncoder !== 'undefined') {
     const videoEncoder = new VideoEncoder({
       output: (chunk, meta) => muxer.addVideoChunk(chunk, meta),
@@ -90,6 +109,7 @@ export async function cropVideoToMp4(videoEl, options = {}) {
     });
 
     const offscreenVideo = document.createElement('video');
+    offscreenVideo.poster = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg'/>";
     offscreenVideo.crossOrigin = 'anonymous';
     offscreenVideo.muted = true;
     offscreenVideo.playsInline = true;
@@ -120,11 +140,43 @@ export async function cropVideoToMp4(videoEl, options = {}) {
     let frameIdx = 0;
     const totalFrames = Math.max(1, Math.round(duration * targetFps));
 
+    const isNon916Story = width === 720 && height === 1280 && Math.abs(actualCropW / actualCropH - 9 / 16) > 0.02;
+    const cropAspect = actualCropW / actualCropH;
+    let fitW = width;
+    let fitH = width / cropAspect;
+    if (fitH > height) {
+      fitH = height;
+      fitW = height * cropAspect;
+    }
+    const posX = (width - fitW) / 2;
+    const posY = (height - fitH) / 2;
+
     while (frameIdx < totalFrames && offscreenVideo.currentTime < endSec + 0.1) {
-      if (offscreenVideo.videoWidth > 0 && offscreenVideo.videoHeight > 0) {
-        ctx.drawImage(offscreenVideo, cropX, cropY, cropSize, cropSize, 0, 0, width, height);
+      const srcVideo = (offscreenVideo.videoWidth > 0 && offscreenVideo.videoHeight > 0) ? offscreenVideo : videoEl;
+
+      if (isNon916Story) {
+        ctx.save();
+        ctx.filter = 'blur(20px)';
+        ctx.drawImage(srcVideo, cropX, cropY, actualCropW, actualCropH, -20, -20, width + 40, height + 40);
+        ctx.filter = 'none';
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
+        ctx.fillRect(0, 0, width, height);
+        ctx.restore();
+      }
+
+      if (options.filterCss && options.filterCss !== 'none') {
+        ctx.filter = options.filterCss;
+      }
+
+      if (isNon916Story) {
+        ctx.drawImage(srcVideo, cropX, cropY, actualCropW, actualCropH, posX, posY, fitW, fitH);
       } else {
-        ctx.drawImage(videoEl, cropX, cropY, cropSize, cropSize, 0, 0, width, height);
+        ctx.drawImage(srcVideo, cropX, cropY, actualCropW, actualCropH, 0, 0, width, height);
+      }
+      ctx.filter = 'none';
+
+      if (overlayCanvas) {
+        ctx.drawImage(overlayCanvas, 0, 0, width, height);
       }
 
       const frame = new VideoFrame(canvas, {
@@ -136,7 +188,7 @@ export async function cropVideoToMp4(videoEl, options = {}) {
       frame.close();
       frameIdx++;
 
-      await new Promise((r) => setTimeout(r, frameIntervalMs));
+      await new Promise((r) => setTimeout(r, 0));
       if (offscreenVideo.paused && frameIdx < totalFrames) {
         try { await offscreenVideo.play(); } catch {}
       }
@@ -237,6 +289,7 @@ export async function createMinimalMp4(width = 480, height = 480, durationMs = 1
       sampleRate: 48000,
     },
     fastStart: 'in-memory',
+    firstTimestampBehavior: 'offset',
   });
 
   const dummyAvcKeyframe = new Uint8Array([
@@ -280,6 +333,7 @@ export async function convertVideoBlobToMp4(blob, options = {}) {
   }
   const url = URL.createObjectURL(blob);
   const videoEl = document.createElement('video');
+  videoEl.poster = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg'/>";
   videoEl.crossOrigin = 'anonymous';
   videoEl.preload = 'auto';
   videoEl.src = url;

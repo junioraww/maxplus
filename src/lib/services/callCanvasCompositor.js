@@ -134,6 +134,7 @@ export class CallCanvasCompositor {
     let el = this.#videoPool.get(id);
     if (!el) {
       el = document.createElement('video');
+      el.poster = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg'/>";
       el.muted = true;
       el.autoplay = true;
       el.playsInline = true;

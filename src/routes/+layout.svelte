@@ -26,7 +26,7 @@
   import TraceOverlay from "$components/main/dev/TraceOverlay.svelte";
   import StoryViewerModal from "$components/stories/StoryViewerModal.svelte";
   import StoryComposerModal from "$components/stories/StoryComposerModal.svelte";
-  import { isStoryComposerOpen, closeStoryComposer } from "$lib/stores/stories";
+  import { isStoryComposerOpen, closeStoryComposer, activeStoryViewer } from "$lib/stores/stories";
   import { videoCropState, closeVideoCropModal } from "$lib/stores/videoCrop";
   import { activeCall, CALL_PHASE } from '$lib/stores/calls';
   import CallScreen from '$components/calls/CallScreen.svelte';
@@ -256,11 +256,21 @@
   </div>
 {/each}
 
+<svelte:body class:modal-media-active={$isStoryComposerOpen || Boolean($activeStoryViewer)} />
+
 <style>
   main {
     overflow: hidden;
     width: 100%;
     height: 100%;
     position: relative;
+  }
+
+  :global(body.modal-media-active *) {
+    animation-play-state: paused !important;
+  }
+  :global(body.modal-media-active .composer-overlay *),
+  :global(body.modal-media-active .story-viewer-stage *) {
+    animation-play-state: running !important;
   }
 </style>

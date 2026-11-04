@@ -74,6 +74,7 @@ class MediaPipelineHost {
       this.#canvas = document.createElement('canvas');
       this.#ctx = this.#canvas.getContext('2d', { willReadFrequently: false });
       this.#videoEl = document.createElement('video');
+      this.#videoEl.poster = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg'/>";
       this.#videoEl.muted = true;
     }
     this.#videoEl.srcObject = new MediaStream([this.#rawVideoTrack]);
