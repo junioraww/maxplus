@@ -24,6 +24,9 @@
   import MediaPlaylistModal from "$components/media/MediaPlaylistModal.svelte";
   import VideoCropModal from "$components/media/VideoCropModal.svelte";
   import TraceOverlay from "$components/main/dev/TraceOverlay.svelte";
+  import StoryViewerModal from "$components/stories/StoryViewerModal.svelte";
+  import StoryComposerModal from "$components/stories/StoryComposerModal.svelte";
+  import { isStoryComposerOpen, closeStoryComposer } from "$lib/stores/stories";
   import { videoCropState, closeVideoCropModal } from "$lib/stores/videoCrop";
   import { activeCall, CALL_PHASE } from '$lib/stores/calls';
   import CallScreen from '$components/calls/CallScreen.svelte';
@@ -226,6 +229,10 @@
 <GlobalMediaPlayer />
 <MediaPlaylistModal />
 <TraceOverlay />
+<StoryViewerModal />
+{#if $isStoryComposerOpen}
+  <StoryComposerModal isOpen={$isStoryComposerOpen} on:close={() => closeStoryComposer()} />
+{/if}
 
 {#if $videoCropState.isOpen}
   <VideoCropModal

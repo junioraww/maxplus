@@ -66,6 +66,8 @@ import { activeCall, CALL_PHASE } from "$lib/stores/calls";
 import { CallService } from "$lib/services/CallService";
 
 import BaseAPI from "./BaseApi";
+import { storiesApiMixin } from "./modules/storiesApi";
+import { loadStoriesCacheFromDisk, refreshStoriesFeed } from "$lib/stores/stories";
 
 function sortFolders(folders, order) {
   if (!folders || !Array.isArray(folders)) return [];
@@ -406,6 +408,10 @@ export default class MobileApi extends BaseAPI {
           if (acc?.id) {
             await setAccountContact(acc.id, fullContact).catch(() => {});
           }
+        }
+      } else if (opc === 216) {
+        if (response.payload) {
+          this.handleStoryPush(response.payload);
         }
       }
     });
@@ -966,6 +972,7 @@ export default class MobileApi extends BaseAPI {
         console.log("Синхронизация завершена!");
 
         ensureReactionsLoaded().catch(() => {});
+        loadStoriesCacheFromDisk().then(() => refreshStoriesFeed(this)).catch(() => {});
       }
     }
   })();
@@ -2306,4 +2313,7 @@ export default class MobileApi extends BaseAPI {
     return res;
   }
 }
+
+Object.assign(MobileApi.prototype, storiesApiMixin);
+
 

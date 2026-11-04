@@ -7,6 +7,8 @@
   import ChatItem from "$components/chats/ChatItem.svelte";
   import FolderChatList from "$components/chats/FolderChatList.svelte";
   import FolderTabs from "$components/chats/FolderTabs.svelte";
+  import StoriesTray from "$components/stories/StoriesTray.svelte";
+  import { openStoryComposer } from "$lib/stores/stories";
   import AddContactBtn from "$components/main/AddContactBtn.svelte";
   import Search from "$components/main/Search.svelte";
   import FolderEditModal from "$components/chats/FolderEditModal.svelte";
@@ -15,6 +17,7 @@
   import Contacts from "../contacts/+page.svelte";
 
   let showContactsModal = false;
+  let storiesTrayEl;
 
   import { escapeHtml } from "$lib/utils/text";
   import { debounce } from "$lib/utils/debounce";
@@ -482,9 +485,7 @@
         <div class="action-right">
           {#if $forwardDraft && $forwardDraft.messages?.length > 0}
             <button class="icon-btn send-forward-btn" on:click={handleBatchForward} title="Отправить">
-              <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor">
-                <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
-              </svg>
+              <span class="send-icon" aria-hidden="true"></span>
             </button>
           {:else}
             <button class="icon-btn" on:click={pinSelected} title="Закрепить">
@@ -630,6 +631,10 @@
     <MediaPlaybackHeader isChatHeader={false} />
   {/if}
 
+  {#if !searchQuery.length}
+    <StoriesTray bind:this={storiesTrayEl} on:compose={() => openStoryComposer()} />
+  {/if}
+
   {#if searchQuery.length}
     <div class="search-scrollable">
       {#if searchPublic.length}
@@ -695,6 +700,13 @@
             on:open={(e) => e.detail && openChat(e.detail)}
             on:longpress={handleChatLongPress}
             on:toggle={handleChatToggle}
+            on:scroll={(e) => {
+              if (e.detail?.scrollTop > 20) {
+                storiesTrayEl?.collapse();
+              }
+            }}
+            on:wheelUp={() => storiesTrayEl?.expand()}
+            on:wheelDown={() => storiesTrayEl?.collapse()}
           />
         {:else}
           <div class="placeholder"></div>
@@ -818,6 +830,15 @@
 
   .send-forward-btn {
     color: #7b4cd6;
+  }
+
+  .send-forward-btn .send-icon {
+    width: 22px;
+    height: 22px;
+    background-color: currentColor;
+    -webkit-mask: url("/icons/send.svg") no-repeat center / contain;
+    mask: url("/icons/send.svg") no-repeat center / contain;
+    display: inline-block;
   }
 
   .send-forward-btn:hover {

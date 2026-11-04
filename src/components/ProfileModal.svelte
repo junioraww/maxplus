@@ -25,6 +25,7 @@
   import { dict } from "$lib/crypto/text-codec";
   import { isChatMuted } from "$lib/utils/notifications";
   import { CallService } from "$lib/services/CallService";
+  import { getStoryPreviewForUser, openStoriesViewer } from "$lib/stores/stories";
   import { autoDownloadEncryptedMedia } from "$lib/stores/e2eSettings";
   import { switchEnc } from "$components/ChatWindow/e2e";
   import { getChatSettings, getChat } from "$lib/stores/messages";
@@ -498,6 +499,8 @@
 
   $: targetProfileEntityId = Number(userId || $contact?.id || (chat?.id && chat.type === "DIALOG" ? chat.id : null) || (isOwnProfile ? $currentUser : 0));
   $: profileSafeAvatarUid = !$disableMaxPlusAvatars && targetProfileEntityId && $safeAvatarMapStore.has(targetProfileEntityId) ? $safeAvatarMapStore.get(targetProfileEntityId) : null;
+  $: profileStoryPreview = targetProfileEntityId ? getStoryPreviewForUser(targetProfileEntityId) : null;
+  $: hasProfileStories = Boolean(profileStoryPreview && (profileStoryPreview.totalCount || 0) > 0);
 
   function openAvatarGallery(e) {
     const highResSafeUrl = profileSafeAvatarUid ? getSafeAvatarMediaUrl(profileSafeAvatarUid) : null;
@@ -1196,6 +1199,7 @@
               chat={chat}
               contactId={$contact?.id ?? userId}
               size={96}
+              allowStories={true}
             />
             {#if canUploadAvatar}
               <button
@@ -1224,6 +1228,17 @@
               <Signature contact={contact} chat={chat} />
             {/if}
           </div>
+
+          {#if hasProfileStories}
+            <button
+              type="button"
+              class="tg-story-profile-chip"
+              on:click={() => openStoriesViewer(targetProfileEntityId)}
+            >
+              <span class="tg-story-chip-dot"></span>
+              <span>{profileStoryPreview.totalCount} {profileStoryPreview.totalCount === 1 ? "история" : profileStoryPreview.totalCount < 5 ? "истории" : "историй"}</span>
+            </button>
+          {/if}
 
           <div class="tg-actions-row">
             <button type="button" class="tg-action-btn" on:click={openChat}>
@@ -3010,5 +3025,32 @@
 
   .tg-invite-row:hover {
     background: rgba(255, 255, 255, 0.05);
+  }
+
+  .tg-story-profile-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 14px;
+    border-radius: 20px;
+    background: rgba(59, 130, 246, 0.16);
+    border: 1px solid rgba(59, 130, 246, 0.35);
+    color: #60a5fa;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    margin: 8px auto 0 auto;
+    transition: transform 0.15s, background 0.15s;
+  }
+
+  .tg-story-profile-chip:active {
+    transform: scale(0.96);
+  }
+
+  .tg-story-chip-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #3b82f6;
   }
 </style>

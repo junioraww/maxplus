@@ -21,6 +21,13 @@ use tauri::webview::{PermissionKind, PermissionResponse};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    #[cfg(target_os = "linux")]
+    {
+        if std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none() {
+            std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
+        }
+    }
+
     ssl::init_ssl_certificates();
     video::start_video_proxy();
     webapp_proxy::start_webapp_proxy();
@@ -166,6 +173,18 @@ pub fn run() {
             commands::get_file_upload,
             commands::get_audio_upload,
             commands::get_video_note_upload,
+            commands::get_story_photo_upload,
+            commands::get_story_video_upload,
+            commands::get_stories_feed,
+            commands::get_stories_by_owners,
+            commands::get_stories_by_id,
+            commands::get_story_stats,
+            commands::get_story_detailed_stats,
+            commands::react_story,
+            commands::mark_story_read,
+            commands::send_story,
+            commands::edit_story,
+            commands::delete_stories,
             commands::update_profile,
             commands::set_profile_photo,
             commands::create_group,

@@ -3,6 +3,16 @@ import { writable, get } from "svelte/store";
 import { goto } from "$app/navigation";
 import { page } from "$app/stores";
 
+export const currentUser = writable(undefined);
+export const currentUserDetails = writable(undefined);
+export const currentSessionCalls = writable(undefined);
+export const currentlySyncing = writable(false);
+export const currentFolders = writable([]);
+export const currentPresence = writable({});
+export const serverConfig = writable({});
+export const currentRealChats = writable([]);
+export const currentRealContacts = writable([]);
+
 import MobileApi from "$lib/api/MobileApi";
 import MockApi from "$lib/api/MockApi";
 import { isBrowserMode } from "$lib/utils/browserShim";
@@ -12,13 +22,7 @@ import {
   set as sessionSet
 } from "$lib/stores/session";
 
-export const currentUser = writable(undefined);
-export const currentUserDetails = writable(undefined);
-export const currentSessionCalls = writable(undefined);
-export const currentlySyncing = writable(false);
-export const currentFolders = writable([]);
-export const currentPresence = writable({});
-export const serverConfig = writable({});
+import { setStoriesCurrentUserId } from "$lib/stores/stories";
 
 const API = isBrowserMode() ? new MockApi() : new MobileApi();
 if (typeof window !== "undefined") {
@@ -26,10 +30,8 @@ if (typeof window !== "undefined") {
 }
 export default writable(API);
 
-export const currentRealChats = writable([]);
-export const currentRealContacts = writable([]);
-
 currentUser.subscribe(async userId => {
+  setStoriesCurrentUserId(userId);
   if (userId === undefined) {
     const account = await Accounts.getCurrentAccount();
     if (!account) return currentUser.set(null);
