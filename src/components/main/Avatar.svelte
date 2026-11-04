@@ -6,6 +6,7 @@
   import { getSafeAvatarMediaUrl } from "$lib/services/uplink";
   import { disableMaxPlusAvatars } from "$lib/stores/avatarSettings";
   import MediaCanvas from "$components/main/MediaCanvas.svelte";
+  import { getStoryPreviewForUser, openStoriesViewer } from "$lib/stores/stories";
 
   export let size = 50;
   export let selectionMode = false;
@@ -18,12 +19,32 @@
   export let style = "";
   export let seed = null;
   export let isSelf = false;
+  export let allowStories = false;
+  export let enableStoryRing = false;
+
+  $: canShowStory = allowStories || enableStoryRing;
 
   $: resolvedContactId = contactId ?? userId;
   $: contact = isSelf ? null : getContact(resolvedContactId);
   $: effectiveContactId = resolvedContactId || $contact?.id || (isSelf ? Number($currentUser) : (chat?.id ? Number(chat.id) : null));
   $: isMe = isSelf || Boolean(effectiveContactId && Number(effectiveContactId) === Number($currentUser));
   $: selfDetails = isMe ? $currentUserDetails : null;
+
+  $: storyPreview = canShowStory && effectiveContactId ? getStoryPreviewForUser(effectiveContactId) : null;
+  $: hasStory = Boolean(storyPreview && (storyPreview.totalCount || 0) > 0);
+  $: storyTotal = Math.max(1, storyPreview?.totalCount || 1);
+  $: storyRead = Math.min(storyTotal, storyPreview?.readCount || 0);
+  $: storyUnread = storyTotal - storyRead;
+  $: storyRadius = (size - 2.5) / 2;
+  $: storyCircumference = 2 * Math.PI * storyRadius;
+  $: storySegmentGap = storyTotal > 1 ? 4 : 0;
+  $: storySegmentLength = Math.max(2, (storyCircumference - storyTotal * storySegmentGap) / storyTotal);
+
+  function handleStoryClick(e) {
+    if (!hasStory || !effectiveContactId) return;
+    e.stopPropagation();
+    openStoriesViewer(effectiveContactId);
+  }
 
   $: isOnline = !isSelf && Boolean(
     $contact?.online ||
@@ -86,7 +107,44 @@
   }
 </script>
 
-<div class="avatar-wrapper" style="width: {size}px; height: {size}px; {style}" on:click>
+<div
+  class="avatar-wrapper"
+  class:has-story={hasStory}
+  style="width: {size}px; height: {size}px; {style}"
+  on:click={hasStory ? handleStoryClick : undefined}
+>
+  {#if hasStory}
+    <svg
+      class="story-avatar-ring-svg"
+      viewBox="0 0 {size} {size}"
+      width={size}
+      height={size}
+    >
+      <defs>
+        <linearGradient id="avatarStoryGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stop-color="#3b82f6" />
+          <stop offset="50%" stop-color="#8b5cf6" />
+          <stop offset="100%" stop-color="#ec4899" />
+        </linearGradient>
+      </defs>
+      {#each Array(storyTotal) as _, i}
+        {@const isSegUnread = i >= storyRead}
+        {@const offset = -i * (storySegmentLength + storySegmentGap)}
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={storyRadius}
+          fill="none"
+          stroke={isSegUnread ? "url(#avatarStoryGrad)" : "rgba(142, 142, 147, 0.4)"}
+          stroke-width="2.5"
+          stroke-linecap="round"
+          stroke-dasharray="{storySegmentLength} {storyCircumference - storySegmentLength}"
+          stroke-dashoffset={offset}
+        />
+      {/each}
+    </svg>
+  {/if}
+
   {#if selectionMode}
     <div class="selection-overlay" class:checked={isSelected}>
       {#if isSelected}
@@ -151,6 +209,25 @@
     position: relative;
     aspect-ratio: 1 / 1;
     flex-shrink: 0;
+  }
+
+  .avatar-wrapper.has-story {
+    cursor: pointer;
+  }
+
+  .story-avatar-ring-svg {
+    position: absolute;
+    inset: 0;
+    transform: rotate(-90deg);
+    pointer-events: none;
+    z-index: var(--z-panel, 2);
+  }
+
+  .avatar-wrapper.has-story .avatar-container {
+    inset: 4px;
+    width: calc(100% - 8px);
+    height: calc(100% - 8px);
+    position: absolute;
   }
 
   .avatar-container {

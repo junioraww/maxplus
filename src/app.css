@@ -130,11 +130,11 @@ img {
   --z-modal-backdrop: 6;
   --z-modal: 7;
   --z-sheet: 7;
-  --z-viewer: 8;
-  --z-call: 9;
-  --z-picker: 9;
-  --z-toast: 10;
-  --z-loader: 11;
+  --z-viewer: 100;
+  --z-call: 110;
+  --z-picker: 110;
+  --z-toast: 120;
+  --z-loader: 130;
 }
 
 input[type="checkbox"] {

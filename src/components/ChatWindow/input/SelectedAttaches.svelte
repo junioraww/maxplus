@@ -2,6 +2,8 @@
   import { createEventDispatcher } from "svelte";
   import { getProxiedMediaUrl } from "$lib/utils/images";
   import VideoPreview from "$components/ChatWindow/VideoPreview.svelte";
+  import { openStoryComposer } from "$lib/stores/stories";
+  import { getAttachType } from "$lib/utils/mediaUtils";
 
   export let attaches = [];
 
@@ -10,6 +12,32 @@
   function removeAttach(index) {
     dispatch("remove", { index });
   }
+
+  function handleEditAttach(attach, index) {
+    openStoryComposer({
+      attach,
+      onSave: ({ path, isVideo }) => {
+        attach.path = path;
+        attach.localPath = path;
+        if (isVideo) {
+          attach.type = "VIDEO";
+          attach._type = "VIDEO";
+          attach.mime = "video/mp4";
+        }
+        attaches = [...attaches];
+        dispatch("update", { index, attach });
+      }
+    });
+  }
+
+  function handlePreview(attach, event) {
+    const type = getAttachType(attach);
+    if (type === "PHOTO" || type === "VIDEO") {
+      dispatch("preview", { attach, originEl: event?.currentTarget || null });
+    }
+  }
+
+
 </script>
 
 {#if attaches && attaches.length > 0}
@@ -17,6 +45,21 @@
     {#each attaches as attach, i}
       {@const attachType = attach.type || attach._type}
       <div class="attach-card">
+        {#if (attachType === "PHOTO" || attachType === "VIDEO") && !attach.uploading && !attach.uploaded}
+          <button
+            type="button"
+            class="edit-btn"
+            on:click={() => handleEditAttach(attach, i)}
+            aria-label="Edit attachment"
+            title="Редактировать"
+          >
+            <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 20h9" />
+              <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
+            </svg>
+          </button>
+        {/if}
+
         <button
           class="remove"
           class:hidden={attach.uploading || attach.uploaded}
@@ -30,10 +73,17 @@
         </button>
 
         {#if attachType === "PHOTO"}
-          <img src={attach.path ? getProxiedMediaUrl(attach.path) : (attach.url || attach.baseUrl)} alt="preview" />
+          <img
+            src={attach.path ? getProxiedMediaUrl(attach.path) : (attach.url || attach.baseUrl)}
+            alt="preview"
+            class="clickable-media"
+            on:click={(e) => handlePreview(attach, e)}
+          />
         {:else if attachType === "VIDEO"}
           {#if attach.path}
-            <VideoPreview {attach} />
+            <div class="clickable-media" on:click={(e) => handlePreview(attach, e)} role="presentation">
+              <VideoPreview {attach} />
+            </div>
           {:else}
             <div class="file-preview">
               <div class="file-icon">
@@ -105,7 +155,7 @@
     padding: 8px 12px;
     flex-shrink: 0;
     overflow-x: auto;
-    z-index: 1;
+    z-index: var(--z-base, 1);
     background-color: #17191d;
     border-bottom: 1px solid rgba(255, 255, 255, 0.04);
   }
@@ -129,6 +179,27 @@
     object-fit: cover;
   }
 
+  .attach-card .edit-btn {
+    position: absolute;
+    bottom: 3px;
+    right: 3px;
+    background: rgba(0, 0, 0, 0.65);
+    color: #fff;
+    border: none;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    z-index: var(--z-header, 4);
+    transition: transform 0.15s ease;
+  }
+  .attach-card .edit-btn:hover {
+    transform: scale(1.15);
+  }
+
   .attach-card .remove {
     position: absolute;
     top: 3px;
@@ -144,7 +215,7 @@
     justify-content: center;
     font-size: 11px;
     cursor: pointer;
-    z-index: 4;
+    z-index: var(--z-header, 4);
     opacity: 1;
     transform: scale(1);
     transition: opacity 0.2s ease, transform 0.2s ease;
@@ -164,7 +235,7 @@
     background: rgba(0, 0, 0, 0.55);
     pointer-events: none;
     transition: height 0.12s ease-out;
-    z-index: 2;
+    z-index: var(--z-panel, 2);
   }
 
   .upload-loader-wrap {
@@ -174,7 +245,7 @@
     align-items: center;
     justify-content: center;
     pointer-events: none;
-    z-index: 3;
+    z-index: var(--z-chat, 3);
   }
 
   .upload-loader {
@@ -208,5 +279,14 @@
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+  }
+
+  .clickable-media {
+    width: 100%;
+    height: 100%;
+    cursor: zoom-in;
+    display: flex;
+    align-items: center;
+    justify-content: center;
   }
 </style>

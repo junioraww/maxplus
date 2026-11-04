@@ -514,4 +514,181 @@ export default class MockApi extends BaseAPI {
   async reconnect() {
     return true;
   }
+
+  async getStoriesFeed(cursor = "0", count = 20) {
+    return {
+      cursor: "0",
+      storiesPreviews: [
+        {
+          owner: { ownerId: 20002, type: 0 },
+          totalCount: 3,
+          readCount: 1,
+          lastStoryExpirationTime: Date.now() + 86400000,
+          settings: 1,
+          updateTime: Date.now() - 3600000
+        },
+        {
+          owner: { ownerId: 30003, type: 0 },
+          totalCount: 1,
+          readCount: 0,
+          lastStoryExpirationTime: Date.now() + 86400000,
+          settings: 1,
+          updateTime: Date.now() - 7200000
+        }
+      ]
+    };
+  }
+
+  async getStoriesByOwners(owners) {
+    const list = Array.isArray(owners) ? owners : [owners];
+    const peerStories = [];
+
+    for (const o of list) {
+      const oId = Number(o.ownerId ?? o.id ?? o);
+      const custom = this.mockStories?.get(oId);
+      if (custom && custom.length > 0) {
+        peerStories.push({
+          owner: { ownerId: oId, type: 0 },
+          stories: custom
+        });
+      } else if (oId === 20002) {
+        peerStories.push({
+          owner: { ownerId: 20002, type: 0 },
+          stories: [
+            {
+              id: 9001,
+              cid: 1001,
+              media: {
+                _type: "PHOTO",
+                baseUrl: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=800&auto=format&fit=crop&q=80"
+              },
+              layers: [
+                {
+                  type: 0,
+                  coordinates: { x: 0.5, y: 0.82, w: 0.75, h: 0.05, rotation: 0 },
+                  clickableLink: { url: "https://example.com" }
+                }
+              ],
+              settings: 1,
+              expiration: 86400000
+            },
+            {
+              id: 9002,
+              cid: 1002,
+              media: {
+                _type: "PHOTO",
+                baseUrl: "https://images.unsplash.com/photo-1579783902614-a3fb3927b675?w=800&auto=format&fit=crop&q=80"
+              },
+              layers: [],
+              settings: 1,
+              expiration: 86400000
+            }
+          ]
+        });
+      }
+    }
+
+    return { peerStories };
+  }
+
+  async getStoriesById(owner, storyIds) {
+    const list = await this.getStoriesByOwners([owner]);
+    return { stories: list.peerStories[0]?.stories || [] };
+  }
+
+  async getStoryStats(storyId) {
+    return { viewsCount: 12, reactionsCount: 4 };
+  }
+
+  async getStoryDetailedStats(storyId, filter = 0, marker = 0) {
+    return {
+      storyDetailedStats: [
+        { userId: 20002, reaction: { id: "❤️" } }
+      ],
+      marker: 0
+    };
+  }
+
+  async reactStory(owner, storyId, reaction = null) {
+    return { success: true };
+  }
+
+  async markStoryRead(owner, storyId) {
+    return { success: true };
+  }
+
+  async sendStory(stories) {
+    return {
+      stories: stories.map((s, idx) => ({
+        id: 9900 + idx,
+        cid: s.cid,
+        media: s.media,
+        layers: s.layers || [],
+        settings: s.settings || 1,
+        expiration: s.expiration || 86400000
+      }))
+    };
+  }
+
+  async deleteStories(storyIds) {
+    if (!this.mockStories) this.mockStories = new Map();
+    const ids = new Set((Array.isArray(storyIds) ? storyIds : [storyIds]).map(Number));
+    const current = this.mockStories.get(this.currentUserId) || [];
+    this.mockStories.set(this.currentUserId, current.filter(s => !ids.has(Number(s.id))));
+    return { success: true };
+  }
+
+  async editStory(storyId, settings) {
+    return { story: { id: storyId, settings } };
+  }
+
+  async uploadStoryPhoto(filePath) {
+    return "mock_photo_token_123";
+  }
+
+  async uploadStoryVideo(filePath, durationMs) {
+    return { token: "mock_video_token_123", videoId: 8888, duration: durationMs };
+  }
+
+  async publishPhotoStory({ photoToken, settings = 1, expiration = 172800000, layers = [] }) {
+    if (!this.mockStories) this.mockStories = new Map();
+    const cid = Date.now();
+    const newStory = {
+      id: cid,
+      cid,
+      media: {
+        _type: "PHOTO",
+        url: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=800&auto=format&fit=crop&q=80",
+        photoToken
+      },
+      layers: layers || [],
+      settings,
+      expiration
+    };
+    const list = this.mockStories.get(this.currentUserId) || [];
+    this.mockStories.set(this.currentUserId, [newStory, ...list]);
+    return { stories: [newStory] };
+  }
+
+  async publishVideoStory({ videoToken, durationMs, settings = 1, expiration = 172800000, layers = [] }) {
+    if (!this.mockStories) this.mockStories = new Map();
+    const cid = Date.now();
+    const newStory = {
+      id: cid,
+      cid,
+      media: {
+        _type: "VIDEO",
+        url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
+        videoType: 2,
+        token: videoToken,
+        duration: durationMs
+      },
+      layers: layers || [],
+      settings,
+      expiration
+    };
+    const list = this.mockStories.get(this.currentUserId) || [];
+    this.mockStories.set(this.currentUserId, [newStory, ...list]);
+    return { stories: [newStory] };
+  }
 }

@@ -261,6 +261,66 @@ export function initBrowserShim() {
         setStoreItem("messages_" + args.chatId, sorted);
         return true;
       }
+      case "get_stories_feed": {
+        return {
+          cursor: "0",
+          storiesPreviews: [
+            {
+              owner: { ownerId: 20002, type: 0 },
+              totalCount: 2,
+              readCount: 0,
+              lastStoryExpirationTime: Date.now() + 86400000,
+              settings: 1,
+              updateTime: Date.now() - 3600000
+            }
+          ]
+        };
+      }
+      case "get_stories_by_owners": {
+        return {
+          peerStories: [
+            {
+              owner: { ownerId: 20002, type: 0 },
+              stories: [
+                {
+                  id: 9001,
+                  cid: 1001,
+                  media: {
+                    _type: "PHOTO",
+                    baseUrl: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=800&auto=format&fit=crop&q=80"
+                  },
+                  layers: [
+                    {
+                      type: 0,
+                      coordinates: { x: 0.5, y: 0.82, w: 0.75, h: 0.05, rotation: 0 },
+                      clickableLink: { url: "https://example.com" }
+                    }
+                  ],
+                  settings: 1,
+                  expiration: 86400000
+                }
+              ]
+            }
+          ]
+        };
+      }
+      case "get_story_stats":
+        return { viewsCount: 15, reactionsCount: 3 };
+      case "get_story_detailed_stats":
+        return { storyDetailedStats: [{ userId: 20002, reaction: { id: "❤️" } }], marker: 0 };
+      case "react_story":
+      case "mark_story_read":
+      case "delete_stories":
+      case "edit_story":
+        return { success: true };
+      case "get_story_photo_upload":
+        return { url: "https://mock.upload.story/photo" };
+      case "get_story_video_upload":
+        return { info: [{ url: "https://mock.upload.story/video", videoId: 1234, token: "mock_token" }] };
+      case "save_temp_media":
+        return "/tmp/mock_story_media_" + Date.now() + "." + (args?.extension || "jpg");
+      case "upload":
+        return { token: "mock_upload_token_999", photoToken: "mock_upload_token_999" };
       case "proxy_config_get":
       case "get_proxy_config":
         return { enabled: false, host: "", port: 0 };

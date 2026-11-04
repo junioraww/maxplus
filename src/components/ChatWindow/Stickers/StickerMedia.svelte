@@ -176,11 +176,12 @@
     loading = true;
     loadError = false;
 
+    if (url) {
+      loadStaticImage();
+    }
     if (lottieUrl && (autoplay || !url)) {
       loadLottieAnimation();
-    } else if (url) {
-      loadStaticImage();
-    } else {
+    } else if (!url) {
       loading = false;
     }
   }
@@ -231,18 +232,18 @@
     ></div>
   {/if}
 
-  {#if hasStartedLoading && (loadError || !lottieUrl || (url && !autoplay)) && resolvedStaticUrl}
+  {#if hasStartedLoading && resolvedStaticUrl && (loading || loadError || !lottieUrl || !autoplay)}
     <img
       src={resolvedStaticUrl}
       {alt}
       class="static-img"
-      class:hidden={loading}
-      on:load={() => { loading = false; }}
-      on:error={() => { loading = false; }}
+      class:hidden={!loading && Boolean(anim) && !loadError && autoplay}
+      on:load={() => { if (!lottieUrl || !autoplay) loading = false; }}
+      on:error={() => { if (!lottieUrl || !autoplay) loading = false; }}
     />
   {/if}
 
-  {#if loading}
+  {#if loading && !resolvedStaticUrl}
     <div class="shimmer-placeholder"></div>
   {/if}
 </div>

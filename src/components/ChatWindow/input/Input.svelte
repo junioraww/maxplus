@@ -1702,7 +1702,11 @@
 
 <svelte:window on:click={handleWindowClick} />
 
-<SelectedAttaches {attaches} on:remove={(e) => removeAttach(e.detail.index)} />
+<SelectedAttaches
+  {attaches}
+  on:remove={(e) => removeAttach(e.detail.index)}
+  on:preview={(e) => dispatch("previewMedia", { attach: e.detail.attach, attaches, originEl: e.detail.originEl })}
+/>
 
 {#if $forwardDraft && $forwardDraft.messages?.length > 0}
   <ForwardPreview />
@@ -1949,9 +1953,7 @@
 
         {#if newMessage.length || attaches.length || ($forwardDraft && $forwardDraft.messages?.length > 0)}
           <button class="button send-button" class:disabled-cooldown={isLockedOut} disabled={isLockedOut} type="button" on:click={onSend} title="Отправить">
-            <svg viewBox="0 0 24 24" width="22" height="22">
-              <path fill="currentColor" d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
-            </svg>
+            <span class="send-icon" aria-hidden="true"></span>
           </button>
         {:else}
           <button
@@ -2237,6 +2239,15 @@
   .send-button {
     color: var(--accent-primary);
     background: var(--accent-subtle);
+  }
+
+  .send-icon {
+    width: 22px;
+    height: 22px;
+    background-color: currentColor;
+    -webkit-mask: url("/icons/send.svg") no-repeat center / contain;
+    mask: url("/icons/send.svg") no-repeat center / contain;
+    display: inline-block;
   }
 
   .send-button:hover {

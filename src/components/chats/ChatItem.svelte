@@ -229,6 +229,7 @@
       contactId={peerId}
       {selectionMode}
       {isSelected}
+      allowStories={!selectionMode}
     />
   </div>
 
