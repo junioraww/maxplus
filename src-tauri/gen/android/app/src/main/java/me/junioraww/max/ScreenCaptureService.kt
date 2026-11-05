@@ -1,4 +1,4 @@
-package org.meowkie.max
+package me.junioraww.max
 
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -32,9 +32,9 @@ import java.util.concurrent.CopyOnWriteArrayList
 class ScreenCaptureService : Service() {
     companion object {
         const val NOTIFICATION_ID = 987655
-        const val CHANNEL_ID = "org.meowkie.max.SCREEN_CAPTURE"
-        const val ACTION_START = "org.meowkie.max.ACTION_START_SCREEN_CAPTURE"
-        const val ACTION_STOP = "org.meowkie.max.ACTION_STOP_SCREEN_CAPTURE"
+        const val CHANNEL_ID = "me.junioraww.max.SCREEN_CAPTURE"
+        const val ACTION_START = "me.junioraww.max.ACTION_START_SCREEN_CAPTURE"
+        const val ACTION_STOP = "me.junioraww.max.ACTION_STOP_SCREEN_CAPTURE"
 
         @Volatile
         var pendingResultCode: Int = 0

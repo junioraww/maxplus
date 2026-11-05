@@ -1,4 +1,4 @@
-package org.meowkie.max
+package me.junioraww.max
 
 import android.content.Context
 import android.graphics.*

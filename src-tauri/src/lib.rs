@@ -1,6 +1,7 @@
 mod proxy_auth;
 mod commands;
 mod crypto;
+pub mod daemon;
 mod files;
 pub mod media_remux;
 mod media_validator;

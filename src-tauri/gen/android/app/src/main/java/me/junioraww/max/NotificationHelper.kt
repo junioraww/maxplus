@@ -1,10 +1,11 @@
-package org.meowkie.max
+package me.junioraww.max
 
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ShortcutInfo
 import android.graphics.Typeface
 import android.os.Build
 import android.text.SpannableStringBuilder
@@ -15,6 +16,9 @@ import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.Person
 import androidx.core.app.RemoteInput
+import androidx.core.content.LocusIdCompat
+import androidx.core.content.pm.ShortcutInfoCompat
+import androidx.core.content.pm.ShortcutManagerCompat
 import androidx.core.graphics.drawable.IconCompat
 import org.json.JSONArray
 import org.json.JSONObject
@@ -35,8 +39,12 @@ class NotificationHelper(private val ctx: Context) {
   companion object {
     const val CHANNEL_ID = "MESSAGES_CHANNEL_ID"
     private const val CHANNEL_NAME = "Сообщения"
-    private const val PREFS = "max_push_history"
+    private const val PREFS = "maxplus_notifications_store"
+    private const val LEGACY_PREFS = "max_push_history"
     private const val HISTORY_LIMIT = 10
+
+    @Volatile
+    var customContext: Context? = null
 
     @JvmStatic
     fun showNotificationDirect(chatId: Long, title: String, text: String, senderId: String, account: Long) {
@@ -50,7 +58,7 @@ class NotificationHelper(private val ctx: Context) {
 
     @JvmStatic
     fun showNotificationDirect(chatId: Long, title: String, text: String, senderId: String, account: Long, senderName: String, isGroup: Boolean) {
-      val ctx = MainActivity.appContext ?: MainActivity.instance?.applicationContext
+      val ctx = customContext ?: MainActivity.appContext ?: MainActivity.instance?.applicationContext
       if (ctx == null) {
         Log.e("MaxPlus", "showNotificationDirect: no Context available")
         return
@@ -78,7 +86,7 @@ class NotificationHelper(private val ctx: Context) {
 
     @JvmStatic
     fun cancelNotificationDirect(chatId: Long) {
-      val ctx = MainActivity.appContext ?: MainActivity.instance?.applicationContext
+      val ctx = customContext ?: MainActivity.appContext ?: MainActivity.instance?.applicationContext
       if (ctx == null) {
         Log.e("MaxPlus", "cancelNotificationDirect: no Context available")
         return
@@ -88,17 +96,27 @@ class NotificationHelper(private val ctx: Context) {
       val notifId = (chatId and 0x7fffffff).toInt()
       mgr.cancel(notifId)
       val prefs = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-      prefs.edit().remove("hist_$chatId").remove("meta_$chatId").apply()
+      prefs.edit()
+        .remove("dialog_cache_$chatId")
+        .remove("dialog_meta_$chatId")
+        .apply()
+
+      try {
+        ctx.getSharedPreferences(LEGACY_PREFS, Context.MODE_PRIVATE).edit()
+          .remove("hist_$chatId")
+          .remove("meta_$chatId")
+          .apply()
+      } catch (_: Throwable) {}
     }
   }
   
-  private data class Hist(
+  private data class NotificationMessage(
     val text: String,
     val senderId: String,
     val senderName: String,
-    val ts: Long,
-    val mid: String,
-    val deleted: Boolean
+    val timestamp: Long,
+    val messageId: String,
+    val isDeleted: Boolean
   )
   
   private fun manager() = ctx.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
@@ -143,17 +161,24 @@ class NotificationHelper(private val ctx: Context) {
       Log.e("MaxPlus", "isChatMutedNative error", e)
     }
 
-
     val mid = data["msgid"] ?: data["mid"] ?: ""
     val text = data["msg"] ?: data["body"] ?: data["text"] ?: "Сообщение"
     val senderId = data["suid"] ?: ""
     val senderIdLong = senderId.toLongOrNull() ?: 0L
     val contactInfo = if (senderIdLong > 0L) ContactHelper.getContactInfo(ctx, account, senderIdLong) else null
+    val chatInfo = if (senderIdLong <= 0L || data["title"].isNullOrEmpty() || data["title"] == "Собеседник") {
+      ContactHelper.getContactInfo(ctx, account, chatId)
+    } else {
+      null
+    }
     val rawSenderName = data["userName"] ?: data["title"]
     val senderName = contactInfo?.name?.takeIf { it.isNotBlank() }
-      ?: rawSenderName?.takeIf { it.isNotBlank() && !it.startsWith("Пользователь ") && !it.startsWith("User ") }
+      ?: chatInfo?.name?.takeIf { it.isNotBlank() }
+      ?: rawSenderName?.takeIf { it.isNotBlank() && !it.startsWith("Пользователь ") && !it.startsWith("User ") && it != "Собеседник" }
       ?: "Собеседник"
-    val chatTitle = data["title"]?.takeIf { it.isNotBlank() } ?: senderName
+    val chatTitle = data["title"]?.takeIf { it.isNotBlank() && it != "Собеседник" }
+      ?: chatInfo?.name?.takeIf { it.isNotBlank() }
+      ?: senderName
     val ts = data["ctime"]?.toLongOrNull() ?: System.currentTimeMillis()
     
     val isGroup = (if (data.containsKey("isGroup")) {
@@ -168,7 +193,7 @@ class NotificationHelper(private val ctx: Context) {
 
     ensureChannel()
     
-    val history = appendHistory(chatId, Hist(text, senderId, senderName, ts, mid, false))
+    val history = appendMessage(chatId, NotificationMessage(text, senderId, senderName, ts, mid, false))
     saveMeta(chatId, chatTitle, account, isGroup)
     render(chatId, chatTitle, account, isGroup, history, alertOnce = false)
   }
@@ -179,15 +204,15 @@ class NotificationHelper(private val ctx: Context) {
     val mid = data["msgid"] ?: data["mid"] ?: return
     val newText = data["msg"] ?: data["body"] ?: data["text"] ?: return
     
-    val history = loadHistory(chatId).toMutableList()
-    val index = history.indexOfLast { it.mid == mid }
+    val history = loadMessages(chatId).toMutableList()
+    val index = history.indexOfLast { it.messageId == mid }
     if (index < 0) return
       
     val old = history[index]
-    if (old.deleted || old.text == newText) return
+    if (old.isDeleted || old.text == newText) return
       
     history[index] = old.copy(text = newText)
-    saveHistory(chatId, history)
+    saveMessages(chatId, history)
     
     val (title, account, isGroup) = loadMeta(chatId)
     render(chatId, title, account, isGroup, history, alertOnce = true)
@@ -198,12 +223,12 @@ class NotificationHelper(private val ctx: Context) {
     val chatId = (data["mc"] ?: data["chat_id"])?.toLongOrNull() ?: return
     val mid = data["msgid"] ?: data["mid"] ?: return
     
-    val history = loadHistory(chatId).toMutableList()
-    val index = history.indexOfLast { it.mid == mid }
+    val history = loadMessages(chatId).toMutableList()
+    val index = history.indexOfLast { it.messageId == mid }
     if (index < 0) return
       
-    history[index] = history[index].copy(deleted = true)
-    saveHistory(chatId, history)
+    history[index] = history[index].copy(isDeleted = true)
+    saveMessages(chatId, history)
     
     val (title, account, isGroup) = loadMeta(chatId)
     render(chatId, title, account, isGroup, history, alertOnce = true)
@@ -211,21 +236,44 @@ class NotificationHelper(private val ctx: Context) {
   
   fun handleOutgoingReply(chatId: Long, replyText: String) {
     val (title, account, isGroup) = loadMeta(chatId)
-    val history = appendHistory(
+    val history = appendMessage(
       chatId,
-      Hist(
+      NotificationMessage(
         text = replyText,
         senderId = "me",
         senderName = "Вы",
-        ts = System.currentTimeMillis(),
-        mid = "",
-        deleted = false
+        timestamp = System.currentTimeMillis(),
+        messageId = "",
+        isDeleted = false
       )
     )
     render(chatId, title, account, isGroup, history, alertOnce = true)
   }
 
-  private fun render(chatId: Long, title: String, account: Long, isGroup: Boolean, history: List<Hist>, alertOnce: Boolean) {
+  private fun updateConversationShortcut(chatId: Long, chatTitle: String, conversationPerson: Person) {
+    val shortcutKey = "dialog_$chatId"
+    try {
+      val openIntent = (ctx.packageManager.getLaunchIntentForPackage(ctx.packageName) ?: Intent(ctx, MainActivity::class.java)).apply {
+        action = Intent.ACTION_VIEW
+        flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+        putExtra("chatId", chatId)
+      }
+      val shortcut = ShortcutInfoCompat.Builder(ctx, shortcutKey)
+        .setShortLabel(chatTitle)
+        .setLongLived(true)
+        .setIntent(openIntent)
+        .setPerson(conversationPerson)
+        .setIcon(conversationPerson.icon)
+        .setCategories(setOf(ShortcutInfo.SHORTCUT_CATEGORY_CONVERSATION))
+        .setLocusId(LocusIdCompat(shortcutKey))
+        .build()
+      ShortcutManagerCompat.pushDynamicShortcut(ctx, shortcut)
+    } catch (e: Throwable) {
+      Log.w("MaxPlus", "updateConversationShortcut error", e)
+    }
+  }
+
+  private fun render(chatId: Long, title: String, account: Long, isGroup: Boolean, history: List<NotificationMessage>, alertOnce: Boolean) {
     if (history.isEmpty()) return
     val notifId = (chatId and 0x7fffffff).toInt()
     Log.d("MaxPlus", "render: chatId=$chatId, notifId=$notifId, account=$account, isGroup=$isGroup, count=${history.size}")
@@ -241,38 +289,50 @@ class NotificationHelper(private val ctx: Context) {
       style.conversationTitle = title
     }
     
-    for (h in history) {
-      val isMe = h.senderId == "me" || h.senderName == "Вы"
+    var newestPerson: Person? = null
+    for (m in history) {
+      val isMe = m.senderId == "me" || m.senderName == "Вы"
       val person = if (isMe) {
         null
       } else {
-        val senderIdLong = h.senderId.toLongOrNull() ?: chatId
-        val avatarBitmap = AvatarHelper.getAvatar(ctx, senderIdLong, h.senderName, null, account)
+        val senderIdLong = m.senderId.toLongOrNull() ?: chatId
+        val avatarBitmap = AvatarHelper.getAvatar(ctx, senderIdLong, m.senderName, null, account)
         val displayName = if (isActuallyGroup) {
-          if (h.senderName.isNotEmpty() && h.senderName != title) h.senderName else null
+          if (m.senderName.isNotEmpty() && m.senderName != title) m.senderName else null
         } else {
           title
         }
-        Person.Builder()
+        val p = Person.Builder()
           .setName(displayName)
-          .setKey(h.senderId)
+          .setKey(m.senderId)
           .setIcon(IconCompat.createWithBitmap(avatarBitmap))
           .build()
+        if (m == newest) {
+          newestPerson = p
+        }
+        p
       }
       
-      val textFormatted = if (h.deleted) {
-        SpannableStringBuilder("Удалено: ${h.text}").apply {
+      val textFormatted = if (m.isDeleted) {
+        SpannableStringBuilder("Удалено: ${m.text}").apply {
           setSpan(StrikethroughSpan(), 9, length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
           setSpan(StyleSpan(Typeface.ITALIC), 0, length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
         }
       } else {
-        h.text
+        m.text
       }
       
-      style.addMessage(textFormatted, h.ts, person)
+      style.addMessage(textFormatted, m.timestamp, person)
     }
     
     val chatAvatar = AvatarHelper.getAvatar(ctx, chatId, title, null, account)
+    val shortcutKey = "dialog_$chatId"
+    val conversationPerson = newestPerson ?: Person.Builder()
+      .setName(title)
+      .setKey(chatId.toString())
+      .setIcon(IconCompat.createWithBitmap(chatAvatar))
+      .build()
+    updateConversationShortcut(chatId, title, conversationPerson)
     
     val launchIntent = ctx.packageManager.getLaunchIntentForPackage(ctx.packageName) ?: Intent(ctx, MainActivity::class.java)
     launchIntent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
@@ -293,6 +353,8 @@ class NotificationHelper(private val ctx: Context) {
       .setOnlyAlertOnce(alertOnce)
       .setPriority(NotificationCompat.PRIORITY_HIGH)
       .setCategory(NotificationCompat.CATEGORY_MESSAGE)
+      .setShortcutId(shortcutKey)
+      .setLocusId(LocusIdCompat(shortcutKey))
       .setAllowSystemGeneratedContextualActions(false)
     
     if (account != 0L) {
@@ -300,7 +362,7 @@ class NotificationHelper(private val ctx: Context) {
         action = "${ctx.packageName}.ACTION_REPLY"
         putExtra("account", account)
         putExtra("chatId", chatId)
-        putExtra("mid", newest.mid.toLongOrNull() ?: 0L)
+        putExtra("mid", newest.messageId.toLongOrNull() ?: 0L)
         putExtra("notificationId", notifId)
       }
       
@@ -331,49 +393,60 @@ class NotificationHelper(private val ctx: Context) {
   
   private fun prefs() = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
   
-  private fun loadHistory(chatId: Long): List<Hist> {
-    val raw = prefs().getString("hist_$chatId", "[]") ?: "[]"
+  private fun loadMessages(chatId: Long): List<NotificationMessage> {
+    var raw = prefs().getString("dialog_cache_$chatId", null)
+    if (raw == null) {
+      raw = try {
+        ctx.getSharedPreferences(LEGACY_PREFS, Context.MODE_PRIVATE).getString("hist_$chatId", "[]")
+      } catch (_: Throwable) {
+        "[]"
+      } ?: "[]"
+    }
+
     val arr = JSONArray(raw)
-    val list = mutableListOf<Hist>()
+    val list = mutableListOf<NotificationMessage>()
     for (i in 0 until arr.length()) {
       val obj = arr.getJSONObject(i)
-      list.add(Hist(
-        obj.getString("t"),
-        obj.getString("k"),
-        obj.getString("n"),
-        obj.getLong("ts"),
-        obj.getString("m"),
-        obj.getBoolean("d")
-      ))
+      val text = obj.optString("text", obj.optString("t", ""))
+      val senderId = obj.optString("sender_id", obj.optString("k", ""))
+      val senderName = obj.optString("sender_name", obj.optString("n", ""))
+      val timestamp = if (obj.has("timestamp")) obj.getLong("timestamp") else obj.optLong("ts", 0L)
+      val messageId = obj.optString("message_id", obj.optString("m", ""))
+      val isDeleted = if (obj.has("is_deleted")) obj.getBoolean("is_deleted") else obj.optBoolean("d", false)
+
+      list.add(NotificationMessage(text, senderId, senderName, timestamp, messageId, isDeleted))
     }
     return list
   }
   
-  private fun saveHistory(chatId: Long, items: List<Hist>) {
+  private fun saveMessages(chatId: Long, items: List<NotificationMessage>) {
     val arr = JSONArray()
-    for (h in items) {
+    for (m in items) {
       arr.put(JSONObject().apply {
-        put("t", h.text)
-        put("k", h.senderId)
-        put("n", h.senderName)
-        put("ts", h.ts)
-        put("m", h.mid)
-        put("d", h.deleted)
+        put("text", m.text)
+        put("sender_id", m.senderId)
+        put("sender_name", m.senderName)
+        put("timestamp", m.timestamp)
+        put("message_id", m.messageId)
+        put("is_deleted", m.isDeleted)
       })
     }
-    prefs().edit().putString("hist_$chatId", arr.toString()).apply()
+    prefs().edit().putString("dialog_cache_$chatId", arr.toString()).apply()
   }
   
-  private fun appendHistory(chatId: Long, item: Hist): List<Hist> {
-    val items = loadHistory(chatId).toMutableList()
-    items.add(item)
-    while (items.size > HISTORY_LIMIT) items.removeAt(0)
-    saveHistory(chatId, items)
-    return items
+  private fun appendMessage(chatId: Long, item: NotificationMessage): List<NotificationMessage> {
+    val queue = ArrayDeque(loadMessages(chatId))
+    queue.addLast(item)
+    while (queue.size > HISTORY_LIMIT) {
+      queue.removeFirst()
+    }
+    val result = queue.toList()
+    saveMessages(chatId, result)
+    return result
   }
   
   private fun saveMeta(chatId: Long, title: String, account: Long, isGroup: Boolean) {
-    prefs().edit().putString("meta_$chatId", JSONObject().apply {
+    prefs().edit().putString("dialog_meta_$chatId", JSONObject().apply {
       put("title", title)
       put("account", account)
       put("isGroup", isGroup)
@@ -381,7 +454,15 @@ class NotificationHelper(private val ctx: Context) {
   }
   
   private fun loadMeta(chatId: Long): Triple<String, Long, Boolean> {
-    val raw = prefs().getString("meta_$chatId", null) ?: return Triple("Чат", 0L, false)
+    var raw = prefs().getString("dialog_meta_$chatId", null)
+    if (raw == null) {
+      raw = try {
+        ctx.getSharedPreferences(LEGACY_PREFS, Context.MODE_PRIVATE).getString("meta_$chatId", null)
+      } catch (_: Throwable) {
+        null
+      }
+    }
+    if (raw == null) return Triple("Чат", 0L, false)
     val obj = JSONObject(raw)
     return Triple(
       obj.optString("title", "Чат"),
