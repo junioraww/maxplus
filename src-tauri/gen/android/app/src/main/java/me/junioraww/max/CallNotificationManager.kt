@@ -1,4 +1,4 @@
-package org.meowkie.max
+package me.junioraww.max
 
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -22,11 +22,11 @@ import androidx.core.graphics.drawable.IconCompat
 object CallNotificationManager {
   const val CALL_NOTIFICATION_ID = 987654
   const val ONGOING_CALL_NOTIFICATION_ID = 987655
-  const val CALL_CHANNEL_ID = "org.meowkie.max.CALLS"
+  const val CALL_CHANNEL_ID = "me.junioraww.max.CALLS"
   private const val CALL_CHANNEL_NAME = "Входящие вызовы"
-  const val ONGOING_CALL_CHANNEL_ID = "org.meowkie.max.ONGOING_CALLS"
+  const val ONGOING_CALL_CHANNEL_ID = "me.junioraww.max.ONGOING_CALLS"
   private const val ONGOING_CALL_CHANNEL_NAME = "Активный звонок"
-  private const val PREFS_NAME = "org_meowkie_max_call_prefs"
+  private const val PREFS_NAME = "me_junioraww_max_call_prefs"
   private const val KEY_SOUND = "call_sound"
   private const val KEY_VIBRATION = "call_vibration"
   private const val KEY_ENABLED = "call_enabled"
@@ -37,13 +37,16 @@ object CallNotificationManager {
   @Volatile
   private var activeVibrator: Vibrator? = null
 
+  @Volatile
+  var customContext: Context? = null
+
   fun getPrefs(context: Context): SharedPreferences {
     return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
   }
 
   @JvmStatic
   fun syncCallSettings(sound: Boolean, vibration: Boolean, enabled: Boolean) {
-    val ctx = MainActivity.appContext ?: MainActivity.instance?.applicationContext ?: return
+    val ctx = customContext ?: MainActivity.appContext ?: MainActivity.instance?.applicationContext ?: return
     getPrefs(ctx).edit()
       .putBoolean(KEY_SOUND, sound)
       .putBoolean(KEY_VIBRATION, vibration)
@@ -53,19 +56,19 @@ object CallNotificationManager {
 
   @JvmStatic
   fun cancelCallNotificationFromNative() {
-    val ctx = MainActivity.appContext ?: MainActivity.instance?.applicationContext ?: return
+    val ctx = customContext ?: MainActivity.appContext ?: MainActivity.instance?.applicationContext ?: return
     cancelCallNotification(ctx)
   }
 
   @JvmStatic
   fun showOngoingCallNotificationFromNative(peerId: Long, peerName: String, startTimeMs: Long, account: Long) {
-    val ctx = MainActivity.appContext ?: MainActivity.instance?.applicationContext ?: return
+    val ctx = customContext ?: MainActivity.appContext ?: MainActivity.instance?.applicationContext ?: return
     showOngoingCallNotification(ctx, peerId, peerName, startTimeMs, account)
   }
 
   @JvmStatic
   fun cancelOngoingCallNotificationFromNative() {
-    val ctx = MainActivity.appContext ?: MainActivity.instance?.applicationContext ?: return
+    val ctx = customContext ?: MainActivity.appContext ?: MainActivity.instance?.applicationContext ?: return
     cancelOngoingCallNotification(ctx)
   }
 

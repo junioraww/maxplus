@@ -1,4 +1,4 @@
-package org.meowkie.max
+package me.junioraww.max
 
 import android.app.Activity
 import android.content.Context
@@ -15,6 +15,11 @@ class MainActivity : TauriActivity() {
   companion object {
     @Volatile var instance: MainActivity? = null
     @Volatile var appContext: Context? = null
+
+    @JvmStatic
+    fun getApplicationContextStatic(): Context? {
+      return appContext ?: instance?.applicationContext
+    }
 
     @JvmStatic
     fun startScreenCaptureStatic() {
@@ -192,7 +197,11 @@ class MainActivity : TauriActivity() {
     super.onCreate(savedInstanceState)
     instance = this
     appContext = applicationContext
+    NotificationHelper.customContext = applicationContext
+    CallNotificationManager.customContext = applicationContext
     AppState.isAppAlive = true
+    MaxBackgroundService.start(applicationContext)
+    MaxDaemonWatchdogWorker.schedule(applicationContext)
     Log.d("MaxPlus", "MainActivity.onCreate")
 
     ViewCompat.setOnApplyWindowInsetsListener(window.decorView) { _, windowInsets ->
@@ -242,13 +251,13 @@ class MainActivity : TauriActivity() {
 
   override fun onResume() {
     super.onResume()
-    AppState.isAppInForeground = true
+    AppState.setAppInForeground(true)
     applyInsetsToWebView()
   }
 
   override fun onPause() {
     super.onPause()
-    AppState.isAppInForeground = false
+    AppState.setAppInForeground(false)
   }
   
   override fun onDestroy() {
@@ -258,6 +267,6 @@ class MainActivity : TauriActivity() {
       instance = null
     }
     AppState.isAppAlive = false
-    AppState.isAppInForeground = false
+    AppState.setAppInForeground(false)
   }
 }

@@ -41,6 +41,20 @@ fn get_background_sync_mutex() -> &'static tokio::sync::Mutex<()> {
 
 #[cfg(target_os = "android")]
 #[no_mangle]
+pub extern "system" fn Java_me_junioraww_max_ReplyReceiver_sendReplyNative<'local>(
+    unowned_env: EnvUnowned<'local>,
+    this: JObject<'local>,
+    account: i64,
+    chat_id: i64,
+    mid: i64,
+    text: JString<'local>,
+    app_dir: JString<'local>,
+) -> jboolean {
+    Java_org_meowkie_max_ReplyReceiver_sendReplyNative(unowned_env, this, account, chat_id, mid, text, app_dir)
+}
+
+#[cfg(target_os = "android")]
+#[no_mangle]
 pub extern "system" fn Java_org_meowkie_max_ReplyReceiver_sendReplyNative<'local>(
     mut unowned_env: EnvUnowned<'local>,
     _this: JObject<'local>,
@@ -166,8 +180,7 @@ pub extern "system" fn Java_org_meowkie_max_ReplyReceiver_sendReplyNative<'local
     res.unwrap_or(false)
 }
 
-#[cfg(target_os = "android")]
-fn extract_contact_name(val: &serde_json::Value) -> Option<String> {
+pub fn extract_contact_name(val: &serde_json::Value) -> Option<String> {
     if let Some(names) = val.get("names").and_then(|n| n.as_array()) {
         if let Some(first) = names.first() {
             let fn_str = first.get("firstName").and_then(|v| v.as_str()).unwrap_or("").trim();
@@ -200,8 +213,7 @@ fn extract_contact_name(val: &serde_json::Value) -> Option<String> {
     None
 }
 
-#[cfg(target_os = "android")]
-fn extract_avatar_url(val: &serde_json::Value) -> Option<String> {
+pub fn extract_avatar_url(val: &serde_json::Value) -> Option<String> {
     val.get("baseRawUrl")
         .or_else(|| val.get("baseUrl"))
         .or_else(|| val.get("avatar"))
@@ -211,6 +223,51 @@ fn extract_avatar_url(val: &serde_json::Value) -> Option<String> {
         .or_else(|| val.get("iconUrl"))
         .and_then(|v| v.as_str())
         .map(|s| s.to_string())
+}
+
+pub async fn ensure_avatar_cached(
+    url: &str,
+    cache_dir: &std::path::Path,
+) -> Option<String> {
+    let storage = crate::stores::Storage::new(None);
+    let index_path = cache_dir.join("index");
+    if let Some(index) = storage.load(&index_path) {
+        if let Some(entry) = index.get(url) {
+            if let Some(p) = entry.get(0).and_then(|v| v.as_str()) {
+                let f = std::path::PathBuf::from(p);
+                if f.exists() {
+                    return Some(f.to_string_lossy().to_string());
+                }
+            }
+        }
+    }
+
+    let files_dir = cache_dir.join("files");
+    let _ = std::fs::create_dir_all(&files_dir);
+
+    let hashed_name = crate::stores::hash(url);
+    let file_path = files_dir.join(&hashed_name);
+
+    if file_path.exists() {
+        return Some(file_path.to_string_lossy().to_string());
+    }
+
+    if let Ok(resp) = reqwest::get(url).await {
+        if resp.status().is_success() {
+            if let Ok(bytes) = resp.bytes().await {
+                if std::fs::write(&file_path, bytes).is_ok() {
+                    let mut index = storage.load(&index_path).unwrap_or_else(|| serde_json::json!({}));
+                    if let Some(map) = index.as_object_mut() {
+                        map.insert(url.to_string(), serde_json::json!([file_path.to_string_lossy()]));
+                        let _ = storage.save(&index_path, &index);
+                    }
+                    return Some(file_path.to_string_lossy().to_string());
+                }
+            }
+        }
+    }
+
+    None
 }
 
 #[cfg(target_os = "android")]
@@ -361,6 +418,18 @@ pub fn resolve_contact_info_internal(
 
 #[cfg(target_os = "android")]
 #[no_mangle]
+pub extern "system" fn Java_me_junioraww_max_AvatarHelper_getAvatarPathNative<'local>(
+    unowned_env: EnvUnowned<'local>,
+    this: JObject<'local>,
+    account: i64,
+    id: i64,
+    app_dir: JString<'local>,
+) -> JString<'local> {
+    Java_org_meowkie_max_AvatarHelper_getAvatarPathNative(unowned_env, this, account, id, app_dir)
+}
+
+#[cfg(target_os = "android")]
+#[no_mangle]
 pub extern "system" fn Java_org_meowkie_max_AvatarHelper_getAvatarPathNative<'local>(
     mut unowned_env: EnvUnowned<'local>,
     _this: JObject<'local>,
@@ -390,6 +459,18 @@ pub extern "system" fn Java_org_meowkie_max_AvatarHelper_getAvatarPathNative<'lo
         jni::Outcome::Ok(jstr) => jstr,
         _ => JString::default(),
     }
+}
+
+#[cfg(target_os = "android")]
+#[no_mangle]
+pub extern "system" fn Java_me_junioraww_max_ContactHelper_getContactInfoNative<'local>(
+    unowned_env: EnvUnowned<'local>,
+    this: JObject<'local>,
+    account: i64,
+    id: i64,
+    app_dir: JString<'local>,
+) -> JString<'local> {
+    Java_org_meowkie_max_ContactHelper_getContactInfoNative(unowned_env, this, account, id, app_dir)
 }
 
 #[cfg(target_os = "android")]
@@ -427,6 +508,18 @@ pub extern "system" fn Java_org_meowkie_max_ContactHelper_getContactInfoNative<'
         jni::Outcome::Ok(jstr) => jstr,
         _ => JString::default(),
     }
+}
+
+#[cfg(target_os = "android")]
+#[no_mangle]
+pub extern "system" fn Java_me_junioraww_max_NotificationHelper_isChatMutedNative<'local>(
+    unowned_env: EnvUnowned<'local>,
+    this: JObject<'local>,
+    account: i64,
+    chat_id: i64,
+    app_dir: JString<'local>,
+) -> jboolean {
+    Java_org_meowkie_max_NotificationHelper_isChatMutedNative(unowned_env, this, account, chat_id, app_dir)
 }
 
 #[cfg(target_os = "android")]
@@ -477,6 +570,17 @@ pub extern "system" fn Java_org_meowkie_max_NotificationHelper_isChatMutedNative
 
 #[cfg(target_os = "android")]
 #[no_mangle]
+pub extern "system" fn Java_me_junioraww_max_NotificationHelper_isNotificationsEnabledNative<'local>(
+    unowned_env: EnvUnowned<'local>,
+    this: JObject<'local>,
+    account: i64,
+    app_dir: JString<'local>,
+) -> jboolean {
+    Java_org_meowkie_max_NotificationHelper_isNotificationsEnabledNative(unowned_env, this, account, app_dir)
+}
+
+#[cfg(target_os = "android")]
+#[no_mangle]
 pub extern "system" fn Java_org_meowkie_max_NotificationHelper_isNotificationsEnabledNative<'local>(
     mut unowned_env: EnvUnowned<'local>,
     _this: JObject<'local>,
@@ -509,6 +613,18 @@ pub extern "system" fn Java_org_meowkie_max_NotificationHelper_isNotificationsEn
     }));
 
     res.unwrap_or(true)
+}
+
+#[cfg(target_os = "android")]
+#[no_mangle]
+pub extern "system" fn Java_me_junioraww_max_NotificationHelper_isChatGroupNative<'local>(
+    unowned_env: EnvUnowned<'local>,
+    this: JObject<'local>,
+    account: i64,
+    chat_id: i64,
+    app_dir: JString<'local>,
+) -> jboolean {
+    Java_org_meowkie_max_NotificationHelper_isChatGroupNative(unowned_env, this, account, chat_id, app_dir)
 }
 
 #[cfg(target_os = "android")]
@@ -578,6 +694,16 @@ pub fn check_pending_call_action() -> Option<serde_json::Value> {
 
 #[cfg(target_os = "android")]
 #[no_mangle]
+pub extern "system" fn Java_me_junioraww_max_MainActivity_notifyChatClickedNative<'local>(
+    unowned_env: EnvUnowned<'local>,
+    this: JObject<'local>,
+    chat_id: i64,
+) {
+    Java_org_meowkie_max_MainActivity_notifyChatClickedNative(unowned_env, this, chat_id);
+}
+
+#[cfg(target_os = "android")]
+#[no_mangle]
 pub extern "system" fn Java_org_meowkie_max_MainActivity_notifyChatClickedNative<'local>(
     _unowned_env: EnvUnowned<'local>,
     _this: JObject<'local>,
@@ -589,6 +715,17 @@ pub extern "system" fn Java_org_meowkie_max_MainActivity_notifyChatClickedNative
             let _ = app.emit("open_chat", chat_id);
         }
     }));
+}
+
+#[cfg(target_os = "android")]
+#[no_mangle]
+pub extern "system" fn Java_me_junioraww_max_MainActivity_notifyCallActionNative<'local>(
+    unowned_env: EnvUnowned<'local>,
+    this: JObject<'local>,
+    action: JString<'local>,
+    payload: JString<'local>,
+) {
+    Java_org_meowkie_max_MainActivity_notifyCallActionNative(unowned_env, this, action, payload);
 }
 
 #[cfg(target_os = "android")]
@@ -743,6 +880,17 @@ pub async fn reject_call(
 
 #[cfg(target_os = "android")]
 #[no_mangle]
+pub extern "system" fn Java_me_junioraww_max_CallDismissReceiver_rejectCallNative<'local>(
+    unowned_env: EnvUnowned<'local>,
+    class: jni::objects::JClass<'local>,
+    vcp: JString<'local>,
+    conversation_id: JString<'local>,
+) {
+    Java_org_meowkie_max_CallDismissReceiver_rejectCallNative(unowned_env, class, vcp, conversation_id);
+}
+
+#[cfg(target_os = "android")]
+#[no_mangle]
 pub extern "system" fn Java_org_meowkie_max_CallDismissReceiver_rejectCallNative<'local>(
     mut unowned_env: EnvUnowned<'local>,
     _class: jni::objects::JClass<'local>,
@@ -784,6 +932,15 @@ static GLOBAL_CALL_MGR_CLASS: std::sync::OnceLock<jni::refs::Global<jni::objects
 
 #[cfg(target_os = "android")]
 #[no_mangle]
+pub extern "system" fn Java_me_junioraww_max_MainActivity_initJni<'local>(
+    unowned_env: EnvUnowned<'local>,
+    this: JObject<'local>,
+) {
+    Java_org_meowkie_max_MainActivity_initJni(unowned_env, this)
+}
+
+#[cfg(target_os = "android")]
+#[no_mangle]
 pub extern "system" fn Java_org_meowkie_max_MainActivity_initJni<'local>(
     mut unowned_env: EnvUnowned<'local>,
     _this: JObject<'local>,
@@ -794,18 +951,23 @@ pub extern "system" fn Java_org_meowkie_max_MainActivity_initJni<'local>(
             let _ = GLOBAL_JVM.set(vm);
             android_log(4, "MaxPlusJNI", "initJni: JVM saved");
 
-            let helper_class = env.find_class(jni_str!("org/meowkie/max/NotificationHelper"))
+            let helper_class = env.find_class(jni_str!("me/junioraww/max/NotificationHelper"))
+                .or_else(|_| env.find_class(jni_str!("org/meowkie/max/NotificationHelper")))
                 .or_else(|_| env.find_class(jni_str!("ru/oneme/app/NotificationHelper")))?;
             let global_helper = env.new_global_ref(helper_class)?;
             let _ = GLOBAL_NOTIFICATION_CLASS.set(global_helper);
 
-            if let Ok(main_activity_class) = env.find_class(jni_str!("org/meowkie/max/MainActivity")) {
+            if let Ok(main_activity_class) = env.find_class(jni_str!("me/junioraww/max/MainActivity"))
+                .or_else(|_| env.find_class(jni_str!("org/meowkie/max/MainActivity")))
+                .or_else(|_| env.find_class(jni_str!("ru/oneme/app/MainActivity"))) {
                 if let Ok(global_main) = env.new_global_ref(main_activity_class) {
                     let _ = GLOBAL_MAIN_ACTIVITY_CLASS.set(global_main);
                 }
             }
 
-            if let Ok(call_mgr_class) = env.find_class(jni_str!("org/meowkie/max/CallNotificationManager")) {
+            if let Ok(call_mgr_class) = env.find_class(jni_str!("me/junioraww/max/CallNotificationManager"))
+                .or_else(|_| env.find_class(jni_str!("org/meowkie/max/CallNotificationManager")))
+                .or_else(|_| env.find_class(jni_str!("ru/oneme/app/CallNotificationManager"))) {
                 if let Ok(global_call_mgr) = env.new_global_ref(call_mgr_class) {
                     let _ = GLOBAL_CALL_MGR_CLASS.set(global_call_mgr);
                 }
@@ -815,6 +977,19 @@ pub extern "system" fn Java_org_meowkie_max_MainActivity_initJni<'local>(
             Ok(())
         });
     }));
+}
+
+#[cfg(target_os = "android")]
+#[no_mangle]
+pub extern "system" fn Java_me_junioraww_max_MainActivity_notifyScreenCaptureResultNative<'local>(
+    unowned_env: EnvUnowned<'local>,
+    this: JObject<'local>,
+    success: jboolean,
+    port: i32,
+    width: i32,
+    height: i32,
+) {
+    Java_org_meowkie_max_MainActivity_notifyScreenCaptureResultNative(unowned_env, this, success, port, width, height);
 }
 
 #[cfg(target_os = "android")]
@@ -830,6 +1005,15 @@ pub extern "system" fn Java_org_meowkie_max_MainActivity_notifyScreenCaptureResu
     let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         crate::screen_capture::on_screen_capture_result(success, port, width, height);
     }));
+}
+
+#[cfg(target_os = "android")]
+#[no_mangle]
+pub extern "system" fn Java_me_junioraww_max_MainActivity_notifyScreenCaptureStoppedNative<'local>(
+    unowned_env: EnvUnowned<'local>,
+    this: JObject<'local>,
+) {
+    Java_org_meowkie_max_MainActivity_notifyScreenCaptureStoppedNative(unowned_env, this);
 }
 
 #[cfg(target_os = "android")]
