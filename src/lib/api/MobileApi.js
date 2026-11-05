@@ -120,6 +120,9 @@ export default class MobileApi extends BaseAPI {
     });
     try {
       await Promise.race([this.synchronized, timeoutPromise]);
+      if (!sessionGet("connected") || !sessionGet("sync")) {
+        throw new Error("Session is not online");
+      }
       return true;
     } finally {
       clearTimeout(timer);
@@ -484,11 +487,6 @@ export default class MobileApi extends BaseAPI {
           sessionSet("connected", true);
           if (forceSync) {
             await this.sync();
-          } else {
-            this.synchronizedPending = false;
-            if (this.resolve_sync) {
-              this.resolve_sync();
-            }
           }
           return true;
         } else {
@@ -615,10 +613,35 @@ export default class MobileApi extends BaseAPI {
       currentUser.set(accountId || accountEntry.id);
     }
 
+    const ok = await this.init(true, true);
+    if (!ok) {
+      throw new Error("Не удалось подключиться к серверу после входа");
+    }
+
     return {
       success: true,
       payload
     };
+  }
+
+  async importAccount(token, device = null) {
+    if (!token) throw new Error("Токен не указан");
+
+    let dev = device;
+    if (!dev) {
+      dev = sessionGet("device") || (await getDevice());
+      if (dev) sessionSet("device", dev);
+    }
+
+    const accountEntry = await addAccount(token, dev);
+    await setCurrentAccount(accountEntry.id);
+
+    const ok = await this.init(true, true);
+    if (!ok) {
+      throw new Error("Не удалось подключиться к серверу после импорта");
+    }
+
+    return accountEntry;
   }
 
   async handleLoginResponse(payload, fallbackToken = null) {
@@ -774,11 +797,11 @@ export default class MobileApi extends BaseAPI {
     sessionSet("sync", false);
     sessionSet("connected", false);
     this.latest_init = 0;
-    this.synchronizedPending = false;
+    this.synchronizedPending = true;
     if (this.resolve_sync) {
       this.resolve_sync();
     }
-    this.synchronized = Promise.resolve();
+    this.synchronized = new Promise((resolve) => (this.resolve_sync = resolve));
     invoke("disconnect").catch(() => {});
   }
 

@@ -18,6 +18,7 @@ export default class API {
     resendAuth() { throw "resendAuth: Unimplemented" }
     login() { throw "login: Unimplemented" }
     register() { throw "register: Unimplemented" }
+    importAccount() { throw "importAccount: Unimplemented" }
 
     sync() { throw "sync: Unimplemented" }
     getFolders() { throw "getFolders: Unimplemented" }

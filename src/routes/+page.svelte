@@ -30,6 +30,7 @@
 
   import * as Caching from "$lib/utils/caching";
   import Session, { openChat, closeSettingsPage } from "$lib/stores/session";
+  import { currentUser } from "$lib/stores/api";
   import { page } from "$app/stores";
 
   const COMPONENT_MAP = {
@@ -261,6 +262,7 @@
   });
 </script>
 
+{#if $currentUser}
 <div
   class="container"
   class:has-chat={$Session.openedChats.length > 0}
@@ -293,6 +295,7 @@
           {#if mountedCards.has(pageItem.id)}
             <svelte:component
               this={pageItem.component}
+              {...(pageItem.id === "calls" ? { isActive: activeId === "calls" } : {})}
               {...(pageItem.id === "logs" || pageItem.id === "notifications" ? { isTab: true } : {})}
             />
           {/if}
@@ -318,6 +321,7 @@
 <Panel on:open={openCard} {pages} {active} />
 <WebAppManager />
 <PluginImportModal />
+{/if}
 
 <style>
   .container {

@@ -90,10 +90,12 @@
 
     if (json.version === 1) {
       const { meta } = json;
-      const response = await addAccount(meta.token, meta.device);
-      await setCurrentAccount(response.id);
-      currentUser.set(undefined);
-      goto("/");
+      try {
+        await $API.importAccount(meta.token, meta.device);
+        goto("/");
+      } catch (e) {
+        alert(e?.message || "Не удалось подключиться к серверу с импортированным аккаунтом!");
+      }
     } else {
       return alert("Это конфиг для более новой версии Max+!")
     }
