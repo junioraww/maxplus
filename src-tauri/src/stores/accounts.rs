@@ -2,7 +2,7 @@ use tauri::{AppHandle, Manager};
 use crate::state::CryptoSession;
 use crate::AppState;
 use serde_json::{json, Value};
-use rand::Rng;
+use rand::{Rng, RngCore};
 use std::{
     collections::HashMap,
     fs,
@@ -371,6 +371,142 @@ pub async fn set_encryption(
             }
 
             migrate_all_files(&app_clone, files, &derived, false)?;
+
+            entry["encryption"] = Value::Null;
+
+            save_accounts(&app_clone, &store)?;
+
+            *app_clone.state::<AppState>().crypto.write().unwrap() = None;
+        }
+
+        if let Ok(mut guard) = ACCOUNT_CACHE.write() {
+            guard.remove(&account);
+        }
+        if let Ok(mut guard) = CACHE_INDEX_CACHE.write() {
+            guard.remove(&account);
+        }
+        if let Ok(mut guard) = CHAT_SETTINGS_CACHE.write() {
+            guard.retain(|(acc, _), _| *acc != account);
+        }
+
+        Ok(())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub fn generate_hardware_key() -> Result<String, String> {
+    let mut key = [0u8; 32];
+    rand::thread_rng().fill_bytes(&mut key);
+    Ok(hex::encode(key))
+}
+
+#[tauri::command]
+pub async fn decrypt_account_hardware(
+    app: AppHandle,
+    account: u64,
+    key: String,
+) -> Result<(), String> {
+    tokio::task::spawn_blocking(move || {
+        let key_bytes: [u8; 32] = hex::decode(&key)
+            .map_err(|e| e.to_string())?
+            .try_into()
+            .map_err(|_| "Invalid key length".to_string())?;
+
+        let store = load_accounts(&app);
+
+        let entry = store["accounts"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|x| x["id"] == account)
+            .ok_or("Account not found")?;
+
+        let encryption = &entry["encryption"];
+
+        if encryption.is_null() {
+            return Err("Account not encrypted".into());
+        }
+
+        if !verify_hash(&key_bytes, encryption["hash"].as_str().unwrap_or_default()) {
+            return Err("Wrong key".into());
+        }
+
+        *app.state::<AppState>().crypto.write().unwrap() = Some(
+            CryptoSession {
+                account,
+                key: key_bytes,
+            }
+        );
+
+        if let Ok(mut guard) = ACCOUNT_CACHE.write() {
+            guard.remove(&account);
+        }
+        if let Ok(mut guard) = CACHE_INDEX_CACHE.write() {
+            guard.remove(&account);
+        }
+
+        Ok(())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn set_hardware_encryption(
+    app: AppHandle,
+    account: u64,
+    key: String,
+    enabled: bool,
+) -> Result<(), String> {
+    let app_clone = app.clone();
+
+    tokio::task::spawn_blocking(move || {
+        let key_bytes: [u8; 32] = hex::decode(&key)
+            .map_err(|e| e.to_string())?
+            .try_into()
+            .map_err(|_| "Invalid key length".to_string())?;
+
+        let paths = Paths::new(&app_clone, account);
+        let files = collect_all_account_files(&paths);
+
+        let mut store = load_accounts(&app_clone);
+
+        let entry = store["accounts"]
+            .as_array_mut()
+            .unwrap()
+            .iter_mut()
+            .find(|x| x["id"] == account)
+            .ok_or("Account not found")?;
+
+        if enabled {
+            migrate_all_files(&app_clone, files, &key_bytes, true)?;
+
+            entry["encryption"] = json!({
+                "type": "hardware-1",
+                "hash": hash_key(&key_bytes)
+            });
+
+            save_accounts(&app_clone, &store)?;
+
+            *app_clone.state::<AppState>().crypto.write().unwrap() = Some(
+                CryptoSession {
+                    account,
+                    key: key_bytes,
+                }
+            );
+        } else {
+            let encryption = &entry["encryption"];
+
+            if !verify_hash(
+                &key_bytes,
+                encryption["hash"].as_str().ok_or("Hash not found")?,
+            ) {
+                return Err("Wrong key".into());
+            }
+
+            migrate_all_files(&app_clone, files, &key_bytes, false)?;
 
             entry["encryption"] = Value::Null;
 

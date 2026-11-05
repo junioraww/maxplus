@@ -43,7 +43,7 @@ currentUser.subscribe(async userId => {
     else if (data.encryption && !data.contact) {
       const enc = data.encryption;
 
-      if (enc.type !== "pin-1") return alert("Данные зашифрованы неизвестным способом!");
+      if (enc.type !== "pin-1" && enc.type !== "hardware-1") return alert("Данные зашифрованы неизвестным способом!");
 
       goto("/auth/lock?mode=decrypt&from=/auth/select")
       sessionSet("loaded", true);
