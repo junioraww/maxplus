@@ -34,6 +34,9 @@ export const removeAccountByUserId = async uid => {
   }
 };
 export const setEncryption = (account, key, enabled) => invoke("set_encryption", { account, key, enabled });
+export const setHardwareEncryption = (account, key, enabled) => invoke("set_hardware_encryption", { account, key, enabled });
+export const generateHardwareKey = () => invoke("generate_hardware_key");
+export const decryptHardware = (account, key) => invoke("decrypt_account_hardware", { account, key });
 export const getDatabaseFilesCount = account => invoke("get_database_files_count", { account });
 export const decrypt = (account, key) => invoke("decrypt_account", { account, key });
 export const getDevice = () => invoke("common_store_load", { store: "device" });

@@ -49,6 +49,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_os::init())
         .plugin(tauri_plugin_notifications::init())
+        .plugin(tauri_plugin_biometry::init())
         .plugin(tauri_plugin_opener::init());
 
     #[cfg(any(target_os = "android", target_os = "ios"))]
@@ -274,6 +275,9 @@ pub fn run() {
             stores::accounts::current_set,
             stores::accounts::current_account_meta,
             stores::accounts::set_encryption,
+            stores::accounts::set_hardware_encryption,
+            stores::accounts::generate_hardware_key,
+            stores::accounts::decrypt_account_hardware,
             stores::accounts::get_database_files_count,
             stores::accounts::decrypt_account,
             stores::accounts::account_update_token,

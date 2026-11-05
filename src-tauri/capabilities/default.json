@@ -8,6 +8,23 @@
     "opener:default",
     "dialog:default",
     "notifications:default",
-    "deep-link:default"
+    "deep-link:default",
+    "biometry:default",
+    {
+      "identifier": "biometry:allow-get-data",
+      "allow": [{ "domain": "ru.maxplus.keys" }]
+    },
+    {
+      "identifier": "biometry:allow-set-data",
+      "allow": [{ "domain": "ru.maxplus.keys" }]
+    },
+    {
+      "identifier": "biometry:allow-has-data",
+      "allow": [{ "domain": "ru.maxplus.keys" }]
+    },
+    {
+      "identifier": "biometry:allow-remove-data",
+      "allow": [{ "domain": "ru.maxplus.keys" }]
+    }
   ]
 }
