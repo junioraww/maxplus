@@ -3,6 +3,7 @@
   import { fly, fade, scale } from 'svelte/transition';
   import { cubicOut } from 'svelte/easing';
   import { get } from 'svelte/store';
+  import { page } from '$app/stores';
 
   import API, {
     currentSessionCalls,
@@ -92,13 +93,16 @@
     return true;
   }
 
-  onMount(async () => {
-    if (typeof window !== 'undefined') {
-      window.addEventListener('mousemove', handleWindowMouseMove);
-      window.addEventListener('mouseup', handleWindowMouseUp);
-    }
+  export let isActive = false;
 
+  $: isCardActive = isActive || $page?.url?.pathname === '/calls';
+
+  let loadingCalls = false;
+  async function loadCalls() {
+    if (loadingCalls || loading) return;
+    if (!$Session?.sync || !$Session?.connected) return;
     if (!$currentSessionCalls || !$currentSessionCalls.history) {
+      loadingCalls = true;
       loading = true;
       try {
         const calls = await $API.getCalls();
@@ -107,7 +111,19 @@
         console.error(e);
       } finally {
         loading = false;
+        loadingCalls = false;
       }
+    }
+  }
+
+  $: if (isCardActive && $Session?.sync && $Session?.connected && (!$currentSessionCalls || !$currentSessionCalls.history)) {
+    loadCalls();
+  }
+
+  onMount(async () => {
+    if (typeof window !== 'undefined') {
+      window.addEventListener('mousemove', handleWindowMouseMove);
+      window.addEventListener('mouseup', handleWindowMouseUp);
     }
 
     try {
