@@ -16,14 +16,29 @@ val tauriProperties = Properties().apply {
 
 android {
     compileSdk = 36
-    namespace = "org.meowkie.max"
+    namespace = "me.junioraww.max"
     defaultConfig {
         manifestPlaceholders["usesCleartextTraffic"] = "false"
-        applicationId = "org.meowkie.max"
+        applicationId = "me.junioraww.max"
         minSdk = 28
         targetSdk = 36
         versionCode = tauriProperties.getProperty("tauri.android.versionCode", "1").toInt()
         versionName = tauriProperties.getProperty("tauri.android.versionName", "1.0")
+    }
+
+    flavorDimensions += listOf("distribution")
+    productFlavors {
+        create("standalone") {
+            dimension = "distribution"
+            isDefault = true
+            applicationId = "me.junioraww.max"
+            buildConfigField("boolean", "USE_PUSHLESS_DAEMON", "true")
+        }
+        create("fcm") {
+            dimension = "distribution"
+            applicationId = "ru.oneme.app"
+            buildConfigField("boolean", "USE_PUSHLESS_DAEMON", "false")
+        }
     }
     
     buildFeatures {
@@ -101,6 +116,7 @@ dependencies {
     implementation("androidx.webkit:webkit:1.6.1")
     implementation("androidx.appcompat:appcompat:1.6.1")
     implementation("com.google.android.material:material:1.8.0")
+    implementation("androidx.work:work-runtime-ktx:2.9.1")
     implementation("com.google.firebase:firebase-messaging:23.4.1")
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test.ext:junit:1.1.4")

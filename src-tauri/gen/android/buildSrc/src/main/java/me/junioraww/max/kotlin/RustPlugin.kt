@@ -57,7 +57,21 @@ open class RustPlugin : Plugin<Project> {
                     description = "Build dynamic library in $profile mode for all targets"
                 }
 
-                tasks["mergeUniversal${profileCapitalized}JniLibFolders"].dependsOn(buildTask)
+                tasks.matching {
+                    it.name.startsWith("merge") &&
+                    it.name.endsWith("Universal${profileCapitalized}JniLibFolders")
+                }.configureEach {
+                    dependsOn(buildTask)
+                }
+
+                tasks.register("assembleUniversal$profileCapitalized") {
+                    dependsOn(tasks.matching {
+                        it.name.startsWith("assembleUniversal") &&
+                        it.name.endsWith(profileCapitalized) &&
+                        !it.name.contains("Test") &&
+                        it.name != "assembleUniversal$profileCapitalized"
+                    })
+                }
 
                 for (targetPair in targetsList.withIndex()) {
                     val targetName = targetPair.value
@@ -76,9 +90,21 @@ open class RustPlugin : Plugin<Project> {
                     }
 
                     buildTask.dependsOn(targetBuildTask)
-                    tasks["merge$targetArchCapitalized${profileCapitalized}JniLibFolders"].dependsOn(
-                        targetBuildTask
-                    )
+                    tasks.matching {
+                        it.name.startsWith("merge") &&
+                        it.name.endsWith("${targetArchCapitalized}${profileCapitalized}JniLibFolders")
+                    }.configureEach {
+                        dependsOn(targetBuildTask)
+                    }
+
+                    tasks.register("assemble$targetArchCapitalized$profileCapitalized") {
+                        dependsOn(tasks.matching {
+                            it.name.startsWith("assemble$targetArchCapitalized") &&
+                            it.name.endsWith(profileCapitalized) &&
+                            !it.name.contains("Test") &&
+                            it.name != "assemble$targetArchCapitalized$profileCapitalized"
+                        })
+                    }
                 }
             }
         }

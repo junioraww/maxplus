@@ -1,4 +1,4 @@
-package org.meowkie.max
+package me.junioraww.max
 
 import android.app.NotificationManager
 import android.content.BroadcastReceiver

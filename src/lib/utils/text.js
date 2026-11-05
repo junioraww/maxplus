@@ -1,4 +1,4 @@
-import { getAttachText } from "$lib/utils/attachs";
+import { getAttachText, getSystemText } from "$lib/utils/attachs";
 
 export function escapeHtml(str = "") {
   return str
@@ -11,8 +11,13 @@ export function escapeHtml(str = "") {
 
 export function getMessagePreview(message) {
   if (!message) return "";
-  const attach = getAttachText(message);
 
+  const systemText = getSystemText(message, false);
+  if (systemText) {
+    return systemText;
+  }
+
+  const attach = getAttachText(message);
   if (attach) {
     if (message.text?.length) return attach + ", " + message.text;
     return attach;

@@ -20,7 +20,7 @@ key.properties
 /.idea
 /keystore.properties
 
-/app/src/main/java/org/meowkie/max/generated
+/app/src/main/java/me/junioraww/max/generated
 /app/src/main/jniLibs/**/*.so
 /app/src/main/assets/tauri.conf.json
 /app/tauri.build.gradle.kts

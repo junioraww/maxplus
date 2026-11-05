@@ -313,7 +313,18 @@ export async function newMessage(chatId, chat, contact, message) {
   if (!isClientNotificationsEnabled()) return;
   const resolvedChat = typeof chat?.getInfo === "function" ? chat.getInfo() : chat;
   if (isChatMuted(resolvedChat || chatId)) return;
-  if (get(Session).openedChats?.some(idx => String(idx) === String(chatId))) return;
+  if (get(Session).openedChats?.some(idx => String(idx) === String(chatId))) {
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    const latestChat = getChat(chatId);
+    const currentInfo = typeof latestChat?.getInfo === "function" ? latestChat.getInfo() : (latestChat?.chatInfo ? get(latestChat.chatInfo) : null);
+    const myId = Number(get(currentUser));
+    const myMark = Number(currentInfo?.participants?.[myId] || 0);
+    const msgTime = Number(message?.time || 0);
+    const unread = Number(currentInfo?.newMessages ?? 0);
+    if ((msgTime > 0 && myMark >= msgTime) || unread === 0) {
+      return;
+    }
+  }
 
   const chatInfo = resolvedChat || {};
   let contactObj = contact;
