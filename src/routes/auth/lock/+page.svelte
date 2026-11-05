@@ -8,7 +8,15 @@
     setEncryption,
     getDatabaseFilesCount,
     decrypt,
+    generateHardwareKey,
+    setHardwareEncryption,
+    decryptHardware,
   } from "$lib/stores/accounts";
+  import {
+    storeHardwareKey,
+    retrieveHardwareKey,
+    deleteHardwareKey,
+  } from "$lib/services/hardwareSecurity";
   import {
     currentUser,
     currentUserDetails,
@@ -21,6 +29,7 @@
 
   $: from = $page.url.searchParams.get("from");
   $: mode = $page.url.searchParams.get("mode");
+  $: lockType = $page.url.searchParams.get("type");
 
   export let savedCode = null;
 
@@ -43,6 +52,10 @@
   let migrationPercent = 0;
   let unlistenProgress = null;
 
+  let currentAccount = null;
+  let isHardwareLocked = false;
+  let authenticatingHardware = false;
+
   onMount(async () => {
     unlistenProgress = await listen("encryption-migration-progress", (event) => {
       if (event.payload) {
@@ -54,6 +67,19 @@
         }
       }
     });
+
+    currentAccount = await getCurrentAccount();
+    if (currentAccount?.encryption?.type === "hardware-1") {
+      isHardwareLocked = true;
+    }
+
+    if (mode === "create" && lockType === "hardware") {
+      await setupHardwareLock();
+    } else if (mode === "disable" && isHardwareLocked) {
+      await disableHardwareLock();
+    } else if (mode !== "create" && isHardwareLocked) {
+      await unlockWithHardware();
+    }
   });
 
   onDestroy(() => {
@@ -61,6 +87,107 @@
       unlistenProgress();
     }
   });
+
+  async function setupHardwareLock() {
+    if (!currentAccount) currentAccount = await getCurrentAccount();
+    if (!currentAccount) {
+      text = "Аккаунт не найден";
+      return;
+    }
+
+    const totalFiles = await getDatabaseFilesCount(currentAccount.id).catch(() => 0);
+    migrationTotal = totalFiles;
+    migrationCurrent = 0;
+    migrationPercent = 0;
+    migrationPhase = "encrypt";
+    migrating = true;
+
+    try {
+      const rawKey = await generateHardwareKey();
+      await storeHardwareKey(currentAccount.id, rawKey);
+      await setHardwareEncryption(currentAccount.id, rawKey, true);
+      migrationCurrent = migrationTotal;
+      migrationPercent = 100;
+      await new Promise(r => setTimeout(r, 400));
+      goBack();
+    } catch (e) {
+      migrating = false;
+      text = "Ошибка настройки: " + e;
+    }
+  }
+
+  async function disableHardwareLock() {
+    if (!currentAccount) currentAccount = await getCurrentAccount();
+    if (!currentAccount) return;
+
+    authenticatingHardware = true;
+    text = "Подтвердите биометрию...";
+
+    let key;
+    try {
+      key = await retrieveHardwareKey(currentAccount.id, "Отключение шифрования");
+    } catch (e) {
+      authenticatingHardware = false;
+      text = "Биометрия отменена или не распознана";
+      return;
+    }
+
+    authenticatingHardware = false;
+    const totalFiles = await getDatabaseFilesCount(currentAccount.id).catch(() => 0);
+    migrationTotal = totalFiles;
+    migrationCurrent = 0;
+    migrationPercent = 0;
+    migrationPhase = "decrypt";
+    migrating = true;
+
+    try {
+      await setHardwareEncryption(currentAccount.id, key, false);
+      await deleteHardwareKey(currentAccount.id);
+      migrationCurrent = migrationTotal;
+      migrationPercent = 100;
+      await new Promise(r => setTimeout(r, 400));
+      goBack();
+    } catch (e) {
+      migrating = false;
+      text = "Ошибка отключения: " + e;
+    }
+  }
+
+  async function unlockWithHardware() {
+    if (!currentAccount) currentAccount = await getCurrentAccount();
+    if (!currentAccount) return;
+
+    authenticatingHardware = true;
+    text = "Ожидание биометрии...";
+
+    let key;
+    try {
+      key = await retrieveHardwareKey(currentAccount.id, "Разблокировка учетной записи");
+    } catch (e) {
+      authenticatingHardware = false;
+      text = "Биометрия не подтверждена";
+      return;
+    }
+
+    authenticatingHardware = false;
+
+    try {
+      await decryptHardware(currentAccount.id, key);
+    } catch (e) {
+      text = "Неверный ключ шифрования!";
+      return;
+    }
+
+    const retry = await getCurrentAccount();
+    if (!retry?.contact) {
+      text = "Ошибка получения данных!";
+      return;
+    }
+
+    currentUserDetails.set(retry.contact);
+    currentUser.set(retry.contact.id);
+    goto("/");
+  }
 
   function createPoints() {
     points = [];
@@ -106,7 +233,6 @@
     selected = [ ...selected, point ];
   }
 
-
   function start(e) {
     if (migrating) return;
     e.preventDefault();
@@ -126,7 +252,6 @@
 
     addPoint(getPoint(e.clientX, e.clientY));
   }
-
 
   function move(e) {
     if (!drawing || migrating) return;
@@ -159,7 +284,7 @@
       }
       else {
         if (str !== repeat) {
-          text = "Попробуйте заного!";
+          text = "Попробуйте заново!";
           selected = [];
           dragPoints = [];
           repeat = null;
@@ -223,13 +348,11 @@
           str
         )
       } catch (e) {
-        console.log(e.toString());
         text = "Неверный ключ!";
         return;
       }
 
       const retry = await getCurrentAccount();
-      console.log(retry);
 
       if (!retry.contact) {
         text = "Ошибка получения данных!";
@@ -269,6 +392,40 @@
       <div class="progress-track">
         <div class="progress-bar" style="width: {migrationPercent}%"></div>
       </div>
+    </div>
+  {:else if isHardwareLocked || (mode === "create" && lockType === "hardware")}
+    <div class="hardware-card">
+      <div class="hardware-icon">🔒</div>
+      <h2>Аппаратная защита</h2>
+      <p class="hardware-subtitle">
+        {#if mode === "disable"}
+          Подтвердите личность для отключения аппаратного шифрования
+        {:else if mode === "create"}
+          Настройка аппаратного шифрования в хранилище устройства
+        {:else}
+          Подтвердите биометрию для разблокировки аккаунта
+        {/if}
+      </p>
+
+      <div class="text">{text}</div>
+
+      <div class="hardware-actions">
+        {#if mode === "disable"}
+          <button class="primary-btn" on:click={disableHardwareLock} disabled={authenticatingHardware}>
+            Подтвердить биометрию
+          </button>
+        {:else if mode === "create"}
+          <button class="primary-btn" on:click={setupHardwareLock} disabled={migrating}>
+            Повторить настройку
+          </button>
+        {:else}
+          <button class="primary-btn" on:click={unlockWithHardware} disabled={authenticatingHardware}>
+            Разблокировать
+          </button>
+        {/if}
+      </div>
+
+      <BackButton top={10} path={from}/>
     </div>
   {:else}
     <h1>
@@ -407,6 +564,69 @@
   .text {
     height: 24px;
     font-size: 16px;
+  }
+
+  .hardware-card {
+    width: 340px;
+    max-width: 90vw;
+    background: #24252a;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 18px;
+    padding: 32px 24px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+    box-sizing: border-box;
+  }
+
+  .hardware-icon {
+    font-size: 48px;
+    line-height: 1;
+  }
+
+  .hardware-card h2 {
+    margin: 0;
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: #fff;
+  }
+
+  .hardware-subtitle {
+    margin: 0;
+    color: #9ca3af;
+    font-size: 0.92rem;
+    line-height: 1.4;
+  }
+
+  .hardware-actions {
+    width: 100%;
+    margin-top: 8px;
+  }
+
+  .primary-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    cursor: pointer;
+    font-weight: 600;
+    width: 100%;
+    height: 44px;
+    border-radius: 12px;
+    font-size: 0.95rem;
+    background: #3390ec;
+    color: white;
+    transition: transform 0.12s, opacity 0.15s, background 0.15s;
+  }
+
+  .primary-btn:active:not(:disabled) {
+    transform: scale(0.98);
+  }
+
+  .primary-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
   }
 
   .migration-card {

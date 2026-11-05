@@ -2,5 +2,25 @@
   "identifier": "mobile-capability",
   "platforms": ["android", "iOS"],
   "windows": ["main"],
-  "permissions": ["barcode-scanner:default", "deep-link:default"]
+  "permissions": [
+    "barcode-scanner:default",
+    "deep-link:default",
+    "biometry:default",
+    {
+      "identifier": "biometry:allow-get-data",
+      "allow": [{ "domain": "ru.maxplus.keys" }]
+    },
+    {
+      "identifier": "biometry:allow-set-data",
+      "allow": [{ "domain": "ru.maxplus.keys" }]
+    },
+    {
+      "identifier": "biometry:allow-has-data",
+      "allow": [{ "domain": "ru.maxplus.keys" }]
+    },
+    {
+      "identifier": "biometry:allow-remove-data",
+      "allow": [{ "domain": "ru.maxplus.keys" }]
+    }
+  ]
 }

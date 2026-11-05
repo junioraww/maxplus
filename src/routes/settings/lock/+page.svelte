@@ -4,31 +4,42 @@
   import { page } from "$app/stores";
   import SettingsPageWrapper from "$components/settings/SettingsPageWrapper.svelte";
   import { getCurrentAccount, getDatabaseFilesCount } from "$lib/stores/accounts";
+  import { checkHardwareBiometry, formatBiometryName } from "$lib/services/hardwareSecurity";
 
   export let onClose = null;
   $: from = $page.url.searchParams.get("from") || "/?card=settings";
 
   let encryption;
   let fileCount = null;
+  let biometryStatus = { available: false, biometryType: 0 };
+  let loading = true;
 
   onMount(async () => {
-    const account = await getCurrentAccount();
-    if (account) {
-      encryption = account.encryption;
-      fileCount = await getDatabaseFilesCount(account.id).catch(() => null);
+    try {
+      const [account, biometry] = await Promise.all([
+        getCurrentAccount(),
+        checkHardwareBiometry(),
+      ]);
+      if (account) {
+        encryption = account.encryption;
+        fileCount = await getDatabaseFilesCount(account.id).catch(() => null);
+      }
+      biometryStatus = biometry;
+    } finally {
+      loading = false;
     }
   });
 </script>
 
-<SettingsPageWrapper title="Графический ключ" {from} {onClose}>
+<SettingsPageWrapper title="Шифрование данных" {from} {onClose}>
   <div class="container">
-    {#if encryption === undefined}
+    {#if loading || encryption === undefined}
       <div class="status-msg">Загрузка данных...</div>
     {:else if encryption === null}
       <div class="card">
         <p class="status warning">Статус: <b>неактивно</b></p>
         <p class="description">
-          Шифрует все данные на устройстве и поможет защитить их в случае взлома или кражи телефона.
+          Шифрует все данные на устройстве и защищает их в случае взлома или утери телефона/компьютера.
         </p>
 
         {#if fileCount !== null}
@@ -38,17 +49,31 @@
           </div>
         {/if}
 
-        <button class="primary-btn" on:click={() => goto("/auth/lock?mode=create")}>
-          Установить
-        </button>
+        {#if biometryStatus.available}
+          <button class="primary-btn" on:click={() => goto("/auth/lock?mode=create&type=hardware")}>
+            Аппаратный ключ ({formatBiometryName(biometryStatus.biometryType)})
+          </button>
+          <button class="secondary-btn" on:click={() => goto("/auth/lock?mode=create&type=pin")}>
+            Графический ключ
+          </button>
+        {:else}
+          <div class="info-note">
+            Аппаратная биометрия недоступна на этом устройстве. Вы можете использовать графический ключ.
+          </div>
+          <button class="primary-btn" on:click={() => goto("/auth/lock?mode=create&type=pin")}>
+            Установить графический ключ
+          </button>
+        {/if}
       </div>
     {:else}
       <div class="card">
         <p class="status success">Статус: <b>активно</b></p>
 
         <div class="info-row">
-          <span>Версия</span>
-          <strong>{encryption.type.toUpperCase()}</strong>
+          <span>Тип защиты</span>
+          <strong>
+            {encryption.type === "hardware-1" ? "Аппаратный ключ (Биометрия)" : "Графический ключ"}
+          </strong>
         </div>
 
         {#if fileCount !== null}
@@ -87,7 +112,7 @@
     padding: 24px;
     display: flex;
     flex-direction: column;
-    gap: 18px;
+    gap: 16px;
     box-sizing: border-box;
   }
 
@@ -131,6 +156,16 @@
     font-size: 0.95rem;
   }
 
+  .info-note {
+    font-size: 0.85rem;
+    color: #9ca3af;
+    background: #1b1c21;
+    border-radius: 10px;
+    padding: 10px 12px;
+    line-height: 1.4;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+  }
+
   button {
     display: flex;
     align-items: center;
@@ -156,6 +191,16 @@
 
   .primary-btn:hover {
     background: #2b7ecf;
+  }
+
+  .secondary-btn {
+    background: rgba(255, 255, 255, 0.08);
+    color: white;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+  }
+
+  .secondary-btn:hover {
+    background: rgba(255, 255, 255, 0.14);
   }
 
   .danger-btn {
