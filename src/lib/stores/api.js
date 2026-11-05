@@ -51,8 +51,8 @@ currentUser.subscribe(async userId => {
       if (!data?.contact?.id) {
         try {
           if (!sessionGet("connected")) {
-            const ok = await API.init();
-            if (ok) await API.sync();
+            const ok = await API.init(true);
+            if (ok && !sessionGet("sync")) await API.sync();
           } else if (!sessionGet("sync")) {
             await API.sync();
           }
@@ -68,15 +68,14 @@ currentUser.subscribe(async userId => {
     }
   }
   else if (userId === null) {
-    openAuth();
-    sessionSet("loaded", true);
+    await openAuth();
   }
   else {
     try {
       if (sessionGet("sync")) return;
       if (!sessionGet("connected")) {
-        const ok = await API.init();
-        if (ok) await API.sync();
+        const ok = await API.init(true);
+        if (ok && !sessionGet("sync")) await API.sync();
       } else {
         await API.sync();
       }
@@ -89,7 +88,11 @@ currentUser.subscribe(async userId => {
 });
 
 async function openAuth() {
-  Accounts.getAccounts().then(acs => {
-    goto("/auth/" + (acs && acs[0] ? "select" : "login"));
-  });
+  try {
+    const acs = await Accounts.getAccounts();
+    const target = "/auth/" + (acs && acs[0] ? "select" : "login");
+    await goto(target, { replaceState: true });
+  } finally {
+    sessionSet("loaded", true);
+  }
 }

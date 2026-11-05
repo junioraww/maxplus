@@ -4,6 +4,7 @@ import {
   getContact as getContactStore
 } from "$lib/stores/contacts";
 import { invoke } from "$lib/utils/invoke";
+import { get as sessionGet } from "$lib/stores/session";
 import { get, writable } from "svelte/store";
 
 const empty = writable(null);
@@ -21,6 +22,7 @@ export const updateContact = (contact) => {
 };
 
 export const syncContacts = async (contacts, requireInfo) => {
+  if (!sessionGet("connected") || !sessionGet("sync")) return;
   contacts.forEach((raw) => {
     updateContact(normalizeContact(raw));
     requireInfo.delete(+raw.id);
@@ -73,7 +75,9 @@ export const getContact = contactId => {
       }
     }
     if (!knownContactIds.has(id)) {
-      requestAndCacheContact(id);
+      if (sessionGet("connected") && sessionGet("sync")) {
+        requestAndCacheContact(id);
+      }
     }
   });
 
@@ -106,6 +110,13 @@ const requestAndCacheContact = async contactId => {
 
   if (contactBatch === batch) {
     contactBatch = null;
+
+    if (!sessionGet("connected") || !sessionGet("sync")) {
+      for (const cid of batch.ids) {
+        pendingContactIds.delete(cid);
+      }
+      return;
+    }
 
     const validIds = [...new Set(batch.ids)].filter(x => x > 0 && !knownContactIds.has(x));
     if (!validIds.length) return;
@@ -158,7 +169,9 @@ export const getContactAsync = async contactId => {
   }
 
   if (!knownContactIds.has(id)) {
-    await requestAndCacheContact(id);
+    if (sessionGet("connected") && sessionGet("sync")) {
+      await requestAndCacheContact(id);
+    }
   }
 
   return getContactStore(id);
