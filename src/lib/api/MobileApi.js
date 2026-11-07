@@ -690,15 +690,12 @@ export default class MobileApi extends BaseAPI {
       };
     } catch (e) {
       const profile = get(currentUserDetails);
-      if (profile?.profileOptions?.includes(2)) {
-        return {
-          trackId: null,
-          enabled: true,
-          hint: null,
-          email: null,
-        };
-      }
-      throw e;
+      return {
+        trackId: null,
+        enabled: Boolean(profile?.profileOptions?.includes(2)),
+        hint: null,
+        email: null,
+      };
     }
   }
 

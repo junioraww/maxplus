@@ -64,19 +64,26 @@
 
   async function goBack() {
     const from = $page?.url?.searchParams?.get("from");
+    const current = await getCurrentAccount().catch(() => null);
     if (from === "login") {
       goto("/auth/login");
       return;
     }
-    if (from === "account" || from === "settings") {
+    if (current?.id) {
+      const fullAcc = await getAccount(current.id).catch(() => null);
+      if (fullAcc) {
+        if (fullAcc.contact) {
+          currentUserDetails.set(fullAcc.contact);
+          currentUser.set(fullAcc.contact.id);
+        } else {
+          currentUser.set(fullAcc.id);
+        }
+      }
+      sessionSet("settingsPage", null);
       goto("/");
       return;
     }
-
-    const current = await getCurrentAccount().catch(() => null);
-    if (current?.id) {
-      goto("/");
-    } else if (typeof window !== "undefined" && window.history?.length > 1) {
+    if (typeof window !== "undefined" && window.history?.length > 1) {
       window.history.back();
     } else {
       goto("/auth/login");
@@ -84,10 +91,8 @@
   }
 
   async function select(selected) {
-    const current = await getCurrentAccount().catch(() => null);
-    if (current?.id === selected.id && (!selected.encryption || selected.unlocked)) {
-      return goto("/");
-    }
+    sessionSet("settingsPage", null);
+    sessionSet("openedChats", []);
     clearCachingUtils();
     resetImageCaches(selected.id);
     const account = await getAccount(selected.id);

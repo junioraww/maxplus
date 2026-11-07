@@ -720,6 +720,7 @@
                   preload="metadata"
                   muted
                   playsinline
+                  poster="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg'/>"
                 ></video>
               {:else if item.url || item.thumbnail}
                 <img use:lazyLoad={item} alt={item.name} />

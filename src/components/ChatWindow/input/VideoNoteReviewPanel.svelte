@@ -129,6 +129,7 @@
       autoplay
       playsinline
       muted={isReviewMuted}
+      poster="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg'/>"
       on:loadedmetadata={handleLoadedMetadata}
       on:timeupdate={handleReviewTimeUpdate}
       on:ended={() => {
