@@ -196,7 +196,7 @@ fn format_message_preview(msg: &Value, sender_name: &str) -> String {
 
     if let Some(att_list) = attaches {
         for att in att_list {
-            let t = att.get("_type").or_else(|| att.get("type")).and_then(|v| v.as_str()).unwrap_or("");
+            let t = att.get("_type").and_then(|v| v.as_str()).unwrap_or("");
             if t == "CONTROL" {
                 let event = att.get("event").and_then(|v| v.as_str()).unwrap_or("");
                 let msg_opt = att.get("message").or_else(|| att.get("title")).and_then(|v| v.as_str());
@@ -235,7 +235,7 @@ fn format_message_preview(msg: &Value, sender_name: &str) -> String {
 
         let mut attach_label = None;
         let photos_count = att_list.iter().filter(|x| {
-            x.get("_type").or_else(|| x.get("type")).and_then(|v| v.as_str()) == Some("PHOTO")
+            x.get("_type").and_then(|v| v.as_str()) == Some("PHOTO")
         }).count();
 
         if photos_count > 1 {
@@ -244,10 +244,10 @@ fn format_message_preview(msg: &Value, sender_name: &str) -> String {
             attach_label = Some("Изображение");
         } else {
             for att in att_list {
-                let t = att.get("_type").or_else(|| att.get("type")).and_then(|v| v.as_str()).unwrap_or("");
+                let t = att.get("_type").and_then(|v| v.as_str()).unwrap_or("");
                 match t {
                     "VIDEO" => {
-                        let is_round = att.get("videoType").and_then(|v| v.as_str()) == Some("ROUND")
+                        let is_round = att.get("videoType").map_or(false, |v| v == "ROUND" || v == 1)
                             || att.get("isRound").and_then(|v| v.as_bool()) == Some(true);
                         if is_round {
                             attach_label = Some("Видео-сообщение");
@@ -276,8 +276,21 @@ fn format_message_preview(msg: &Value, sender_name: &str) -> String {
                         attach_label = Some("Опрос");
                         break;
                     }
+                    "LOCATION" => {
+                        attach_label = Some("Геопозиция");
+                        break;
+                    }
+                    "CONTACT" => {
+                        attach_label = Some("Контакт");
+                        break;
+                    }
                     "CALL" => {
-                        attach_label = Some("Звонок");
+                        let hang = att.get("hangupType").and_then(|v| v.as_str()).unwrap_or("");
+                        if hang.eq_ignore_ascii_case("MISSED") || hang.eq_ignore_ascii_case("CANCELED") {
+                            attach_label = Some("Пропущенный звонок");
+                        } else {
+                            attach_label = Some("Звонок");
+                        }
                         break;
                     }
                     _ => {}

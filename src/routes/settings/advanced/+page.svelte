@@ -21,15 +21,26 @@
   let currentAccId = null;
   let presenceEnabled = true;
   let telemetryMode = "fake";
+  let hideLockedNotifications = true;
+  let isEncryptedAccount = false;
 
   onMount(async () => {
     const acc = await getCurrentAccount().catch(() => null);
     if (acc?.id) {
       currentAccId = acc.id;
+      isEncryptedAccount = Boolean(acc.encryption);
+      hideLockedNotifications = acc.meta?.hide_locked_notifications !== false;
       presenceEnabled = acc.meta?.presence !== false;
       telemetryMode = acc.meta?.telemetry || (acc.meta?.sendTelemetry === false ? "disabled" : "fake");
     }
   });
+
+  async function toggleHideLockedNotifications() {
+    hideLockedNotifications = !hideLockedNotifications;
+    if (currentAccId) {
+      await setAccountMeta(currentAccId, "hide_locked_notifications", hideLockedNotifications);
+    }
+  }
 
   async function togglePresence() {
     presenceEnabled = !presenceEnabled;
@@ -118,6 +129,32 @@
         </div>
       </div>
     </div>
+
+    {#if isEncryptedAccount}
+      <div class="section-header">
+        <h2>Конфиденциальность уведомлений</h2>
+      </div>
+
+      <div class="settings-card">
+        <div
+          class="toggle-row"
+          on:click={toggleHideLockedNotifications}
+        >
+          <div class="toggle-info">
+            <span class="toggle-title">Скрывать содержимое при блокировке</span>
+            <span class="toggle-desc"
+              >Отображать «У вас новые сообщения (X)» вместо текста и имени отправителя, когда приложение заблокировано</span
+            >
+          </div>
+          <div class="toggle-track" class:active={hideLockedNotifications}>
+            <div
+              class="toggle-thumb"
+              class:active={hideLockedNotifications}
+            ></div>
+          </div>
+        </div>
+      </div>
+    {/if}
 
     <div class="section-header">
       <h2>Аватарки</h2>

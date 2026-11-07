@@ -6,9 +6,10 @@ import { processMaxLink } from "$lib/utils/maxLink";
 import Session, { openChat } from "$lib/stores/session";
 import API, { currentUser } from "$lib/stores/api";
 import { openMiniApp } from "$lib/stores/webapp";
+import { lockScreenState } from "$lib/stores/lockScreen";
 
 let pendingUrls = [];
-let sessionUnsub = null;
+let queueWatcherInitialized = false;
 
 function normalizeUrl(raw) {
   if (!raw) return null;
@@ -17,33 +18,53 @@ function normalizeUrl(raw) {
   return String(raw);
 }
 
+function tryFlushPending() {
+  const session = get(Session);
+  const userId = get(currentUser);
+  const isLocked = Boolean(get(lockScreenState));
+
+  if (!session?.loaded || !userId || isLocked) {
+    return;
+  }
+
+  if (pendingUrls.length === 0) {
+    return;
+  }
+
+  const queue = [...pendingUrls];
+  pendingUrls = [];
+  for (const item of queue) {
+    handleDeepLinkUrl(item);
+  }
+}
+
+function ensureQueueWatchers() {
+  if (queueWatcherInitialized) return;
+  queueWatcherInitialized = true;
+
+  Session.subscribe(() => {
+    tryFlushPending();
+  });
+
+  lockScreenState.subscribe(() => {
+    tryFlushPending();
+  });
+}
+
 export async function handleDeepLinkUrl(rawUrl) {
   const url = normalizeUrl(rawUrl);
   if (!url) return false;
 
+  ensureQueueWatchers();
+
   const session = get(Session);
   const userId = get(currentUser);
+  const isLocked = Boolean(get(lockScreenState));
   const api = get(API);
 
-  if (!session?.loaded || !userId) {
+  if (!session?.loaded || !userId || isLocked) {
     if (!pendingUrls.includes(url)) {
       pendingUrls.push(url);
-    }
-    if (!sessionUnsub) {
-      sessionUnsub = Session.subscribe((s) => {
-        const uId = get(currentUser);
-        if (s?.loaded && uId && pendingUrls.length > 0) {
-          const queue = [...pendingUrls];
-          pendingUrls = [];
-          if (sessionUnsub) {
-            sessionUnsub();
-            sessionUnsub = null;
-          }
-          for (const queued of queue) {
-            handleDeepLinkUrl(queued);
-          }
-        }
-      });
     }
     return false;
   }

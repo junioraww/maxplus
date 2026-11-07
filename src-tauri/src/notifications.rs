@@ -667,10 +667,67 @@ pub extern "system" fn Java_org_meowkie_max_NotificationHelper_isChatGroupNative
 }
 
 #[cfg(target_os = "android")]
+#[no_mangle]
+pub extern "system" fn Java_me_junioraww_max_NotificationHelper_isAccountPrivacyActiveNative<'local>(
+    unowned_env: EnvUnowned<'local>,
+    this: JObject<'local>,
+    account: i64,
+    app_dir: JString<'local>,
+) -> jboolean {
+    Java_org_meowkie_max_NotificationHelper_isAccountPrivacyActiveNative(unowned_env, this, account, app_dir)
+}
+
+#[cfg(target_os = "android")]
+#[no_mangle]
+pub extern "system" fn Java_org_meowkie_max_NotificationHelper_isAccountPrivacyActiveNative<'local>(
+    mut unowned_env: EnvUnowned<'local>,
+    _this: JObject<'local>,
+    account: i64,
+    app_dir: JString<'local>,
+) -> jboolean {
+    let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let rust_app_dir: String = match unowned_env.with_env(|_env| -> Result<_, jni::errors::Error> {
+            let a = app_dir.try_to_string(_env)?;
+            Ok(a)
+        }).into_outcome() {
+            jni::Outcome::Ok(v) => v,
+            _ => return false,
+        };
+
+        crate::stores::is_account_privacy_active_disk(&rust_app_dir, account as u64)
+    }));
+
+    res.unwrap_or(false)
+}
+
+#[cfg(target_os = "android")]
+#[no_mangle]
+pub extern "system" fn Java_me_junioraww_max_CallNotificationManager_isAccountPrivacyActiveNative<'local>(
+    unowned_env: EnvUnowned<'local>,
+    this: JObject<'local>,
+    account: i64,
+    app_dir: JString<'local>,
+) -> jboolean {
+    Java_org_meowkie_max_NotificationHelper_isAccountPrivacyActiveNative(unowned_env, this, account, app_dir)
+}
+
+#[cfg(target_os = "android")]
+#[no_mangle]
+pub extern "system" fn Java_org_meowkie_max_CallNotificationManager_isAccountPrivacyActiveNative<'local>(
+    unowned_env: EnvUnowned<'local>,
+    this: JObject<'local>,
+    account: i64,
+    app_dir: JString<'local>,
+) -> jboolean {
+    Java_org_meowkie_max_NotificationHelper_isAccountPrivacyActiveNative(unowned_env, this, account, app_dir)
+}
+
+#[cfg(target_os = "android")]
 use tauri::Emitter;
 
 pub static GLOBAL_APP_HANDLE: std::sync::OnceLock<tauri::AppHandle> = std::sync::OnceLock::new();
 static PENDING_OPEN_CHAT: std::sync::atomic::AtomicI64 = std::sync::atomic::AtomicI64::new(0);
+static PENDING_OPEN_ACCOUNT: std::sync::atomic::AtomicI64 = std::sync::atomic::AtomicI64::new(0);
 static PENDING_CALL_ACTION: std::sync::Mutex<Option<serde_json::Value>> = std::sync::Mutex::new(None);
 
 pub fn set_app_handle(handle: tauri::AppHandle) {
@@ -678,13 +735,69 @@ pub fn set_app_handle(handle: tauri::AppHandle) {
 }
 
 #[tauri::command]
-pub fn check_pending_open_chat() -> Option<i64> {
+pub fn check_pending_open_chat() -> Option<serde_json::Value> {
     let chat_id = PENDING_OPEN_CHAT.swap(0, std::sync::atomic::Ordering::SeqCst);
+    let account = PENDING_OPEN_ACCOUNT.swap(0, std::sync::atomic::Ordering::SeqCst);
     if chat_id != 0 {
-        Some(chat_id)
+        Some(serde_json::json!({
+            "chatId": chat_id,
+            "accountId": account,
+        }))
     } else {
         None
     }
+}
+
+#[tauri::command]
+pub async fn set_app_locked(locked: bool) -> Result<(), String> {
+    #[cfg(target_os = "android")]
+    {
+        if let Some(vm) = GLOBAL_JVM.get() {
+            let _ = vm.attach_current_thread(|env| -> Result<(), jni::errors::Error> {
+                let app_state_class = env.find_class(jni_str!("me/junioraww/max/AppState"))
+                    .or_else(|_| env.find_class(jni_str!("org/meowkie/max/AppState")))?;
+                env.call_static_method(
+                    app_state_class,
+                    jni_str!("setAppLocked"),
+                    jni_sig!("(Z)V"),
+                    &[jni::objects::JValue::Bool(if locked { 1 } else { 0 })],
+                )?;
+                Ok(())
+            });
+        }
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn reset_locked_notification_counter(account: i64) -> Result<(), String> {
+    #[cfg(target_os = "android")]
+    {
+        if let Some(vm) = GLOBAL_JVM.get() {
+            let _ = vm.attach_current_thread(|env| -> Result<(), jni::errors::Error> {
+                let notif_class = env.find_class(jni_str!("me/junioraww/max/NotificationHelper"))
+                    .or_else(|_| env.find_class(jni_str!("org/meowkie/max/NotificationHelper")))?;
+                let main_class = env.find_class(jni_str!("me/junioraww/max/MainActivity"))
+                    .or_else(|_| env.find_class(jni_str!("org/meowkie/max/MainActivity")))?;
+                let ctx_obj = env.call_static_method(
+                    main_class,
+                    jni_str!("getApplicationContextStatic"),
+                    jni_sig!("()Landroid/content/Context;"),
+                    &[],
+                )?.l()?;
+                if !ctx_obj.is_null() {
+                    env.call_static_method(
+                        notif_class,
+                        jni_str!("resetSecurePrivacyNotification"),
+                        jni_sig!("(Landroid/content/Context;J)V"),
+                        &[jni::objects::JValue::Object(&ctx_obj), jni::objects::JValue::Long(account)],
+                    )?;
+                }
+                Ok(())
+            });
+        }
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -698,8 +811,9 @@ pub extern "system" fn Java_me_junioraww_max_MainActivity_notifyChatClickedNativ
     unowned_env: EnvUnowned<'local>,
     this: JObject<'local>,
     chat_id: i64,
+    account: i64,
 ) {
-    Java_org_meowkie_max_MainActivity_notifyChatClickedNative(unowned_env, this, chat_id);
+    Java_org_meowkie_max_MainActivity_notifyChatClickedNative(unowned_env, this, chat_id, account);
 }
 
 #[cfg(target_os = "android")]
@@ -708,11 +822,19 @@ pub extern "system" fn Java_org_meowkie_max_MainActivity_notifyChatClickedNative
     _unowned_env: EnvUnowned<'local>,
     _this: JObject<'local>,
     chat_id: i64,
+    account: i64,
 ) {
     let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         PENDING_OPEN_CHAT.store(chat_id, std::sync::atomic::Ordering::SeqCst);
+        if account != 0 {
+            PENDING_OPEN_ACCOUNT.store(account, std::sync::atomic::Ordering::SeqCst);
+        }
         if let Some(app) = GLOBAL_APP_HANDLE.get() {
-            let _ = app.emit("open_chat", chat_id);
+            let payload = serde_json::json!({
+                "chatId": chat_id,
+                "accountId": account,
+            });
+            let _ = app.emit("open_chat", payload);
         }
     }));
 }

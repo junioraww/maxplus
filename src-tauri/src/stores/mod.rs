@@ -10,7 +10,7 @@ use serde_json::{json, Value};
 
 use storage::crypto_key;
 pub use storage::{Paths, Storage};
-pub use accounts::{current_get, get_background_creds, load_accounts, resolve_app_root, update_account_token};
+pub use accounts::{current_get, get_background_creds, is_account_privacy_active_disk, load_accounts, resolve_app_root, update_account_token};
 pub use messages::clear_local_messages;
 pub use cache::{add_cache_index_alias, get_cached_file_sync, hash, is_file_encrypted, set_cached_file_with_meta};
 pub use chats::{get_chat_settings_sync, set_chat_settings_sync};
