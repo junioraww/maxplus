@@ -282,6 +282,8 @@ pub fn run() {
             stores::accounts::decrypt_account,
             stores::accounts::account_update_token,
             stores::accounts::account_set_meta,
+            stores::accounts::account_set_preview,
+            stores::accounts::lock_crypto_session,
             stores::chats::get_contact,
             stores::chats::set_contact,
             stores::chats::get_contacts,

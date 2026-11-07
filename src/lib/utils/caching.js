@@ -1,7 +1,8 @@
 import {
   updateContact as saveToStore,
   getCachedContacts,
-  getContact as getContactStore
+  getContact as getContactStore,
+  clearContactsCache
 } from "$lib/stores/contacts";
 import { invoke } from "$lib/utils/invoke";
 import { get as sessionGet } from "$lib/stores/session";
@@ -11,6 +12,13 @@ const empty = writable(null);
 const knownContactIds = new Set();
 const pendingContactIds = new Set();
 const failedContactIds = new Map();
+
+export const clearCachingUtils = () => {
+  knownContactIds.clear();
+  pendingContactIds.clear();
+  failedContactIds.clear();
+  clearContactsCache();
+};
 
 export const updateContact = (contact) => {
   if (contact?.id) {

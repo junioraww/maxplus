@@ -1,8 +1,8 @@
 <script>
   import { getContact } from "$lib/utils/caching";
-  import { getAvatarPlaceholder, getInitials } from "$lib/utils/images";
+  import { getAvatarPlaceholder, getInitials, getAssetUrl, getProxiedMediaUrl, isProxiedMediaUrl } from "$lib/utils/images";
   import { currentPresence, currentUser, currentUserDetails } from "$lib/stores/api";
-  import { safeAvatarMapStore, safeAvatarDebugStore } from "$lib/services/AvatarSyncManager";
+  import { safeAvatarMapStore, safeAvatarDebugStore, inspectAvatarStego } from "$lib/services/AvatarSyncManager";
   import { getSafeAvatarMediaUrl } from "$lib/services/uplink";
   import { disableMaxPlusAvatars } from "$lib/stores/avatarSettings";
   import MediaCanvas from "$components/main/MediaCanvas.svelte";
@@ -21,6 +21,7 @@
   export let isSelf = false;
   export let allowStories = false;
   export let enableStoryRing = false;
+  export let accountId = null;
 
   $: canShowStory = allowStories || enableStoryRing;
 
@@ -98,11 +99,38 @@
   $: activeSrc = !safeVideoFailed && safeMediaUrl ? safeMediaUrl : (!staticMediaFailed && avatarUrl ? avatarUrl : null);
   $: activeType = !safeVideoFailed && safeMediaUrl ? "video" : "image";
 
+  let displaySrc = null;
+  $: {
+    const raw = activeSrc;
+    if (!raw) {
+      displaySrc = null;
+    } else if (raw.startsWith("data:") || raw.startsWith("blob:") || isProxiedMediaUrl(raw)) {
+      displaySrc = raw;
+    } else {
+      displaySrc = getProxiedMediaUrl(raw) || raw;
+      getAssetUrl(raw, accountId).then((resolved) => {
+        if (resolved && activeSrc === raw) {
+          displaySrc = resolved;
+        }
+      }).catch(() => {});
+    }
+  }
+
   function handleMediaError() {
     if (activeSrc === safeMediaUrl) {
       safeVideoFailed = true;
     } else {
+      if (displaySrc && avatarUrl && displaySrc !== avatarUrl && (avatarUrl.startsWith("http://") || avatarUrl.startsWith("https://"))) {
+        displaySrc = avatarUrl;
+        return;
+      }
       staticMediaFailed = true;
+    }
+  }
+
+  function handleImageLoad() {
+    if (!safeAvatarUid && !$disableMaxPlusAvatars && targetEntityId && avatarUrl) {
+      inspectAvatarStego(avatarUrl, targetEntityId);
     }
   }
 </script>
@@ -167,15 +195,26 @@
     {#if chat?.id === 0}
       <img src="/saved.webp" class="avatar-static-img" alt={effectiveTitle} />
     {:else if activeSrc}
-      <MediaCanvas
-        src={activeSrc}
-        type={activeType}
-        {size}
-        targetEntityId={!safeAvatarUid && !$disableMaxPlusAvatars ? targetEntityId : null}
-        alt={effectiveTitle}
-        class="avatar-media"
-        on:error={handleMediaError}
-      />
+      {#if activeType === "video"}
+        <MediaCanvas
+          src={activeSrc}
+          type="video"
+          {size}
+          alt={effectiveTitle}
+          class="avatar-media"
+          on:error={handleMediaError}
+        />
+      {:else}
+        <img
+          src={displaySrc || activeSrc}
+          class="avatar-static-img"
+          alt={effectiveTitle}
+          loading="lazy"
+          decoding="async"
+          on:error={handleMediaError}
+          on:load={handleImageLoad}
+        />
+      {/if}
     {:else}
       <div
         class="avatar-placeholder"

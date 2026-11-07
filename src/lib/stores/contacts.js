@@ -120,6 +120,20 @@ let contactsLoaded = false;
 let cachedContacts = [];
 let cachedContactsPromise = null;
 
+export const clearContactsCache = () => {
+  for (const cid in cache) {
+    if (cache[cid]?.unsubscribe) {
+      try {
+        cache[cid].unsubscribe();
+      } catch {}
+    }
+    delete cache[cid];
+  }
+  contactsLoaded = false;
+  cachedContacts = [];
+  cachedContactsPromise = null;
+};
+
 export const getCachedContacts = async () => {
   if (contactsLoaded && cachedContacts.length > 0) {
     return cachedContacts;

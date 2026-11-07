@@ -18,19 +18,26 @@ pub async fn get_contact(
     contact_id: u64,
 ) -> Result<Option<Value>, String> {
     let app_clone = app.clone();
-    let local = tokio::task::spawn_blocking(move || {
-        let key = crypto_key(&app_clone, account);
+    let (local, is_locked) = tokio::task::spawn_blocking(move || {
+        let key = match crate::stores::accounts::check_account_encryption(&app_clone, account) {
+            Ok(k) => k,
+            Err(_) => return (None, true),
+        };
         let storage = Storage::new(key.clone());
         if let Some(val) = storage.load(Paths::new(&app_clone, account).contact(contact_id)) {
-            return Some(val);
+            return (Some(val), false);
         }
-        storage.load(Paths::new(&app_clone, account).chat(contact_id as i64).join("info"))
+        (storage.load(Paths::new(&app_clone, account).chat(contact_id as i64).join("info")), false)
     })
     .await
     .map_err(|e| e.to_string())?;
 
     if local.is_some() {
         return Ok(local);
+    }
+
+    if is_locked {
+        return Ok(None);
     }
 
     if let Ok(resp) = state.client.fetch_contacts(vec![contact_id]).await {
@@ -71,7 +78,7 @@ pub async fn get_contacts(
     account: u64,
 ) -> Result<Vec<Value>, String> {
     tokio::task::spawn_blocking(move || {
-        let key = crypto_key(&app, account);
+        let key = crate::stores::accounts::check_account_encryption(&app, account)?;
         let storage = Storage::new(key);
         Ok(Storage::list(Paths::new(&app, account).contacts())
             .into_iter()
@@ -89,7 +96,7 @@ pub async fn save_chats(
     chats: Vec<Value>,
 ) -> Result<(), String> {
     tokio::task::spawn_blocking(move || {
-        let key = crypto_key(&app, account);
+        let key = crate::stores::accounts::check_account_encryption(&app, account)?;
         let storage = Storage::new(key);
         let paths = Paths::new(&app, account);
 
@@ -131,7 +138,7 @@ pub async fn load_chats(
     account: u64,
 ) -> Result<Vec<Value>, String> {
     tokio::task::spawn_blocking(move || {
-        let key = crypto_key(&app, account);
+        let key = crate::stores::accounts::check_account_encryption(&app, account)?;
         let storage = Storage::new(key);
         let paths = Paths::new(&app, account);
 

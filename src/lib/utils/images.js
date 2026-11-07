@@ -59,12 +59,18 @@ function setCachedProxied(src, url) {
     proxiedUrlCache.set(src, url);
 }
 
+export function resetImageCaches(newAccountId = 0) {
+    localFilePathCache.clear();
+    proxiedUrlCache.clear();
+    cachedAccountId = newAccountId ? Number(newAccountId) : 0;
+}
+
 export function clearSafeAvatarImageCache() {
     for (const key of localFilePathCache.keys()) if (key.includes("/api/avatars/")) localFilePathCache.delete(key);
     for (const key of proxiedUrlCache.keys()) if (key.includes("/api/avatars/")) proxiedUrlCache.delete(key);
 }
 
-export async function getLocalFilePath(src) {
+export async function getLocalFilePath(src, accountId = null) {
     if (!src) return null;
     if (src.startsWith("data:") || src.startsWith("blob:") || src.startsWith("asset:") || src.startsWith("http://asset.localhost/")) {
         return null;
@@ -73,67 +79,77 @@ export async function getLocalFilePath(src) {
         return src;
     }
 
-    if (localFilePathCache.has(src)) {
-        return localFilePathCache.get(src);
+    const cacheKey = accountId ? `${accountId}:${src}` : src;
+
+    if (localFilePathCache.has(cacheKey)) {
+        return localFilePathCache.get(cacheKey);
     }
 
-    if (inflightRequests.has(src)) {
-        return inflightRequests.get(src);
+    if (inflightRequests.has(cacheKey)) {
+        return inflightRequests.get(cacheKey);
     }
 
-    if (!cachedAccountId) {
+    let accId = accountId ? Number(accountId) : cachedAccountId;
+    if (!accId) {
         const account = await getCurrentAccount().catch(() => null);
-        if (account?.id) cachedAccountId = Number(account.id);
+        if (account?.id) {
+            accId = Number(account.id);
+            if (!accountId) cachedAccountId = accId;
+        }
     }
 
     try {
-        const directCached = await invoke("get_cached_file", { account: cachedAccountId, src }).catch(() => null);
+        const directCached = await invoke("get_cached_file", { account: accId, src }).catch(() => null);
         if (directCached) {
-            setCachedPath(src, directCached);
+            setCachedPath(cacheKey, directCached);
             return directCached;
         }
     } catch {}
 
     const promise = enqueueDownload(async () => {
         try {
-            if (!cachedAccountId) {
+            let currentId = accountId ? Number(accountId) : cachedAccountId;
+            if (!currentId) {
                 const account = await getCurrentAccount().catch(() => null);
-                if (account?.id) cachedAccountId = Number(account.id);
+                if (account?.id) {
+                    currentId = Number(account.id);
+                    if (!accountId) cachedAccountId = currentId;
+                }
             }
-            const res = await invoke("cache_url", { account: cachedAccountId, src });
+            const res = await invoke("cache_url", { account: currentId, src });
             if (res) {
-                setCachedPath(src, res);
+                setCachedPath(cacheKey, res);
             }
             return res;
-        } catch (e) {
-            console.error("Failed to load image to cache:", e);
+        } catch {
             return null;
         }
     }).finally(() => {
-        inflightRequests.delete(src);
+        inflightRequests.delete(cacheKey);
     });
 
-    inflightRequests.set(src, promise);
+    inflightRequests.set(cacheKey, promise);
     return promise;
 }
 
-export async function getAssetUrl(src) {
+export async function getAssetUrl(src, accountId = null) {
     if (!src) return null;
-    if (proxiedUrlCache.has(src)) {
-        return proxiedUrlCache.get(src);
+    const cacheKey = accountId ? `${accountId}:${src}` : src;
+    if (proxiedUrlCache.has(cacheKey)) {
+        return proxiedUrlCache.get(cacheKey);
     }
     if (src.startsWith("data:") || src.startsWith("blob:") || isProxiedMediaUrl(src)) {
         return src;
     }
     if (!src.startsWith("http://") && !src.startsWith("https://")) {
         const res = getProxiedMediaUrl(src);
-        setCachedProxied(src, res);
+        setCachedProxied(cacheKey, res);
         return res;
     }
-    const path = await getLocalFilePath(src);
+    const path = await getLocalFilePath(src, accountId);
     if (path) {
         const res = getProxiedMediaUrl(path);
-        setCachedProxied(src, res);
+        setCachedProxied(cacheKey, res);
         return res;
     }
     return null;
@@ -263,6 +279,36 @@ export async function getFallbackAvatarLocalPath(id, name, type = "USER") {
         return path;
     } catch (e) {
         console.error("Failed to generate fallback avatar:", e);
+        return null;
+    }
+}
+
+export async function createBlurredAvatarPreview(rawSrc) {
+    if (!rawSrc || typeof window === "undefined") return null;
+    try {
+        const assetUrl = await getAssetUrl(rawSrc).catch(() => null);
+        const src = assetUrl || rawSrc;
+        return new Promise((resolve) => {
+            const img = new Image();
+            img.crossOrigin = "anonymous";
+            img.onload = () => {
+                try {
+                    const canvas = document.createElement("canvas");
+                    canvas.width = 16;
+                    canvas.height = 16;
+                    const ctx = canvas.getContext("2d");
+                    if (!ctx) return resolve(null);
+                    ctx.imageSmoothingEnabled = true;
+                    ctx.drawImage(img, 0, 0, 16, 16);
+                    resolve(canvas.toDataURL("image/jpeg", 0.5));
+                } catch {
+                    resolve(null);
+                }
+            };
+            img.onerror = () => resolve(null);
+            img.src = src;
+        });
+    } catch {
         return null;
     }
 }
