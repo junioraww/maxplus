@@ -354,9 +354,18 @@ async fn handle_daemon_packet(val: &Value, account: i64, app_dir: &str, client: 
             let root = crate::stores::resolve_app_root(app_dir);
             let creds = crate::stores::get_background_creds(app_dir, account as u64);
             let local_id = creds.as_ref().map(|c| c.0).unwrap_or(0);
+            let is_encrypted = crate::stores::is_account_encrypted_disk(app_dir, local_id);
+            let key = crate::stores::get_crypto_key(local_id);
+
+            if is_encrypted && key.is_none() {
+                #[cfg(target_os = "android")]
+                dispatch_message_to_jni(account, chat_id, &mid, 0, "", "Новое сообщение", None, None, false);
+                return;
+            }
+
             let data_dir = root.join("data").join(local_id.to_string());
             let cache_dir = root.join("cache").join(local_id.to_string());
-            let storage = crate::stores::Storage::new(None);
+            let storage = crate::stores::Storage::new(key);
 
             let contact_path = data_dir.join("contacts").join(sender_id.to_string());
             let mut sender_name = storage.load(&contact_path).as_ref().and_then(crate::notifications::extract_contact_name);
@@ -402,10 +411,10 @@ async fn handle_daemon_packet(val: &Value, account: i64, app_dir: &str, client: 
             }
 
             if let Some(ref url) = sender_avatar_url {
-                let _ = crate::notifications::ensure_avatar_cached(url, &cache_dir).await;
+                let _ = crate::notifications::ensure_avatar_cached(url, &cache_dir, key).await;
             }
             if let Some(ref url) = chat_avatar_url {
-                let _ = crate::notifications::ensure_avatar_cached(url, &cache_dir).await;
+                let _ = crate::notifications::ensure_avatar_cached(url, &cache_dir, key).await;
             }
 
             #[cfg(target_os = "android")]

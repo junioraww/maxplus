@@ -8,9 +8,10 @@ pub mod chats;
 use tauri::AppHandle;
 use serde_json::{json, Value};
 
-use storage::crypto_key;
-pub use storage::{Paths, Storage};
-pub use accounts::{current_get, get_background_creds, is_account_privacy_active_disk, load_accounts, resolve_app_root, update_account_token};
+pub use storage::{crypto_key, get_crypto_key, Paths, Storage};
+#[cfg(target_os = "android")]
+pub use accounts::{is_account_privacy_active_disk, resolve_account_for_chat};
+pub use accounts::{current_get, get_background_creds, is_account_encrypted_disk, load_accounts, resolve_app_root, update_account_token};
 pub use messages::clear_local_messages;
 pub use cache::{add_cache_index_alias, get_cached_file_sync, hash, is_file_encrypted, set_cached_file_with_meta};
 pub use chats::{get_chat_settings_sync, set_chat_settings_sync};

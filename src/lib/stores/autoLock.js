@@ -125,7 +125,7 @@ export function initAutoLockWatcher() {
     const timer = get(autoLockTimer);
     if (timer < 0) return;
     hiddenAt = Date.now();
-    if (timer === 0) {
+    if (timer === 0 && document.visibilityState === "hidden") {
       triggerLock();
     }
   };
@@ -148,7 +148,7 @@ export function initAutoLockWatcher() {
 
       if (!focused) {
         hiddenAt = Date.now();
-        if (timer === 0) {
+        if (timer === 0 && document.visibilityState === "hidden") {
           triggerLock();
         }
       } else {

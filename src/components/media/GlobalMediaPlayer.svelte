@@ -150,6 +150,7 @@
   bind:this={videoEl}
   playsinline
   preload="auto"
+  poster="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'/%3E"
   on:play={() => $activeMedia && updateMediaPlaybackState($activeMedia.id, true)}
   on:timeupdate={handleVideoTimeUpdate}
   on:ended={handleEnded}

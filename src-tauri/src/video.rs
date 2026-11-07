@@ -22,8 +22,16 @@ pub fn set_app_handle(handle: tauri::AppHandle) {
 fn get_active_crypto_key() -> Option<[u8; 32]> {
     let app = VIDEO_APP_HANDLE.get()?;
     let state = app.state::<crate::AppState>();
-    let guard = state.crypto.read().ok()?;
-    guard.as_ref().map(|s| s.key)
+    if let Ok(guard) = state.crypto.read() {
+        if let Some(ref s) = *guard {
+            return Some(s.key);
+        }
+    }
+    let acc = crate::stores::load_accounts(app)
+        .get("current")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(0);
+    crate::stores::get_crypto_key(acc)
 }
 
 fn respond_error(request: tiny_http::Request, status: u16, msg: &str) {

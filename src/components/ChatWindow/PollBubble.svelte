@@ -9,7 +9,6 @@
   export let attach;
   export let messageId;
   export let chatId;
-  export let isMe = false;
 
   const POLL_FLAG_ANONYMOUS = 4;
   const POLL_FLAG_CLOSED = 8;

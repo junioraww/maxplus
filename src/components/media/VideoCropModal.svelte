@@ -391,6 +391,7 @@
           bind:this={videoEl}
           src={previewUrl}
           crossorigin="anonymous"
+          poster="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'/%3E"
           preload="auto"
           playsinline
           loop={false}

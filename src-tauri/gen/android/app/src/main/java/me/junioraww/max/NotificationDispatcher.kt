@@ -103,7 +103,7 @@ object NotificationDispatcher {
         map["userName"] = userName
         map["title"] = userName
         map["vcp"] = vcp
-        map["c"] = account.toString()
+        map["account_id"] = account.toString()
         map["iv"] = if (isVideo) "true" else "false"
         dispatchIncomingCall(ctx, map)
     }

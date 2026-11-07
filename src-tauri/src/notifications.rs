@@ -228,8 +228,9 @@ pub fn extract_avatar_url(val: &serde_json::Value) -> Option<String> {
 pub async fn ensure_avatar_cached(
     url: &str,
     cache_dir: &std::path::Path,
+    key: Option<[u8; 32]>,
 ) -> Option<String> {
-    let storage = crate::stores::Storage::new(None);
+    let storage = crate::stores::Storage::new(key);
     let index_path = cache_dir.join("index");
     if let Some(index) = storage.load(&index_path) {
         if let Some(entry) = index.get(url) {
@@ -255,7 +256,12 @@ pub async fn ensure_avatar_cached(
     if let Ok(resp) = reqwest::get(url).await {
         if resp.status().is_success() {
             if let Ok(bytes) = resp.bytes().await {
-                if std::fs::write(&file_path, bytes).is_ok() {
+                let to_write = if let Some(ref k) = key {
+                    crate::stores::Storage::encrypt(&bytes, k).ok()?
+                } else {
+                    bytes.to_vec()
+                };
+                if std::fs::write(&file_path, to_write).is_ok() {
                     let mut index = storage.load(&index_path).unwrap_or_else(|| serde_json::json!({}));
                     if let Some(map) = index.as_object_mut() {
                         map.insert(url.to_string(), serde_json::json!([file_path.to_string_lossy()]));
@@ -279,12 +285,19 @@ pub fn resolve_contact_info_internal(
     let root = crate::stores::resolve_app_root(rust_app_dir);
     let creds = crate::stores::get_background_creds(rust_app_dir, account as u64);
     let local_id = creds.as_ref().map(|c| c.0).unwrap_or(0);
+    let is_encrypted = crate::stores::is_account_encrypted_disk(rust_app_dir, local_id);
+    let key = crate::stores::get_crypto_key(local_id);
+
+    if is_encrypted && key.is_none() {
+        return (None, None);
+    }
+
     let data_dir = root.join("data").join(local_id.to_string());
     let cache_dir = root.join("cache").join(local_id.to_string());
     let cache_files_dir = cache_dir.join("files");
     let _ = fs::create_dir_all(&cache_files_dir);
 
-    let storage = crate::stores::Storage::new(None);
+    let storage = crate::stores::Storage::new(key);
     let mut resolved_name: Option<String> = None;
     let mut avatar_url: Option<String> = None;
 
@@ -401,8 +414,13 @@ pub fn resolve_contact_info_internal(
                     let resp = client.get(&url_clone).send().ok()?;
                     if resp.status().is_success() {
                         let bytes = resp.bytes().ok()?;
+                        let to_write = if let Some(ref k) = key {
+                            crate::stores::Storage::encrypt(&bytes, k).ok()?
+                        } else {
+                            bytes.to_vec()
+                        };
                         let _ = fs::create_dir_all(target_file.parent()?);
-                        fs::write(&target_file, bytes).ok()?;
+                        fs::write(&target_file, to_write).ok()?;
                         Some(target_file.to_string_lossy().to_string())
                     } else {
                         None
@@ -545,7 +563,8 @@ pub extern "system" fn Java_org_meowkie_max_NotificationHelper_isChatMutedNative
         let local_id = creds.as_ref().map(|c| c.0).unwrap_or(0);
         let chat_info_path = root.join("data").join(local_id.to_string()).join("chats").join(chat_id.to_string()).join("info");
 
-        let storage = crate::stores::Storage::new(None);
+        let key = crate::stores::get_crypto_key(local_id);
+        let storage = crate::stores::Storage::new(key);
         if let Some(val) = storage.load(&chat_info_path) {
             if let Some(ddu) = val.get("dontDisturbUntil") {
                 if let Some(num) = ddu.as_i64() {
@@ -601,7 +620,8 @@ pub extern "system" fn Java_org_meowkie_max_NotificationHelper_isNotificationsEn
         let local_id = creds.as_ref().map(|c| c.0).unwrap_or(account as u64);
         let user_settings_path = root.join("data").join(local_id.to_string()).join("user_settings");
 
-        let storage = crate::stores::Storage::new(None);
+        let key = crate::stores::get_crypto_key(local_id);
+        let storage = crate::stores::Storage::new(key);
         if let Some(val) = storage.load(&user_settings_path) {
             if let Some(val_str) = val.get("CHATS_PUSH_NOTIFICATION").and_then(|v| v.as_str()) {
                 if val_str == "OFF" {
@@ -650,7 +670,8 @@ pub extern "system" fn Java_org_meowkie_max_NotificationHelper_isChatGroupNative
         let local_id = creds.as_ref().map(|c| c.0).unwrap_or(account as u64);
         let chat_info_path = root.join("data").join(local_id.to_string()).join("chats").join(chat_id.to_string()).join("info");
 
-        let storage = crate::stores::Storage::new(None);
+        let key = crate::stores::get_crypto_key(local_id);
+        let storage = crate::stores::Storage::new(key);
         if let Some(val) = storage.load(&chat_info_path) {
             if let Some(t) = val.get("type").and_then(|v| v.as_str()) {
                 if t == "DIALOG" {
@@ -698,6 +719,40 @@ pub extern "system" fn Java_org_meowkie_max_NotificationHelper_isAccountPrivacyA
     }));
 
     res.unwrap_or(false)
+}
+
+#[cfg(target_os = "android")]
+#[no_mangle]
+pub extern "system" fn Java_me_junioraww_max_NotificationHelper_resolveAccountForChatNative<'local>(
+    unowned_env: EnvUnowned<'local>,
+    this: JObject<'local>,
+    chat_id: i64,
+    app_dir: JString<'local>,
+) -> jlong {
+    Java_org_meowkie_max_NotificationHelper_resolveAccountForChatNative(unowned_env, this, chat_id, app_dir)
+}
+
+#[cfg(target_os = "android")]
+#[no_mangle]
+pub extern "system" fn Java_org_meowkie_max_NotificationHelper_resolveAccountForChatNative<'local>(
+    mut unowned_env: EnvUnowned<'local>,
+    _this: JObject<'local>,
+    chat_id: i64,
+    app_dir: JString<'local>,
+) -> jlong {
+    let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let rust_app_dir: String = match unowned_env.with_env(|_env| -> Result<_, jni::errors::Error> {
+            let a = app_dir.try_to_string(_env)?;
+            Ok(a)
+        }).into_outcome() {
+            jni::Outcome::Ok(v) => v,
+            _ => return 0,
+        };
+
+        crate::stores::resolve_account_for_chat(&rust_app_dir, chat_id) as i64
+    }));
+
+    res.unwrap_or(0)
 }
 
 #[cfg(target_os = "android")]

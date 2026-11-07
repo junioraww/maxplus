@@ -36,6 +36,7 @@ class NotificationHelper(private val ctx: Context) {
   private external fun isNotificationsEnabledNative(account: Long, appDir: String): Boolean
   private external fun isChatGroupNative(account: Long, chatId: Long, appDir: String): Boolean
   private external fun isAccountPrivacyActiveNative(account: Long, appDir: String): Boolean
+  private external fun resolveAccountForChatNative(chatId: Long, appDir: String): Long
   
   companion object {
     const val CHANNEL_ID = "MESSAGES_CHANNEL_ID"
@@ -151,7 +152,16 @@ class NotificationHelper(private val ctx: Context) {
       Log.w("MaxPlus", "handleIncomingMessage: missing chatId")
       return
     }
-    val account = (data["c"] ?: data["account_id"])?.toLongOrNull() ?: 0L
+    val explicitAccount = (data["account_id"] ?: data["explicit_account"])?.toLongOrNull()
+    val account = if (explicitAccount != null && explicitAccount > 0L) {
+      explicitAccount
+    } else {
+      try {
+        resolveAccountForChatNative(chatId, ctx.applicationInfo.dataDir)
+      } catch (_: Throwable) {
+        0L
+      }
+    }
 
     try {
       if (!isNotificationsEnabledNative(account, ctx.applicationInfo.dataDir)) {

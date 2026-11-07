@@ -15,6 +15,7 @@
     decryptHardware,
   } from "$lib/stores/accounts";
   import {
+    authenticateHardware,
     storeHardwareKey,
     retrieveHardwareKey,
     deleteHardwareKey,
@@ -92,12 +93,17 @@
       isHardwareLocked = true;
     }
 
+    if (typeof document !== "undefined") {
+      document.addEventListener("visibilitychange", handleVisibilityOrFocus);
+      window.addEventListener("focus", handleVisibilityOrFocus);
+    }
+
     if (mode === "create" && lockType === "hardware") {
       await setupHardwareLock();
     } else if (mode === "disable" && isHardwareLocked) {
       await disableHardwareLock();
     } else if (mode !== "create" && isHardwareLocked) {
-      await unlockWithHardware();
+      scheduleHardwareUnlock();
     }
   });
 
@@ -105,7 +111,38 @@
     if (unlistenProgress) {
       unlistenProgress();
     }
+    if (unlockTimer) {
+      clearTimeout(unlockTimer);
+    }
+    if (typeof document !== "undefined") {
+      document.removeEventListener("visibilitychange", handleVisibilityOrFocus);
+      window.removeEventListener("focus", handleVisibilityOrFocus);
+    }
   });
+
+  let hardwareUnlockScheduled = false;
+  let unlockTimer = null;
+
+  function scheduleHardwareUnlock() {
+    if (hardwareUnlockScheduled || authenticatingHardware || migrating) return;
+    if (typeof document !== "undefined" && document.visibilityState === "hidden") {
+      return;
+    }
+    hardwareUnlockScheduled = true;
+    if (unlockTimer) clearTimeout(unlockTimer);
+    unlockTimer = setTimeout(() => {
+      hardwareUnlockScheduled = false;
+      if (typeof document !== "undefined" && document.visibilityState === "visible") {
+        unlockWithHardware();
+      }
+    }, 150);
+  }
+
+  function handleVisibilityOrFocus() {
+    if (typeof document !== "undefined" && document.visibilityState === "visible" && mode !== "create" && isHardwareLocked) {
+      scheduleHardwareUnlock();
+    }
+  }
 
   async function handleUnlockSuccess(retry) {
     resetAutoLockActivity();
@@ -168,6 +205,13 @@
     if (!currentAccount) currentAccount = account || await getCurrentAccount();
     if (!currentAccount) {
       text = "Аккаунт не найден";
+      return;
+    }
+
+    try {
+      await authenticateHardware("Подтвердите биометрию для защиты аккаунта");
+    } catch {
+      text = "Биометрия отменена или не распознана";
       return;
     }
 
@@ -553,7 +597,7 @@
         <div
           class="point"
           class:selected={ selected.some(x => x.id === p.id) }
-          style="left:{p.x}px; top:{p.y}px;"
+          style="left: {(p.x / 300) * 100}%; top: {(p.y / 300) * 100}%;"
         ></div>
       {/each}
     </div>
@@ -583,6 +627,9 @@
     color: #ddd;
     user-select: none;
     text-align: center;
+    padding: calc(var(--safe-top, 0px) + 24px) 24px calc(var(--safe-bottom, 0px) + 24px);
+    box-sizing: border-box;
+    overflow-y: auto;
   }
 
   .auth-page {
@@ -595,12 +642,16 @@
     color: #ddd;
     user-select: none;
     text-align: center;
+    padding: calc(var(--safe-top, 0px) + 24px) 24px calc(var(--safe-bottom, 0px) + 24px);
+    box-sizing: border-box;
+    width: 100%;
+    max-width: 100vw;
   }
 
   .overlay-nav {
     position: absolute;
-    top: 18px;
-    right: 22px;
+    top: calc(var(--safe-top, 0px) + 16px);
+    right: calc(var(--safe-right, 0px) + 16px);
     z-index: 10;
   }
 
@@ -663,16 +714,20 @@
   .pattern {
     width: 300px;
     height: 300px;
+    max-width: min(300px, calc(100vw - 48px));
+    max-height: min(300px, calc(100vw - 48px));
+    aspect-ratio: 1 / 1;
     position: relative;
     touch-action: none;
+    margin: 0 auto;
   }
 
   .pattern svg {
     position: absolute;
     left: 0;
     top: 0;
-    width: 300px;
-    height: 300px;
+    width: 100%;
+    height: 100%;
     z-index: 5;
     pointer-events: none;
     overflow: visible;

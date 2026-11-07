@@ -11,7 +11,7 @@ use std::{
 };
 
 use super::storage::{
-    crypto_key, derive_key, generate_salt, hash_key, verify_hash,
+    crypto_key, derive_key, generate_salt, hash_key, insert_crypto_key, remove_crypto_key, verify_hash,
     collect_all_account_files, migrate_all_files, Paths, Storage,
 };
 use super::cache::CACHE_INDEX_CACHE;
@@ -171,6 +171,7 @@ pub async fn account_get(app: AppHandle, id: u64) -> Result<Value, String> {
 
 #[tauri::command]
 pub fn account_delete(app: AppHandle, id: u64) -> Result<(), String> {
+    remove_crypto_key(id);
     if let Ok(mut guard) = ACCOUNT_CACHE.write() {
         guard.remove(&id);
     }
@@ -366,6 +367,8 @@ pub async fn decrypt_account(
             return Err("Wrong key".into());
         }
 
+        insert_crypto_key(account, derived);
+
         *app.state::<AppState>().crypto.write().unwrap() = Some(
             CryptoSession {
                 account,
@@ -424,6 +427,8 @@ pub async fn set_encryption(
 
             save_accounts(&app_clone, &store)?;
 
+            insert_crypto_key(account, derived);
+
             *app_clone.state::<AppState>().crypto.write().unwrap() = Some(
                 CryptoSession {
                     account,
@@ -452,6 +457,8 @@ pub async fn set_encryption(
             entry["preview"] = Value::Null;
 
             save_accounts(&app_clone, &store)?;
+
+            remove_crypto_key(account);
 
             *app_clone.state::<AppState>().crypto.write().unwrap() = None;
         }
@@ -510,6 +517,8 @@ pub async fn decrypt_account_hardware(
             return Err("Wrong key".into());
         }
 
+        insert_crypto_key(account, key_bytes);
+
         *app.state::<AppState>().crypto.write().unwrap() = Some(
             CryptoSession {
                 account,
@@ -531,12 +540,7 @@ pub async fn decrypt_account_hardware(
 }
 
 #[tauri::command]
-pub fn lock_crypto_session(app: AppHandle) {
-    if let Some(state) = app.try_state::<crate::AppState>() {
-        if let Ok(mut c) = state.crypto.write() {
-            *c = None;
-        }
-    }
+pub fn lock_crypto_session(_app: AppHandle) {
     if let Ok(mut guard) = ACCOUNT_CACHE.write() {
         guard.clear();
     }
@@ -584,6 +588,8 @@ pub async fn set_hardware_encryption(
 
             save_accounts(&app_clone, &store)?;
 
+            insert_crypto_key(account, key_bytes);
+
             *app_clone.state::<AppState>().crypto.write().unwrap() = Some(
                 CryptoSession {
                     account,
@@ -606,6 +612,8 @@ pub async fn set_hardware_encryption(
             entry["preview"] = Value::Null;
 
             save_accounts(&app_clone, &store)?;
+
+            remove_crypto_key(account);
 
             *app_clone.state::<AppState>().crypto.write().unwrap() = None;
         }
@@ -657,6 +665,67 @@ pub fn resolve_app_root(app_dir: &str) -> std::path::PathBuf {
     base
 }
 
+pub fn is_account_encrypted_disk(app_dir: &str, account_id: u64) -> bool {
+    let root = resolve_app_root(app_dir);
+    let accounts_path = root.join("accounts");
+    let storage = Storage::new(None);
+    let store = match storage.load(&accounts_path) {
+        Some(s) => s,
+        None => return false,
+    };
+    let accounts = match store.get("accounts").and_then(|a| a.as_array()) {
+        Some(a) => a,
+        None => return false,
+    };
+    let target = if account_id != 0 {
+        accounts.iter().find(|x| x.get("id").and_then(|id| id.as_u64()) == Some(account_id))
+            .or_else(|| store.get("current").and_then(|c| c.as_u64()).and_then(|cid| {
+                accounts.iter().find(|x| x.get("id").and_then(|id| id.as_u64()) == Some(cid))
+            }))
+            .or_else(|| accounts.first())
+    } else {
+        store.get("current").and_then(|c| c.as_u64()).and_then(|cid| {
+            accounts.iter().find(|x| x.get("id").and_then(|id| id.as_u64()) == Some(cid))
+        }).or_else(|| accounts.first())
+    };
+    target.map(|acc| !acc.get("encryption").unwrap_or(&Value::Null).is_null()).unwrap_or(false)
+}
+
+#[cfg_attr(not(target_os = "android"), allow(dead_code))]
+pub fn resolve_account_for_chat(app_dir: &str, chat_id: i64) -> u64 {
+    let root = resolve_app_root(app_dir);
+    let accounts_path = root.join("accounts");
+    let storage = Storage::new(None);
+    let store = match storage.load(&accounts_path) {
+        Some(s) => s,
+        None => return 0,
+    };
+    let accounts = match store.get("accounts").and_then(|a| a.as_array()) {
+        Some(a) => a,
+        None => return 0,
+    };
+
+    if chat_id != 0 {
+        for acc in accounts {
+            if let Some(id) = acc.get("id").and_then(|v| v.as_u64()) {
+                let chat_dir = root.join("data").join(id.to_string()).join("chats").join(chat_id.to_string());
+                if chat_dir.exists() {
+                    return id;
+                }
+            }
+        }
+    }
+
+    if let Some(curr) = store.get("current").and_then(|v| v.as_u64()) {
+        if curr != 0 {
+            return curr;
+        }
+    }
+
+    accounts.first().and_then(|a| a.get("id")?.as_u64()).unwrap_or(0)
+}
+
+#[cfg_attr(not(target_os = "android"), allow(dead_code))]
 pub fn is_account_privacy_active_disk(app_dir: &str, account_id: u64) -> bool {
     let root = resolve_app_root(app_dir);
     let accounts_path = root.join("accounts");
@@ -671,8 +740,14 @@ pub fn is_account_privacy_active_disk(app_dir: &str, account_id: u64) -> bool {
     };
     let target = if account_id != 0 {
         accounts.iter().find(|x| x.get("id").and_then(|id| id.as_u64()) == Some(account_id))
+            .or_else(|| store.get("current").and_then(|c| c.as_u64()).and_then(|cid| {
+                accounts.iter().find(|x| x.get("id").and_then(|id| id.as_u64()) == Some(cid))
+            }))
+            .or_else(|| accounts.first())
     } else {
-        accounts.first()
+        store.get("current").and_then(|c| c.as_u64()).and_then(|cid| {
+            accounts.iter().find(|x| x.get("id").and_then(|id| id.as_u64()) == Some(cid))
+        }).or_else(|| accounts.first())
     };
     let acc = match target {
         Some(a) => a,
@@ -682,6 +757,8 @@ pub fn is_account_privacy_active_disk(app_dir: &str, account_id: u64) -> bool {
         return false;
     }
     let local_id = acc.get("id").and_then(|id| id.as_u64()).unwrap_or(account_id);
+    let key = crate::stores::get_crypto_key(local_id);
+    let storage = Storage::new(key);
     let meta_path = root.join("data").join(local_id.to_string()).join("meta");
     if let Some(meta) = storage.load(&meta_path) {
         if meta.get("hide_locked_notifications").and_then(|v| v.as_bool()) == Some(false) {
@@ -724,11 +801,13 @@ pub fn get_background_creds(
         .iter()
         .find(|x| x.get("id").and_then(|id| id.as_u64()) == Some(local_id))?;
 
-    if !account_info.get("encryption").unwrap_or(&Value::Null).is_null() {
-        eprintln!("Push: Account is encrypted. Background push delivery requires key.");
+    let is_encrypted = !account_info.get("encryption").unwrap_or(&Value::Null).is_null();
+    let key = crate::stores::get_crypto_key(local_id);
+    if is_encrypted && key.is_none() {
         return None;
     }
 
+    let storage = Storage::new(key);
     let meta_path = root.join("data").join(local_id.to_string()).join("meta");
     let meta = storage.load(&meta_path)?;
 
