@@ -13,11 +13,20 @@ body {
   margin: 0;
   padding: 0;
   background-color: #17181c;
+  color: #ffffff;
   overflow: hidden;
-  font-family: "Inter Medium", system-ui, sans-serif;
+  font-family: "Inter Medium", system-ui, -apple-system, sans-serif;
   box-sizing: border-box;
   width: 100%;
   height: 100%;
+}
+
+body.auth-light-body {
+  background-color: #ffffff !important;
+}
+
+body.auth-dark-body {
+  background-color: #121316 !important;
 }
 
 html,
@@ -91,13 +100,18 @@ img {
   --bg-app: #17181c;
   --bg-chat: #161621;
   --bg-surface: #1e2025;
+  --bg-surface-secondary: #26262e;
   --bg-surface-2: #26262e;
+  --bg-surface-elevated: #24252b;
+  --bg-input: #26262e;
+  --bg-pill: #2c2d33;
   --bg-sheet: #1e1f24;
   --bg-panel: #1c1d1f;
   --bg-topbar: #212126;
 
   --accent-primary: #248bfe;
   --accent-primary-hover: #1b74d9;
+  --accent-primary-disabled: #1b4e8c;
   --accent-subtle: rgba(36, 139, 254, 0.12);
   --accent-subtle-hover: rgba(36, 139, 254, 0.2);
 
@@ -105,8 +119,8 @@ img {
   --bubble-incoming: #3a3c55;
 
   --text-primary: #ffffff;
-  --text-secondary: #edf0f5;
-  --text-muted: #8b929e;
+  --text-secondary: #8b929e;
+  --text-muted: #697282;
   --text-subtle: #697282;
 
   --border-subtle: rgba(255, 255, 255, 0.08);
@@ -135,6 +149,44 @@ img {
   --z-picker: 110;
   --z-toast: 120;
   --z-loader: 130;
+}
+
+[data-theme="dark"] {
+  --bg-app: #17181c;
+  --bg-chat: #161621;
+  --bg-surface: #1e2025;
+  --bg-surface-secondary: #26262e;
+  --bg-surface-2: #26262e;
+  --bg-surface-elevated: #24252b;
+  --bg-input: #26262e;
+  --bg-pill: #2c2d33;
+  --bg-sheet: #1e1f24;
+  --bg-panel: #1c1d1f;
+  --bg-topbar: #212126;
+
+  --accent-primary: #248bfe;
+  --accent-primary-hover: #1b74d9;
+  --accent-primary-disabled: #1b4e8c;
+  --accent-subtle: rgba(36, 139, 254, 0.12);
+  --accent-subtle-hover: rgba(36, 139, 254, 0.2);
+
+  --bubble-outgoing: #7b4cd6;
+  --bubble-incoming: #3a3c55;
+
+  --text-primary: #ffffff;
+  --text-secondary: #8b929e;
+  --text-muted: #697282;
+  --text-subtle: #697282;
+
+  --border-subtle: rgba(255, 255, 255, 0.08);
+  --border-card: rgba(255, 255, 255, 0.06);
+
+  --status-success: #4ade80;
+  --status-danger: #ef4444;
+  --status-warning: #fbbf24;
+  --badge-unread: #3b82f6;
+  --read-tick: #34b7f1;
+  --online: #4fc3f7;
 }
 
 input[type="checkbox"] {

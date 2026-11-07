@@ -1,184 +1,481 @@
 <script>
   import { onMount } from "svelte";
-  import { invoke } from "@tauri-apps/api/core";
   import { goto } from "$app/navigation";
-
-  import {
-    getAccounts,
-    addAccount,
-    setCurrentAccount,
-    getDevice,
-  } from "$lib/stores/accounts";
-  import {
+  import Session, {
     get as sessionGet,
     set as sessionSet,
   } from "$lib/stores/session";
-  import API, {
-    currentUser
-  } from "$lib/stores/api";
+  import { getAccounts, getDevice } from "$lib/stores/accounts";
+  import { activeThemeId, toggleTheme } from "$lib/stores/theme";
+  import API from "$lib/stores/api";
 
-  import OpenDevSettingsButton from "$components/main/dev/OpenButton.svelte";
-  import OpenDevicesButton from "$components/main/devices/OpenButton.svelte";
-  import ActionButton from "$components/main/auth/ActionButton.svelte";
-  import BackButton from "$components/main/auth/BackButton.svelte";
+  import AuroraBackground from "$components/main/auth/AuroraBackground.svelte";
+  import MaxLogo from "$components/main/auth/MaxLogo.svelte";
+  import CountryPickerModal from "$components/main/auth/CountryPickerModal.svelte";
 
-  let phone = "";
+  let country = {
+    name: "Россия",
+    code: "+7",
+    flag: "🇷🇺",
+    mask: "### ### ## ##",
+  };
+
+  let rawDigits = "";
+  let formattedPhone = "";
+  let isPickerOpen = false;
   let error = "";
+  let loading = false;
+  let phoneInputRef;
+  let hasOpenedDevice = false;
+  let pendingAuthAfterClose = false;
+
+  $: requiredLength = country.mask ? (country.mask.match(/#/g) || []).length : 10;
+  $: isValid = rawDigits.length === requiredLength;
+
+  $: if (pendingAuthAfterClose && !$Session?.devicesPage) {
+    pendingAuthAfterClose = false;
+    hasOpenedDevice = true;
+    performAuth();
+  }
 
   onMount(async () => {
     if (!sessionGet("device")) {
-      const dev = await getDevice();
+      const dev = await getDevice().catch(() => null);
       if (dev) sessionSet("device", dev);
+    }
+
+    const savedPhone = sessionGet("phone");
+    if (savedPhone) {
+      if (savedPhone.startsWith("+7") && savedPhone.length > 2) {
+        setRawDigits(savedPhone.slice(2));
+      }
     }
   });
 
-  async function login() {
-    if (phone.length < 7) {
-      error = "Это не номер!";
+  function setRawDigits(val) {
+    const clean = val.replace(/\D/g, "").slice(0, requiredLength);
+    rawDigits = clean;
+    formattedPhone = applyMask(clean, country.mask);
+  }
+
+  function applyMask(digits, mask) {
+    if (!mask) return digits;
+    let res = "";
+    let di = 0;
+    for (let i = 0; i < mask.length && di < digits.length; i++) {
+      if (mask[i] === "#") {
+        res += digits[di++];
+      } else {
+        res += mask[i];
+      }
+    }
+    return res;
+  }
+
+  function handlePhoneInput(e) {
+    error = "";
+    hasOpenedDevice = false;
+    const inputVal = e.target.value;
+    setRawDigits(inputVal);
+  }
+
+  function handleCountrySelect(e) {
+    country = e.detail;
+    isPickerOpen = false;
+    hasOpenedDevice = false;
+    setRawDigits(rawDigits);
+    if (phoneInputRef) phoneInputRef.focus();
+  }
+
+  async function handleToggleTheme() {
+    await toggleTheme();
+  }
+
+  function handleContinue() {
+    if (loading) return;
+
+    if (!isValid) {
+      error = "Введите полный номер телефона";
       return;
     }
 
-    if (!sessionGet("device")) {
-      const dev = await getDevice();
-      if (dev) {
-        sessionSet("device", dev);
-      } else {
-        return alert("Нажмите на иконку телефона, чтобы настроить данные входа!");
-      }
+    if (!hasOpenedDevice) {
+      pendingAuthAfterClose = true;
+      sessionSet("devicesPage", true);
+      return;
     }
 
+    performAuth();
+  }
+
+  async function performAuth() {
+    if (loading) return;
     error = "";
-    if (!phone.startsWith("+")) phone = "+" + phone;
+    loading = true;
 
-    sessionSet("phone", phone);
+    const fullPhone = `${country.code}${rawDigits}`;
+    sessionSet("phone", fullPhone);
 
-    const response = await $API.startAuth(phone);
-
-    if (response?.success) {
-      if (response.codeDelay) sessionSet("codeDelay", response.codeDelay);
-      if (response.codeLength) sessionSet("codeLength", response.codeLength);
-      sessionSet("authPayload", response);
-      goto("/auth/verify");
-    } else {
-      error = response?.title || response?.message || "Ошибка входа";
-    }
-  }
-
-  async function showBackButton() {
-    return !!(await getAccounts()).length;
-  }
-
-  const readFile = path => invoke("read_file", { path });
-
-  async function importAccount() {
-    const select = await invoke("pick", { type: "JSON" }); // TODO implement this type on Rust side
-
-    if (!select) return;
-
-    console.log('Reading file:', select);
-    const data = await readFile(select.uri);
-    const text = new TextDecoder().decode(new Uint8Array(data));
-
-    let json;
     try {
-      json = JSON.parse(text);
-    } catch (e) {
-      return alert("JSON-файл содержит ошибки!")
-    }
+      const response = await $API.startAuth(fullPhone);
 
-    if (!json.version || json.type !== "account") return alert("Неверный файл - это не конфиг аккаунта!");
-
-    if (json.version === 1) {
-      const { meta } = json;
-      try {
-        await $API.importAccount(meta.token, meta.device);
-        goto("/");
-      } catch (e) {
-        alert(e?.message || "Не удалось подключиться к серверу с импортированным аккаунтом!");
+      if (response?.success) {
+        if (response.codeDelay) sessionSet("codeDelay", response.codeDelay);
+        if (response.codeLength) sessionSet("codeLength", response.codeLength);
+        sessionSet("authPayload", response);
+        goto("/auth/verify");
+      } else {
+        loading = false;
+        error = response?.title || response?.message || "Ошибка отправки кода";
       }
-    } else {
-      return alert("Это конфиг для более новой версии Max+!")
+    } catch (e) {
+      loading = false;
+      error = e?.message || "Не удалось связаться с сервером";
+    }
+  }
+
+  function handleKeyDown(e) {
+    if (e.key === "Enter" && isValid) {
+      handleContinue();
     }
   }
 </script>
 
-<div class="auth-page">
-  <h1>Вход</h1>
-  <div class="form">
-    <div class="error">{error}</div>
-    <input
-      type="tel"
-      bind:value={phone}
-      placeholder="Номер телефона"
-      required
+<div class="auth-screen" class:dark-theme={$activeThemeId === "dark"}>
+  <AuroraBackground />
+
+  <header class="top-nav">
+    <button
+      type="button"
+      class="icon-button"
+      on:click={() => goto("/auth/select?from=login")}
+      aria-label="Выбрать аккаунт"
+    >
+      <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="10"></circle>
+        <line x1="2" y1="12" x2="22" y2="12"></line>
+        <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
+      </svg>
+    </button>
+
+    <div class="logo-center">
+      <MaxLogo size={32} />
+    </div>
+
+    <button
+      type="button"
+      class="icon-button"
+      on:click={handleToggleTheme}
+      aria-label="Сменить тему"
+    >
+      <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="10"></circle>
+        <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path>
+        <line x1="12" y1="17" x2="12.01" y2="17"></line>
+      </svg>
+    </button>
+  </header>
+
+  <main class="content-container">
+    <div class="title-section">
+      <h1 class="main-heading">
+        С каким номером<br />телефона хотите войти?
+      </h1>
+    </div>
+
+    <div class="input-card">
+      <button
+        type="button"
+        class="country-btn"
+        on:click={() => (isPickerOpen = true)}
+        aria-label="Выбрать страну"
+      >
+        <span class="country-flag">{country.flag}</span>
+        <span class="country-code">{country.code}</span>
+        <svg class="chevron-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="6 9 12 15 18 9"></polyline>
+        </svg>
+      </button>
+
+      <input
+        bind:this={phoneInputRef}
+        type="tel"
+        inputmode="numeric"
+        class="phone-field"
+        placeholder="123 456 78 90"
+        value={formattedPhone}
+        on:input={handlePhoneInput}
+        on:keydown={handleKeyDown}
+        autocomplete="tel"
+      />
+    </div>
+
+    <p class="field-hint">
+      Для входа нужен номер страны из списка — нажмите на флаг, чтобы выбрать
+    </p>
+
+    {#if error}
+      <div class="error-notice">{error}</div>
+    {/if}
+  </main>
+
+  <footer class="bottom-section">
+    <button
+      type="button"
+      class="submit-button"
+      class:active={isValid && !loading}
+      disabled={!isValid || loading}
+      on:click={handleContinue}
+    >
+      {loading ? "Отправка..." : "Продолжить"}
+    </button>
+
+    <p class="disclaimer-text">
+      Нажимая «Продолжить», вы принимаете <span class="highlight">политику конфиденциальности</span>, <span class="highlight">пользовательское соглашение</span> и <span class="highlight">правила персональных рекомендаций</span>
+    </p>
+  </footer>
+
+  {#if isPickerOpen}
+    <CountryPickerModal
+      selectedCode={country.code}
+      on:select={handleCountrySelect}
+      on:close={() => (isPickerOpen = false)}
     />
-    <ActionButton text="Получить код" action={login}/>
-  </div>
-  <a href="/auth/register" class="link">Создать аккаунт</a>
-  <a on:click={importAccount} class="link">Импорт аккаунта</a>
-  <BackButton condition={showBackButton} path="/auth/select"/>
+  {/if}
 </div>
 
-<OpenDevSettingsButton />
-<OpenDevicesButton />
-
 <style>
-  .auth-page {
+  .auth-screen {
+    --auth-bg: #ffffff;
+    --auth-text: #000000;
+    --auth-text-secondary: #8e8e93;
+    --auth-input-bg: #eff0f4;
+    --auth-accent: #007aff;
+    --auth-card-bg: #ffffff;
+    --auth-border: #e5e5ea;
+
+    position: relative;
     display: flex;
     flex-direction: column;
-    justify-content: center;
-    align-items: center;
     min-height: 100%;
+    width: 100%;
+    background-color: var(--auth-bg);
+    color: var(--auth-text);
+    box-sizing: border-box;
     padding-top: var(--safe-top, 0px);
     padding-bottom: var(--safe-bottom, 0px);
+    overflow-x: hidden;
+  }
+
+  .auth-screen.dark-theme {
+    --auth-bg: #121316;
+    --auth-text: #ffffff;
+    --auth-text-secondary: #8e8e93;
+    --auth-input-bg: #212228;
+    --auth-accent: #007aff;
+    --auth-card-bg: #1c1d22;
+    --auth-border: rgba(255, 255, 255, 0.1);
+  }
+
+  .top-nav {
+    position: relative;
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 56px;
+    padding: 0 16px;
+    width: 100%;
+    max-width: 440px;
+    margin: 0 auto;
     box-sizing: border-box;
-    text-align: center;
-    color: #ddd;
   }
 
-  .auth-page h1 {
-    margin-bottom: 0px;
+  .icon-button {
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: none;
+    border-radius: 50%;
+    color: var(--auth-text);
+    cursor: pointer;
+    transition: background-color 0.15s ease;
   }
 
-  .form {
+  .icon-button:active {
+    background-color: rgba(127, 127, 127, 0.12);
+  }
+
+  .logo-center {
+    display: flex;
+    align-items: center;
+  }
+
+  .content-container {
+    position: relative;
+    z-index: 2;
+    flex: 1;
     display: flex;
     flex-direction: column;
-    gap: 0.75rem;
+    padding: 36px 20px 0 20px;
     width: 100%;
-    max-width: min(300px, 90%);
-  }
-
-  input {
-    padding: 0.75rem;
-    border-radius: 8px;
-    border: 1px solid #333;
-    font-size: 1rem;
-    background-color: #26262e;
-    color: #ccc;
-    outline: none;
-  }
-
-  .link {
-    margin-top: 20px;
-    font-size: 15px;
-    color: #4a90e2;
-    text-decoration: none;
-    transition: transform 0.2s;
-  }
-
-  .link:hover {
-    transform: scale(1.02);
-  }
-
-  .error {
-    color: red;
-    font-size: 15px;
-    min-height: 18px;
-    text-align: center;
-    width: 100%;
+    max-width: 440px;
+    margin: 0 auto;
     box-sizing: border-box;
-    white-space: normal;
-    overflow-wrap: break-word;
-    word-break: normal;
+  }
+
+  .title-section {
+    text-align: center;
+    margin-bottom: 24px;
+  }
+
+  .main-heading {
+    margin: 0;
+    font-size: 21.5px;
+    font-weight: 600;
+    line-height: 1.28;
+    color: var(--auth-text);
+    letter-spacing: -0.2px;
+  }
+
+  .input-card {
+    display: flex;
+    align-items: center;
+    height: 54px;
+    background-color: var(--auth-input-bg);
+    border-radius: 14px;
+    padding: 0 16px;
+    gap: 12px;
+    transition: box-shadow 0.15s ease;
+  }
+
+  .input-card:focus-within {
+    box-shadow: 0 0 0 1.5px rgba(0, 122, 255, 0.45);
+  }
+
+  .country-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: transparent;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+    color: var(--auth-text);
+    font-family: inherit;
+    font-size: 17px;
+    font-weight: 500;
+    flex-shrink: 0;
+  }
+
+  .country-flag {
+    font-size: 22px;
+    line-height: 1;
+  }
+
+  .country-code {
+    font-size: 17px;
+    font-weight: 500;
+    color: var(--auth-text);
+  }
+
+  .chevron-icon {
+    color: var(--auth-text-secondary);
+    margin-left: -2px;
+  }
+
+  .phone-field {
+    flex: 1;
+    height: 100%;
+    background: transparent;
+    border: none;
+    outline: none;
+    font-size: 17px;
+    font-family: inherit;
+    color: var(--auth-text);
+    font-weight: 400;
+    letter-spacing: 0.3px;
+    padding: 0;
+    -webkit-user-select: text;
+    user-select: text;
+  }
+
+  .phone-field::placeholder {
+    color: var(--auth-text-secondary);
+    opacity: 0.85;
+  }
+
+  .field-hint {
+    margin: 12px 4px 0 4px;
+    font-size: 13.5px;
+    line-height: 1.4;
+    color: var(--auth-text-secondary);
+    text-align: left;
+  }
+
+  .error-notice {
+    margin-top: 14px;
+    padding: 10px 14px;
+    background-color: rgba(239, 68, 68, 0.12);
+    color: #ef4444;
+    border-radius: 10px;
+    font-size: 14px;
+    text-align: center;
+  }
+
+  .bottom-section {
+    position: relative;
+    z-index: 2;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 16px 20px 24px 20px;
+    margin-top: auto;
+    width: 100%;
+    max-width: 440px;
+    margin-left: auto;
+    margin-right: auto;
+    box-sizing: border-box;
+  }
+
+  .submit-button {
+    width: 100%;
+    height: 52px;
+    border-radius: 14px;
+    border: none;
+    background-color: #007aff;
+    opacity: 0.7;
+    color: #ffffff;
+    font-size: 16px;
+    font-weight: 600;
+    font-family: inherit;
+    cursor: default;
+    transition: opacity 0.2s ease, transform 0.1s ease;
+  }
+
+  .submit-button.active {
+    opacity: 1;
+    cursor: pointer;
+  }
+
+  .submit-button.active:active {
+    transform: scale(0.985);
+  }
+
+  .disclaimer-text {
+    margin: 14px 0 0 0;
+    font-size: 12.5px;
+    line-height: 1.35;
+    color: var(--auth-text-secondary);
+    text-align: center;
+    max-width: 380px;
+  }
+
+  .disclaimer-text .highlight {
+    color: var(--auth-text);
+    font-weight: 500;
   }
 </style>

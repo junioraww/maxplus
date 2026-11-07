@@ -610,6 +610,10 @@ pub async fn two_factor(
         "disable" => {
             state.client.disable_2fa(p.str_or("currentPassword", "")).await
         }
+        "verify_email" => {
+            let track = p.str_or("trackId", "");
+            state.client.verify_2fa_email(track, p.str_or("code", "")).await
+        }
         _ => return Err(json!({ "error": "unknown_action" })),
     };
     let payload = resp.map(|r| r.payload).map_err(|e| e.to_json())?;
