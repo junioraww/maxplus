@@ -1,3 +1,5 @@
+import { renderStoryLayersToCanvas } from '$lib/utils/storyCompositor';
+
 function sanitizeMp4EditList(input) {
   const bytes = input instanceof Uint8Array ? input : new Uint8Array(input);
   for (let i = 0; i <= bytes.length - 4; i++) {
@@ -89,7 +91,6 @@ export async function cropVideoToMp4(videoEl, options = {}) {
       overlayCanvas.width = width;
       overlayCanvas.height = height;
       const overlayCtx = overlayCanvas.getContext('2d');
-      const { renderStoryLayersToCanvas } = await import('$lib/utils/storyCompositor');
       await renderStoryLayersToCanvas(overlayCtx, options.layers || [], width, height, options.previewWidth || 360, options.doodleCanvas || null);
     } catch {}
   }

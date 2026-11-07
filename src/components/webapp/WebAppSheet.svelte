@@ -14,10 +14,9 @@
     reloadMiniApp,
     openMiniApp,
     updateAppMeta,
-    resolveWebAppUrl,
   } from "$lib/stores/webapp";
   import { createBridgeClient } from "$lib/webapp/bridge";
-  import { processMaxLink } from "$lib/utils/maxLink";
+  import { processMaxLink, resolveWebAppUrl } from "$lib/utils/maxLink";
   import ConfirmModal from "$components/main/ConfirmModal.svelte";
   import { registerBackHandler } from "$lib/utils/backButton";
 

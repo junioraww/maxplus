@@ -2,7 +2,7 @@
 use jni::{
     jni_sig, jni_str,
     objects::{JObject, JString},
-    sys::jboolean,
+    sys::{jboolean, jlong},
     EnvUnowned,
 };
 #[cfg(target_os = "android")]
@@ -803,55 +803,63 @@ pub fn check_pending_open_chat() -> Option<serde_json::Value> {
     }
 }
 
+#[cfg(target_os = "android")]
 #[tauri::command]
 pub async fn set_app_locked(locked: bool) -> Result<(), String> {
-    #[cfg(target_os = "android")]
-    {
-        if let Some(vm) = GLOBAL_JVM.get() {
-            let _ = vm.attach_current_thread(|env| -> Result<(), jni::errors::Error> {
-                let app_state_class = env.find_class(jni_str!("me/junioraww/max/AppState"))
-                    .or_else(|_| env.find_class(jni_str!("org/meowkie/max/AppState")))?;
-                env.call_static_method(
-                    app_state_class,
-                    jni_str!("setAppLocked"),
-                    jni_sig!("(Z)V"),
-                    &[jni::objects::JValue::Bool(if locked { 1 } else { 0 })],
-                )?;
-                Ok(())
-            });
-        }
+    if let Some(vm) = GLOBAL_JVM.get() {
+        let _ = vm.attach_current_thread(|env| -> Result<(), jni::errors::Error> {
+            let app_state_class = env.find_class(jni_str!("me/junioraww/max/AppState"))
+                .or_else(|_| env.find_class(jni_str!("org/meowkie/max/AppState")))?;
+            env.call_static_method(
+                app_state_class,
+                jni_str!("setAppLocked"),
+                jni_sig!("(Z)V"),
+                &[jni::objects::JValue::Bool(locked)],
+            )?;
+            Ok(())
+        });
     }
     Ok(())
 }
 
+#[cfg(not(target_os = "android"))]
+#[tauri::command]
+pub async fn set_app_locked(_locked: bool) -> Result<(), String> {
+    Ok(())
+}
+
+#[cfg(target_os = "android")]
 #[tauri::command]
 pub async fn reset_locked_notification_counter(account: i64) -> Result<(), String> {
-    #[cfg(target_os = "android")]
-    {
-        if let Some(vm) = GLOBAL_JVM.get() {
-            let _ = vm.attach_current_thread(|env| -> Result<(), jni::errors::Error> {
-                let notif_class = env.find_class(jni_str!("me/junioraww/max/NotificationHelper"))
-                    .or_else(|_| env.find_class(jni_str!("org/meowkie/max/NotificationHelper")))?;
-                let main_class = env.find_class(jni_str!("me/junioraww/max/MainActivity"))
-                    .or_else(|_| env.find_class(jni_str!("org/meowkie/max/MainActivity")))?;
-                let ctx_obj = env.call_static_method(
-                    main_class,
-                    jni_str!("getApplicationContextStatic"),
-                    jni_sig!("()Landroid/content/Context;"),
-                    &[],
-                )?.l()?;
-                if !ctx_obj.is_null() {
-                    env.call_static_method(
-                        notif_class,
-                        jni_str!("resetSecurePrivacyNotification"),
-                        jni_sig!("(Landroid/content/Context;J)V"),
-                        &[jni::objects::JValue::Object(&ctx_obj), jni::objects::JValue::Long(account)],
-                    )?;
-                }
-                Ok(())
-            });
-        }
+    if let Some(vm) = GLOBAL_JVM.get() {
+        let _ = vm.attach_current_thread(|env| -> Result<(), jni::errors::Error> {
+            let notif_class = env.find_class(jni_str!("me/junioraww/max/NotificationHelper"))
+                .or_else(|_| env.find_class(jni_str!("org/meowkie/max/NotificationHelper")))?;
+            let main_class = env.find_class(jni_str!("me/junioraww/max/MainActivity"))
+                .or_else(|_| env.find_class(jni_str!("org/meowkie/max/MainActivity")))?;
+            let ctx_obj = env.call_static_method(
+                main_class,
+                jni_str!("getApplicationContextStatic"),
+                jni_sig!("()Landroid/content/Context;"),
+                &[],
+            )?.l()?;
+            if !ctx_obj.is_null() {
+                env.call_static_method(
+                    notif_class,
+                    jni_str!("resetSecurePrivacyNotification"),
+                    jni_sig!("(Landroid/content/Context;J)V"),
+                    &[jni::objects::JValue::Object(&ctx_obj), jni::objects::JValue::Long(account)],
+                )?;
+            }
+            Ok(())
+        });
     }
+    Ok(())
+}
+
+#[cfg(not(target_os = "android"))]
+#[tauri::command]
+pub async fn reset_locked_notification_counter(_account: i64) -> Result<(), String> {
     Ok(())
 }
 
@@ -1204,6 +1212,7 @@ pub extern "system" fn Java_org_meowkie_max_MainActivity_notifyScreenCaptureStop
     }));
 }
 
+#[cfg(target_os = "android")]
 #[tauri::command]
 pub async fn show_notification(
     chat_id: i64,
@@ -1214,34 +1223,49 @@ pub async fn show_notification(
     sender_name: Option<String>,
     is_group: Option<bool>,
 ) -> Result<(), String> {
-    #[cfg(target_os = "android")]
-    {
-        let sender_name_val = sender_name.unwrap_or_else(|| title.clone());
-        let is_group_val = is_group.unwrap_or_else(|| chat_id < 0);
-        android_log(
-            3,
-            "MaxPlusJNI",
-            &format!(
-                "show_notification: chat_id={}, title={}, sender_id={}, account={}, sender_name={}, is_group={}",
-                chat_id, title, sender_id, account, sender_name_val, is_group_val
-            ),
-        );
-        if let (Some(vm), Some(global_class)) = (GLOBAL_JVM.get(), GLOBAL_NOTIFICATION_CLASS.get()) {
-            let res = vm.attach_current_thread(|env| -> Result<(), jni::errors::Error> {
-                let j_title = env.new_string(&title)?;
-                let j_text = env.new_string(&text)?;
-                let j_sender = env.new_string(&sender_id)?;
-                let j_sender_name = env.new_string(&sender_name_val)?;
+    let sender_name_val = sender_name.unwrap_or_else(|| title.clone());
+    let is_group_val = is_group.unwrap_or_else(|| chat_id < 0);
+    android_log(
+        3,
+        "MaxPlusJNI",
+        &format!(
+            "show_notification: chat_id={}, title={}, sender_id={}, account={}, sender_name={}, is_group={}",
+            chat_id, title, sender_id, account, sender_name_val, is_group_val
+        ),
+    );
+    if let (Some(vm), Some(global_class)) = (GLOBAL_JVM.get(), GLOBAL_NOTIFICATION_CLASS.get()) {
+        let res = vm.attach_current_thread(|env| -> Result<(), jni::errors::Error> {
+            let j_title = env.new_string(&title)?;
+            let j_text = env.new_string(&text)?;
+            let j_sender = env.new_string(&sender_id)?;
+            let j_sender_name = env.new_string(&sender_name_val)?;
 
-                let j_title_obj = JObject::from(j_title);
-                let j_text_obj = JObject::from(j_text);
-                let j_sender_obj = JObject::from(j_sender);
-                let j_sender_name_obj = JObject::from(j_sender_name);
+            let j_title_obj = JObject::from(j_title);
+            let j_text_obj = JObject::from(j_text);
+            let j_sender_obj = JObject::from(j_sender);
+            let j_sender_name_obj = JObject::from(j_sender_name);
 
-                let call_result = env.call_static_method(
+            let call_result = env.call_static_method(
+                global_class,
+                jni_str!("showNotificationDirect"),
+                jni_sig!("(JLjava/lang/String;Ljava/lang/String;Ljava/lang/String;JLjava/lang/String;Z)V"),
+                &[
+                    jni::objects::JValue::Long(chat_id),
+                    jni::objects::JValue::Object(&j_title_obj),
+                    jni::objects::JValue::Object(&j_text_obj),
+                    jni::objects::JValue::Object(&j_sender_obj),
+                    jni::objects::JValue::Long(account),
+                    jni::objects::JValue::Object(&j_sender_name_obj),
+                    jni::objects::JValue::Bool(is_group_val),
+                ],
+            );
+
+            if call_result.is_err() {
+                env.exception_clear();
+                env.call_static_method(
                     global_class,
                     jni_str!("showNotificationDirect"),
-                    jni_sig!("(JLjava/lang/String;Ljava/lang/String;Ljava/lang/String;JLjava/lang/String;Z)V"),
+                    jni_sig!("(JLjava/lang/String;Ljava/lang/String;Ljava/lang/String;JLjava/lang/String;)V"),
                     &[
                         jni::objects::JValue::Long(chat_id),
                         jni::objects::JValue::Object(&j_title_obj),
@@ -1249,116 +1273,125 @@ pub async fn show_notification(
                         jni::objects::JValue::Object(&j_sender_obj),
                         jni::objects::JValue::Long(account),
                         jni::objects::JValue::Object(&j_sender_name_obj),
-                        jni::objects::JValue::Bool(is_group_val),
                     ],
-                );
-
-                if call_result.is_err() {
-                    env.exception_clear();
-                    env.call_static_method(
-                        global_class,
-                        jni_str!("showNotificationDirect"),
-                        jni_sig!("(JLjava/lang/String;Ljava/lang/String;Ljava/lang/String;JLjava/lang/String;)V"),
-                        &[
-                            jni::objects::JValue::Long(chat_id),
-                            jni::objects::JValue::Object(&j_title_obj),
-                            jni::objects::JValue::Object(&j_text_obj),
-                            jni::objects::JValue::Object(&j_sender_obj),
-                            jni::objects::JValue::Long(account),
-                            jni::objects::JValue::Object(&j_sender_name_obj),
-                        ],
-                    )?;
-                }
-                Ok(())
-            });
-            match res {
-                Ok(()) => {
-                    android_log(3, "MaxPlusJNI", "showNotificationDirect succeeded");
-                }
-                Err(e) => {
-                    android_log(6, "MaxPlusJNI", &format!("showNotificationDirect JNI call error: {:?}", e));
-                }
+                )?;
             }
-        } else {
-            android_log(5, "MaxPlusJNI", "show_notification: GLOBAL_JVM or GLOBAL_NOTIFICATION_CLASS is None");
+            Ok(())
+        });
+        match res {
+            Ok(()) => {
+                android_log(3, "MaxPlusJNI", "showNotificationDirect succeeded");
+            }
+            Err(e) => {
+                android_log(6, "MaxPlusJNI", &format!("showNotificationDirect JNI call error: {:?}", e));
+            }
         }
+    } else {
+        android_log(5, "MaxPlusJNI", "show_notification: GLOBAL_JVM or GLOBAL_NOTIFICATION_CLASS is None");
     }
     Ok(())
 }
 
+#[cfg(not(target_os = "android"))]
+#[tauri::command]
+pub async fn show_notification(
+    _chat_id: i64,
+    _title: String,
+    _text: String,
+    _sender_id: String,
+    _account: i64,
+    _sender_name: Option<String>,
+    _is_group: Option<bool>,
+) -> Result<(), String> {
+    Ok(())
+}
+
+#[cfg(target_os = "android")]
 #[tauri::command]
 pub async fn cancel_notification(chat_id: i64) -> Result<(), String> {
-    #[cfg(target_os = "android")]
-    {
-        android_log(3, "MaxPlusJNI", &format!("cancel_notification: chat_id={}", chat_id));
-        if let (Some(vm), Some(global_class)) = (GLOBAL_JVM.get(), GLOBAL_NOTIFICATION_CLASS.get()) {
-            let res = vm.attach_current_thread(|env| -> Result<(), jni::errors::Error> {
-                env.call_static_method(
-                    global_class,
-                    jni_str!("cancelNotificationDirect"),
-                    jni_sig!("(J)V"),
-                    &[jni::objects::JValue::Long(chat_id)],
-                )?;
-                Ok(())
-            });
-            match res {
-                Ok(()) => {
-                    android_log(3, "MaxPlusJNI", "cancelNotificationDirect succeeded");
-                }
-                Err(e) => {
-                    android_log(6, "MaxPlusJNI", &format!("cancelNotificationDirect JNI call error: {:?}", e));
-                }
+    android_log(3, "MaxPlusJNI", &format!("cancel_notification: chat_id={}", chat_id));
+    if let (Some(vm), Some(global_class)) = (GLOBAL_JVM.get(), GLOBAL_NOTIFICATION_CLASS.get()) {
+        let res = vm.attach_current_thread(|env| -> Result<(), jni::errors::Error> {
+            env.call_static_method(
+                global_class,
+                jni_str!("cancelNotificationDirect"),
+                jni_sig!("(J)V"),
+                &[jni::objects::JValue::Long(chat_id)],
+            )?;
+            Ok(())
+        });
+        match res {
+            Ok(()) => {
+                android_log(3, "MaxPlusJNI", "cancelNotificationDirect succeeded");
             }
-        } else {
-            android_log(5, "MaxPlusJNI", "cancel_notification: GLOBAL_JVM or GLOBAL_NOTIFICATION_CLASS is None");
+            Err(e) => {
+                android_log(6, "MaxPlusJNI", &format!("cancelNotificationDirect JNI call error: {:?}", e));
+            }
         }
+    } else {
+        android_log(5, "MaxPlusJNI", "cancel_notification: GLOBAL_JVM or GLOBAL_NOTIFICATION_CLASS is None");
     }
     Ok(())
 }
 
+#[cfg(not(target_os = "android"))]
+#[tauri::command]
+pub async fn cancel_notification(_chat_id: i64) -> Result<(), String> {
+    Ok(())
+}
+
+#[cfg(target_os = "android")]
 #[tauri::command]
 pub async fn update_call_notification_config(sound: bool, vibration: bool, enabled: Option<bool>) -> Result<(), String> {
-    #[cfg(target_os = "android")]
-    {
-        let is_enabled = enabled.unwrap_or(true);
-        if let (Some(vm), Some(mgr_class)) = (GLOBAL_JVM.get(), GLOBAL_CALL_MGR_CLASS.get()) {
-            let _ = vm.attach_current_thread(|env| -> Result<(), jni::errors::Error> {
-                env.call_static_method(
-                    mgr_class,
-                    jni_str!("syncCallSettings"),
-                    jni_sig!("(ZZZ)V"),
-                    &[
-                        jni::objects::JValue::Bool(sound),
-                        jni::objects::JValue::Bool(vibration),
-                        jni::objects::JValue::Bool(is_enabled),
-                    ],
-                )?;
-                Ok(())
-            });
-        }
+    let is_enabled = enabled.unwrap_or(true);
+    if let (Some(vm), Some(mgr_class)) = (GLOBAL_JVM.get(), GLOBAL_CALL_MGR_CLASS.get()) {
+        let _ = vm.attach_current_thread(|env| -> Result<(), jni::errors::Error> {
+            env.call_static_method(
+                mgr_class,
+                jni_str!("syncCallSettings"),
+                jni_sig!("(ZZZ)V"),
+                &[
+                    jni::objects::JValue::Bool(sound),
+                    jni::objects::JValue::Bool(vibration),
+                    jni::objects::JValue::Bool(is_enabled),
+                ],
+            )?;
+            Ok(())
+        });
     }
     Ok(())
 }
 
+#[cfg(not(target_os = "android"))]
+#[tauri::command]
+pub async fn update_call_notification_config(_sound: bool, _vibration: bool, _enabled: Option<bool>) -> Result<(), String> {
+    Ok(())
+}
+
+#[cfg(target_os = "android")]
 #[tauri::command]
 pub async fn cancel_call_notification() -> Result<(), String> {
-    #[cfg(target_os = "android")]
-    {
-        if let (Some(vm), Some(mgr_class)) = (GLOBAL_JVM.get(), GLOBAL_CALL_MGR_CLASS.get()) {
-            let _ = vm.attach_current_thread(|env| -> Result<(), jni::errors::Error> {
-                env.call_static_method(
-                    mgr_class,
-                    jni_str!("cancelCallNotificationFromNative"),
-                    jni_sig!("()V"),
-                    &[],
-                )?;
-                Ok(())
-            });
-        }
+    if let (Some(vm), Some(mgr_class)) = (GLOBAL_JVM.get(), GLOBAL_CALL_MGR_CLASS.get()) {
+        let _ = vm.attach_current_thread(|env| -> Result<(), jni::errors::Error> {
+            env.call_static_method(
+                mgr_class,
+                jni_str!("cancelCallNotificationFromNative"),
+                jni_sig!("()V"),
+                &[],
+            )?;
+            Ok(())
+        });
     }
     Ok(())
 }
 
+#[cfg(not(target_os = "android"))]
+#[tauri::command]
+pub async fn cancel_call_notification() -> Result<(), String> {
+    Ok(())
+}
+
+#[cfg(target_os = "android")]
 #[tauri::command]
 pub async fn show_ongoing_call_notification(
     peer_id: i64,
@@ -1367,53 +1400,66 @@ pub async fn show_ongoing_call_notification(
     start_time_ms: Option<i64>,
     account: i64,
 ) -> Result<(), String> {
-    #[cfg(target_os = "android")]
-    {
-        let actual_start_time = start_time
-            .or(start_time_ms)
-            .unwrap_or_else(|| chrono::Utc::now().timestamp_millis());
+    let actual_start_time = start_time
+        .or(start_time_ms)
+        .unwrap_or_else(|| chrono::Utc::now().timestamp_millis());
 
-        if let (Some(vm), Some(mgr_class)) = (GLOBAL_JVM.get(), GLOBAL_CALL_MGR_CLASS.get()) {
-            let res = vm.attach_current_thread(|env| -> Result<(), jni::errors::Error> {
-                let j_name = env.new_string(&peer_name)?;
-                let j_name_obj = JObject::from(j_name);
-                env.call_static_method(
-                    mgr_class,
-                    jni_str!("showOngoingCallNotificationFromNative"),
-                    jni_sig!("(JLjava/lang/String;JJ)V"),
-                    &[
-                        jni::objects::JValue::Long(peer_id),
-                        jni::objects::JValue::Object(&j_name_obj),
-                        jni::objects::JValue::Long(actual_start_time),
-                        jni::objects::JValue::Long(account),
-                    ],
-                )?;
-                Ok(())
-            });
-            if let Err(e) = res {
-                android_log(6, "MaxPlusJNI", &format!("showOngoingCallNotificationFromNative error: {:?}", e));
-            }
+    if let (Some(vm), Some(mgr_class)) = (GLOBAL_JVM.get(), GLOBAL_CALL_MGR_CLASS.get()) {
+        let res = vm.attach_current_thread(|env| -> Result<(), jni::errors::Error> {
+            let j_name = env.new_string(&peer_name)?;
+            let j_name_obj = JObject::from(j_name);
+            env.call_static_method(
+                mgr_class,
+                jni_str!("showOngoingCallNotificationFromNative"),
+                jni_sig!("(JLjava/lang/String;JJ)V"),
+                &[
+                    jni::objects::JValue::Long(peer_id),
+                    jni::objects::JValue::Object(&j_name_obj),
+                    jni::objects::JValue::Long(actual_start_time),
+                    jni::objects::JValue::Long(account),
+                ],
+            )?;
+            Ok(())
+        });
+        if let Err(e) = res {
+            android_log(6, "MaxPlusJNI", &format!("showOngoingCallNotificationFromNative error: {:?}", e));
         }
     }
     Ok(())
 }
 
+#[cfg(not(target_os = "android"))]
+#[tauri::command]
+pub async fn show_ongoing_call_notification(
+    _peer_id: i64,
+    _peer_name: String,
+    _start_time: Option<i64>,
+    _start_time_ms: Option<i64>,
+    _account: i64,
+) -> Result<(), String> {
+    Ok(())
+}
+
+#[cfg(target_os = "android")]
 #[tauri::command]
 pub async fn cancel_ongoing_call_notification() -> Result<(), String> {
-    #[cfg(target_os = "android")]
-    {
-        if let (Some(vm), Some(mgr_class)) = (GLOBAL_JVM.get(), GLOBAL_CALL_MGR_CLASS.get()) {
-            let _ = vm.attach_current_thread(|env| -> Result<(), jni::errors::Error> {
-                env.call_static_method(
-                    mgr_class,
-                    jni_str!("cancelOngoingCallNotificationFromNative"),
-                    jni_sig!("()V"),
-                    &[],
-                )?;
-                Ok(())
-            });
-        }
+    if let (Some(vm), Some(mgr_class)) = (GLOBAL_JVM.get(), GLOBAL_CALL_MGR_CLASS.get()) {
+        let _ = vm.attach_current_thread(|env| -> Result<(), jni::errors::Error> {
+            env.call_static_method(
+                mgr_class,
+                jni_str!("cancelOngoingCallNotificationFromNative"),
+                jni_sig!("()V"),
+                &[],
+            )?;
+            Ok(())
+        });
     }
+    Ok(())
+}
+
+#[cfg(not(target_os = "android"))]
+#[tauri::command]
+pub async fn cancel_ongoing_call_notification() -> Result<(), String> {
     Ok(())
 }
 

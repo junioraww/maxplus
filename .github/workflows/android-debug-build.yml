@@ -1,10 +1,6 @@
 name: Debug Max+ Android
 
 on:
-  push:
-    branches:
-      - 'feat/**'
-      - 'fix/**'
   workflow_dispatch:
 
 jobs:

@@ -691,7 +691,7 @@ pub fn is_account_encrypted_disk(app_dir: &str, account_id: u64) -> bool {
     target.map(|acc| !acc.get("encryption").unwrap_or(&Value::Null).is_null()).unwrap_or(false)
 }
 
-#[cfg_attr(not(target_os = "android"), allow(dead_code))]
+#[cfg(target_os = "android")]
 pub fn resolve_account_for_chat(app_dir: &str, chat_id: i64) -> u64 {
     let root = resolve_app_root(app_dir);
     let accounts_path = root.join("accounts");
@@ -725,7 +725,7 @@ pub fn resolve_account_for_chat(app_dir: &str, chat_id: i64) -> u64 {
     accounts.first().and_then(|a| a.get("id")?.as_u64()).unwrap_or(0)
 }
 
-#[cfg_attr(not(target_os = "android"), allow(dead_code))]
+#[cfg(target_os = "android")]
 pub fn is_account_privacy_active_disk(app_dir: &str, account_id: u64) -> bool {
     let root = resolve_app_root(app_dir);
     let accounts_path = root.join("accounts");
