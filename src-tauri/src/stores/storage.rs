@@ -183,7 +183,29 @@ impl Storage {
     }
 }
 
+static CRYPTO_KEY_POOL: LazyLock<RwLock<HashMap<u64, [u8; 32]>>> =
+    LazyLock::new(|| RwLock::new(HashMap::new()));
+
+pub fn insert_crypto_key(account: u64, key: [u8; 32]) {
+    if let Ok(mut pool) = CRYPTO_KEY_POOL.write() {
+        pool.insert(account, key);
+    }
+}
+
+pub fn get_crypto_key(account: u64) -> Option<[u8; 32]> {
+    CRYPTO_KEY_POOL.read().ok().and_then(|p| p.get(&account).copied())
+}
+
+pub fn remove_crypto_key(account: u64) {
+    if let Ok(mut pool) = CRYPTO_KEY_POOL.write() {
+        pool.remove(&account);
+    }
+}
+
 pub fn crypto_key(app: &AppHandle, account: u64) -> Option<[u8; 32]> {
+    if let Some(key) = get_crypto_key(account) {
+        return Some(key);
+    }
     app.state::<AppState>()
         .crypto
         .read()
@@ -345,6 +367,13 @@ pub fn collect_all_account_files(paths: &Paths) -> Vec<PathBuf> {
 pub fn migrate_file_encrypt(path: &Path, key: &[u8; 32]) -> Result<(), String> {
     let bytes = fs::read(path).map_err(|e| e.to_string())?;
     if bytes.starts_with(b"ENC") {
+        let path_str = path.to_string_lossy();
+        if path_str.contains("/cache/") || path_str.contains("\\cache\\") {
+            if Storage::decrypt(&bytes, key).is_err() {
+                let _ = fs::remove_file(path);
+                return Ok(());
+            }
+        }
         return Ok(());
     }
     let encrypted = Storage::encrypt(&bytes, key)?;
@@ -361,7 +390,17 @@ pub fn migrate_file_decrypt(path: &Path, key: &[u8; 32]) -> Result<(), String> {
     if !bytes.starts_with(b"ENC") {
         return Ok(());
     }
-    let decrypted = Storage::decrypt(&bytes, key)?;
+    let decrypted = match Storage::decrypt(&bytes, key) {
+        Ok(d) => d,
+        Err(e) => {
+            let path_str = path.to_string_lossy();
+            if path_str.contains("/cache/") || path_str.contains("\\cache\\") {
+                let _ = fs::remove_file(path);
+                return Ok(());
+            }
+            return Err(e);
+        }
+    };
     let tmp_path = path.with_extension("tmp_dec");
     if fs::write(&tmp_path, &decrypted).is_ok() && fs::rename(&tmp_path, path).is_ok() {
         return Ok(());

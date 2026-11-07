@@ -554,6 +554,7 @@
               <video
                 src={getProxiedMediaUrl(attach.localPath || encryptedMediaUrls[attach.fileId || attach.encryptedAttach?.fileId])}
                 preload="metadata"
+                poster="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'/%3E"
                 muted
                 playsinline
                 class="video-preview-element"
@@ -620,7 +621,7 @@
 {/each}
 
 {#each attaches.filter(a => (a._type || a.type) === "POLL") as attach}
-  <PollBubble {attach} {messageId} {chatId} {isMe} />
+  <PollBubble {attach} {messageId} {chatId} />
 {/each}
 
 {#each attaches.filter(a =>

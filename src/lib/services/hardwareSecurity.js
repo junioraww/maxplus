@@ -1,4 +1,5 @@
 import {
+  authenticate,
   checkStatus,
   getData,
   setData,
@@ -10,6 +11,13 @@ import {
 const DOMAIN = "ru.maxplus.keys";
 
 const keyName = (accountId) => `acc_${accountId}`;
+
+export async function authenticateHardware(reason) {
+  await authenticate(reason || "Подтвердите личность", {
+    allowDeviceCredential: true,
+    cancelTitle: "Отмена",
+  });
+}
 
 export async function checkHardwareBiometry() {
   try {

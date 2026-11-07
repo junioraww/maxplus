@@ -84,7 +84,9 @@ object CallNotificationManager {
 
     val conversationId = data["conversationId"] ?: data["vcId"] ?: data["conference_id"] ?: data["cid"] ?: data["chat_id"] ?: data["call_id"] ?: ""
     val callerId = data["callerId"] ?: data["suid"] ?: data["caller_id"] ?: data["from"] ?: ""
-    val account = data["c"]?.toLongOrNull() ?: 0L
+    val account = (data["account_id"] ?: data["explicit_account"])?.toLongOrNull()
+      ?: (data["c"]?.toLongOrNull()?.takeIf { it > 1000L })
+      ?: 0L
     val callerIdLong = callerId.toLongOrNull() ?: 0L
     val rawCallerName = data["userName"] ?: data["title"] ?: data["callerName"] ?: data["caller_name"] ?: data["name"]
     val callerName = rawCallerName?.takeIf { it.isNotBlank() && !it.startsWith("Пользователь ") && !it.startsWith("User ") }
