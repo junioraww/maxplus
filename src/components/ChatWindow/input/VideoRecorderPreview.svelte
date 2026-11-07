@@ -27,6 +27,7 @@
       autoplay
       playsinline
       muted
+      poster="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg'/>"
     ></video>
   {/if}
   <button class="flip-camera-btn" type="button" on:click={flipCamera} title="Сменить камеру">

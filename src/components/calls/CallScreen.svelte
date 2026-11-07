@@ -475,6 +475,7 @@
             playsinline
             webkit-playsinline
             muted
+            poster="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg'/>"
             use:srcObject={remoteStream}
           ></video>
         {/if}
@@ -486,6 +487,7 @@
           playsinline
           webkit-playsinline
           muted
+          poster="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg'/>"
           use:srcObject={localScreenStream}
         ></video>
       {:else}
@@ -502,6 +504,7 @@
           playsinline
           webkit-playsinline
           muted
+          poster="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg'/>"
           use:srcObject={localEffectiveStream}
         ></video>
         {#if !screenOn && videoOn && hasMultipleCameras}
@@ -549,6 +552,7 @@
                 playsinline
                 webkit-playsinline
                 muted
+                poster="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg'/>"
                 use:srcObject={localCameraStream}
               ></video>
             {:else if videoOn && cameraLoading}
@@ -566,6 +570,7 @@
               playsinline
               webkit-playsinline
               muted
+              poster="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg'/>"
               use:srcObject={localEffectiveStream}
             ></video>
           {:else if cameraLoading}
@@ -595,6 +600,7 @@
                 playsinline
                 webkit-playsinline
                 muted
+                poster="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg'/>"
                 use:srcObject={remoteStream}
               ></video>
             {/if}

@@ -112,6 +112,7 @@
             playsinline
             webkit-playsinline
             muted={p.isSelf}
+            poster="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg'/>"
             use:srcObject={p.stream}
           ></video>
         {/if}

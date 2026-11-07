@@ -11,6 +11,36 @@
     <meta name="color-scheme" content="dark" />
     <title>Max+</title>
     %sveltekit.head%
+    <script>
+      (() => {
+        const blankPoster = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'/%3E";
+        const origCreate = document.createElement.bind(document);
+        document.createElement = function(tagName, options) {
+          const el = origCreate(tagName, options);
+          if (tagName && tagName.toLowerCase() === "video") {
+            el.setAttribute("poster", blankPoster);
+          }
+          return el;
+        };
+        const observer = new MutationObserver((mutations) => {
+          for (const m of mutations) {
+            for (const node of m.addedNodes) {
+              if (node.nodeType === 1) {
+                if (node.tagName === "VIDEO" && !node.getAttribute("poster")) {
+                  node.setAttribute("poster", blankPoster);
+                } else if (node.querySelectorAll) {
+                  const vids = node.querySelectorAll("video:not([poster])");
+                  for (const v of vids) {
+                    v.setAttribute("poster", blankPoster);
+                  }
+                }
+              }
+            }
+          }
+        });
+        observer.observe(document.documentElement, { childList: true, subtree: true });
+      })();
+    </script>
     <style>
       body {
         margin: 0;

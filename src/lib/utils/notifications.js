@@ -5,7 +5,6 @@ import {
   requestPermission,
   sendNotification as pluginSendNotification,
   createChannel,
-  channels,
   Importance,
   Visibility
 } from '@choochmeque/tauri-plugin-notifications-api';
@@ -279,17 +278,14 @@ async function ensureMessagesChannel() {
   if (currentOs !== 'android') return;
 
   try {
-    const channelList = await channels();
-    if (!channelList.some(c => c.id === MESSAGES_CHANNEL_ID)) {
-      await createChannel({
-        id: MESSAGES_CHANNEL_ID,
-        name: "Сообщения",
-        description: "Входящие сообщения чатов",
-        importance: Importance.High,
-        visibility: Visibility.Private,
-        vibration: true
-      });
-    }
+    await createChannel({
+      id: MESSAGES_CHANNEL_ID,
+      name: "Сообщения",
+      description: "Входящие сообщения чатов",
+      importance: Importance.High,
+      visibility: Visibility.Private,
+      vibration: true
+    });
   } catch (e) {
     console.error("Push error:", e);
   }

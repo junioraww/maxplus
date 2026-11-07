@@ -345,6 +345,7 @@
                   {#if directPreviewData.media_type && directPreviewData.media_type.startsWith("video")}
                     <video
                       src={getSafeAvatarMediaUrl(directPreviewData.avatar_uid)}
+                      poster={getSafeAvatarPreviewUrl(directPreviewData.avatar_uid) || "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg'/>"}
                       autoplay
                       loop
                       muted
