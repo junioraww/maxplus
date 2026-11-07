@@ -359,7 +359,16 @@ async fn handle_daemon_packet(val: &Value, account: i64, app_dir: &str, client: 
 
             if is_encrypted && key.is_none() {
                 #[cfg(target_os = "android")]
-                dispatch_message_to_jni(account, chat_id, &mid, 0, "", "Новое сообщение", None, None, false);
+                dispatch_incoming_message_to_jni(
+                    chat_id,
+                    &mid,
+                    "Новое сообщение",
+                    sender_id,
+                    account,
+                    "Новое сообщение",
+                    "Чат",
+                    false,
+                );
                 return;
             }
 

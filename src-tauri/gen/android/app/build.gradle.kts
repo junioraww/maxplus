@@ -123,12 +123,12 @@ dependencies {
     androidTestImplementation("androidx.test.espresso:espresso-core:3.5.0")
 }
 
-/*configurations.all {
-  resolutionStrategy {
-    force("org.jetbrains.kotlin:kotlin-stdlib:1.9.0")
-      force("org.jetbrains.kotlin:kotlin-stdlib-jdk8:1.9.0")
-  }
-}*/
+configurations.all {
+    resolutionStrategy {
+        force("androidx.core:core:1.15.0")
+        force("androidx.core:core-ktx:1.15.0")
+    }
+}
 
 apply(from = "tauri.build.gradle.kts")
 apply(plugin = "com.google.gms.google-services")

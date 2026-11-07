@@ -3,7 +3,7 @@ import { get } from 'svelte/store';
 import { validateManifest, PluginLoadError } from './manifest';
 import { satisfies } from './semver';
 import { buildPluginContext } from './context';
-import { pluginStore } from '$lib/stores/plugins';
+import { pluginStore, showPluginImportModal } from '$lib/stores/plugins';
 
 const APP_VERSION = __APP_VERSION__;
 const MAXPLUS_API_BASE = 'https://maxplus.dev';
@@ -178,7 +178,6 @@ export async function handlePluginDeepLink(pluginId) {
 
     const entryCode = manifest.entry ? (files.get(manifest.entry) || '') : '';
 
-    const { showPluginImportModal } = await import('$lib/stores/plugins');
     showPluginImportModal({
       arrayBuffer,
       manifest,

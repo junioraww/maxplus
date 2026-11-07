@@ -24,7 +24,7 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tauri-plugin-android-fs = "29.0.0"
 tauri-plugin-notifications = { version = "0.5.0-rc.13", features = ["push-notifications"] }
-tauri-plugin-biometry = "0.3.0-rc.3"
+tauri-plugin-biometry = { git = "https://github.com/Choochmeque/tauri-plugin-biometry.git", branch = "main" }
 tauri-plugin-opener = "=2.7.0"
 tauri-plugin-dialog = "2.8.0"
 tauri-plugin-os = "2.4.0"

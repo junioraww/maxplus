@@ -1,0 +1,502 @@
+name: Dev Build Pipeline
+
+on:
+  push:
+    branches:
+      - main
+      - dev
+      - "feat/**"
+      - "fix/**"
+  workflow_dispatch:
+    inputs:
+      rumax_branch:
+        description: "Branch of rumax to use"
+        required: false
+        default: "dev"
+
+jobs:
+  browser-tests:
+    name: "Browser Tests"
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.bun/install/cache
+            node_modules
+          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+
+      - run: bun install --frozen-lockfile
+
+      - run: bun x svelte-kit sync
+
+      - run: bun x playwright install --with-deps firefox
+
+      - run: bun x playwright test
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: test-results/
+          retention-days: 7
+
+  check-svelte:
+    name: "Check Svelte (Vite) Warnings"
+    needs: [browser-tests]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.bun/install/cache
+            node_modules
+          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+
+      - run: bun install --frozen-lockfile
+
+      - run: bun x svelte-kit sync
+
+      - name: Build Svelte with strict warning failure
+        env:
+          VITE_FAIL_ON_WARNINGS: "true"
+        run: bun run build
+
+  check-rust:
+    name: "Check Rust (Tauri) Warnings"
+    needs: [check-svelte]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.bun/install/cache
+            node_modules
+          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Install Linux build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            build-essential \
+            curl \
+            wget \
+            file \
+            libssl-dev \
+            libgtk-3-dev \
+            libayatana-appindicator3-dev \
+            libjavascriptcoregtk-4.1-dev \
+            librsvg2-dev \
+            patchelf \
+            libgstreamer1.0-dev \
+            libgstreamer-plugins-base1.0-dev \
+            gstreamer1.0-plugins-base \
+            gstreamer1.0-plugins-good \
+            gstreamer1.0-pulseaudio \
+            gstreamer1.0-alsa \
+            gstreamer1.0-gl
+
+      - name: Install Clang 21
+        run: |
+          wget https://apt.llvm.org/llvm.sh
+          chmod +x llvm.sh
+          sudo ./llvm.sh 21 all
+          echo "CC=clang-21" >> $GITHUB_ENV
+          echo "CXX=clang++-21" >> $GITHUB_ENV
+
+      - name: Patch Cargo.toml for CI
+        run: |
+          RUMAX_BRANCH="${{ github.event.inputs.rumax_branch || 'dev' }}"
+          sed -i "s|path = \"../../rumax\"|git = \"https://github.com/junioraww/rumax.git\", branch = \"$RUMAX_BRANCH\"|g" src-tauri/Cargo.toml
+          grep rumax src-tauri/Cargo.toml
+
+      - run: bun install --frozen-lockfile
+
+      - run: bun run tauri icon static/favicon.png
+
+      - name: Verify Rust code with zero warnings
+        env:
+          RUSTFLAGS: "-D warnings"
+        run: cargo check --manifest-path src-tauri/Cargo.toml --all-targets
+
+  build-linux:
+    name: "Dev Build (Linux)"
+    needs: [check-rust]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.bun/install/cache
+            node_modules
+          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            build-essential \
+            curl \
+            wget \
+            file \
+            libssl-dev \
+            libgtk-3-dev \
+            libayatana-appindicator3-dev \
+            libjavascriptcoregtk-4.1-dev \
+            librsvg2-dev \
+            patchelf \
+            libgstreamer1.0-dev \
+            libgstreamer-plugins-base1.0-dev \
+            gstreamer1.0-plugins-base \
+            gstreamer1.0-plugins-good \
+            gstreamer1.0-pulseaudio \
+            gstreamer1.0-alsa \
+            gstreamer1.0-gl
+
+      - name: Install Clang 21
+        run: |
+          wget https://apt.llvm.org/llvm.sh
+          chmod +x llvm.sh
+          sudo ./llvm.sh 21 all
+          echo "CC=clang-21" >> $GITHUB_ENV
+          echo "CXX=clang++-21" >> $GITHUB_ENV
+
+      - name: Patch Cargo.toml for CI
+        run: |
+          RUMAX_BRANCH="${{ github.event.inputs.rumax_branch || 'dev' }}"
+          sed -i "s|path = \"../../rumax\"|git = \"https://github.com/junioraww/rumax.git\", branch = \"$RUMAX_BRANCH\"|g" src-tauri/Cargo.toml
+          grep rumax src-tauri/Cargo.toml
+
+      - run: bun install --frozen-lockfile
+
+      - run: bun run tauri icon static/favicon.png
+
+      - name: Build Linux Debug Bundle
+        env:
+          WEBKIT_DISABLE_COMPOSITING_MODE: "1"
+          GDK_BACKEND: "x11"
+          WEBKIT_DISABLE_DMABUF_RENDERER: "1"
+        run: bunx tauri build --debug
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: maxplus-dev-linux
+          path: |
+            src-tauri/target/debug/bundle/deb/*.deb
+            src-tauri/target/debug/bundle/appimage/*.AppImage
+            src-tauri/target/debug/maxplus
+
+  build-windows:
+    name: "Dev Build (Windows)"
+    needs: [check-rust]
+    runs-on: windows-latest
+    timeout-minutes: 60
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.bun/install/cache
+            node_modules
+          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Patch Cargo.toml for CI
+        run: |
+          $branch = "${{ github.event.inputs.rumax_branch || 'dev' }}"
+          (Get-Content src-tauri/Cargo.toml) -replace 'path = "\.\./\.\./rumax"', "git = `"https://github.com/junioraww/rumax.git`", branch = `"$branch`"" | Set-Content src-tauri/Cargo.toml
+          (Get-Content src-tauri/Cargo.toml) | Where-Object { $_ -notmatch 'libwebrtc' } | Set-Content src-tauri/Cargo.toml
+          Select-String -Path src-tauri/Cargo.toml -Pattern "rumax"
+
+      - run: bun install --frozen-lockfile
+
+      - run: bun run tauri icon static/favicon.png
+
+      - name: Build Windows Debug Binary
+        run: bunx tauri build --debug
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: maxplus-dev-windows
+          path: |
+            src-tauri/target/debug/maxplus.exe
+            src-tauri/target/debug/bundle/**/*.msi
+
+  build-macos:
+    name: "Dev Build (macOS)"
+    needs: [check-rust]
+    runs-on: macos-15
+    timeout-minutes: 60
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.bun/install/cache
+            node_modules
+          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Patch Cargo.toml for CI
+        run: |
+          RUMAX_BRANCH="${{ github.event.inputs.rumax_branch || 'dev' }}"
+          sed -i '' "s|path = \"../../rumax\"|git = \"https://github.com/junioraww/rumax.git\", branch = \"$RUMAX_BRANCH\"|g" src-tauri/Cargo.toml
+          sed -i '' '/libwebrtc/d' src-tauri/Cargo.toml
+          grep rumax src-tauri/Cargo.toml
+
+      - run: bun install --frozen-lockfile
+
+      - run: bun run tauri icon static/favicon.png
+
+      - name: Build macOS Debug Bundle
+        run: bunx tauri build --target universal-apple-darwin --debug
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: maxplus-dev-macos
+          path: |
+            src-tauri/target/universal-apple-darwin/debug/bundle/dmg/*.dmg
+            src-tauri/target/universal-apple-darwin/debug/bundle/macos/*.app
+
+  build-android:
+    name: "Dev Build (Android)"
+    needs: [check-rust]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.bun/install/cache
+          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - uses: oven-sh/setup-bun@v2
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Setup Android SDK PATH
+        run: |
+          SDK_DIR="${ANDROID_HOME:-$ANDROID_SDK_ROOT}"
+          SDK_BIN=$(dirname $(find "$SDK_DIR/cmdline-tools" -name sdkmanager -type f | head -n 1))
+          echo "$SDK_BIN" >> $GITHUB_PATH
+          echo "$SDK_DIR/platform-tools" >> $GITHUB_PATH
+          echo "ANDROID_HOME=$SDK_DIR" >> $GITHUB_ENV
+          echo "ANDROID_SDK_ROOT=$SDK_DIR" >> $GITHUB_ENV
+
+      - name: Install Android NDK
+        run: |
+          yes | sdkmanager --licenses > /dev/null 2>&1 || true
+          sdkmanager --install "ndk;27.3.13750724"
+
+      - name: Configure Android NDK
+        run: |
+          SDK_DIR="${ANDROID_HOME:-$ANDROID_SDK_ROOT}"
+          NDK="$SDK_DIR/ndk/27.3.13750724"
+          echo "ANDROID_NDK_HOME=$NDK" >> $GITHUB_ENV
+          echo "NDK_HOME=$NDK" >> $GITHUB_ENV
+          echo "$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin" >> $GITHUB_PATH
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: |
+            aarch64-linux-android
+            armv7-linux-androideabi
+            x86_64-linux-android
+
+      - run: bun install --frozen-lockfile
+
+      - name: Init Tauri Android
+        run: |
+          bunx tauri android init
+          git checkout -- src-tauri/gen/android/buildSrc/
+          sed -i 's|gradle-9\.[0-9.]*-bin\.zip|gradle-8.14.3-bin.zip|g' src-tauri/gen/android/gradle/wrapper/gradle-wrapper.properties
+          grep -q "android.useAndroidX" src-tauri/gen/android/gradle.properties 2>/dev/null || echo "android.useAndroidX=true" >> src-tauri/gen/android/gradle.properties
+          sed -i 's|org.gradle.configuration-cache=true|org.gradle.configuration-cache=false|g' src-tauri/gen/android/gradle.properties
+          rm -f src-tauri/gen/android/app/src/main/res/drawable/ic_launcher_background.xml
+          rm -f src-tauri/gen/android/app/src/main/res/values/ic_launcher_background.xml
+          rm -rf src-tauri/gen/android/buildSrc/src/main/java/org/meowkie 2>/dev/null || true
+          rm -rf src-tauri/gen/android/app/src/main/java/org/meowkie 2>/dev/null || true
+
+      - name: Generate Bundle Icons
+        run: |
+          bun run tauri icon static/favicon.png
+          git checkout -- src-tauri/gen/android/app/src/main/res/mipmap-anydpi-v26/
+          rm -f src-tauri/gen/android/app/src/main/res/drawable/ic_launcher_background.xml
+          rm -f src-tauri/gen/android/app/src/main/res/values/ic_launcher_background.xml
+          rm -rf src-tauri/gen/android/buildSrc/src/main/java/org/meowkie 2>/dev/null || true
+          rm -rf src-tauri/gen/android/app/src/main/java/org/meowkie 2>/dev/null || true
+
+      - name: Patch Cargo.toml for CI
+        run: |
+          RUMAX_BRANCH="${{ github.event.inputs.rumax_branch || 'dev' }}"
+          sed -i "s|path = \"../../rumax\"|git = \"https://github.com/junioraww/rumax.git\", branch = \"$RUMAX_BRANCH\"|g" src-tauri/Cargo.toml
+          sed -i '/libwebrtc/d' src-tauri/Cargo.toml
+          grep rumax src-tauri/Cargo.toml
+
+      - name: Decode Android keystore
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            echo "$KEYSTORE_BASE64" | base64 --decode > release.jks
+            echo "HAS_KEYSTORE=true" >> $GITHUB_ENV
+          fi
+
+      - name: Build Android Debug APK
+        env:
+          ANDROID_KEYSTORE: ${{ env.HAS_KEYSTORE == 'true' && format('{0}/release.jks', github.workspace) || '' }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: bunx tauri android build --apk --debug
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: maxplus-dev-android
+          path: src-tauri/gen/android/app/build/outputs/apk/**/*.apk
+
+  build-ios:
+    name: "Dev Build (iOS)"
+    needs: [check-rust]
+    runs-on: macos-15
+    timeout-minutes: 40
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: "16.4"
+
+      - uses: oven-sh/setup-bun@v2
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-ios
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - run: bun install --frozen-lockfile
+
+      - name: Patch Cargo.toml for CI
+        run: |
+          RUMAX_BRANCH="${{ github.event.inputs.rumax_branch || 'dev' }}"
+          sed -i '' "s|path = \"../../rumax\"|git = \"https://github.com/junioraww/rumax.git\", branch = \"$RUMAX_BRANCH\"|g" src-tauri/Cargo.toml
+          sed -i '' '/libwebrtc/d' src-tauri/Cargo.toml
+          grep rumax src-tauri/Cargo.toml
+
+      - name: Prepare Tauri iOS
+        run: bun tauri ios init --ci
+
+      - name: Generate Icons
+        run: bun run tauri icon static/favicon.png
+
+      - name: Fix Swift Package dependencies
+        run: |
+          cargo fetch --manifest-path src-tauri/Cargo.toml
+          find ~/.cargo/registry/src -name "Package.resolved" -delete 2>/dev/null || true
+
+      - name: Build iOS Debug
+        run: bun tauri ios build --ci --target aarch64 --no-sign --debug
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: maxplus-dev-ios
+          path: |
+            src-tauri/gen/apple/build/arm64/*.ipa
+            src-tauri/gen/apple/build/arm64/*.app
+          if-no-files-found: warn

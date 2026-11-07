@@ -106,9 +106,17 @@
       loading = true;
       try {
         const calls = await $API.getCalls();
-        if (calls) currentSessionCalls.set(calls);
+        if (calls) {
+          const normalized = Array.isArray(calls)
+            ? { history: calls, hasMore: false }
+            : (calls.history ? calls : { history: [], ...calls });
+          currentSessionCalls.set(normalized);
+        } else {
+          currentSessionCalls.set({ history: [], hasMore: false });
+        }
       } catch (e) {
         console.error(e);
+        currentSessionCalls.set({ history: [], hasMore: false });
       } finally {
         loading = false;
         loadingCalls = false;

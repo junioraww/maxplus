@@ -498,7 +498,7 @@ export default class MockApi extends BaseAPI {
   }
 
   async getCalls() {
-    return [];
+    return { history: [], hasMore: false };
   }
 
   async updateProfile(data) {

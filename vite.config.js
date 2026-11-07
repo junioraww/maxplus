@@ -24,6 +24,15 @@ export default defineConfig(async () => ({
     chunkSizeWarningLimit: 2000,
 
     rollupOptions: {
+      onwarn(warning, warn) {
+        if (warning.code === "DYNAMIC_IMPORT_WILL_NOT_MOVE_MODULE_INTO_ANOTHER_CHUNK") {
+          return;
+        }
+        if (process.env.VITE_FAIL_ON_WARNINGS === "true") {
+          throw new Error(`[vite:warning] ${warning.message || warning}`);
+        }
+        warn(warning);
+      },
       output: {
         manualChunks: (id) => {
           if (id.includes("lottie-web")) {
