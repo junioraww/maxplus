@@ -31,6 +31,8 @@
   import * as Caching from "$lib/utils/caching";
   import Session, { openChat, closeSettingsPage } from "$lib/stores/session";
   import { currentUser } from "$lib/stores/api";
+  import { getCurrentAccount, getAccounts, setCurrentAccount } from "$lib/stores/accounts";
+  import { openLockScreen } from "$lib/stores/lockScreen";
   import { page } from "$app/stores";
 
   const COMPONENT_MAP = {
@@ -218,18 +220,48 @@
       },
     });
 
+    const handleOpenChatTarget = async (payload) => {
+      if (!payload) return;
+      const cid = typeof payload === "object" ? payload.chatId : payload;
+      const targetAcc = typeof payload === "object" ? payload.accountId : 0;
+      if (cid == null || cid === 0) return;
+
+      if (targetAcc && targetAcc !== 0) {
+        const cur = await getCurrentAccount().catch(() => null);
+        if (cur?.id && Number(cur.id) !== Number(targetAcc)) {
+          const accs = await getAccounts().catch(() => []);
+          const target = accs.find((a) => Number(a.id) === Number(targetAcc));
+          if (target) {
+            if (target.encryption) {
+              openLockScreen({
+                mode: "decrypt",
+                account: target,
+                onSuccess: async () => {
+                  await setCurrentAccount(Number(targetAcc));
+                  openChat(Number(cid));
+                },
+              });
+              return;
+            } else {
+              await setCurrentAccount(Number(targetAcc));
+            }
+          }
+        }
+      }
+      openChat(Number(cid));
+    };
+
     let unlisten;
     (async () => {
       try {
         unlisten = await listen("open_chat", (event) => {
-          const chatId = event.payload;
-          if (chatId != null && chatId !== 0) openChat(Number(chatId));
+          handleOpenChatTarget(event.payload);
         });
       } catch (_) {}
 
       try {
         const pending = await invoke("check_pending_open_chat");
-        if (pending != null && pending !== 0) openChat(Number(pending));
+        if (pending != null && pending !== 0) handleOpenChatTarget(pending);
       } catch (_) {}
     })();
 
@@ -237,7 +269,7 @@
       if (document.visibilityState === "visible") {
         try {
           const pending = await invoke("check_pending_open_chat");
-          if (pending != null && pending !== 0) openChat(Number(pending));
+          if (pending != null && pending !== 0) handleOpenChatTarget(pending);
         } catch (_) {}
       }
     };

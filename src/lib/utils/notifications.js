@@ -22,8 +22,19 @@ import { getCurrentAccount } from "$lib/stores/accounts";
 import { getContactDirect } from "$lib/stores/contacts";
 import { getMessagePreview } from "$lib/utils/text";
 import Session from "$lib/stores/session";
+import { lockScreenState } from "$lib/stores/lockScreen";
 
 export const MESSAGES_CHANNEL_ID = 'MESSAGES_CHANNEL_ID';
+
+let desktopHiddenCount = 0;
+if (typeof window !== "undefined") {
+  lockScreenState.subscribe((state) => {
+    if (!state) {
+      desktopHiddenCount = 0;
+      invoke("cancel_notification", { chatId: 777000 }).catch(() => {});
+    }
+  });
+}
 
 export async function clearChatNotification(chatId) {
   if (!currentOs) currentOs = type();
@@ -391,6 +402,23 @@ export async function newMessage(chatId, chat, contact, message) {
     }
   }
 
+  const currentAcc = await getCurrentAccount().catch(() => null);
+  const isEncrypted = Boolean(currentAcc?.encryption);
+  const hideWhenLocked = currentAcc?.meta?.hide_locked_notifications !== false;
+  const isLocked = Boolean(get(lockScreenState));
+
+  if (isEncrypted && hideWhenLocked && isLocked) {
+    desktopHiddenCount += 1;
+    await sendNotification({
+      id: 777000,
+      title: "Max+",
+      body: `У вас новые сообщения (${desktopHiddenCount})`,
+      icon: null,
+      largeIcon: null,
+    });
+    return;
+  }
+
   let avatarLocalPath = null;
   const avatarUrl = chatInfo.baseUrl || chatInfo.baseIconUrl || chatInfo.avatar || contact?.avatar;
   if (avatarUrl) {
@@ -453,10 +481,16 @@ export async function showDesktopCallNotification({ callerName, isVideo = false,
   if (!currentOs) currentOs = type();
   if (currentOs === 'android') return;
   try {
+    const currentAcc = await getCurrentAccount().catch(() => null);
+    const isEncrypted = Boolean(currentAcc?.encryption);
+    const hideWhenLocked = currentAcc?.meta?.hide_locked_notifications !== false;
+    const isLocked = Boolean(get(lockScreenState));
+    const hideCall = isEncrypted && hideWhenLocked && isLocked;
+
     const title = isVideo ? `Входящий видеозвонок` : `Входящий аудиозвонок`;
-    const body = callerName && callerName.trim() ? callerName.trim() : `Входящий вызов`;
+    const body = hideCall ? `Вам звонят!` : (callerName && callerName.trim() ? callerName.trim() : `Входящий вызов`);
     let avatarPath = null;
-    if (avatar) {
+    if (avatar && !hideCall) {
       avatarPath = await getLocalFilePath(avatar).catch(() => null);
     }
     await pluginSendNotification({
