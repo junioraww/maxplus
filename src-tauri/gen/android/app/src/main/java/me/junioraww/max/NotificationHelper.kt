@@ -35,6 +35,7 @@ class NotificationHelper(private val ctx: Context) {
   private external fun isChatMutedNative(account: Long, chatId: Long, appDir: String): Boolean
   private external fun isNotificationsEnabledNative(account: Long, appDir: String): Boolean
   private external fun isChatGroupNative(account: Long, chatId: Long, appDir: String): Boolean
+  private external fun isAccountPrivacyActiveNative(account: Long, appDir: String): Boolean
   
   companion object {
     const val CHANNEL_ID = "MESSAGES_CHANNEL_ID"
@@ -107,6 +108,15 @@ class NotificationHelper(private val ctx: Context) {
           .remove("meta_$chatId")
           .apply()
       } catch (_: Throwable) {}
+    }
+
+    @JvmStatic
+    fun resetSecurePrivacyNotification(ctx: Context, account: Long) {
+      val prefs = ctx.getSharedPreferences("maxplus_privacy_notifications", Context.MODE_PRIVATE)
+      prefs.edit().putInt("hidden_count_$account", 0).apply()
+      val notifId = (777000L + (account % 1000L)).toInt()
+      val mgr = ctx.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+      mgr.cancel(notifId)
     }
   }
   
@@ -192,10 +202,54 @@ class NotificationHelper(private val ctx: Context) {
     }) && (chatTitle != senderName)
 
     ensureChannel()
+
+    val isPrivacyActive = try {
+      isAccountPrivacyActiveNative(account, ctx.applicationInfo.dataDir)
+    } catch (_: Throwable) {
+      false
+    }
+    val isCurrentlyLocked = !AppState.isAppInForeground || AppState.isAppLocked
+    if (isPrivacyActive && isCurrentlyLocked) {
+      showSecurePrivacyNotification(account)
+      return
+    }
     
     val history = appendMessage(chatId, NotificationMessage(text, senderId, senderName, ts, mid, false))
     saveMeta(chatId, chatTitle, account, isGroup)
     render(chatId, chatTitle, account, isGroup, history, alertOnce = false)
+  }
+
+  private fun showSecurePrivacyNotification(account: Long) {
+    ensureChannel()
+    val prefs = ctx.getSharedPreferences("maxplus_privacy_notifications", Context.MODE_PRIVATE)
+    val countKey = "hidden_count_$account"
+    val count = prefs.getInt(countKey, 0) + 1
+    prefs.edit().putInt(countKey, count).apply()
+
+    val notifId = (777000L + (account % 1000L)).toInt()
+    val launchIntent = (ctx.packageManager.getLaunchIntentForPackage(ctx.packageName) ?: Intent(ctx, MainActivity::class.java)).apply {
+      action = Intent.ACTION_VIEW
+      flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+      putExtra("account", account)
+    }
+    val contentIntent = PendingIntent.getActivity(
+      ctx,
+      notifId,
+      launchIntent,
+      PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+    )
+
+    val text = "У вас новые сообщения ($count)"
+    val builder = NotificationCompat.Builder(ctx, CHANNEL_ID)
+      .setSmallIcon(R.drawable.ic_notification)
+      .setContentTitle("Max+")
+      .setContentText(text)
+      .setContentIntent(contentIntent)
+      .setAutoCancel(true)
+      .setPriority(NotificationCompat.PRIORITY_HIGH)
+      .setCategory(NotificationCompat.CATEGORY_MESSAGE)
+
+    manager().notify(notifId, builder.build())
   }
   
   fun handleEditMessage(data: Map<String, String>) {
@@ -337,6 +391,9 @@ class NotificationHelper(private val ctx: Context) {
     val launchIntent = ctx.packageManager.getLaunchIntentForPackage(ctx.packageName) ?: Intent(ctx, MainActivity::class.java)
     launchIntent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
     launchIntent.putExtra("chatId", chatId)
+    if (account != 0L) {
+      launchIntent.putExtra("account", account)
+    }
     val contentIntent = PendingIntent.getActivity(
       ctx,
       notifId,

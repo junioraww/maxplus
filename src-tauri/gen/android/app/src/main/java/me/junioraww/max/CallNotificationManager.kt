@@ -40,6 +40,8 @@ object CallNotificationManager {
   @Volatile
   var customContext: Context? = null
 
+  private external fun isAccountPrivacyActiveNative(account: Long, appDir: String): Boolean
+
   fun getPrefs(context: Context): SharedPreferences {
     return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
   }
@@ -148,20 +150,30 @@ object CallNotificationManager {
       PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
     )
 
-    val avatarBitmap = AvatarHelper.getAvatar(context, callerIdLong, callerName, null, account)
-    val callerPerson = Person.Builder()
-      .setName(callerName)
+    val isPrivacyActive = try {
+      isAccountPrivacyActiveNative(account, context.applicationInfo.dataDir)
+    } catch (_: Throwable) {
+      false
+    }
+    val isCurrentlyLocked = !AppState.isAppInForeground || AppState.isAppLocked
+    val hideCaller = isPrivacyActive && isCurrentlyLocked
+    val displayCallerName = if (hideCaller) "Вам звонят!" else callerName
+
+    val avatarBitmap = if (hideCaller) null else AvatarHelper.getAvatar(context, callerIdLong, callerName, null, account)
+    val callerPersonBuilder = Person.Builder()
+      .setName(displayCallerName)
       .setKey(callerId)
-      .setIcon(IconCompat.createWithBitmap(avatarBitmap))
       .setImportant(true)
-      .build()
+    if (avatarBitmap != null) {
+      callerPersonBuilder.setIcon(IconCompat.createWithBitmap(avatarBitmap))
+    }
+    val callerPerson = callerPersonBuilder.build()
 
     val titleText = if (isVideo) "Входящий видеозвонок" else "Входящий звонок"
-    val contentText = callerName
+    val contentText = displayCallerName
 
     val builder = NotificationCompat.Builder(context, CALL_CHANNEL_ID)
       .setSmallIcon(R.drawable.ic_notification)
-      .setLargeIcon(avatarBitmap)
       .setContentTitle(titleText)
       .setContentText(contentText)
       .setPriority(NotificationCompat.PRIORITY_MAX)
@@ -171,6 +183,10 @@ object CallNotificationManager {
       .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
       .setFullScreenIntent(fullScreenPendingIntent, true)
       .setContentIntent(fullScreenPendingIntent)
+
+    if (avatarBitmap != null) {
+      builder.setLargeIcon(avatarBitmap)
+    }
 
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
       builder.setStyle(

@@ -57,7 +57,17 @@ export function getAttachText(chatOrMsg, maybeMsg) {
     return poll.title ? `Опрос: ${poll.title}` : "Опрос";
   }
 
-  const call = attaches.find((x) => (x._type || x.type) === "CALL" || x.hangupType != null);
+  const location = attaches.find((x) => x._type === "LOCATION");
+  if (location) {
+    return "Геопозиция";
+  }
+
+  const contact = attaches.find((x) => x._type === "CONTACT");
+  if (contact) {
+    return "Контакт";
+  }
+
+  const call = attaches.find((x) => x._type === "CALL" || x.hangupType != null);
   if (call) {
     const hang = (call.hangupType || "").toUpperCase();
     if (hang === "MISSED" || hang === "CANCELED") return "Пропущенный звонок";
@@ -80,14 +90,13 @@ export function getAttachText(chatOrMsg, maybeMsg) {
 export function getSystemText(msg, html = true) {
   if (!msg) return null;
   const attaches = Array.isArray(msg.attaches) ? msg.attaches : [];
-  const control = attaches.find((x) => x._type === "CONTROL") || attaches[0];
+  const control = attaches.find((x) => x._type === "CONTROL");
+  if (!control) {
+    return null;
+  }
 
   const wrap = (val) => (html ? `<b>${escapeHtml(val)}</b>` : val);
   const esc = (val) => (html ? escapeHtml(val) : val);
-
-  if (!control) {
-    return msg.text ? esc(msg.text) : null;
-  }
 
   const event = control.event;
   const senderId = msg.sender || msg.from;

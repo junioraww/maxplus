@@ -657,6 +657,40 @@ pub fn resolve_app_root(app_dir: &str) -> std::path::PathBuf {
     base
 }
 
+pub fn is_account_privacy_active_disk(app_dir: &str, account_id: u64) -> bool {
+    let root = resolve_app_root(app_dir);
+    let accounts_path = root.join("accounts");
+    let storage = Storage::new(None);
+    let store = match storage.load(&accounts_path) {
+        Some(s) => s,
+        None => return false,
+    };
+    let accounts = match store.get("accounts").and_then(|a| a.as_array()) {
+        Some(a) => a,
+        None => return false,
+    };
+    let target = if account_id != 0 {
+        accounts.iter().find(|x| x.get("id").and_then(|id| id.as_u64()) == Some(account_id))
+    } else {
+        accounts.first()
+    };
+    let acc = match target {
+        Some(a) => a,
+        None => return false,
+    };
+    if acc.get("encryption").unwrap_or(&Value::Null).is_null() {
+        return false;
+    }
+    let local_id = acc.get("id").and_then(|id| id.as_u64()).unwrap_or(account_id);
+    let meta_path = root.join("data").join(local_id.to_string()).join("meta");
+    if let Some(meta) = storage.load(&meta_path) {
+        if meta.get("hide_locked_notifications").and_then(|v| v.as_bool()) == Some(false) {
+            return false;
+        }
+    }
+    true
+}
+
 pub fn get_background_creds(
     app_dir: &str,
     account_id: u64,

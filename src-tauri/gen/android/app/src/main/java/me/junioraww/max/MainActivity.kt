@@ -51,7 +51,7 @@ class MainActivity : TauriActivity() {
   }
 
   private external fun initJni()
-  private external fun notifyChatClickedNative(chatId: Long)
+  private external fun notifyChatClickedNative(chatId: Long, account: Long)
   private external fun notifyCallActionNative(action: String, payload: String)
   external fun notifyScreenCaptureResultNative(success: Boolean, port: Int, width: Int, height: Int)
   external fun notifyScreenCaptureStoppedNative()
@@ -152,10 +152,12 @@ class MainActivity : TauriActivity() {
   private fun handleChatIntent(intent: Intent?) {
     if (intent != null && intent.hasExtra("chatId")) {
       val chatId = intent.getLongExtra("chatId", 0L)
+      val account = intent.getLongExtra("account", 0L)
       intent.removeExtra("chatId")
+      intent.removeExtra("account")
       if (chatId != 0L) {
         try {
-          notifyChatClickedNative(chatId)
+          notifyChatClickedNative(chatId, account)
         } catch (e: Throwable) {
           Log.e("MaxPlus", "notifyChatClickedNative error", e)
         }
