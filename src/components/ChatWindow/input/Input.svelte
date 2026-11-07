@@ -25,6 +25,7 @@
   import { showAlert } from "$lib/utils/alert";
   import StickerSuggestionsDropout from "$components/ChatWindow/Stickers/StickerSuggestionsDropout.svelte";
   import StickerPanel from "$components/ChatWindow/Stickers/StickerPanel.svelte";
+  import { isKeyboardOpen, keyboardHeight } from "$lib/stores/keyboard";
   import { generateWaveformFromAmplitudes } from "$lib/utils/waveform";
   import { stopCurrentMedia } from "$lib/stores/mediaPlayback";
   import { computeTextDiff, computeAttachesDiff } from "$lib/utils/diff";
@@ -893,11 +894,21 @@
 
   let unregisterStickerBack = null;
   let unregisterAttachesBack = null;
+  let isSwitchingToKeyboard = false;
+  let switchKeyboardTimer = null;
 
-  $: if (showStickerPanel) {
+  $: panelHeight = isMobile ? ($keyboardHeight || 290) : 340;
+
+  function closeStickersImmediately() {
+    clearTimeout(switchKeyboardTimer);
+    isSwitchingToKeyboard = false;
+    showStickerPanel = false;
+  }
+
+  $: if (showStickerPanel || isSwitchingToKeyboard) {
     if (!unregisterStickerBack) {
       unregisterStickerBack = registerBackHandler(() => {
-        showStickerPanel = false;
+        closeStickersImmediately();
         return true;
       });
     }
@@ -906,6 +917,12 @@
       unregisterStickerBack();
       unregisterStickerBack = null;
     }
+  }
+
+  $: if (isSwitchingToKeyboard && $isKeyboardOpen) {
+    clearTimeout(switchKeyboardTimer);
+    isSwitchingToKeyboard = false;
+    showStickerPanel = false;
   }
 
   $: if (attachesDropout) {
@@ -923,6 +940,7 @@
   }
 
   onDestroy(() => {
+    clearTimeout(switchKeyboardTimer);
     if (unregisterStickerBack) {
       unregisterStickerBack();
       unregisterStickerBack = null;
@@ -936,7 +954,7 @@
   function toggleAttachesDropout() {
     attachesDropout = attachesDropout ? null : { active: true };
     if (attachesDropout) {
-      showStickerPanel = false;
+      closeStickersImmediately();
       showCommandsMenu = false;
       if (isMobile && textareaEl) {
         textareaEl.blur();
@@ -945,8 +963,12 @@
   }
 
   function toggleStickerPanel() {
-    showStickerPanel = !showStickerPanel;
     if (showStickerPanel) {
+      closeStickersImmediately();
+    } else {
+      clearTimeout(switchKeyboardTimer);
+      isSwitchingToKeyboard = false;
+      showStickerPanel = true;
       attachesDropout = null;
       showCommandsMenu = false;
       if (isMobile && textareaEl) {
@@ -956,8 +978,13 @@
   }
 
   function handleTextareaFocus() {
-    if (isMobile && showStickerPanel) {
-      showStickerPanel = false;
+    if (isMobile && (showStickerPanel || isSwitchingToKeyboard)) {
+      isSwitchingToKeyboard = true;
+      clearTimeout(switchKeyboardTimer);
+      switchKeyboardTimer = setTimeout(() => {
+        isSwitchingToKeyboard = false;
+        showStickerPanel = false;
+      }, 450);
     }
   }
 
@@ -1767,7 +1794,7 @@
       on:send={(e) => sendReviewedVideoNote(e.detail)}
     />
   {:else}
-    <div class="input-controls">
+    <div class="input-controls" class:keyboard-open={isMobile && $isKeyboardOpen}>
       {#if isRecording}
         <RecordingBar
           {recordMode}
@@ -1899,9 +1926,9 @@
                     contextMenuState = null;
                     return;
                   }
-                  if (showStickerPanel) {
+                  if (showStickerPanel || isSwitchingToKeyboard) {
                     e.preventDefault();
-                    showStickerPanel = false;
+                    closeStickersImmediately();
                     return;
                   }
                   if (isMenuVisible) {
@@ -1983,14 +2010,20 @@
     </div>
   {/if}
 
-  {#if showStickerPanel}
-    <StickerPanel
-      on:sendSticker={(e) => {
-        sendSticker(e.detail.sticker);
-        showStickerPanel = false;
-      }}
-      on:insertEmoji={handleInsertEmoji}
-    />
+  {#if showStickerPanel || isSwitchingToKeyboard}
+    <div
+      class="sticker-panel-container"
+      class:switching={isSwitchingToKeyboard}
+      style="--sticker-panel-height: {panelHeight}px;"
+    >
+      <StickerPanel
+        on:sendSticker={(e) => {
+          sendSticker(e.detail.sticker);
+          closeStickersImmediately();
+        }}
+        on:insertEmoji={handleInsertEmoji}
+      />
+    </div>
   {/if}
 
   {#if contextMenuState}
@@ -2067,6 +2100,23 @@
     max-width: 100%;
     min-width: 0;
     box-sizing: border-box;
+  }
+
+  .input-controls.keyboard-open {
+    padding-bottom: 8px;
+  }
+
+  .sticker-panel-container {
+    width: 100%;
+    height: var(--sticker-panel-height, 340px);
+    position: relative;
+    overflow: hidden;
+    flex-shrink: 0;
+  }
+
+  .sticker-panel-container.switching {
+    visibility: hidden;
+    pointer-events: none;
   }
 
   .input-container {

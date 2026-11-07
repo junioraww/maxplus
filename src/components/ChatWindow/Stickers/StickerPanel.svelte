@@ -750,7 +750,7 @@
   .sticker-panel-wrapper {
     display: flex;
     flex-direction: column;
-    height: 340px;
+    height: var(--sticker-panel-height, 340px);
     background: var(--bg-app);
     border-top: 1px solid var(--border-subtle);
     user-select: none;

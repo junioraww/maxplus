@@ -760,7 +760,7 @@ pub async fn set_app_locked(locked: bool) -> Result<(), String> {
                     app_state_class,
                     jni_str!("setAppLocked"),
                     jni_sig!("(Z)V"),
-                    &[jni::objects::JValue::Bool(if locked { 1 } else { 0 })],
+                    &[jni::objects::JValue::Bool(locked)],
                 )?;
                 Ok(())
             });
