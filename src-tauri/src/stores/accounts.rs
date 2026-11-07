@@ -35,6 +35,19 @@ pub fn load_accounts(app: &AppHandle) -> Value {
         })
 }
 
+pub fn check_account_encryption(app: &AppHandle, account: u64) -> Result<Option<[u8; 32]>, String> {
+    let store = load_accounts(app);
+    let entry = store["accounts"]
+        .as_array()
+        .and_then(|a| a.iter().find(|x| x["id"] == account));
+    let is_enc = entry.map(|x| !x["encryption"].is_null()).unwrap_or(false);
+    let key = crypto_key(app, account);
+    if is_enc && key.is_none() {
+        return Err("Account is encrypted and locked".into());
+    }
+    Ok(key)
+}
+
 pub fn save_accounts(app: &AppHandle, data: &Value) -> Result<(), String> {
     Storage::new(None).save(accounts_path(app), data)
 }
@@ -102,9 +115,15 @@ pub fn accounts_add(
 #[tauri::command]
 pub async fn account_get(app: AppHandle, id: u64) -> Result<Value, String> {
     tokio::task::spawn_blocking(move || {
+        let key = crypto_key(&app, id);
         if let Ok(guard) = ACCOUNT_CACHE.read() {
             if let Some(val) = guard.get(&id) {
-                return Ok(val.clone());
+                let is_enc = val.get("encryption").map(|e| !e.is_null()).unwrap_or(false);
+                let cached_unlocked = val.get("unlocked").and_then(|v| v.as_bool()).unwrap_or(false);
+                let should_be_unlocked = !is_enc || key.is_some();
+                if cached_unlocked == should_be_unlocked {
+                    return Ok(val.clone());
+                }
             }
         }
 
@@ -128,11 +147,16 @@ pub async fn account_get(app: AppHandle, id: u64) -> Result<Value, String> {
             account_path(&app, &id.to_string(), "self")
         ).unwrap_or(Value::Null);
 
+        let is_encrypted = !account["encryption"].is_null();
+        let is_unlocked = !is_encrypted || key.is_some();
+
         let res = json!({
             "id": account["id"],
             "encryption": account["encryption"],
+            "preview": account.get("preview").cloned().unwrap_or(Value::Null),
             "meta": meta,
-            "contact": contact
+            "contact": contact,
+            "unlocked": is_unlocked
         });
 
         if let Ok(mut guard) = ACCOUNT_CACHE.write() {
@@ -180,7 +204,12 @@ pub async fn account_contact(
     data: Option<Value>,
 ) -> Result<Value, String> {
     tokio::task::spawn_blocking(move || {
-        let key = crypto_key(&app, id);
+        let key = if data.is_some() {
+            check_account_encryption(&app, id)?
+        } else {
+            crypto_key(&app, id)
+        };
+
         let storage = Storage::new(key);
 
         if let Some(ref d) = data {
@@ -210,14 +239,59 @@ pub fn current_set(app: AppHandle, id: Option<u64>) -> Result<(), String> {
     let mut store = load_accounts(&app);
 
     if let Some(ref id) = id {
-        if !store["accounts"]
-            .as_array().unwrap().iter().any(|x| x["id"] == *id) {
-            return Err("Account not found".into());
+        let entry = store["accounts"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|x| x["id"] == *id)
+            .ok_or("Account not found")?;
+
+        if let Some(state) = app.try_state::<crate::AppState>() {
+            if let Ok(mut c) = state.crypto.write() {
+                if entry["encryption"].is_null() || c.as_ref().map(|s| s.account) != Some(*id) {
+                    *c = None;
+                    if let Ok(mut guard) = ACCOUNT_CACHE.write() {
+                        guard.clear();
+                    }
+                    if let Ok(mut guard) = CACHE_INDEX_CACHE.write() {
+                        guard.clear();
+                    }
+                }
+            }
+        }
+    } else {
+        if let Some(state) = app.try_state::<crate::AppState>() {
+            if let Ok(mut c) = state.crypto.write() {
+                *c = None;
+            }
+        }
+        if let Ok(mut guard) = ACCOUNT_CACHE.write() {
+            guard.clear();
         }
     }
 
     store["current"] = id.map(Value::from).unwrap_or(Value::Null);
-    save_accounts(&app, &store)
+    save_accounts(&app, &store)?;
+    crate::daemon::trigger_daemon_reconnect();
+    Ok(())
+}
+
+#[tauri::command]
+pub fn account_set_preview(app: AppHandle, id: u64, preview: Option<Value>) -> Result<(), String> {
+    let mut store = load_accounts(&app);
+    let entry = store["accounts"]
+        .as_array_mut()
+        .unwrap()
+        .iter_mut()
+        .find(|x| x["id"] == id)
+        .ok_or("Account not found")?;
+
+    entry["preview"] = preview.unwrap_or(Value::Null);
+    save_accounts(&app, &store)?;
+    if let Ok(mut guard) = ACCOUNT_CACHE.write() {
+        guard.remove(&id);
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -318,6 +392,7 @@ pub async fn set_encryption(
     account: u64,
     key: String,
     enabled: bool,
+    preview: Option<Value>,
 ) -> Result<(), String> {
     let app_clone = app.clone();
 
@@ -345,6 +420,7 @@ pub async fn set_encryption(
                 "salt": salt,
                 "hash": hash_key(&derived)
             });
+            entry["preview"] = preview.unwrap_or(Value::Null);
 
             save_accounts(&app_clone, &store)?;
 
@@ -373,6 +449,7 @@ pub async fn set_encryption(
             migrate_all_files(&app_clone, files, &derived, false)?;
 
             entry["encryption"] = Value::Null;
+            entry["preview"] = Value::Null;
 
             save_accounts(&app_clone, &store)?;
 
@@ -454,11 +531,27 @@ pub async fn decrypt_account_hardware(
 }
 
 #[tauri::command]
+pub fn lock_crypto_session(app: AppHandle) {
+    if let Some(state) = app.try_state::<crate::AppState>() {
+        if let Ok(mut c) = state.crypto.write() {
+            *c = None;
+        }
+    }
+    if let Ok(mut guard) = ACCOUNT_CACHE.write() {
+        guard.clear();
+    }
+    if let Ok(mut guard) = CACHE_INDEX_CACHE.write() {
+        guard.clear();
+    }
+}
+
+#[tauri::command]
 pub async fn set_hardware_encryption(
     app: AppHandle,
     account: u64,
     key: String,
     enabled: bool,
+    preview: Option<Value>,
 ) -> Result<(), String> {
     let app_clone = app.clone();
 
@@ -487,6 +580,7 @@ pub async fn set_hardware_encryption(
                 "type": "hardware-1",
                 "hash": hash_key(&key_bytes)
             });
+            entry["preview"] = preview.unwrap_or(Value::Null);
 
             save_accounts(&app_clone, &store)?;
 
@@ -509,6 +603,7 @@ pub async fn set_hardware_encryption(
             migrate_all_files(&app_clone, files, &key_bytes, false)?;
 
             entry["encryption"] = Value::Null;
+            entry["preview"] = Value::Null;
 
             save_accounts(&app_clone, &store)?;
 
@@ -540,7 +635,6 @@ pub fn get_database_files_count(
     Ok(collect_all_account_files(&paths).len())
 }
 
-#[cfg(target_os = "android")]
 pub fn resolve_app_root(app_dir: &str) -> std::path::PathBuf {
     let base = std::path::PathBuf::from(app_dir);
     if base.join("accounts").exists() {
@@ -563,7 +657,6 @@ pub fn resolve_app_root(app_dir: &str) -> std::path::PathBuf {
     base
 }
 
-#[cfg(target_os = "android")]
 pub fn get_background_creds(
     app_dir: &str,
     account_id: u64,

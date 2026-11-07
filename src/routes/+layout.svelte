@@ -37,6 +37,9 @@
   import { initProxyConfig } from "$lib/utils/proxyConfig";
   import { handleBackButton, registerBackHandler } from "$lib/utils/backButton";
   import { getMountStore } from "$lib/plugins/mount-registry";
+  import { initAutoLockWatcher } from "$lib/stores/autoLock";
+  import { lockScreenState, closeLockScreen } from "$lib/stores/lockScreen";
+  import LockScreen from "$components/main/auth/LockScreen.svelte";
 
   const pluginGlobalModals = getMountStore("global:modal");
   const pluginGlobalOverlays = getMountStore("global:overlay");
@@ -66,6 +69,7 @@
     },
   });
   let cleanupDeepLink = null;
+  let cleanupAutoLock = null;
   let unlistenBackButton = null;
   let unlistenCallAction = null;
   let handleKeydown = null;
@@ -73,6 +77,7 @@
   setContext("onBack", onBack);
 
   onMount(async () => {
+    cleanupAutoLock = initAutoLockWatcher();
     await initProxyConfig();
     cleanupDeepLink = await initDeepLink();
 
@@ -172,6 +177,7 @@
   }
 
   onDestroy(() => {
+    if (cleanupAutoLock) cleanupAutoLock();
     if (handleKeydown) window.removeEventListener("keydown", handleKeydown);
     if (unlistenBackButton) unlistenBackButton();
     if (unlistenCallAction) unlistenCallAction();
@@ -229,6 +235,25 @@
 <GlobalMediaPlayer />
 <MediaPlaylistModal />
 <TraceOverlay />
+{#if $lockScreenState}
+  <LockScreen
+    isOverlay={true}
+    mode={$lockScreenState?.mode || "decrypt"}
+    lockType={$lockScreenState?.lockType || null}
+    from={$lockScreenState?.from || null}
+    account={$lockScreenState?.account || null}
+    on:unlocked={(e) => {
+      const cb = $lockScreenState?.onSuccess;
+      closeLockScreen();
+      if (cb) cb(e.detail);
+    }}
+    on:close={() => {
+      const cb = $lockScreenState?.onClose;
+      closeLockScreen();
+      if (cb) cb();
+    }}
+  />
+{/if}
 <StoryViewerModal />
 {#if $isStoryComposerOpen}
   <StoryComposerModal isOpen={$isStoryComposerOpen} on:close={() => closeStoryComposer()} />

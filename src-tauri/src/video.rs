@@ -20,14 +20,25 @@ pub fn set_app_handle(handle: tauri::AppHandle) {
 }
 
 fn get_active_crypto_key() -> Option<[u8; 32]> {
-    VIDEO_APP_HANDLE.get().and_then(|app| {
-        app.state::<crate::AppState>()
-            .crypto
-            .read()
-            .unwrap()
-            .as_ref()
-            .map(|s| s.key)
-    })
+    let app = VIDEO_APP_HANDLE.get()?;
+    let state = app.state::<crate::AppState>();
+    let guard = state.crypto.read().ok()?;
+    guard.as_ref().map(|s| s.key)
+}
+
+fn respond_error(request: tiny_http::Request, status: u16, msg: &str) {
+    let headers = vec![
+        Header::from_bytes(&b"Content-Type"[..], b"text/plain; charset=utf-8").unwrap(),
+        Header::from_bytes(&b"Access-Control-Allow-Origin"[..], b"*").unwrap(),
+    ];
+    let res = Response::new(
+        status.into(),
+        headers,
+        Cursor::new(msg.as_bytes().to_vec()),
+        Some(msg.len()),
+        None,
+    );
+    let _ = request.respond(res);
 }
 
 fn detect_mime_from_bytes(bytes: &[u8], path: &str) -> String {
@@ -247,7 +258,7 @@ fn handle_local_file(request: tiny_http::Request, mut path: &str) {
         Ok(f) => f,
         Err(e) => {
             eprintln!("[VideoProxy] File Not Found: {} (error: {})", path, e);
-            let _ = request.respond(Response::from_string("File Not Found").with_status_code(404));
+            respond_error(request, 404, "File Not Found");
             return;
         }
     };
@@ -255,7 +266,7 @@ fn handle_local_file(request: tiny_http::Request, mut path: &str) {
     let file_len = match file.metadata() {
         Ok(m) => m.len(),
         Err(_) => {
-            let _ = request.respond(Response::from_string("File metadata error").with_status_code(500));
+            respond_error(request, 500, "File metadata error");
             return;
         }
     };
@@ -267,17 +278,17 @@ fn handle_local_file(request: tiny_http::Request, mut path: &str) {
     if is_enc {
         let mut raw_bytes = Vec::new();
         if file.seek(SeekFrom::Start(0)).is_err() || file.read_to_end(&mut raw_bytes).is_err() {
-            let _ = request.respond(Response::from_string("Read error").with_status_code(500));
+            respond_error(request, 500, "Read error");
             return;
         }
         let Some(key) = get_active_crypto_key() else {
-            let _ = request.respond(Response::from_string("Encrypted file locked").with_status_code(403));
+            respond_error(request, 404, "Encrypted file locked");
             return;
         };
         let mut data = match crate::stores::Storage::decrypt(&raw_bytes, &key) {
             Ok(d) => d,
             Err(_) => {
-                let _ = request.respond(Response::from_string("Decryption error").with_status_code(500));
+                respond_error(request, 404, "Decryption error");
                 return;
             }
         };
@@ -329,7 +340,7 @@ fn handle_request(request: tiny_http::Request, client: &reqwest::blocking::Clien
     let url = match urlencoding::decode(raw_url) {
         Ok(u) => u.into_owned(),
         Err(_) => {
-            let _ = request.respond(Response::from_string("Invalid URL").with_status_code(400));
+            respond_error(request, 400, "Invalid URL");
             return;
         }
     };
@@ -396,8 +407,10 @@ fn handle_request(request: tiny_http::Request, client: &reqwest::blocking::Clien
             let paths = crate::stores::Paths::new(app, acc);
             let p1 = paths.cache_file(&crate::stores::hash(&url));
             if p1.exists() && std::fs::metadata(&p1).map(|m| m.len()).unwrap_or(0) > 0 {
-                handle_local_file(request, &p1.to_string_lossy());
-                return;
+                if !crate::stores::is_file_encrypted(&p1) || get_active_crypto_key().is_some() {
+                    handle_local_file(request, &p1.to_string_lossy());
+                    return;
+                }
             }
             if let Some(pos) = url.find('?') {
                 let clean = &url[..pos];
@@ -412,8 +425,10 @@ fn handle_request(request: tiny_http::Request, client: &reqwest::blocking::Clien
                 if is_media {
                     let p2 = paths.cache_file(&crate::stores::hash(clean));
                     if p2.exists() && std::fs::metadata(&p2).map(|m| m.len()).unwrap_or(0) > 0 {
-                        handle_local_file(request, &p2.to_string_lossy());
-                        return;
+                        if !crate::stores::is_file_encrypted(&p2) || get_active_crypto_key().is_some() {
+                            handle_local_file(request, &p2.to_string_lossy());
+                            return;
+                        }
                     }
                 }
             }
@@ -450,7 +465,7 @@ fn handle_request(request: tiny_http::Request, client: &reqwest::blocking::Clien
         Ok(r) => r,
         Err(e) => {
             eprintln!("Upstream request error: {}", e);
-            let _ = request.respond(Response::from_string("Bad Gateway").with_status_code(502));
+            respond_error(request, 502, "Bad Gateway");
             return;
         }
     };
