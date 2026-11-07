@@ -7,6 +7,7 @@
   } from "svelte";
   import { get } from "svelte/store";
   import { goto } from "$app/navigation";
+  import { page } from "$app/stores";
   import API, { currentUser, currentUserDetails } from "$lib/stores/api";
   import { set as sessionSet } from "$lib/stores/session";
   import {
@@ -18,6 +19,7 @@
   import { openLockScreen } from "$lib/stores/lockScreen";
   import { resetImageCaches } from "$lib/utils/images";
   import { clearCachingUtils } from "$lib/utils/caching";
+  import { activeThemeId } from "$lib/stores/theme";
 
   import "$lib/styles/AnimatedPanel.css";
   import Avatar from "$components/main/Avatar.svelte";
@@ -28,6 +30,7 @@
   let longPressed = false;
   let holdTimer;
   let unregisterMenuBack = null;
+  let unregisterGeneralBack = null;
 
   let accounts = [];
   let loadingAccounts = true;
@@ -40,6 +43,11 @@
     invoke("lock_crypto_session").catch(() => {});
     refreshAccounts();
     window.addEventListener("pointerdown", handleClick);
+
+    unregisterGeneralBack = registerBackHandler(() => {
+      goBack();
+      return true;
+    });
   });
 
   async function refreshAccounts() {
@@ -52,8 +60,25 @@
     } finally {
       loadingAccounts = false;
     }
+  }
 
-    if (accounts.length === 0) {
+  async function goBack() {
+    const from = $page?.url?.searchParams?.get("from");
+    if (from === "login") {
+      goto("/auth/login");
+      return;
+    }
+    if (from === "account" || from === "settings") {
+      goto("/");
+      return;
+    }
+
+    const current = await getCurrentAccount().catch(() => null);
+    if (current?.id) {
+      goto("/");
+    } else if (typeof window !== "undefined" && window.history?.length > 1) {
+      window.history.back();
+    } else {
       goto("/auth/login");
     }
   }
@@ -142,11 +167,8 @@
       unregisterMenuBack();
     }
     unregisterMenuBack = registerBackHandler(() => {
-      if (menu) {
-        closeMenu();
-        return true;
-      }
-      return false;
+      closeMenu();
+      return true;
     });
   }
 
@@ -154,19 +176,20 @@
     closeMenu();
 
     const dataToSave = {
+      version: 1,
+      type: "account",
+      meta: account.meta || {},
+      token: account.token,
+      seed: account.seed || null,
       id: account.id,
-      token: account.meta?.token,
-      device: account.meta?.device,
-      encryption: account.encryption || null,
-      preview: account.preview || null,
-      exportedAt: new Date().toISOString(),
+      timestamp: Date.now()
     };
 
     const path = await save({
-      defaultPath: `account_${account.contact?.names?.[0]?.firstName || account.id}.json`,
+      defaultPath: `${account.meta?.firstName || account.id}.json`,
       filters: [
         {
-          name: "JSON",
+          name: "Файл аккаунта (.json)",
           extensions: ["json"],
         },
       ],
@@ -197,12 +220,32 @@
       unregisterMenuBack();
       unregisterMenuBack = null;
     }
+    if (unregisterGeneralBack) {
+      unregisterGeneralBack();
+      unregisterGeneralBack = null;
+    }
     window.removeEventListener("pointerdown", handleClick);
   });
 </script>
 
-<div class="page" on:click={handleClick}>
-  <h1>Выберите аккаунт</h1>
+<div
+  class="page"
+  class:dark-theme={$activeThemeId === "dark"}
+  on:click={handleClick}
+>
+  <button
+    type="button"
+    class="back-button"
+    on:click={goBack}
+    aria-label="Назад"
+  >
+    <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+      <line x1="19" y1="12" x2="5" y2="12"></line>
+      <polyline points="12 19 5 12 12 5"></polyline>
+    </svg>
+  </button>
+
+  <h1 class="title">Выберите аккаунт</h1>
   <a class="hint">Зажми для открытия меню действий.</a>
 
   <div class="accounts">
@@ -261,6 +304,7 @@
         </div>
       {/each}
     {/if}
+
     <div on:click={addNew} class="account">
       <div class="avatar">
         <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
@@ -298,47 +342,111 @@
 
 <OpenDevSettingsButton />
 
+<div on:click={() => sessionSet("devicesPage", true)} class="open-devices">
+  <a>Настройки устройства</a>
+</div>
+
 <style>
   .page {
+    --select-bg: #ffffff;
+    --select-text: #000000;
+    --select-hint: #8e8e93;
+    --select-card-bg: #eff0f4;
+    --select-avatar-bg: #eff0f4;
+    --select-avatar-border: #e5e5ea;
+    --select-menu-bg: #ffffff;
+    --select-menu-border: #efeff4;
+
+    position: relative;
     display: flex;
     flex-direction: column;
     justify-content: center;
     align-items: center;
-    min-height: 98vh;
+    min-height: 100%;
+    width: 100%;
     text-align: center;
-    color: #ddd;
+    background-color: var(--select-bg);
+    color: var(--select-text);
+    box-sizing: border-box;
+    padding: calc(30px + var(--safe-top, 0px)) 16px calc(24px + var(--safe-bottom, 0px)) 16px;
+    overflow-y: auto;
   }
 
-  h1 {
+  .page.dark-theme {
+    --select-bg: #17181c;
+    --select-text: #ffffff;
+    --select-hint: #8b929e;
+    --select-card-bg: #24242d;
+    --select-avatar-bg: #24242d;
+    --select-avatar-border: rgba(255, 255, 255, 0.08);
+    --select-menu-bg: #212128;
+    --select-menu-border: rgba(255, 255, 255, 0.08);
+  }
+
+  .back-button {
+    position: absolute;
+    top: calc(16px + var(--safe-top, 0px));
+    left: 16px;
+    z-index: 100;
+    width: 44px;
+    height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: none;
+    border-radius: 50%;
+    color: var(--select-text);
+    cursor: pointer;
+    transition: background-color 0.15s ease;
+  }
+
+  .back-button:active {
+    background-color: rgba(127, 127, 127, 0.15);
+  }
+
+  .title {
     margin: 0;
     font-size: 23px;
+    font-weight: 700;
+    color: var(--select-text);
   }
 
   .hint {
     font-size: 14px;
-    color: #777;
-    margin: 5px 0 20px 0;
+    color: var(--select-hint);
+    margin: 6px 0 24px 0;
   }
 
   .accounts {
     display: flex;
-    gap: 20px;
-    width: 100%;
+    flex-wrap: wrap;
     justify-content: center;
-    overflow-y: scroll;
+    align-items: flex-start;
+    gap: 24px 20px;
+    width: 100%;
+    max-width: 380px;
+    margin: 0 auto;
+    padding: 8px 12px;
+    box-sizing: border-box;
+  }
+
+  @media (min-width: 520px) {
+    .accounts {
+      max-width: 520px;
+      gap: 28px 24px;
+    }
   }
 
   .account {
-    width: 76px;
-    flex-shrink: 0;
+    width: 80px;
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 10px;
-    color: white;
-    font-weight: 300;
-    opacity: 0.8;
-    transition: opacity 0.1s;
+    gap: 8px;
+    color: var(--select-text);
+    opacity: 0.9;
+    transition: opacity 0.15s ease, transform 0.1s ease;
     position: relative;
     cursor: pointer;
   }
@@ -347,12 +455,19 @@
     opacity: 1;
   }
 
+  .account:active {
+    transform: scale(0.95);
+  }
+
   .account > a {
-    max-width: 76px;
+    width: 80px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
     text-align: center;
+    font-size: 13.5px;
+    font-weight: 500;
+    color: var(--select-text);
   }
 
   .account-avatar-wrapper {
@@ -364,7 +479,9 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    background: #24242d;
+    background: var(--select-avatar-bg);
+    border: 1.5px solid var(--select-avatar-border);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
   }
 
   .blurred-avatar {
@@ -374,27 +491,50 @@
     border-radius: 50%;
   }
 
-
   .empty-encrypted-avatar {
     width: 72px;
     height: 72px;
     border-radius: 50%;
-    background: #24242d;
-    border: 1px dashed #444;
+    background: var(--select-avatar-bg);
     display: flex;
     align-items: center;
     justify-content: center;
   }
 
   .account .avatar {
-    background-color: #777;
+    background-color: var(--select-avatar-bg);
+    border: 1.5px solid var(--select-avatar-border);
     border-radius: 50%;
     width: 72px;
     height: 72px;
     display: flex;
     align-items: center;
     justify-content: center;
-    color: #fff;
+    color: #007aff;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  }
+
+  .open-devices {
+    position: absolute;
+    z-index: 100;
+    color: white;
+    width: 200px;
+    height: 40px;
+    top: calc(70px + var(--safe-top, 0px));
+    right: 0;
+    background: linear-gradient(270deg, #333, #444), #333;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 100px 0 0 100px;
+    cursor: pointer;
+    transition: padding 0.1s;
+    font-size: 15px;
+    font-weight: 500;
+  }
+
+  .open-devices:hover {
+    padding-right: 5px;
   }
 
   .context-menu {
@@ -403,35 +543,36 @@
     min-width: 210px;
     display: flex;
     flex-direction: column;
-    background: rgba(34, 34, 40, .98);
-    border: 1px solid rgba(255,255,255,.08);
+    background: var(--select-menu-bg);
+    border: 1px solid var(--select-menu-border);
     border-radius: 14px;
     overflow: hidden;
-    box-shadow: 0 10px 35px rgba(0,0,0,.45);
+    box-shadow: 0 10px 35px rgba(0, 0, 0, 0.2);
     animation: menuAppear .15s ease;
   }
 
   .context-menu button {
     border: none;
     background: transparent;
-    color: #eee;
+    color: var(--select-text);
     padding: 13px 16px;
     font-size: 15px;
     text-align: left;
     cursor: pointer;
     transition: background .15s;
+    font-family: inherit;
   }
 
-  .context-menu button:hover {
-    background: rgba(255,255,255,.06);
+  .page.dark-theme .context-menu button:hover {
+    background: rgba(255, 255, 255, .08);
   }
 
-  .context-menu button:active {
-    background: rgba(255,255,255,.1);
+  .page:not(.dark-theme) .context-menu button:hover {
+    background: #f2f2f7;
   }
 
   .context-menu .danger {
-    color: #ff5b5b;
+    color: #ff3b30;
   }
 
   @keyframes menuAppear {

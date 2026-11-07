@@ -197,7 +197,7 @@ import { goto } from "$app/navigation";
       {
         icon: "logout.svg",
         text: "Сменить аккаунт",
-        action: () => goto("/auth/select")
+        action: () => goto("/auth/select?from=account")
       },
     ],
   ];

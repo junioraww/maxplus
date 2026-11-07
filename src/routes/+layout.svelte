@@ -11,6 +11,7 @@
   import { page } from "$app/stores";
   import { type } from "@tauri-apps/plugin-os";
 
+  import { initTheme, activeThemeId } from '$lib/stores/theme';
   import API from '$lib/stores/api';
   import { add as addLog } from '$lib/stores/logs';
   import { showAlert } from '$lib/utils/alert';
@@ -46,6 +47,8 @@
 
   let settings;
   const legacyUnregisterMap = new Map();
+
+  $: isAuthRoute = $page?.url?.pathname?.startsWith('/auth');
   const onBack = new Proxy({}, {
     set(target, prop, fn) {
       if (legacyUnregisterMap.has(prop)) {
@@ -77,6 +80,7 @@
   setContext("onBack", onBack);
 
   onMount(async () => {
+    initTheme();
     cleanupAutoLock = initAutoLockWatcher();
     await initProxyConfig();
     cleanupDeepLink = await initDeepLink();
@@ -215,6 +219,10 @@
   />
 {/if}
 
+{#if isAuthRoute}
+  <div class="auth-underlay" class:dark-underlay={$activeThemeId === "dark"}></div>
+{/if}
+
 {#if $Session.loaded}
   {#key $page.url.pathname}
     <main in:fade={{ duration: 150 }}>
@@ -281,7 +289,11 @@
   </div>
 {/each}
 
-<svelte:body class:modal-media-active={$isStoryComposerOpen || Boolean($activeStoryViewer)} />
+<svelte:body
+  class:modal-media-active={$isStoryComposerOpen || Boolean($activeStoryViewer)}
+  class:auth-light-body={isAuthRoute && $activeThemeId === "light"}
+  class:auth-dark-body={isAuthRoute && $activeThemeId === "dark"}
+/>
 
 <style>
   main {
@@ -289,6 +301,19 @@
     width: 100%;
     height: 100%;
     position: relative;
+    z-index: 1;
+  }
+
+  .auth-underlay {
+    position: fixed;
+    inset: 0;
+    background-color: #ffffff;
+    z-index: 0;
+    pointer-events: none;
+  }
+
+  .auth-underlay.dark-underlay {
+    background-color: #121316;
   }
 
   :global(body.modal-media-active *) {

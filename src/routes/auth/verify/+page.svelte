@@ -6,57 +6,51 @@
     get as sessionGet
   } from "$lib/stores/session";
   import { registerBackHandler } from "$lib/utils/backButton";
-
-  import BackButton from "$components/main/auth/BackButton.svelte";
-  import ActionButton from "$components/main/auth/ActionButton.svelte";
-
   import API from "$lib/stores/api";
   import { parseApiError } from "$lib/api/MobileApi";
+  import { activeThemeId } from "$lib/stores/theme";
+  import OtpCodeInput from "$components/main/auth/OtpCodeInput.svelte";
 
   let error = "";
-  let infoMessage = "";
   let code = "";
   let loading = false;
   let resending = false;
 
   const phone = sessionGet("phone") || "";
-  const initialDelay = sessionGet("codeDelay");
-  let timerSeconds = typeof initialDelay === "number" && initialDelay > 0 ? initialDelay : 60;
-  let timerInterval = null;
-
   const name = sessionGet("name");
-  const state = !name ? "login" : "register";
-
   const authPayload = sessionGet("authPayload") || {};
   const serverCodeLength = sessionGet("codeLength") || authPayload.codeLength;
   const codeLength = typeof serverCodeLength === "number" && serverCodeLength > 0 ? serverCodeLength : 6;
 
+  const initialDelay = sessionGet("codeDelay");
+  let timerSeconds = typeof initialDelay === "number" && initialDelay > 0 ? initialDelay : 60;
+  let timerInterval = null;
+
   function detectCallVerification(auth, phoneNumber) {
-    console.log(auth);
-    if (auth.requestType?.includes("CALL")) return true;
-
-    // TODO ???
+    if (auth?.requestType && String(auth.requestType).includes("CALL")) return true;
     const clean = (phoneNumber || "").replace(/[^\d+]/g, "");
-    if (clean.startsWith("+374") || clean.startsWith("374")) {
-      return true;
-    }
-
+    if (clean.startsWith("+374") || clean.startsWith("374")) return true;
     return false;
   }
 
   let isCall = detectCallVerification(authPayload, phone);
 
-  $: subtitleText = isCall
-    ? `Вам поступит звонок-сброс. Введите последние ${codeLength} цифр номера входящего вызова.`
-    : "Код подтверждения отправлен по SMS или в MAX на другом устройстве.";
+  function formatDisplayPhone(raw) {
+    if (!raw) return "";
+    const clean = raw.replace(/[^\d+]/g, "");
+    if (clean.startsWith("+7") && clean.length === 12) {
+      return `+7 ${clean.slice(2, 5)} ${clean.slice(5, 8)} ${clean.slice(8, 10)} ${clean.slice(10, 12)}`;
+    }
+    return raw;
+  }
 
-  $: placeholderText = isCall
-    ? `Последние ${codeLength} цифр`
-    : "•".repeat(codeLength);
+  $: displayPhone = formatDisplayPhone(phone);
 
-  $: resendButtonText = isCall
-    ? "Запросить повторный звонок"
-    : "Отправить код по SMS";
+  function formatTimer(sec) {
+    const m = Math.floor(sec / 60);
+    const s = sec % 60;
+    return `${m}:${s < 10 ? "0" : ""}${s}`;
+  }
 
   function startTimer() {
     stopTimer();
@@ -76,12 +70,18 @@
     }
   }
 
-  onMount(() => {
-    startTimer();
-  });
+  function goBack() {
+    goto("/auth/login");
+  }
 
-  const unregisterBack = registerBackHandler(() => {
-    goto("/auth/" + state);
+  const unregisterBack = registerBackHandler(goBack);
+
+  onMount(() => {
+    if (!phone) {
+      goto("/auth/login");
+      return;
+    }
+    startTimer();
   });
 
   onDestroy(() => {
@@ -89,16 +89,10 @@
     unregisterBack();
   });
 
-  async function resendCode() {
-    if (resending || timerSeconds > 0) return;
-    if (!phone) {
-      error = "Номер телефона не найден";
-      return;
-    }
-
+  async function handleResend() {
+    if (resending || timerSeconds > 0 || !phone) return;
     resending = true;
     error = "";
-    infoMessage = "";
 
     try {
       const response = await $API.resendAuth(phone);
@@ -107,9 +101,6 @@
       } else {
         sessionSet("authPayload", response);
         isCall = detectCallVerification(response, phone);
-        infoMessage = isCall
-          ? "Ожидайте повторный звонок"
-          : "Код отправлен по SMS";
         timerSeconds = response?.codeDelay || 60;
         startTimer();
       }
@@ -120,19 +111,16 @@
     }
   }
 
-  async function verify() {
+  async function handleVerify(enteredCode) {
     if (loading) return;
-    if (code.length !== codeLength) {
-      error = `Длина кода — ${codeLength} символов!`;
-      return;
-    }
+    const targetCode = enteredCode || code;
+    if (targetCode.length !== codeLength) return;
 
     error = "";
-    infoMessage = "";
     loading = true;
 
     try {
-      const response = await $API.checkCode(code);
+      const response = await $API.checkCode(targetCode);
 
       if (response?.error) {
         error = parseApiError(response);
@@ -177,168 +165,197 @@
       error = parseApiError(e);
     }
   }
-
-  function onInput(e) {
-    error = "";
-    code = e.target.value.trim();
-    if (code.length === codeLength) {
-      verify();
-    }
-  }
 </script>
 
-<div class="auth-page">
-  <h1>Подтверждение</h1>
-  {#if phone}
-    <div class="phone-badge">{phone}</div>
-  {/if}
-  <p class="subtitle">
-    {subtitleText}
-  </p>
-  <div class="form">
-    {#if error}
-      <div class="error">{error}</div>
-    {/if}
-    {#if infoMessage}
-      <div class="info">{infoMessage}</div>
-    {/if}
-    <input
-      type="text"
-      inputmode="numeric"
-      maxlength={codeLength}
-      value={code}
-      on:input={onInput}
-      placeholder={placeholderText}
-      required
-    />
-    <ActionButton text="Подтвердить" action={verify}/>
+<div class="auth-screen" class:dark-theme={$activeThemeId === "dark"}>
+  <header class="top-nav">
+    <button
+      type="button"
+      class="back-button"
+      on:click={goBack}
+      aria-label="Назад"
+    >
+      <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <line x1="19" y1="12" x2="5" y2="12"></line>
+        <polyline points="12 19 5 12 12 5"></polyline>
+      </svg>
+    </button>
+  </header>
 
-    <div class="resend-container">
-      {#if timerSeconds > 0}
-        <span class="timer-label">Отправить повторно через {timerSeconds} сек</span>
+  <main class="content-container">
+    <h1 class="main-heading">
+      Отправили код<br />на {displayPhone}
+    </h1>
+
+    <p class="sub-heading">
+      {#if isCall}
+        Вам поступит звонок-сброс. Введите последние {codeLength} цифр номера входящего вызова.
       {:else}
-        <button
-          type="button"
-          class="resend-action"
-          on:click={resendCode}
-          disabled={resending}
-        >
-          {resending ? "Отправка..." : resendButtonText}
-        </button>
+        Если не получили СМС, проверьте чат<br />«Коды подтверждения» в MAX
       {/if}
-    </div>
-  </div>
-  <BackButton/>
+    </p>
+
+    <OtpCodeInput
+      length={codeLength}
+      bind:value={code}
+      disabled={loading}
+      on:complete={(e) => handleVerify(e.detail)}
+    />
+
+    {#if error}
+      <div class="error-notice">{error}</div>
+    {/if}
+  </main>
+
+  <footer class="bottom-section">
+    {#if timerSeconds > 0}
+      <div class="timer-text">
+        Получить новый код можно через {formatTimer(timerSeconds)}
+      </div>
+    {:else}
+      <button
+        type="button"
+        class="resend-btn"
+        disabled={resending}
+        on:click={handleResend}
+      >
+        {resending ? "Отправка..." : isCall ? "Запросить повторный звонок" : "Отправить код повторно"}
+      </button>
+    {/if}
+  </footer>
 </div>
 
 <style>
-  .auth-page {
+  .auth-screen {
+    --auth-bg: #ffffff;
+    --auth-text: #000000;
+    --auth-text-secondary: #8e8e93;
+    --auth-input-bg: #eff0f4;
+    --auth-accent: #007aff;
+
+    position: relative;
     display: flex;
     flex-direction: column;
-    justify-content: center;
-    align-items: center;
     min-height: 100%;
-    padding: calc(20px + var(--safe-top, 0px)) 16px calc(20px + var(--safe-bottom, 0px));
-    box-sizing: border-box;
-    text-align: center;
-    color: #ddd;
-  }
-
-  .auth-page h1 {
-    margin: 0;
-    font-size: 24px;
-    font-weight: 600;
-  }
-
-  .phone-badge {
-    margin-top: 8px;
-    font-size: 16px;
-    font-weight: 500;
-    color: #4a90e2;
-    letter-spacing: 0.5px;
-  }
-
-  .subtitle {
-    margin: 10px 0 12px 0;
-    font-size: 13.5px;
-    color: #a0a0a8;
-    line-height: 1.4;
-    max-width: min(340px, 90%);
-  }
-
-  .form {
-    display: flex;
-    flex-direction: column;
-    gap: 0.75rem;
     width: 100%;
-    max-width: min(300px, 90%);
+    background-color: var(--auth-bg);
+    color: var(--auth-text);
     box-sizing: border-box;
+    padding-top: var(--safe-top, 0px);
+    padding-bottom: var(--safe-bottom, 0px);
+    overflow-x: hidden;
   }
 
-  input {
-    width: 100%;
-    box-sizing: border-box;
-    padding: 0.75rem;
-    border-radius: 8px;
-    border: 1px solid #333;
-    font-size: 1.25rem;
-    background-color: #26262e;
-    color: #ccc;
-    outline: none;
-    text-align: center;
-    letter-spacing: 4px;
-    font-weight: 600;
+  .auth-screen.dark-theme {
+    --auth-bg: #121316;
+    --auth-text: #ffffff;
+    --auth-text-secondary: #8e8e93;
+    --auth-input-bg: #212228;
+    --auth-accent: #007aff;
   }
 
-  input:focus {
-    border-color: #4a90e2;
-  }
-
-  .resend-container {
-    margin-top: 6px;
-    min-height: 24px;
+  .top-nav {
     display: flex;
-    justify-content: center;
     align-items: center;
+    height: 56px;
+    padding: 0 12px;
+    width: 100%;
+    max-width: 440px;
+    margin: 0 auto;
+    box-sizing: border-box;
   }
 
-  .timer-label {
-    font-size: 13.5px;
-    color: #777;
-  }
-
-  .resend-action {
+  .back-button {
+    width: 44px;
+    height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     background: transparent;
     border: none;
-    color: #4a90e2;
-    font-size: 14px;
+    border-radius: 50%;
+    color: var(--auth-text);
     cursor: pointer;
+  }
+
+  .back-button:active {
+    background-color: rgba(127, 127, 127, 0.12);
+  }
+
+  .content-container {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 24px 20px 0 20px;
+    text-align: center;
+    width: 100%;
+    max-width: 440px;
+    margin: 0 auto;
+    box-sizing: border-box;
+  }
+
+  .main-heading {
+    margin: 0 0 12px 0;
+    font-size: 24px;
+    font-weight: 700;
+    line-height: 1.25;
+    color: var(--auth-text);
+    letter-spacing: -0.3px;
+  }
+
+  .sub-heading {
+    margin: 0 0 16px 0;
+    font-size: 15px;
+    line-height: 1.4;
+    color: var(--auth-text-secondary);
+    max-width: 320px;
+  }
+
+  .error-notice {
+    margin-top: 10px;
+    padding: 10px 14px;
+    background-color: rgba(239, 68, 68, 0.12);
+    color: #ef4444;
+    border-radius: 10px;
+    font-size: 14px;
+  }
+
+  .bottom-section {
+    padding: 16px 20px 24px 20px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    margin-top: auto;
+    width: 100%;
+    max-width: 440px;
+    margin: 0 auto;
+    box-sizing: border-box;
+  }
+
+  .timer-text {
+    font-size: 14px;
+    color: #8e8e93;
+    text-align: center;
+  }
+
+  .resend-btn {
+    background: transparent;
+    border: none;
+    color: #007aff;
+    font-size: 15px;
+    font-weight: 500;
+    font-family: inherit;
+    cursor: pointer;
+    padding: 8px 12px;
+  }
+
+  .resend-btn:hover {
     text-decoration: underline;
-    text-underline-offset: 3px;
-    padding: 4px 8px;
-    transition: color 0.15s, opacity 0.15s;
   }
 
-  .resend-action:disabled {
+  .resend-btn:disabled {
     opacity: 0.5;
-    cursor: not-allowed;
-  }
-
-  .resend-action:hover:not(:disabled) {
-    color: #6ba6ec;
-  }
-
-  .error {
-    color: #ff5555;
-    font-size: 13.5px;
-    min-height: 18px;
-    word-break: break-word;
-  }
-
-  .info {
-    color: #4cd964;
-    font-size: 13.5px;
-    min-height: 18px;
-    word-break: break-word;
+    cursor: default;
   }
 </style>

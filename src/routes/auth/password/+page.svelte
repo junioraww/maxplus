@@ -6,22 +6,23 @@
     get as sessionGet
   } from "$lib/stores/session";
   import { registerBackHandler } from "$lib/utils/backButton";
-
-  import BackButton from "$components/main/auth/BackButton.svelte";
-  import ActionButton from "$components/main/auth/ActionButton.svelte";
-
   import API from "$lib/stores/api";
   import { parseApiError } from "$lib/api/MobileApi";
+  import { activeThemeId } from "$lib/stores/theme";
 
   let error = "";
   let password = "";
   let showPassword = false;
   let loading = false;
+  let passwordInputRef;
+
   const challenge = sessionGet("challenge");
 
-  const unregisterBack = registerBackHandler(() => {
+  function goBack() {
     goto("/auth/login");
-  });
+  }
+
+  const unregisterBack = registerBackHandler(goBack);
 
   onDestroy(() => {
     unregisterBack();
@@ -30,15 +31,13 @@
   onMount(() => {
     if (!challenge || !challenge.trackId) {
       goto("/auth/login");
-    }
-  });
-
-  async function verify() {
-    if (loading) return;
-    if (!password) {
-      error = "Введите пароль";
       return;
     }
+    if (passwordInputRef) passwordInputRef.focus();
+  });
+
+  async function handleVerify() {
+    if (loading || !password) return;
     if (!challenge?.trackId) {
       goto("/auth/login");
       return;
@@ -63,135 +62,318 @@
     }
   }
 
-  function handleKeydown(e) {
-    if (e.key === "Enter") {
-      verify();
+  function handleKeyDown(e) {
+    if (e.key === "Enter" && password) {
+      handleVerify();
     }
+  }
+
+  function handleForgotPassword() {
+    goto("/auth/recovery");
   }
 </script>
 
-<div class="auth-page">
-  <h1>Двухфакторная аутентификация</h1>
-  <p>Введите пароль для завершения входа</p>
-  {#if challenge?.hint}
-    <div class="hint">Подсказка: {challenge.hint}</div>
-  {/if}
-  <div class="form">
-    <div class="error">{error}</div>
-    <div class="input-wrapper">
+<div class="auth-screen" class:dark-theme={$activeThemeId === "dark"}>
+  <header class="top-nav">
+    <button
+      type="button"
+      class="back-button"
+      on:click={goBack}
+      aria-label="Назад"
+    >
+      <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <line x1="19" y1="12" x2="5" y2="12"></line>
+        <polyline points="12 19 5 12 12 5"></polyline>
+      </svg>
+    </button>
+  </header>
+
+  <main class="content-container">
+    <div class="icon-badge">
+      <svg viewBox="0 0 24 24" width="36" height="36" fill="none" stroke="#8e8e93" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="4" y="10.5" width="16" height="11" rx="3.5" ry="3.5"></rect>
+        <path d="M7.5 10.5V7a4.5 4.5 0 0 1 9 0v3.5"></path>
+        <circle cx="8.5" cy="16" r="1" fill="#8e8e93" stroke="none"></circle>
+        <circle cx="12" cy="16" r="1" fill="#8e8e93" stroke="none"></circle>
+        <circle cx="15.5" cy="16" r="1" fill="#8e8e93" stroke="none"></circle>
+      </svg>
+    </div>
+
+    <h1 class="main-heading">Введите пароль для входа</h1>
+    <p class="sub-heading">Ваш профиль дополнительно защищён</p>
+
+    {#if challenge?.hint}
+      <div class="hint-text">Подсказка: {challenge.hint}</div>
+    {/if}
+
+    <div class="input-card">
       <input
+        bind:this={passwordInputRef}
         type={showPassword ? "text" : "password"}
-        bind:value={password}
+        class="password-field"
         placeholder="Пароль"
-        on:keydown={handleKeydown}
-        required
+        bind:value={password}
+        on:keydown={handleKeyDown}
       />
       <button
         type="button"
         class="toggle-visibility"
         on:click={() => (showPassword = !showPassword)}
-        aria-label="Показать пароль"
+        aria-label={showPassword ? "Скрыть пароль" : "Показать пароль"}
       >
         {#if showPassword}
-          <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
-            <path d="M12 7c2.76 0 5 2.24 5 5 0 .65-.13 1.26-.36 1.83l2.92 2.92c1.51-1.26 2.7-2.89 3.43-4.75-1.73-4.39-6-7.5-11-7.5-1.4 0-2.74.25-3.98.7l2.16 2.16C10.74 7.13 11.35 7 12 7zM2 4.27l2.28 2.28.46.46C3.08 8.3 1.78 10.02 1 12c1.73 4.39 6 7.5 11 7.5 1.55 0 3.03-.3 4.38-.84l.42.42L19.73 22 21 20.73 3.27 3 2 4.27zM7.53 9.8l1.55 1.55c-.05.21-.08.43-.08.65 0 1.66 1.34 3 3 3 .22 0 .44-.03.65-.08l1.55 1.55c-.67.33-1.41.53-2.2.53-2.76 0-5-2.24-5-5 0-.79.2-1.53.53-2.2zm4.31-.78l3.15 3.15.02-.16c0-1.66-1.34-3-3-3l-.17.01z"/>
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path>
+            <line x1="1" y1="1" x2="23" y2="23"></line>
           </svg>
         {:else}
-          <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
-            <path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"/>
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+            <circle cx="12" cy="12" r="3"></circle>
           </svg>
         {/if}
       </button>
     </div>
-    <ActionButton text="Проверить" action={verify}/>
-  </div>
-  <BackButton path="/auth/login"/>
+
+    {#if error}
+      <div class="error-notice">{error}</div>
+    {/if}
+  </main>
+
+  <footer class="bottom-section">
+    <button
+      type="button"
+      class="submit-button"
+      class:active={Boolean(password) && !loading}
+      disabled={!password || loading}
+      on:click={handleVerify}
+    >
+      {loading ? "Проверка..." : "Продолжить"}
+    </button>
+
+    <button
+      type="button"
+      class="forgot-link"
+      on:click={handleForgotPassword}
+    >
+      Забыли пароль?
+    </button>
+  </footer>
 </div>
 
 <style>
-  .auth-page {
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    align-items: center;
-    min-height: 100%;
-    padding: calc(20px + var(--safe-top, 0px)) 16px calc(20px + var(--safe-bottom, 0px));
-    box-sizing: border-box;
-    text-align: center;
-    color: #ddd;
-    width: 100%;
-  }
+  .auth-screen {
+    --auth-bg: #ffffff;
+    --auth-text: #000000;
+    --auth-text-secondary: #8e8e93;
+    --auth-input-bg: #eff0f4;
+    --auth-accent: #007aff;
+    --auth-pill: #f2f2f2;
 
-  .auth-page h1 {
-    margin: 0;
-    font-size: 22px;
-    font-weight: 500;
-  }
-
-  .auth-page p {
-    margin: 10px 0 6px 0;
-    font-size: 14px;
-    color: #8e8e93;
-    max-width: min(340px, 90%);
-  }
-
-  .hint {
-    font-size: 13px;
-    color: #4a90e2;
-    margin-bottom: 8px;
-    word-break: break-word;
-    max-width: min(340px, 90%);
-  }
-
-  .form {
-    display: flex;
-    flex-direction: column;
-    gap: 0.75rem;
-    width: 100%;
-    max-width: min(300px, 90%);
-    box-sizing: border-box;
-  }
-
-  .input-wrapper {
     position: relative;
     display: flex;
-    align-items: center;
+    flex-direction: column;
+    min-height: 100%;
     width: 100%;
+    background-color: var(--auth-bg);
+    color: var(--auth-text);
+    box-sizing: border-box;
+    padding-top: var(--safe-top, 0px);
+    padding-bottom: var(--safe-bottom, 0px);
+    overflow-x: hidden;
   }
 
-  .input-wrapper input {
+  .auth-screen.dark-theme {
+    --auth-bg: #121316;
+    --auth-text: #ffffff;
+    --auth-text-secondary: #8e8e93;
+    --auth-input-bg: #212228;
+    --auth-accent: #007aff;
+    --auth-pill: #282932;
+  }
+
+  .top-nav {
+    display: flex;
+    align-items: center;
+    height: 56px;
+    padding: 0 12px;
     width: 100%;
-    padding: 0.75rem 2.5rem 0.75rem 0.75rem;
-    border-radius: 8px;
-    border: 1px solid #333;
-    font-size: 1rem;
-    background-color: #26262e;
-    color: #ccc;
-    outline: none;
+    max-width: 440px;
+    margin: 0 auto;
     box-sizing: border-box;
+  }
+
+  .back-button {
+    width: 44px;
+    height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: none;
+    border-radius: 50%;
+    color: var(--auth-text);
+    cursor: pointer;
+  }
+
+  .back-button:active {
+    background-color: rgba(127, 127, 127, 0.12);
+  }
+
+  .content-container {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 20px 20px 0 20px;
+    text-align: center;
+    width: 100%;
+    max-width: 440px;
+    margin: 0 auto;
+    box-sizing: border-box;
+  }
+
+  .icon-badge {
+    width: 84px;
+    height: 84px;
+    border-radius: 50%;
+    background-color: #f0f1f4;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 24px;
+  }
+
+  .auth-screen.dark-theme .icon-badge {
+    background-color: #212228;
+  }
+
+  .main-heading {
+    margin: 0 0 8px 0;
+    font-size: 22px;
+    font-weight: 700;
+    color: var(--auth-text);
+    letter-spacing: -0.2px;
+  }
+
+  .sub-heading {
+    margin: 0 0 24px 0;
+    font-size: 15px;
+    color: var(--auth-text-secondary);
+    max-width: 300px;
+  }
+
+  .hint-text {
+    margin-top: -12px;
+    margin-bottom: 20px;
+    font-size: 14px;
+    color: var(--auth-accent);
+  }
+
+  .input-card {
+    width: 100%;
+    height: 52px;
+    background-color: var(--auth-input-bg);
+    border-radius: 14px;
+    padding: 0 14px;
+    display: flex;
+    align-items: center;
+    box-sizing: border-box;
+    transition: box-shadow 0.15s ease;
+  }
+
+  .input-card:focus-within {
+    box-shadow: 0 0 0 1.5px rgba(0, 122, 255, 0.45);
+  }
+
+  .password-field {
+    flex: 1;
+    height: 100%;
+    background: transparent;
+    border: none;
+    outline: none;
+    font-size: 17px;
+    font-family: inherit;
+    color: var(--auth-text);
+    padding: 0;
+    -webkit-user-select: text;
+    user-select: text;
+  }
+
+  .password-field::placeholder {
+    color: var(--auth-text-secondary);
   }
 
   .toggle-visibility {
-    position: absolute;
-    right: 10px;
     background: transparent;
     border: none;
-    color: #8e8e93;
+    color: var(--auth-text-secondary);
     cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
+    padding: 6px;
+  }
+
+  .error-notice {
+    margin-top: 14px;
+    padding: 10px 14px;
+    background-color: rgba(239, 68, 68, 0.12);
+    color: #ef4444;
+    border-radius: 10px;
+    font-size: 14px;
+  }
+
+  .bottom-section {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 16px 20px 24px 20px;
+    margin-top: auto;
+    width: 100%;
+    max-width: 440px;
+    margin-left: auto;
+    margin-right: auto;
+    box-sizing: border-box;
+  }
+
+  .submit-button {
+    width: 100%;
+    height: 52px;
+    border-radius: 14px;
+    border: none;
+    background-color: #007aff;
+    opacity: 0.7;
+    color: #ffffff;
+    font-size: 16px;
+    font-weight: 600;
+    font-family: inherit;
+    cursor: default;
+    transition: opacity 0.2s ease, transform 0.1s ease;
+  }
+
+  .submit-button.active {
+    opacity: 1;
+    cursor: pointer;
+  }
+
+  .submit-button.active:active {
+    transform: scale(0.985);
+  }
+
+  .forgot-link {
+    margin-top: 18px;
+    background: transparent;
+    border: none;
+    color: #007aff;
+    font-size: 15px;
+    font-weight: 500;
+    font-family: inherit;
+    cursor: pointer;
     padding: 4px;
   }
 
-  .toggle-visibility:active {
-    opacity: 0.7;
-  }
-
-  .error {
-    color: #ff5555;
-    font-size: 14px;
-    min-height: 20px;
-    word-break: break-word;
+  .forgot-link:hover {
+    text-decoration: underline;
   }
 </style>

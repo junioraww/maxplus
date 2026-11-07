@@ -1,6 +1,5 @@
 <script>
   import { save } from "@tauri-apps/plugin-dialog";
-  import { join, appDataDir } from '@tauri-apps/api/path';
   import { invoke } from "@tauri-apps/api/core";
   import { fade } from "svelte/transition";
   import { onMount } from "svelte";
@@ -8,6 +7,7 @@
   import { set as sessionSet } from "$lib/stores/session";
   import { generateDevice } from "$lib/utils/device";
   import { getCurrentAccount, setAccountMeta } from "$lib/stores/accounts";
+  import { activeThemeId } from "$lib/stores/theme";
   import API from "$lib/stores/api";
 
   let glow = false;
@@ -37,7 +37,6 @@
 
   function update(device, animate = false) {
     currentDev = device;
-    console.log('Device', device);
     sessionSet("device", device);
     const { deviceId, mtInstance, userAgent } = device;
     setValue('deviceId', deviceId, animate);
@@ -79,24 +78,30 @@
       element.innerHTML = out;
       await sleep(5);
     }
-  }
+  };
 
-  const fields = [
+  const systemFields = [
     ["Тип устройства", "deviceType"],
-    ["Версия приложения", "appVersion"],
-    ["Версия OS", "osVersion"],
-    ["Часовой пояс", "timezone"],
-    ["Размер экрана", "screen"],
-    ["Архитектура", "arch"],
-    ["Язык", "locale"],
-    ["Версия сборки", "buildNumber"],
     ["Название устройства", "deviceName"],
+    ["Версия приложения", "appVersion"],
+    ["Версия сборки", "buildNumber"],
+    ["Версия OS", "osVersion"],
+    ["Архитектура", "arch"],
+    ["Размер экрана", "screen"],
+    ["Часовой пояс", "timezone"],
+  ];
+
+  const localeFields = [
+    ["Язык", "locale"],
     ["Язык устройства", "deviceLocale"],
-    ["Release", "release"],
-    ["User-Agent", "headerUserAgent"],
-    ["Тип уведомлений", "pushDeviceType"],
+  ];
+
+  const identifierFields = [
     ["deviceId", "deviceId"],
-    ["mt_instanceid", "mtInstance"]
+    ["mt_instanceid", "mtInstance"],
+    ["Release", "release"],
+    ["Тип уведомлений", "pushDeviceType"],
+    ["User-Agent", "headerUserAgent"],
   ];
 
   async function exportDevice() {
@@ -127,11 +132,10 @@
   }
 
   async function importDevice() {
-    const select = await invoke("pick", { type: "JSON" })
+    const select = await invoke("pick", { type: "JSON" });
 
     if (!select) return;
 
-    console.log('Reading file:', select);
     const data = await readFile(select.uri);
     const text = new TextDecoder("utf-8").decode(data);
 
@@ -139,7 +143,7 @@
     try {
       json = JSON.parse(text);
     } catch (e) {
-      return alert("JSON-файл содержит ошибки!")
+      return alert("JSON-файл содержит ошибки!");
     }
 
     if (!json.version || json.type !== "device") return alert("Неверный файл - это не конфиг девайса!");
@@ -150,7 +154,7 @@
       await saveDevice(cut);
       update(cut, true);
     } else {
-      return alert("Это конфиг для более новой версии Max+!")
+      return alert("Это конфиг для более новой версии Max+!");
     }
   }
 
@@ -168,48 +172,85 @@
 
 <div
   class="overlay"
-  in:fade={{ duration: 100 }}
-  out:fade={{ duration: 100 }}
+  class:dark-theme={$activeThemeId === "dark"}
+  in:fade={{ duration: 120 }}
+  out:fade={{ duration: 120 }}
   on:click={e => { if (!e.target.closest(".modal")) close(); }}
 >
   <div class="modal">
-    <div class="header">
-      <div class="title">Устройство</div>
-
-      <div class="buttons">
-        <button class="reroll" on:click={rerollDevice}>
-          <img src="/icons/reload.svg">
-        </button>
-        <button class="export" on:click={exportDevice}>
-          <img src="/icons/export.svg">
-        </button>
-        <button class="import" on:click={importDevice}>
-          <img src="/icons/import.svg">
-        </button>
-        <button class="close" on:click={close}>
-          ✕
+    <header class="modal-header">
+      <div class="header-main">
+        <h2 class="title">Устройство</h2>
+        <button class="close-btn" on:click={close} aria-label="Закрыть">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
         </button>
       </div>
-    </div>
 
-    <div class="list">
-      <div class="row telemetry-row" on:click={toggleTelemetry}>
-        <div class="label">Телеметрия</div>
-        <div class="value toggle-val" class:enabled={telemetryMode !== "disabled"}>
-          {telemetryMode === "disabled" ? "Отключена (disabled)" : telemetryMode === "fake" ? "Фейковая (fake)" : "Включена (enabled)"}
+      <div class="action-toolbar">
+        <button class="action-btn" on:click={rerollDevice}>
+          <img src="/icons/reload.svg" alt="" class="action-icon" />
+          <span>Случайное</span>
+        </button>
+
+        <button class="action-btn" on:click={exportDevice}>
+          <img src="/icons/export.svg" alt="" class="action-icon" />
+          <span>Экспорт</span>
+        </button>
+
+        <button class="action-btn" on:click={importDevice}>
+          <img src="/icons/import.svg" alt="" class="action-icon" />
+          <span>Импорт</span>
+        </button>
+      </div>
+    </header>
+
+    <div class="modal-body">
+      <div class="card-group">
+        <div class="item-row clickable" on:click={toggleTelemetry}>
+          <div class="label">Телеметрия</div>
+          <div class="telemetry-wrapper">
+            <span class="telemetry-badge" class:enabled={telemetryMode !== "disabled"}>
+              {telemetryMode === "disabled" ? "Отключена" : telemetryMode === "fake" ? "Фейковая" : "Включена"}
+            </span>
+            <div class="toggle-track" class:active={telemetryMode !== "disabled"}>
+              <div class="toggle-thumb" class:active={telemetryMode !== "disabled"}></div>
+            </div>
+          </div>
         </div>
       </div>
-      {#each fields as [label, id]}
-        <div class="row">
-          <div class="label">{label}</div>
 
-          <div
-            id={id}
-            class="value"
-            class:glow={glow}
-          ></div>
-        </div>
-      {/each}
+      <div class="card-group">
+        <div class="group-title">Параметры системы</div>
+        {#each systemFields as [label, id]}
+          <div class="item-row">
+            <div class="label">{label}</div>
+            <div id={id} class="value" class:glow={glow}></div>
+          </div>
+        {/each}
+      </div>
+
+      <div class="card-group">
+        <div class="group-title">Локализация</div>
+        {#each localeFields as [label, id]}
+          <div class="item-row">
+            <div class="label">{label}</div>
+            <div id={id} class="value" class:glow={glow}></div>
+          </div>
+        {/each}
+      </div>
+
+      <div class="card-group">
+        <div class="group-title">Идентификаторы</div>
+        {#each identifierFields as [label, id]}
+          <div class="item-row">
+            <div class="label">{label}</div>
+            <div id={id} class="value monospace" class:glow={glow}></div>
+          </div>
+        {/each}
+      </div>
     </div>
   </div>
 </div>
@@ -218,144 +259,284 @@
   .overlay {
     position: fixed;
     inset: 0;
-    background: rgba(0, 0, 0, 0.75);
-
+    background: rgba(0, 0, 0, 0.45);
     display: flex;
     justify-content: center;
-    align-items: center;
-
-    z-index: 200;
+    align-items: flex-end;
+    z-index: 1000;
   }
 
   .modal {
-    width: min(420px, 100%);
-    max-width: 95%;
-    max-height: 80vh;
-    overflow-y: auto;
-
-    background: #1f1f23;
-    border-radius: 14px 14px 0 0;
-
-    margin-top: auto;
-    padding: 0 20px 20px 20px;
-    color: white;
-  }
-
-  @media(max-height: 600px) {
-    .modal {
-      max-height: 100vh;
-      border-radius: 0;
-    }
-  }
-
-  .header {
+    width: min(440px, 100%);
+    max-height: 85vh;
     display: flex;
-    justify-content: space-between;
-    align-items: center;
+    flex-direction: column;
+    background: #f4f5f8;
+    color: #000000;
+    border-radius: 20px 20px 0 0;
+    box-shadow: 0 -4px 32px rgba(0, 0, 0, 0.16);
+    overflow: hidden;
+    box-sizing: border-box;
+    padding-bottom: max(16px, var(--safe-bottom, 0px));
+  }
 
-    position: sticky;
-    top: 0;
-    padding: 14px 0;
-    background: #1f1f23;
+  .modal-header {
+    background: #ffffff;
+    padding: 16px 20px 14px 20px;
+    border-bottom: 1px solid #e5e5ea;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    flex-shrink: 0;
+  }
+
+  .header-main {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
   }
 
   .title {
-    font-size: 16px;
-    font-weight: 600;
+    margin: 0;
+    font-size: 19px;
+    font-weight: 700;
+    color: #000000;
   }
 
-  .buttons {
-    display: flex;
-    gap: 5px;
-    justify-content: center;
-  }
-
-  .buttons button {
+  .close-btn {
     width: 32px;
     height: 32px;
-    border: none;
-    padding: 8px;
-
-    background: transparent;
-    color: #aaa;
-    font-size: 20px;
-
     display: flex;
     align-items: center;
     justify-content: center;
-
-    transition: color 0.1s;
+    background: #eff0f4;
+    border: none;
+    border-radius: 50%;
+    color: #8e8e93;
+    cursor: pointer;
+    transition: background-color 0.15s ease;
   }
 
-  .buttons img {
-    height: 18px;
-    opacity: 0.7;
-    padding: 8px;
+  .close-btn:hover {
+    background: #e5e5ea;
+    color: #000000;
   }
 
-  .buttons .import {
-    position: relative;
-    top: 1px;
+  .action-toolbar {
+    display: flex;
+    gap: 8px;
   }
 
-  .buttons *:active {
-    color: white;
-    opacity: 1;
+  .action-btn {
+    flex: 1;
+    height: 36px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    background: #eff0f4;
+    border: none;
+    border-radius: 10px;
+    color: #000000;
+    font-size: 13.5px;
+    font-weight: 500;
+    font-family: inherit;
+    cursor: pointer;
+    transition: background-color 0.15s ease, transform 0.1s ease;
   }
 
-  .list {
+  .action-btn:active {
+    transform: scale(0.97);
+  }
+
+  .action-btn:hover {
+    background: #e5e5ea;
+  }
+
+  .action-icon {
+    width: 16px;
+    height: 16px;
+    filter: brightness(0);
+    opacity: 0.8;
+  }
+
+  .modal-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 14px 16px;
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    gap: 14px;
+    min-height: 0;
   }
 
-  .telemetry-row {
+  .card-group {
+    background: #ffffff;
+    border-radius: 16px;
+    padding: 2px 14px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+  }
+
+  .group-title {
+    font-size: 12px;
+    font-weight: 600;
+    color: #8e8e93;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    padding: 10px 0 4px 0;
+  }
+
+  .item-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 11px 0;
+    border-bottom: 1px solid #f0f1f4;
+    gap: 12px;
+  }
+
+  .item-row:last-child {
+    border-bottom: none;
+  }
+
+  .item-row.clickable {
     cursor: pointer;
     user-select: none;
   }
 
-  .toggle-val {
-    font-weight: 500;
-    color: #ff5555;
-  }
-
-  .toggle-val.enabled {
-    color: #4cd964;
-  }
-
-  .row {
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-
-    padding: 6px 0;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-  }
-
   .label {
-    font-size: 13px;
-    color: #9ca3af;
-    flex: 1;
+    font-size: 14px;
+    font-weight: 500;
+    color: #8e8e93;
+    flex-shrink: 0;
   }
 
   .value {
-    flex: 2;
+    flex: 1;
     text-align: right;
-
-    min-width: 0;
+    font-size: 14px;
+    font-weight: 500;
+    color: #000000;
     overflow-wrap: anywhere;
+    transition: color 0.4s ease;
+  }
 
-    background: transparent;
-    border: none;
-    outline: none;
-
-    color: white;
-    font-size: 13px;
-    padding: 0;
-    transition: color 0.5s;
+  .value.monospace {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 12.5px;
+    letter-spacing: -0.2px;
   }
 
   .value.glow {
-    color: #a5b4fc;
+    color: #007aff;
+  }
+
+  .telemetry-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .telemetry-badge {
+    font-size: 12.5px;
+    font-weight: 600;
+    color: #ff3b30;
+  }
+
+  .telemetry-badge.enabled {
+    color: #34c759;
+  }
+
+  .toggle-track {
+    width: 44px;
+    height: 24px;
+    background: #e5e5ea;
+    border-radius: 12px;
+    position: relative;
+    transition: background-color 0.2s ease;
+    flex-shrink: 0;
+  }
+
+  .toggle-track.active {
+    background: #007aff;
+  }
+
+  .toggle-thumb {
+    width: 20px;
+    height: 20px;
+    background: white;
+    border-radius: 50%;
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+    transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .toggle-thumb.active {
+    transform: translateX(20px);
+  }
+
+  .overlay.dark-theme .modal {
+    background: #17181c;
+    color: #ffffff;
+  }
+
+  .overlay.dark-theme .modal-header {
+    background: #1e1f24;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  }
+
+  .overlay.dark-theme .title {
+    color: #ffffff;
+  }
+
+  .overlay.dark-theme .close-btn {
+    background: #26262e;
+    color: #8b929e;
+  }
+
+  .overlay.dark-theme .close-btn:hover {
+    background: #32323d;
+    color: #ffffff;
+  }
+
+  .overlay.dark-theme .action-btn {
+    background: #26262e;
+    color: #ffffff;
+  }
+
+  .overlay.dark-theme .action-btn:hover {
+    background: #32323d;
+  }
+
+  .overlay.dark-theme .action-icon {
+    filter: none;
+    opacity: 0.9;
+  }
+
+  .overlay.dark-theme .card-group {
+    background: #1e1f24;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  }
+
+  .overlay.dark-theme .item-row {
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  }
+
+  .overlay.dark-theme .label {
+    color: #8b929e;
+  }
+
+  .overlay.dark-theme .value {
+    color: #ffffff;
+  }
+
+  .overlay.dark-theme .toggle-track {
+    background: #3a3a3c;
+  }
+
+  .overlay.dark-theme .toggle-track.active {
+    background: #248bfe;
   }
 </style>
