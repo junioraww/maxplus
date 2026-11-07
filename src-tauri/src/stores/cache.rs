@@ -3,7 +3,8 @@ use serde_json::{json, Value};
 use std::{
     collections::HashMap,
     fs,
-    path::PathBuf,
+    io::Read,
+    path::{Path, PathBuf},
     sync::{LazyLock, RwLock},
 };
 
@@ -58,23 +59,48 @@ fn update_cache_index_entry(
     storage.save_coalesced(paths.cache_index(), &index);
 }
 
+pub fn is_file_encrypted(path: impl AsRef<Path>) -> bool {
+    if let Ok(mut f) = fs::File::open(path) {
+        let mut magic = [0u8; 3];
+        if f.read_exact(&mut magic).is_ok() && &magic == b"ENC" {
+            return true;
+        }
+    }
+    false
+}
+
 pub fn get_cached_file_sync(
     app: &AppHandle,
     account: u64,
     src: &str,
 ) -> Result<Option<String>, String> {
+    if account == 0 {
+        let store = crate::stores::load_accounts(app);
+        if let Some(arr) = store.get("accounts").and_then(|a| a.as_array()) {
+            for acc in arr {
+                if let Some(acc_id) = acc.get("id").and_then(|v| v.as_u64()) {
+                    if let Ok(Some(found)) = get_cached_file_sync(app, acc_id, src) {
+                        return Ok(Some(found));
+                    }
+                }
+            }
+        }
+    }
+
+    let key = crypto_key(app, account);
     let paths = Paths::new(app, account);
     let direct_file = paths.cache_file(&hash(src));
     if direct_file.exists() && fs::metadata(&direct_file).map(|m| m.len()).unwrap_or(0) > 0 {
-        return Ok(Some(direct_file.to_string_lossy().to_string()));
+        if !is_file_encrypted(&direct_file) || key.is_some() {
+            return Ok(Some(direct_file.to_string_lossy().to_string()));
+        }
     }
 
     let cached_opt = CACHE_INDEX_CACHE.read().ok().and_then(|g| g.get(&account).cloned());
 
     let (mut index, key, storage) = match cached_opt {
-        Some(idx) => (idx, None, None),
+        Some(idx) => (idx, key, None),
         None => {
-            let key = crypto_key(app, account);
             let storage = Storage::new(key);
             let loaded = storage
                 .load(paths.cache_index())
@@ -82,7 +108,7 @@ pub fn get_cached_file_sync(
             if let Ok(mut guard) = CACHE_INDEX_CACHE.write() {
                 guard.insert(account, loaded.clone());
             }
-            (loaded, Some(key), Some(storage))
+            (loaded, key, Some(storage))
         }
     };
 
@@ -105,10 +131,14 @@ pub fn get_cached_file_sync(
             guard.insert(account, index.clone());
         }
 
-        let key = key.unwrap_or_else(|| crypto_key(app, account));
+        let key = key.or_else(|| crypto_key(app, account));
         let storage = storage.unwrap_or_else(|| Storage::new(key));
         storage.save_coalesced(paths.cache_index(), &index);
 
+        return Ok(None);
+    }
+
+    if is_file_encrypted(&full) && key.is_none() && crypto_key(app, account).is_none() {
         return Ok(None);
     }
 

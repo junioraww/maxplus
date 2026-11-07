@@ -1,7 +1,8 @@
 import { writable } from "svelte/store";
 import { invoke } from "@tauri-apps/api/core";
 import { MediaPool } from "$lib/services/MediaPool";
-import { clearSafeAvatarImageCache } from "$lib/utils/images";
+import { clearSafeAvatarImageCache, getAssetUrl } from "$lib/utils/images";
+import { decodeStegoPayload } from "$lib/utils/stego";
 import { getCurrentAccount } from "$lib/stores/accounts";
 
 function initMap() {
@@ -56,18 +57,76 @@ export const AvatarSyncManager = {
   }
 };
 
-export async function inspectAvatarStego(url, targetId) {
-  if (!url || !targetId) return;
-  const key = MediaPool.getKey(url);
-  MediaPool.acquire(key, { src: url, type: "image", targetEntityId: targetId }, {
-    onReady() {},
-    onError() {},
-    onFrame() {},
-    drawStatic() {}
+const scannedStegoKeys = new Set();
+const stegoQueue = [];
+let isProcessingStegoQueue = false;
+
+async function processStegoQueue() {
+  if (isProcessingStegoQueue || stegoQueue.length === 0) return;
+  isProcessingStegoQueue = true;
+  const item = stegoQueue.shift();
+  try {
+    await scanSingleAvatarStego(item.url, item.targetId);
+  } catch {}
+  isProcessingStegoQueue = false;
+  if (stegoQueue.length > 0) {
+    if (typeof requestIdleCallback !== "undefined") {
+      requestIdleCallback(processStegoQueue);
+    } else {
+      setTimeout(processStegoQueue, 150);
+    }
+  }
+}
+
+async function scanSingleAvatarStego(url, targetId) {
+  if (!url || !targetId || typeof document === "undefined") return;
+  const resolvedUrl = (await getAssetUrl(url).catch(() => null)) || url;
+  const img = new Image();
+  img.crossOrigin = "anonymous";
+  await new Promise((resolve, reject) => {
+    img.onload = resolve;
+    img.onerror = reject;
+    img.src = resolvedUrl;
   });
+
+  const sw = img.naturalWidth || img.width;
+  const sh = img.naturalHeight || img.height;
+  if (!sw || !sh || sw < 64 || sh < 64) return;
+
+  const canvas = document.createElement("canvas");
+  canvas.width = sw;
+  canvas.height = sh;
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
+  if (!ctx) return;
+  ctx.drawImage(img, 0, 0, sw, sh);
+  const imgData = ctx.getImageData(0, 0, sw, sh);
+  if (!imgData) return;
+
+  const foundUid = decodeStegoPayload(imgData, targetId);
+  if (foundUid) {
+    safeAvatarMapStore.update((map) => {
+      map.set(Number(targetId), foundUid);
+      return map;
+    });
+  }
+}
+
+export function inspectAvatarStego(url, targetId) {
+  if (!url || !targetId) return;
+  const key = `${targetId}_${url}`;
+  if (scannedStegoKeys.has(key)) return;
+  scannedStegoKeys.add(key);
+  stegoQueue.push({ url, targetId });
+  if (typeof requestIdleCallback !== "undefined") {
+    requestIdleCallback(processStegoQueue);
+  } else {
+    setTimeout(processStegoQueue, 100);
+  }
 }
 
 export async function clearAllSafeAvatarCaches() {
+  scannedStegoKeys.clear();
+  stegoQueue.length = 0;
   safeAvatarMapStore.set(new Map());
   if (typeof localStorage !== "undefined") {
     try {

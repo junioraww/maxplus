@@ -4,17 +4,20 @@
   import {
     onMount,
     onDestroy,
-    getContext,
   } from "svelte";
+  import { get } from "svelte/store";
   import { goto } from "$app/navigation";
   import API, { currentUser, currentUserDetails } from "$lib/stores/api";
   import { set as sessionSet } from "$lib/stores/session";
   import {
     getAccounts,
     getAccount,
-    getAccountMeta,
+    getCurrentAccount,
     setCurrentAccount,
   } from "$lib/stores/accounts";
+  import { openLockScreen } from "$lib/stores/lockScreen";
+  import { resetImageCaches } from "$lib/utils/images";
+  import { clearCachingUtils } from "$lib/utils/caching";
 
   import "$lib/styles/AnimatedPanel.css";
   import Avatar from "$components/main/Avatar.svelte";
@@ -30,7 +33,13 @@
   let loadingAccounts = true;
 
   onMount(() => {
+    clearCachingUtils();
+    resetImageCaches(0);
+    currentUser.set(null);
+    currentUserDetails.set(null);
+    invoke("lock_crypto_session").catch(() => {});
     refreshAccounts();
+    window.addEventListener("pointerdown", handleClick);
   });
 
   async function refreshAccounts() {
@@ -38,8 +47,7 @@
     try {
       const encrypted = await getAccounts();
       accounts = await Promise.all(encrypted.map(entry => getAccount(entry.id)));
-    } catch (e) {
-      console.error(e);
+    } catch {
       accounts = [];
     } finally {
       loadingAccounts = false;
@@ -51,25 +59,35 @@
   }
 
   async function select(selected) {
+    const current = await getCurrentAccount().catch(() => null);
+    if (current?.id === selected.id && (!selected.encryption || selected.unlocked)) {
+      return goto("/");
+    }
+    clearCachingUtils();
+    resetImageCaches(selected.id);
     const account = await getAccount(selected.id);
 
-    if (account.encryption && !account.contact) {
+    if (account.encryption && (!account.unlocked || !account.meta?.device)) {
       await setCurrentAccount(account.id);
-      return goto("/auth/lock")
+      openLockScreen({
+        mode: "decrypt",
+        account,
+        from: "/"
+      });
+      return;
     }
 
-    if ($currentUser !== account.contact?.id || !$currentUser) {
-      sessionSet("sync", false);
-      sessionSet("connected", false);
-      await setCurrentAccount(account.id);
-      if (account.contact) {
-        currentUserDetails.set(account.contact);
-        currentUser.set(account.contact.id);
-      }
-      $API.latest_init = 0;
-      await $API.init(true, true);
+    sessionSet("sync", false);
+    sessionSet("connected", false);
+    await setCurrentAccount(account.id);
+    if (account.contact) {
+      currentUserDetails.set(account.contact);
+      currentUser.set(account.contact.id);
+    } else {
+      currentUser.set(account.id);
     }
-
+    $API.latest_init = 0;
+    await $API.init(true, true);
     return goto("/");
   }
 
@@ -77,9 +95,7 @@
     closeMenu();
     try {
       await $API.removeAccountOnly(account);
-    } catch (e) {
-      console.error(e);
-    }
+    } catch {}
     await refreshAccounts();
   }
 
@@ -87,9 +103,7 @@
     closeMenu();
     try {
       await $API.logoutAccount(account);
-    } catch (e) {
-      console.error(e);
-    }
+    } catch {}
     await refreshAccounts();
   }
 
@@ -97,68 +111,62 @@
     goto("/auth/login");
   }
 
-  /* new: holding */
-
   function startHold(e, account) {
+    longPressed = false;
     clearTimeout(holdTimer);
 
-    longPressed = false;
-
-    const { clientX, clientY } = e.touches?.[0] || e;
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
 
     holdTimer = setTimeout(() => {
       longPressed = true;
       openContext(account, clientX, clientY);
-    }, 500);
+    }, 450);
   }
 
   function cancelHold() {
     clearTimeout(holdTimer);
-
-    setTimeout(() => {
-      longPressed = false;
-    }, 10);
   }
 
   function openContext(account, x, y) {
+    const maxX = window.innerWidth - 220;
+    const maxY = window.innerHeight - 200;
+
     menu = {
-      account, x, y
+      account,
+      x: Math.min(x, maxX),
+      y: Math.min(y, maxY)
     };
 
     if (unregisterMenuBack) {
       unregisterMenuBack();
     }
     unregisterMenuBack = registerBackHandler(() => {
-      closeMenu();
+      if (menu) {
+        closeMenu();
+        return true;
+      }
+      return false;
     });
   }
 
-  const writeFile = (path, content) => invoke("write_file_string", { path, content });
-
   async function exportAccount(account) {
     closeMenu();
-    let meta;
-
-    try {
-      const data = await getAccountMeta(account.id);
-      meta = data.meta;
-    } catch (e) {
-      console.error(e);
-      alert("Ошибка!\nВозможно, вы не расшифровали аккаунт.")
-      return;
-    }
 
     const dataToSave = {
-      version: 1,
-      type: "account",
-      meta
+      id: account.id,
+      token: account.meta?.token,
+      device: account.meta?.device,
+      encryption: account.encryption || null,
+      preview: account.preview || null,
+      exportedAt: new Date().toISOString(),
     };
 
     const path = await save({
-      defaultPath: "account.json",
+      defaultPath: `account_${account.contact?.names?.[0]?.firstName || account.id}.json`,
       filters: [
         {
-          name: "Аккаунт с токеном (.json)",
+          name: "JSON",
           extensions: ["json"],
         },
       ],
@@ -167,7 +175,7 @@
     if (!path) return;
 
     const json = JSON.stringify(dataToSave, null, 2);
-    await writeFile(path, json);
+    await invoke("data_save", { id: account.id, file: path, value: json }).catch(() => {});
   }
 
   function closeMenu() {
@@ -183,10 +191,6 @@
       closeMenu();
     }
   }
-
-  onMount(() => {
-    window.addEventListener("pointerdown", handleClick);
-  });
 
   onDestroy(() => {
     if (unregisterMenuBack) {
@@ -208,13 +212,11 @@
           class="account"
           on:click={() => {
             if (longPressed) return;
-
             if (!menu) select(account);
           }}
           on:contextmenu={(e) => {
             e.preventDefault();
             e.stopPropagation();
-
             setTimeout(() => {
               openContext(account, e.clientX, e.clientY);
             }, 0);
@@ -226,39 +228,72 @@
           on:mouseup={cancelHold}
           on:mouseleave={cancelHold}
         >
-          <Avatar contactId={account.contact?.id} seed={account.id} size=72/>
-          <a>{ account.contact?.names?.[0]?.firstName || "Зашифр." }</a>
+          <div class="account-avatar-wrapper">
+            {#if account.encryption && !account.unlocked}
+              {#if account.preview?.avatarBlur}
+                <img
+                  class="blurred-avatar"
+                  src={account.preview.avatarBlur}
+                  alt=""
+                  width="72"
+                  height="72"
+                />
+              {:else}
+                <div class="empty-encrypted-avatar">
+                  <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#888" stroke-width="2">
+                    <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+                    <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                  </svg>
+                </div>
+              {/if}
+            {:else}
+              <Avatar
+                accountId={account.id}
+                contactId={account.contact?.id}
+                src={account.contact?.baseRawUrl || account.contact?.baseUrl || account.contact?.avatar || account.contact?.photo}
+                title={account.contact?.names?.[0]?.firstName || account.meta?.firstName || "Аккаунт"}
+                seed={account.id}
+                size=72
+              />
+            {/if}
+          </div>
+          <a>{ (account.encryption && !account.unlocked ? (account.preview?.firstName || "Locked") : (account.contact?.names?.[0]?.firstName || account.meta?.firstName || "Аккаунт")) }</a>
         </div>
       {/each}
     {/if}
     <div on:click={addNew} class="account">
-      <div class="avatar"><a>+</a></div>
+      <div class="avatar">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="12" y1="5" x2="12" y2="19"></line>
+          <line x1="5" y1="12" x2="19" y2="12"></line>
+        </svg>
+      </div>
       <a>Новый</a>
     </div>
   </div>
 
   {#if menu}
-  <div
-    class="context-menu"
-    style="left:{menu.x}px; top:{menu.y}px"
-    on:click|stopPropagation
-  >
-    <button on:click={() => exportAccount(menu.account)}>
-      Экспортировать
-    </button>
-
-    <button on:click={() => removeAccountLocally(menu.account)}>
-      Удалить с устройства
-    </button>
-
-    <button
-      class="danger"
-      on:click={() => logoutAndRemoveAccount(menu.account)}
+    <div
+      class="context-menu"
+      style="left:{menu.x}px; top:{menu.y}px"
+      on:click|stopPropagation
     >
-      Выйти из аккаунта
-    </button>
-  </div>
-{/if}
+      <button on:click={() => exportAccount(menu.account)}>
+        Экспортировать
+      </button>
+
+      <button on:click={() => removeAccountLocally(menu.account)}>
+        Удалить с устройства
+      </button>
+
+      <button
+        class="danger"
+        on:click={() => logoutAndRemoveAccount(menu.account)}
+      >
+        Выйти из аккаунта
+      </button>
+    </div>
+  {/if}
 </div>
 
 <OpenDevSettingsButton />
@@ -285,31 +320,6 @@
     margin: 5px 0 20px 0;
   }
 
-  form {
-    display: flex;
-    flex-direction: column;
-    gap: 0.75rem;
-    width: 100%;
-    max-width: 300px;
-  }
-
-  input,
-  button {
-    padding: 0.75rem;
-    border-radius: 8px;
-    border: 1px solid #333;
-    font-size: 1rem;
-    background-color: #26262e;
-    color: #ccc;
-    outline: none;
-  }
-
-  button {
-    color: white;
-    border: none;
-    cursor: pointer;
-  }
-
   .accounts {
     display: flex;
     gap: 20px;
@@ -319,95 +329,96 @@
   }
 
   .account {
+    width: 76px;
+    flex-shrink: 0;
     display: flex;
     flex-direction: column;
+    align-items: center;
     gap: 10px;
     color: white;
     font-weight: 300;
     opacity: 0.8;
     transition: opacity 0.1s;
     position: relative;
+    cursor: pointer;
   }
 
   .account:hover {
     opacity: 1;
   }
 
-  .account .avatar {
-    background-color: #777;
-    border-radius: 100px;
-    width: 72px;
-    height: 72px;
-    background-size: cover;
-    background-position: center;
-    background-repeat: no-repeat;
-    display: flex;
-  }
-
-  .account .avatar * {
-    font-size: 64px;
-    font-weight: 500;
-    line-height: 0;
-    margin: auto auto;
-    position: relative;
-    bottom: 4px;
-  }
-
-  .link {
-    margin-top: 2rem;
-    font-size: 0.9rem;
-    color: #4a90e2;
-    text-decoration: none;
-  }
-
-  .link:hover {
-    text-decoration: underline;
-  }
-
-  .error {
-    color: red;
-    font-size: 0.9rem;
-    height: auto;
-    word-break: break-all;
+  .account > a {
+    max-width: 76px;
+    overflow: hidden;
+    text-overflow: ellipsis;
     white-space: nowrap;
     text-align: center;
+  }
+
+  .account-avatar-wrapper {
+    position: relative;
+    width: 72px;
+    height: 72px;
+    border-radius: 50%;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #24242d;
+  }
+
+  .blurred-avatar {
+    width: 72px;
+    height: 72px;
+    object-fit: cover;
+    border-radius: 50%;
+  }
+
+
+  .empty-encrypted-avatar {
+    width: 72px;
+    height: 72px;
+    border-radius: 50%;
+    background: #24242d;
+    border: 1px dashed #444;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .account .avatar {
+    background-color: #777;
+    border-radius: 50%;
+    width: 72px;
+    height: 72px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
   }
 
   .context-menu {
     position: fixed;
     z-index: var(--z-dropdown, 5);
-
     min-width: 210px;
-
     display: flex;
     flex-direction: column;
-
     background: rgba(34, 34, 40, .98);
-
     border: 1px solid rgba(255,255,255,.08);
     border-radius: 14px;
-
     overflow: hidden;
-
-    box-shadow:
-      0 10px 35px rgba(0,0,0,.45);
-
+    box-shadow: 0 10px 35px rgba(0,0,0,.45);
     animation: menuAppear .15s ease;
   }
 
   .context-menu button {
     border: none;
     background: transparent;
-
     color: #eee;
-
     padding: 13px 16px;
-
     font-size: 15px;
     text-align: left;
-
     cursor: pointer;
-
     transition: background .15s;
   }
 
@@ -428,7 +439,6 @@
       opacity: 0;
       transform: scale(.96) translateY(6px);
     }
-
     to {
       opacity: 1;
       transform: scale(1) translateY(0);

@@ -119,6 +119,12 @@ export default class MobileApi extends BaseAPI {
       }, timeoutMs);
     });
     try {
+      if (!this.synchronizedPending && (!sessionGet("connected") || !sessionGet("sync"))) {
+        const current = get(currentUser);
+        if (current !== null && current !== undefined) {
+          this.reconnect().catch(() => {});
+        }
+      }
       await Promise.race([this.synchronized, timeoutPromise]);
       if (!sessionGet("connected") || !sessionGet("sync")) {
         throw new Error("Session is not online");
@@ -458,6 +464,10 @@ export default class MobileApi extends BaseAPI {
         }
 
         const account = await getCurrentAccount();
+
+        if (account?.encryption && !account.unlocked) {
+          return false;
+        }
 
         if (!account?.meta?.device)
           throw new Error("No device entry");
@@ -803,6 +813,7 @@ export default class MobileApi extends BaseAPI {
     }
     this.synchronized = new Promise((resolve) => (this.resolve_sync = resolve));
     invoke("disconnect").catch(() => {});
+    invoke("lock_crypto_session").catch(() => {});
   }
 
   async sync() {
@@ -832,8 +843,6 @@ export default class MobileApi extends BaseAPI {
           sessionSet("sync", false);
           return null;
         }
-
-        sessionSet("sync", true);
 
         if (synced?.token && account?.meta) {
           account.meta.token = synced.token;
@@ -981,10 +990,14 @@ export default class MobileApi extends BaseAPI {
       }
 
       setupPushNotifications();
+      sessionSet("sync", true);
     } catch (e) {
-      console.error(e);
+      sessionSet("sync", false);
       const text = e?.toString() || "";
-      if (text.includes("login.token")) await this.logout();
+      if (!text.includes("Account is encrypted and locked")) {
+        console.error(e);
+        if (text.includes("login.token")) await this.logout();
+      }
     } finally {
       this.synchronizedPending = false;
       if (this.resolve_sync) {

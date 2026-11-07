@@ -3,32 +3,52 @@
   import { goto } from "$app/navigation";
   import { page } from "$app/stores";
   import SettingsPageWrapper from "$components/settings/SettingsPageWrapper.svelte";
+  import SettingsDropout from "$components/settings/SettingsDropout.svelte";
   import { getCurrentAccount, getDatabaseFilesCount } from "$lib/stores/accounts";
   import { checkHardwareBiometry, formatBiometryName } from "$lib/services/hardwareSecurity";
+  import { openLockScreen } from "$lib/stores/lockScreen";
+  import {
+    autoLockTimer,
+    setAutoLockTimer,
+    loadAccountAutoLockTimer,
+    AUTO_LOCK_OPTIONS,
+  } from "$lib/stores/autoLock";
 
   export let onClose = null;
   $: from = $page.url.searchParams.get("from") || "/?card=settings";
 
-  let encryption;
+  let account = null;
+  let encryption = undefined;
   let fileCount = null;
   let biometryStatus = { available: false, biometryType: 0 };
   let loading = true;
 
   onMount(async () => {
     try {
-      const [account, biometry] = await Promise.all([
+      const [acc, biometry] = await Promise.all([
         getCurrentAccount(),
         checkHardwareBiometry(),
       ]);
-      if (account) {
-        encryption = account.encryption;
-        fileCount = await getDatabaseFilesCount(account.id).catch(() => null);
+      account = acc;
+      if (acc) {
+        encryption = acc.encryption;
+        await loadAccountAutoLockTimer(acc);
+        fileCount = await getDatabaseFilesCount(acc.id).catch(() => null);
       }
       biometryStatus = biometry;
     } finally {
       loading = false;
     }
   });
+
+  async function handleAutoLockChange(seconds) {
+    if (!account) return;
+    await setAutoLockTimer(seconds, account.id);
+  }
+
+  async function lockNow() {
+    openLockScreen({ mode: "decrypt" });
+  }
 </script>
 
 <SettingsPageWrapper title="Шифрование данных" {from} {onClose}>
@@ -37,9 +57,17 @@
       <div class="status-msg">Загрузка данных...</div>
     {:else if encryption === null}
       <div class="card">
-        <p class="status warning">Статус: <b>неактивно</b></p>
+        <div class="status-badge warning">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"></circle>
+            <line x1="12" y1="8" x2="12" y2="12"></line>
+            <line x1="12" y1="16" x2="12.01" y2="16"></line>
+          </svg>
+          <span>Статус: неактивно</span>
+        </div>
+
         <p class="description">
-          Шифрует все данные на устройстве и защищает их в случае взлома или утери телефона/компьютера.
+          Шифрует все данные на устройстве и защищает их в случае утери или взлома устройства.
         </p>
 
         {#if fileCount !== null}
@@ -67,7 +95,13 @@
       </div>
     {:else}
       <div class="card">
-        <p class="status success">Статус: <b>активно</b></p>
+        <div class="status-badge success">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+            <polyline points="22 4 12 14.01 9 11.01"></polyline>
+          </svg>
+          <span>Статус: активно</span>
+        </div>
 
         <div class="info-row">
           <span>Тип защиты</span>
@@ -83,8 +117,28 @@
           </div>
         {/if}
 
+        <div class="section-divider"></div>
+
+        <SettingsDropout
+          label="Автоблокировка"
+          description="Блокировать аккаунт при неактивности или скрытии окна"
+          options={AUTO_LOCK_OPTIONS}
+          value={$autoLockTimer}
+          on:change={(e) => handleAutoLockChange(e.detail)}
+        />
+
+        <div class="section-divider"></div>
+
+        <button class="action-btn" on:click={lockNow}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+            <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+          </svg>
+          <span>Заблокировать сейчас</span>
+        </button>
+
         <button class="danger-btn" on:click={() => goto("/auth/lock?mode=disable")}>
-          Отключить
+          Отключить шифрование
         </button>
       </div>
     {/if}
@@ -105,7 +159,7 @@
 
   .card {
     width: 100%;
-    max-width: 380px;
+    max-width: 400px;
     background: #24252a;
     border-radius: 16px;
     border: 1px solid rgba(255, 255, 255, 0.08);
@@ -116,17 +170,27 @@
     box-sizing: border-box;
   }
 
-  .status {
-    margin: 0;
-    font-size: 1.05rem;
+  .status-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    border-radius: 20px;
+    font-size: 0.88rem;
+    font-weight: 600;
+    width: fit-content;
   }
 
-  .status.success {
+  .status-badge.success {
+    background: rgba(104, 211, 145, 0.15);
     color: #68d391;
+    border: 1px solid rgba(104, 211, 145, 0.25);
   }
 
-  .status.warning {
+  .status-badge.warning {
+    background: rgba(246, 196, 83, 0.15);
     color: #f6c453;
+    border: 1px solid rgba(246, 196, 83, 0.25);
   }
 
   .description {
@@ -156,6 +220,12 @@
     font-size: 0.95rem;
   }
 
+  .section-divider {
+    height: 1px;
+    background: rgba(255, 255, 255, 0.06);
+    margin: 2px 0;
+  }
+
   .info-note {
     font-size: 0.85rem;
     color: #9ca3af;
@@ -170,6 +240,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
+    gap: 8px;
     border: none;
     cursor: pointer;
     font-weight: 600;
@@ -203,14 +274,24 @@
     background: rgba(255, 255, 255, 0.14);
   }
 
+  .action-btn {
+    background: rgba(51, 144, 236, 0.12);
+    color: #3390ec;
+    border: 1px solid rgba(51, 144, 236, 0.25);
+  }
+
+  .action-btn:hover {
+    background: rgba(51, 144, 236, 0.2);
+  }
+
   .danger-btn {
-    background: rgba(239, 68, 68, 0.15);
+    background: rgba(239, 68, 68, 0.12);
     color: #ff595a;
     border: 1px solid rgba(239, 68, 68, 0.25);
   }
 
   .danger-btn:hover {
-    background: rgba(239, 68, 68, 0.25);
+    background: rgba(239, 68, 68, 0.2);
   }
 
   .status-msg {

@@ -189,6 +189,7 @@ fn dispatch_message_removed_to_jni(chat_id: i64, mid: &str) {
     }
 }
 
+#[cfg(target_os = "android")]
 fn format_message_preview(msg: &Value, sender_name: &str) -> String {
     let text = msg.get("text").and_then(|v| v.as_str()).unwrap_or("").trim();
     let attaches = msg.get("attaches").and_then(|v| v.as_array());
@@ -323,6 +324,7 @@ async fn handle_daemon_packet(val: &Value, account: i64, app_dir: &str, client: 
                 None => return,
             };
 
+            #[cfg(target_os = "android")]
             let mid = msg.get("id").and_then(|v| {
                 v.as_i64().map(|i| i.to_string()).or_else(|| v.as_str().map(|s| s.to_string()))
             }).unwrap_or_default();
@@ -350,6 +352,7 @@ async fn handle_daemon_packet(val: &Value, account: i64, app_dir: &str, client: 
             let chat_path = data_dir.join("chats").join(chat_id.to_string()).join("info");
             let mut chat_title = storage.load(&chat_path).as_ref().and_then(crate::notifications::extract_contact_name);
             let mut chat_avatar_url = storage.load(&chat_path).as_ref().and_then(crate::notifications::extract_avatar_url);
+            #[cfg(target_os = "android")]
             let mut is_group = storage.load(&chat_path).as_ref().map(|c| {
                 c.get("type").and_then(|t| t.as_str()) == Some("CHAT") || c.get("type").and_then(|t| t.as_str()) == Some("GROUP")
             }).unwrap_or(false);
@@ -376,7 +379,10 @@ async fn handle_daemon_packet(val: &Value, account: i64, app_dir: &str, client: 
                             let _ = storage.save(chat_dir.join("info"), c);
                             chat_title = crate::notifications::extract_contact_name(c);
                             chat_avatar_url = crate::notifications::extract_avatar_url(c);
-                            is_group = c.get("type").and_then(|t| t.as_str()) == Some("CHAT") || c.get("type").and_then(|t| t.as_str()) == Some("GROUP");
+                            #[cfg(target_os = "android")]
+                            {
+                                is_group = c.get("type").and_then(|t| t.as_str()) == Some("CHAT") || c.get("type").and_then(|t| t.as_str()) == Some("GROUP");
+                            }
                         }
                     }
                 }
@@ -389,36 +395,43 @@ async fn handle_daemon_packet(val: &Value, account: i64, app_dir: &str, client: 
                 let _ = crate::notifications::ensure_avatar_cached(url, &cache_dir).await;
             }
 
-            let effective_sender = sender_name.unwrap_or_else(|| {
-                if sender_id > 0 {
-                    format!("Пользователь {}", sender_id)
-                } else {
-                    "Собеседник".to_string()
-                }
-            });
-
-            let effective_chat_title = chat_title.unwrap_or_else(|| {
-                if is_group || chat_id < 0 {
-                    "Чат".to_string()
-                } else {
-                    effective_sender.clone()
-                }
-            });
-
-            let preview_text = format_message_preview(msg, &effective_sender);
-
             #[cfg(target_os = "android")]
-            dispatch_incoming_message_to_jni(
-                chat_id,
-                &mid,
-                &preview_text,
-                sender_id,
-                account,
-                &effective_sender,
-                &effective_chat_title,
-                is_group,
-            );
+            {
+                let effective_sender = sender_name.unwrap_or_else(|| {
+                    if sender_id > 0 {
+                        format!("Пользователь {}", sender_id)
+                    } else {
+                        "Собеседник".to_string()
+                    }
+                });
+
+                let effective_chat_title = chat_title.unwrap_or_else(|| {
+                    if is_group || chat_id < 0 {
+                        "Чат".to_string()
+                    } else {
+                        effective_sender.clone()
+                    }
+                });
+
+                let preview_text = format_message_preview(msg, &effective_sender);
+
+                dispatch_incoming_message_to_jni(
+                    chat_id,
+                    &mid,
+                    &preview_text,
+                    sender_id,
+                    account,
+                    &effective_sender,
+                    &effective_chat_title,
+                    is_group,
+                );
+            }
+            #[cfg(not(target_os = "android"))]
+            {
+                let _ = (sender_name, chat_title);
+            }
         }
+        #[cfg(target_os = "android")]
         137 => {
             let conversation_id = payload.get("conversationId").and_then(|v| v.as_str()).unwrap_or("");
             let caller_id = payload.get("callerId").and_then(|v| v.as_i64()).unwrap_or(0);
@@ -426,16 +439,15 @@ async fn handle_daemon_packet(val: &Value, account: i64, app_dir: &str, client: 
             let vcp = payload.get("vcp").and_then(|v| v.as_str()).unwrap_or("");
             let is_video = payload.get("type").and_then(|v| v.as_str()) == Some("VIDEO");
 
-            #[cfg(target_os = "android")]
             dispatch_incoming_call_to_jni(conversation_id, caller_id, user_name, vcp, is_video, account);
         }
+        #[cfg(target_os = "android")]
         142 => {
             let chat_id = payload.get("chatId").and_then(|v| v.as_i64()).unwrap_or(0);
             if let Some(ids) = payload.get("messageIds").and_then(|v| v.as_array()) {
                 for id_val in ids {
                     let mid = id_val.as_i64().map(|i| i.to_string()).or_else(|| id_val.as_str().map(|s| s.to_string())).unwrap_or_default();
                     if !mid.is_empty() {
-                        #[cfg(target_os = "android")]
                         dispatch_message_removed_to_jni(chat_id, &mid);
                     }
                 }
@@ -445,7 +457,7 @@ async fn handle_daemon_packet(val: &Value, account: i64, app_dir: &str, client: 
     }
 }
 
-pub fn start_daemon(app_dir: String, mut account_id: i64) {
+pub fn start_daemon(app_dir: String, account_id: i64) {
     if DAEMON_RUNNING.swap(true, Ordering::SeqCst) {
         return;
     }
@@ -463,14 +475,14 @@ pub fn start_daemon(app_dir: String, mut account_id: i64) {
             let reconnect_notify = get_reconnect_notify();
 
             while DAEMON_RUNNING.load(Ordering::SeqCst) {
-                let creds = crate::stores::get_background_creds(&app_dir, account_id as u64);
+                let target_id = if account_id != 0 {
+                    account_id as u64
+                } else {
+                    0
+                };
+                let creds = crate::stores::get_background_creds(&app_dir, target_id);
                 let (server_user_id, token, identity) = match creds {
-                    Some((_, uid, t, id)) => {
-                        if account_id == 0 {
-                            account_id = uid as i64;
-                        }
-                        (uid, t, id)
-                    }
+                    Some((_, uid, t, id)) => (uid, t, id),
                     None => {
                         tokio::time::sleep(Duration::from_secs(5)).await;
                         continue;
@@ -509,7 +521,7 @@ pub fn start_daemon(app_dir: String, mut account_id: i64) {
                         event = rx.recv() => {
                             match event {
                                 Ok(val) => {
-                                    handle_daemon_packet(&val, account_id, &app_dir, &client).await;
+                                    handle_daemon_packet(&val, server_user_id as i64, &app_dir, &client).await;
                                 }
                                 Err(_) => {
                                     break;

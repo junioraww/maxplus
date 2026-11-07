@@ -2,29 +2,6 @@ import { getAssetUrl } from "$lib/utils/images";
 import { decodeStegoPayload } from "$lib/utils/stego";
 import { safeAvatarMapStore } from "$lib/services/AvatarSyncManager";
 
-let stegoWorker = null;
-
-function getStegoWorker() {
-  if (typeof window === "undefined") return null;
-  if (!stegoWorker && typeof Worker !== "undefined") {
-    try {
-      stegoWorker = new Worker(new URL("../utils/stegoWorker.js", import.meta.url), { type: "module" });
-      stegoWorker.onmessage = (e) => {
-        const { foundUid, targetEntityId, key } = e.data || {};
-        if (foundUid && targetEntityId) {
-          safeAvatarMapStore.update((map) => {
-            map.set(Number(targetEntityId), foundUid);
-            return map;
-          });
-        }
-      };
-    } catch {
-      stegoWorker = null;
-    }
-  }
-  return stegoWorker;
-}
-
 let mediaPoolHost = null;
 
 function getMediaPoolHost() {
@@ -183,12 +160,12 @@ class MediaPoolEngine {
 
     if (!entry.masterCanvas) {
       const size = 256;
-      if (typeof OffscreenCanvas !== "undefined") {
-        entry.masterCanvas = new OffscreenCanvas(size, size);
-      } else if (typeof document !== "undefined") {
+      if (typeof document !== "undefined") {
         entry.masterCanvas = document.createElement("canvas");
         entry.masterCanvas.width = size;
         entry.masterCanvas.height = size;
+      } else if (typeof OffscreenCanvas !== "undefined") {
+        entry.masterCanvas = new OffscreenCanvas(size, size);
       }
       if (entry.masterCanvas) {
         entry.masterCtx = entry.masterCanvas.getContext("2d");
@@ -259,6 +236,7 @@ class MediaPoolEngine {
     const video = document.createElement("video");
     video.muted = true;
     video.defaultMuted = true;
+    video.volume = 0;
     video.loop = true;
     video.playsInline = true;
     video.autoplay = true;
@@ -318,7 +296,9 @@ class MediaPoolEngine {
     const handleError = () => {
       if (isDisposed) return;
       isDisposed = true;
-      video.pause();
+      try {
+        video.pause();
+      } catch {}
       if (video.parentNode) {
         video.parentNode.removeChild(video);
       }
@@ -351,39 +331,25 @@ class MediaPoolEngine {
 
   async _loadImage(entry, url, targetEntityId) {
     try {
-      let bitmap = null;
-      try {
-        const resp = await fetch(url);
-        if (resp.ok) {
-          const blob = await resp.blob();
-          if (typeof createImageBitmap !== "undefined") {
-            bitmap = await createImageBitmap(blob);
-          }
-        }
-      } catch {}
+      const img = new Image();
+      img.crossOrigin = "anonymous";
+      await new Promise((resolve, reject) => {
+        img.onload = resolve;
+        img.onerror = reject;
+        img.src = url;
+      });
 
-      if (!bitmap) {
-        const img = new Image();
-        img.crossOrigin = "anonymous";
-        await new Promise((resolve, reject) => {
-          img.onload = resolve;
-          img.onerror = reject;
-          img.src = url;
-        });
-        bitmap = img;
-      }
-
-      entry.source = bitmap;
+      entry.source = img;
       entry.status = "ready";
 
       if (targetEntityId && !this.scannedStegoKeys.has(entry.key)) {
         this.scannedStegoKeys.add(entry.key);
-        this._inspectStego(bitmap, targetEntityId, entry.key);
+        this._inspectStego(img, targetEntityId, entry.key);
       }
 
       for (const consumer of entry.consumers) {
         consumer.onReady(entry);
-        consumer.drawStatic?.(bitmap);
+        consumer.drawStatic?.(img);
       }
     } catch (e) {
       this._handleError(entry, e);
@@ -391,26 +357,18 @@ class MediaPoolEngine {
   }
 
   async _inspectStego(source, targetEntityId, key) {
-    if (!targetEntityId || typeof window === "undefined") return;
+    if (!targetEntityId || typeof document === "undefined") return;
     try {
-      const worker = getStegoWorker();
-      if (worker && typeof createImageBitmap === "function") {
-        const transferBitmap = await createImageBitmap(source);
-        worker.postMessage({ bitmap: transferBitmap, targetEntityId, key }, [transferBitmap]);
-        return;
-      }
       const sw = source.naturalWidth || source.videoWidth || source.width;
       const sh = source.naturalHeight || source.videoHeight || source.height;
       if (!sw || !sh || sw < 64 || sh < 64) {
         return;
       }
 
-      const canvas = typeof OffscreenCanvas !== "undefined"
-        ? new OffscreenCanvas(sw, sh)
-        : document.createElement("canvas");
+      const canvas = document.createElement("canvas");
       canvas.width = sw;
       canvas.height = sh;
-      const ctx = canvas.getContext("2d");
+      const ctx = canvas.getContext("2d", { willReadFrequently: true });
       if (!ctx) {
         return;
       }
@@ -537,12 +495,12 @@ class MediaPoolEngine {
     }
 
     if (entry.type === "video" && entry.source) {
-      entry.source.pause();
+      try {
+        entry.source.pause();
+      } catch {}
       if (entry.source.parentNode) {
         entry.source.parentNode.removeChild(entry.source);
       }
-      entry.source.removeAttribute("src");
-      entry.source.load();
       entry.source = null;
     } else if (entry.type === "image" && entry.source) {
       if (typeof entry.source.close === "function") {
