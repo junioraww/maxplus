@@ -465,11 +465,12 @@ export async function cancelDesktopCallNotification() {
   } catch {}
 }
 
-export async function showDesktopCallNotification({ callerName, isVideo = false, avatar = null }) {
+export async function showDesktopCallNotification({ callerName, isVideo = false, avatar = null, chatId = null }) {
   if (typeof document !== 'undefined' && document.visibilityState === 'visible' && document.hasFocus()) {
     return;
   }
   if (!get(callNotificationsEnabled)) return;
+  if (chatId && isChatMuted(chatId)) return;
   if (!granted) {
     await suggestNotifications();
   }

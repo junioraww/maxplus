@@ -14,13 +14,34 @@ object NotificationDispatcher {
         }
     )
 
+    private val daemonLedger = Collections.synchronizedMap(
+        object : LinkedHashMap<String, Long>(128, 0.75f, true) {
+            override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Long>?): Boolean {
+                return size > 256
+            }
+        }
+    )
+
     fun isDuplicate(key: String): Boolean {
         val now = System.currentTimeMillis()
+        if (daemonLedger.containsKey(key)) {
+            return true
+        }
         val prev = processedLedger[key]
         if (prev != null && (now - prev) < 86400000L) {
             return true
         }
         processedLedger[key] = now
+        return false
+    }
+
+    fun isDaemonDuplicate(key: String): Boolean {
+        val now = System.currentTimeMillis()
+        val prev = daemonLedger[key]
+        if (prev != null && (now - prev) < 86400000L) {
+            return true
+        }
+        daemonLedger[key] = now
         return false
     }
 
@@ -37,7 +58,7 @@ object NotificationDispatcher {
         isGroup: Boolean
     ) {
         val ledgerKey = "msg_${chatId}_$mid"
-        if (mid.isNotEmpty() && isDuplicate(ledgerKey)) {
+        if (mid.isNotEmpty() && isDaemonDuplicate(ledgerKey)) {
             return
         }
 

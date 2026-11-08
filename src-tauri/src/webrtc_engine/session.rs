@@ -85,13 +85,19 @@ pub struct NativeWebRtcSession {
 static NEXT_SESSION_ID: AtomicU32 = AtomicU32::new(1);
 static SESSIONS: std::sync::OnceLock<Arc<Mutex<HashMap<u32, Arc<NativeWebRtcSession>>>>> =
     std::sync::OnceLock::new();
+static CREATE_LOCK: std::sync::OnceLock<Arc<Mutex<()>>> = std::sync::OnceLock::new();
 
 fn get_sessions() -> &'static Arc<Mutex<HashMap<u32, Arc<NativeWebRtcSession>>>> {
     SESSIONS.get_or_init(|| Arc::new(Mutex::new(HashMap::new())))
 }
 
+fn get_create_lock() -> &'static Arc<Mutex<()>> {
+    CREATE_LOCK.get_or_init(|| Arc::new(Mutex::new(())))
+}
+
 impl NativeWebRtcSession {
     pub async fn create(ice_servers: Vec<IceServerConfig>) -> Result<Arc<Self>, String> {
+        let _guard = get_create_lock().lock().await;
         let existing = {
             let mut map = get_sessions().lock().await;
             std::mem::take(&mut *map)
@@ -99,6 +105,7 @@ impl NativeWebRtcSession {
         for (_, old_session) in existing {
             old_session.close().await;
         }
+        tokio::time::sleep(std::time::Duration::from_millis(60)).await;
 
         let factory = PeerConnectionFactory::default();
 
@@ -291,6 +298,7 @@ impl NativeWebRtcSession {
     }
 
     pub async fn remove(id: u32) {
+        let _guard = get_create_lock().lock().await;
         if let Some(session) = get_sessions().lock().await.remove(&id) {
             session.close().await;
         }
@@ -522,6 +530,12 @@ impl NativeWebRtcSession {
         self.stub_audio_running.store(false, Ordering::SeqCst);
         let mut capturer = self.capturer.lock().await;
         capturer.stop();
+        if let Some(sender) = self.audio_sender.lock().await.as_ref() {
+            let _ = sender.set_track(None);
+        }
+        if let Some(sender) = self.video_sender.lock().await.as_ref() {
+            let _ = sender.set_track(None);
+        }
         let _ = self.factory.stop_recording();
         let _ = self.factory.stop_playout();
         self.factory.release_platform_adm();

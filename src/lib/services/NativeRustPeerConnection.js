@@ -639,8 +639,15 @@ export class NativeRustPeerConnection extends EventTarget {
       this._audioCtx = null;
       this._audioDest = null;
     }
+    if (this._initPromise) {
+      try {
+        await this._initPromise;
+      } catch {}
+    }
     if (this.sessionId != null) {
-      invoke('webrtc_close', { sessionId: this.sessionId }).catch(() => {});
+      try {
+        await invoke('webrtc_close', { sessionId: this.sessionId });
+      } catch {}
       this.sessionId = null;
     }
     this.connectionState = 'closed';

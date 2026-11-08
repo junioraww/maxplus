@@ -1,5 +1,5 @@
 <script>
-  import { save, open } from "@tauri-apps/plugin-dialog";
+  import { save } from "@tauri-apps/plugin-dialog";
   import { invoke } from "@tauri-apps/api/core";
   import {
     onMount,
@@ -13,6 +13,7 @@
   import {
     getAccounts,
     getAccount,
+    getAccountMeta,
     getCurrentAccount,
     setCurrentAccount,
     addAccount,
@@ -37,7 +38,7 @@
   let holdNewTimer;
   let longPressedNew = false;
   let unregisterNewMenuBack = null;
-  let fileInputRef;
+  let isImporting = false;
 
   let accounts = [];
   let loadingAccounts = true;
@@ -223,47 +224,23 @@
   }
 
   async function importAccount() {
+    if (isImporting) return;
+    isImporting = true;
     closeMenu();
     closeNewMenu();
+
     try {
-      const path = await open({
-        multiple: false,
-        directory: false,
-        filters: [
-          {
-            name: "Аккаунт с токеном (.json)",
-            extensions: ["json"],
-          },
-        ],
-      });
+      const select = await invoke("pick", { type: "JSON" }).catch(() => null);
+      if (!select?.uri) return;
 
-      if (path) {
-        const data = await invoke("read_file", { path });
-        const text = new TextDecoder().decode(new Uint8Array(data));
-        await handleImportJson(text);
-        return;
-      }
+      const data = await invoke("read_file", { path: select.uri });
+      const text = new TextDecoder().decode(new Uint8Array(data));
+      await handleImportJson(text);
     } catch (e) {
-      console.warn("Native file dialog failed or unavailable", e);
+      console.error(e);
+    } finally {
+      isImporting = false;
     }
-
-    if (fileInputRef) {
-      fileInputRef.click();
-    }
-  }
-
-  function handleFileInputChange(e) {
-    const file = e.target?.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = async (event) => {
-      const text = event.target?.result;
-      if (typeof text === "string") {
-        await handleImportJson(text);
-      }
-    };
-    reader.readAsText(file);
-    e.target.value = "";
   }
 
   function startHold(e, account) {
@@ -304,22 +281,31 @@
 
   async function exportAccount(account) {
     closeMenu();
+    let meta = null;
+
+    try {
+      const data = await getAccountMeta(account.id);
+      meta = data?.meta || null;
+    } catch (e) {
+      console.error(e);
+    }
 
     const dataToSave = {
       version: 1,
       type: "account",
-      meta: account.meta || {},
-      token: account.token,
-      seed: account.seed || null,
-      id: account.id,
-      timestamp: Date.now()
+      meta: meta || account.meta || {
+        token: account.token,
+        device: account.device || null
+      }
     };
 
+    const fileName = `${account.contact?.names?.[0]?.firstName || account.meta?.firstName || account.id || "account"}.json`;
+
     const path = await save({
-      defaultPath: `${account.meta?.firstName || account.id}.json`,
+      defaultPath: fileName,
       filters: [
         {
-          name: "Файл аккаунта (.json)",
+          name: "Аккаунт с токеном (.json)",
           extensions: ["json"],
         },
       ],
@@ -328,7 +314,7 @@
     if (!path) return;
 
     const json = JSON.stringify(dataToSave, null, 2);
-    await invoke("data_save", { id: account.id, file: path, value: json }).catch(() => {});
+    await invoke("write_file_string", { path, content: json });
   }
 
   function closeMenu() {
@@ -489,13 +475,6 @@
     </div>
   {/if}
 
-  <input
-    type="file"
-    accept=".json"
-    style="display: none;"
-    bind:this={fileInputRef}
-    on:change={handleFileInputChange}
-  />
 
   {#if menu}
     <div

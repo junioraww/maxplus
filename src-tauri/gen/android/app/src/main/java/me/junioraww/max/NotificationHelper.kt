@@ -37,6 +37,30 @@ class NotificationHelper(private val ctx: Context) {
   private external fun isChatGroupNative(account: Long, chatId: Long, appDir: String): Boolean
   private external fun isAccountPrivacyActiveNative(account: Long, appDir: String): Boolean
   private external fun resolveAccountForChatNative(chatId: Long, appDir: String): Long
+
+  fun isNotificationsEnabled(account: Long): Boolean {
+    return try {
+      isNotificationsEnabledNative(account, ctx.applicationInfo.dataDir)
+    } catch (_: Throwable) {
+      true
+    }
+  }
+
+  fun isChatMuted(account: Long, chatId: Long): Boolean {
+    return try {
+      isChatMutedNative(account, chatId, ctx.applicationInfo.dataDir)
+    } catch (_: Throwable) {
+      false
+    }
+  }
+
+  fun resolveAccountForChat(chatId: Long): Long {
+    return try {
+      resolveAccountForChatNative(chatId, ctx.applicationInfo.dataDir)
+    } catch (_: Throwable) {
+      0L
+    }
+  }
   
   companion object {
     const val CHANNEL_ID = "MESSAGES_CHANNEL_ID"

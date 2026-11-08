@@ -31,6 +31,10 @@ class MaxBackgroundService : Service() {
         @Volatile
         var isServiceRunning = false
 
+        @JvmStatic
+        @Volatile
+        var isDaemonConnected = false
+
         fun isEnabled(context: Context): Boolean {
             return context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
                 .getBoolean(KEY_ENABLED, true)
@@ -82,6 +86,7 @@ class MaxBackgroundService : Service() {
 
     private var connectivityManager: ConnectivityManager? = null
     private var networkCallback: ConnectivityManager.NetworkCallback? = null
+    private var serviceWakeLock: PowerManager.WakeLock? = null
 
     private external fun startDaemonNative(appDir: String, account: Long)
     private external fun stopDaemonNative()
@@ -95,6 +100,19 @@ class MaxBackgroundService : Service() {
             System.loadLibrary("maxplus_lib")
         } catch (e: Throwable) {
             Log.e("MaxPlus", "MaxBackgroundService: failed to load maxplus_lib", e)
+        }
+
+        try {
+            val powerManager = getSystemService(Context.POWER_SERVICE) as? PowerManager
+            serviceWakeLock = powerManager?.newWakeLock(
+                PowerManager.PARTIAL_WAKE_LOCK,
+                "MaxPlus:BackgroundServiceLock"
+            )?.apply {
+                setReferenceCounted(false)
+                acquire()
+            }
+        } catch (e: Throwable) {
+            Log.w("MaxPlus", "Failed to acquire service wake lock", e)
         }
 
         if (MainActivity.appContext == null) {
@@ -118,11 +136,8 @@ class MaxBackgroundService : Service() {
         startForegroundServiceNotification()
 
         val appDir = applicationInfo.dataDir
-        val prefs = getSharedPreferences("maxplus_prefs", Context.MODE_PRIVATE)
-        val activeAccount = prefs.getLong("active_account_id", 0L)
-
         try {
-            startDaemonNative(appDir, activeAccount)
+            startDaemonNative(appDir, 0L)
         } catch (e: Throwable) {
             Log.e("MaxPlus", "startDaemonNative error", e)
         }
@@ -132,6 +147,15 @@ class MaxBackgroundService : Service() {
 
     override fun onDestroy() {
         isServiceRunning = false
+        isDaemonConnected = false
+        try {
+            serviceWakeLock?.let {
+                if (it.isHeld) {
+                    it.release()
+                }
+            }
+            serviceWakeLock = null
+        } catch (_: Throwable) {}
         unregisterNetworkCallback()
         try {
             stopDaemonNative()

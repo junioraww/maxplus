@@ -28,6 +28,25 @@ pub fn trigger_daemon_reconnect() {
 }
 
 #[cfg(target_os = "android")]
+fn notify_daemon_connected(connected: bool) {
+    let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        if let Some(vm) = crate::notifications::GLOBAL_JVM.get() {
+            let _ = vm.attach_current_thread(|env| -> Result<(), jni::errors::Error> {
+                let service_class = env.find_class(jni_str!("me/junioraww/max/MaxBackgroundService"))
+                    .or_else(|_| env.find_class(jni_str!("org/meowkie/max/MaxBackgroundService")))?;
+                let _ = env.call_static_method(
+                    &service_class,
+                    jni_str!("setDaemonConnected"),
+                    jni_sig!("(Z)V"),
+                    &[jni::objects::JValue::Bool(connected)],
+                );
+                Ok(())
+            });
+        }
+    }));
+}
+
+#[cfg(target_os = "android")]
 fn get_app_context<'a>(env: &mut Env<'a>) -> Result<JObject<'a>, jni::errors::Error> {
     let main_class = env.find_class(jni_str!("me/junioraww/max/MainActivity"))
         .or_else(|_| env.find_class(jni_str!("org/meowkie/max/MainActivity")))?;
@@ -530,6 +549,8 @@ pub fn start_daemon(app_dir: String, account_id: i64) {
                 }
 
                 if !connected {
+                    #[cfg(target_os = "android")]
+                    notify_daemon_connected(false);
                     tokio::select! {
                         _ = reconnect_notify.notified() => {}
                         _ = tokio::time::sleep(Duration::from_secs(5)) => {}
@@ -537,7 +558,21 @@ pub fn start_daemon(app_dir: String, account_id: i64) {
                     continue;
                 }
 
-                let _ = client.sync(None).await;
+                let sync_res = client.sync(None).await;
+                if sync_res.is_err() {
+                    #[cfg(target_os = "android")]
+                    notify_daemon_connected(false);
+                    client.disconnect().await;
+                    tokio::select! {
+                        _ = reconnect_notify.notified() => {}
+                        _ = tokio::time::sleep(Duration::from_secs(5)) => {}
+                    }
+                    continue;
+                }
+
+                #[cfg(target_os = "android")]
+                notify_daemon_connected(true);
+
                 let mut rx = client.subscribe();
 
                 loop {
@@ -562,6 +597,8 @@ pub fn start_daemon(app_dir: String, account_id: i64) {
                     }
                 }
 
+                #[cfg(target_os = "android")]
+                notify_daemon_connected(false);
                 client.disconnect().await;
                 tokio::time::sleep(Duration::from_millis(500)).await;
             }
