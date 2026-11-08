@@ -196,16 +196,21 @@
   .backdrop {
     position: fixed;
     inset: 0;
+    width: 100%;
+    max-width: 100vw;
     background: rgba(0, 0, 0, 0.45);
     z-index: 1000;
     display: flex;
     flex-direction: column;
     justify-content: flex-end;
+    overflow-x: hidden;
   }
 
   .sheet {
     background: #ffffff;
     border-radius: 20px 20px 0 0;
+    width: 100%;
+    max-width: 100vw;
     height: 78vh;
     max-height: calc(100vh - var(--safe-top, 0px) - 10px);
     display: flex;
@@ -216,6 +221,7 @@
     will-change: transform, height;
     box-sizing: border-box;
     color: #000000;
+    overflow-x: hidden;
   }
 
   .sheet.dragging {
@@ -311,6 +317,7 @@
 
   .name {
     flex: 1;
+    min-width: 0;
     font-size: 16px;
     font-weight: 500;
     color: #000000;

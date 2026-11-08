@@ -23,8 +23,10 @@
     left: 0;
     right: 0;
     width: 100%;
+    max-width: 100%;
     height: 190px;
     overflow: hidden;
+    contain: paint;
     pointer-events: none;
     z-index: 0;
     mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 1) 0%, rgba(0, 0, 0, 0.95) 50%, rgba(0, 0, 0, 0) 100%);

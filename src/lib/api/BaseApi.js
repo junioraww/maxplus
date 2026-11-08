@@ -18,6 +18,10 @@ export default class API {
     resendAuth() { throw "resendAuth: Unimplemented" }
     login() { throw "login: Unimplemented" }
     register() { throw "register: Unimplemented" }
+    submitRegister() { throw "submitRegister: Unimplemented" }
+    submitRegisterWithAvatar() { throw "submitRegisterWithAvatar: Unimplemented" }
+    checkCallStatus() { throw "checkCallStatus: Unimplemented" }
+    authByTrack() { throw "authByTrack: Unimplemented" }
     importAccount() { throw "importAccount: Unimplemented" }
 
     sync() { throw "sync: Unimplemented" }

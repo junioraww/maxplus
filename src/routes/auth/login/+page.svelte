@@ -8,6 +8,7 @@
   import { getAccounts, getDevice } from "$lib/stores/accounts";
   import { activeThemeId, toggleTheme } from "$lib/stores/theme";
   import API from "$lib/stores/api";
+  import { isNo2FaError } from "$lib/api/MobileApi";
 
   import AuroraBackground from "$components/main/auth/AuroraBackground.svelte";
   import MaxLogo from "$components/main/auth/MaxLogo.svelte";
@@ -84,7 +85,21 @@
     isPickerOpen = false;
     hasOpenedDevice = false;
     setRawDigits(rawDigits);
-    if (phoneInputRef) phoneInputRef.focus();
+    if (typeof window !== "undefined") {
+      window.scrollTo(0, 0);
+      if (document.documentElement) document.documentElement.scrollLeft = 0;
+      if (document.body) document.body.scrollLeft = 0;
+    }
+    if (phoneInputRef) {
+      setTimeout(() => {
+        if (typeof window !== "undefined") {
+          window.scrollTo(0, 0);
+          if (document.documentElement) document.documentElement.scrollLeft = 0;
+          if (document.body) document.body.scrollLeft = 0;
+        }
+        phoneInputRef.focus();
+      }, 50);
+    }
   }
 
   async function handleToggleTheme() {
@@ -123,13 +138,26 @@
         if (response.codeDelay) sessionSet("codeDelay", response.codeDelay);
         if (response.codeLength) sessionSet("codeLength", response.codeLength);
         sessionSet("authPayload", response);
-        goto("/auth/verify");
+
+        if (response.authType === "CALL_OUT" || response.requestType === "CALL_OUT" || response.callNumber) {
+          goto("/auth/callout");
+        } else {
+          goto("/auth/verify");
+        }
       } else {
         loading = false;
+        if (isNo2FaError(response)) {
+          goto("/auth/restrict");
+          return;
+        }
         error = response?.title || response?.message || "Ошибка отправки кода";
       }
     } catch (e) {
       loading = false;
+      if (isNo2FaError(e)) {
+        goto("/auth/restrict");
+        return;
+      }
       error = e?.message || "Не удалось связаться с сервером";
     }
   }
@@ -249,8 +277,10 @@
     --auth-bg: #ffffff;
     --auth-text: #000000;
     --auth-text-secondary: #8e8e93;
-    --auth-input-bg: #eff0f4;
+    --auth-input-bg: rgba(0, 0, 0, 0.05);
     --auth-accent: #007aff;
+    --auth-btn-disabled-bg: rgba(0, 0, 0, 0.06);
+    --auth-btn-disabled-text: rgba(0, 0, 0, 0.28);
     --auth-card-bg: #ffffff;
     --auth-border: #e5e5ea;
 
@@ -259,20 +289,24 @@
     flex-direction: column;
     min-height: 100%;
     width: 100%;
+    max-width: 100vw;
     background-color: var(--auth-bg);
     color: var(--auth-text);
     box-sizing: border-box;
     padding-top: var(--safe-top, 0px);
     padding-bottom: var(--safe-bottom, 0px);
     overflow-x: hidden;
+    contain: paint;
   }
 
   .auth-screen.dark-theme {
-    --auth-bg: #121316;
+    --auth-bg: #17181c;
     --auth-text: #ffffff;
     --auth-text-secondary: #8e8e93;
-    --auth-input-bg: #212228;
+    --auth-input-bg: rgba(255, 255, 255, 0.09);
     --auth-accent: #007aff;
+    --auth-btn-disabled-bg: rgba(255, 255, 255, 0.12);
+    --auth-btn-disabled-text: rgba(255, 255, 255, 0.28);
     --auth-card-bg: #1c1d22;
     --auth-border: rgba(255, 255, 255, 0.1);
   }
@@ -333,10 +367,11 @@
   }
 
   .main-heading {
-    margin: 0;
-    font-size: 21.5px;
+    margin: 0 auto;
+    max-width: 280px;
+    font-size: 18px;
     font-weight: 600;
-    line-height: 1.28;
+    line-height: 1.25;
     color: var(--auth-text);
     letter-spacing: -0.2px;
   }
@@ -344,11 +379,14 @@
   .input-card {
     display: flex;
     align-items: center;
-    height: 54px;
+    height: 52px;
     background-color: var(--auth-input-bg);
-    border-radius: 14px;
-    padding: 0 16px;
-    gap: 12px;
+    border-radius: 16px;
+    padding: 0 14px;
+    gap: 10px;
+    width: 100%;
+    box-sizing: border-box;
+    overflow: hidden;
     transition: box-shadow 0.15s ease;
   }
 
@@ -366,18 +404,18 @@
     cursor: pointer;
     color: var(--auth-text);
     font-family: inherit;
-    font-size: 17px;
+    font-size: 15.5px;
     font-weight: 500;
     flex-shrink: 0;
   }
 
   .country-flag {
-    font-size: 22px;
+    font-size: 19px;
     line-height: 1;
   }
 
   .country-code {
-    font-size: 17px;
+    font-size: 15.5px;
     font-weight: 500;
     color: var(--auth-text);
   }
@@ -389,11 +427,13 @@
 
   .phone-field {
     flex: 1;
+    min-width: 0;
+    width: 100%;
     height: 100%;
     background: transparent;
     border: none;
     outline: none;
-    font-size: 17px;
+    font-size: 15.5px;
     font-family: inherit;
     color: var(--auth-text);
     font-weight: 400;
@@ -409,9 +449,9 @@
   }
 
   .field-hint {
-    margin: 12px 4px 0 4px;
-    font-size: 13.5px;
-    line-height: 1.4;
+    margin: 10px 4px 0 4px;
+    font-size: 12.5px;
+    line-height: 1.35;
     color: var(--auth-text-secondary);
     text-align: left;
   }
@@ -444,20 +484,20 @@
   .submit-button {
     width: 100%;
     height: 52px;
-    border-radius: 14px;
+    border-radius: 16px;
     border: none;
-    background-color: #007aff;
-    opacity: 0.7;
-    color: #ffffff;
-    font-size: 16px;
+    background-color: var(--auth-btn-disabled-bg);
+    color: var(--auth-btn-disabled-text);
+    font-size: 15.5px;
     font-weight: 600;
     font-family: inherit;
     cursor: default;
-    transition: opacity 0.2s ease, transform 0.1s ease;
+    transition: background-color 0.2s ease, color 0.2s ease, transform 0.1s ease;
   }
 
   .submit-button.active {
-    opacity: 1;
+    background-color: var(--auth-accent);
+    color: #ffffff;
     cursor: pointer;
   }
 
@@ -467,11 +507,11 @@
 
   .disclaimer-text {
     margin: 14px 0 0 0;
-    font-size: 12.5px;
-    line-height: 1.35;
+    font-size: 11.5px;
+    line-height: 1.32;
     color: var(--auth-text-secondary);
     text-align: center;
-    max-width: 380px;
+    max-width: 320px;
   }
 
   .disclaimer-text .highlight {

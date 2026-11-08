@@ -168,6 +168,8 @@
     --auth-text-secondary: #8e8e93;
     --auth-input-bg: #eff0f4;
     --auth-accent: #007aff;
+    --auth-btn-disabled-bg: rgba(0, 0, 0, 0.06);
+    --auth-btn-disabled-text: rgba(0, 0, 0, 0.28);
     --auth-pill: #f2f2f2;
 
     position: relative;
@@ -184,11 +186,13 @@
   }
 
   .auth-screen.dark-theme {
-    --auth-bg: #121316;
+    --auth-bg: #17181c;
     --auth-text: #ffffff;
     --auth-text-secondary: #8e8e93;
-    --auth-input-bg: #212228;
+    --auth-input-bg: rgba(255, 255, 255, 0.09);
     --auth-accent: #007aff;
+    --auth-btn-disabled-bg: rgba(255, 255, 255, 0.12);
+    --auth-btn-disabled-text: rgba(255, 255, 255, 0.28);
     --auth-pill: #282932;
   }
 
@@ -234,8 +238,8 @@
   }
 
   .icon-badge {
-    width: 84px;
-    height: 84px;
+    width: 88px;
+    height: 88px;
     border-radius: 50%;
     background-color: #f0f1f4;
     display: flex;
@@ -250,15 +254,17 @@
 
   .main-heading {
     margin: 0 0 8px 0;
-    font-size: 22px;
+    font-size: 20px;
     font-weight: 700;
+    line-height: 1.25;
     color: var(--auth-text);
     letter-spacing: -0.2px;
   }
 
   .sub-heading {
     margin: 0 0 24px 0;
-    font-size: 15px;
+    font-size: 14px;
+    line-height: 1.35;
     color: var(--auth-text-secondary);
     max-width: 300px;
   }
@@ -340,20 +346,20 @@
   .submit-button {
     width: 100%;
     height: 52px;
-    border-radius: 14px;
+    border-radius: 16px;
     border: none;
-    background-color: #007aff;
-    opacity: 0.7;
-    color: #ffffff;
-    font-size: 16px;
+    background-color: var(--auth-btn-disabled-bg);
+    color: var(--auth-btn-disabled-text);
+    font-size: 15.5px;
     font-weight: 600;
     font-family: inherit;
     cursor: default;
-    transition: opacity 0.2s ease, transform 0.1s ease;
+    transition: background-color 0.2s ease, color 0.2s ease, transform 0.1s ease;
   }
 
   .submit-button.active {
-    opacity: 1;
+    background-color: var(--auth-accent);
+    color: #ffffff;
     cursor: pointer;
   }
 

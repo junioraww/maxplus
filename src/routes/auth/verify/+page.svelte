@@ -7,7 +7,7 @@
   } from "$lib/stores/session";
   import { registerBackHandler } from "$lib/utils/backButton";
   import API from "$lib/stores/api";
-  import { parseApiError } from "$lib/api/MobileApi";
+  import { parseApiError, isNo2FaError } from "$lib/api/MobileApi";
   import { activeThemeId } from "$lib/stores/theme";
   import OtpCodeInput from "$components/main/auth/OtpCodeInput.svelte";
 
@@ -123,6 +123,11 @@
       const response = await $API.checkCode(targetCode);
 
       if (response?.error) {
+        if (isNo2FaError(response)) {
+          loading = false;
+          goto("/auth/restrict");
+          return;
+        }
         error = parseApiError(response);
         loading = false;
         return;
@@ -138,22 +143,12 @@
       const isRegistration = response?.tokenAttrs?.REGISTER && !response?.tokenAttrs?.LOGIN;
       if (isRegistration) {
         const registerToken = response?.tokenAttrs?.REGISTER?.token;
-        if (!name) {
-          sessionSet("registerToken", registerToken);
-          loading = false;
-          goto("/auth/register");
-          return;
+        sessionSet("registerToken", registerToken);
+        if (response?.presetAvatars) {
+          sessionSet("presetAvatars", response.presetAvatars);
         }
-
-        const regResponse = await $API.submitRegister(name);
-        if (regResponse?.error) {
-          error = parseApiError(regResponse);
-          loading = false;
-          return;
-        }
-
         loading = false;
-        goto("/");
+        goto("/auth/register");
         return;
       }
 
@@ -162,6 +157,10 @@
       goto("/");
     } catch (e) {
       loading = false;
+      if (isNo2FaError(e)) {
+        goto("/auth/restrict");
+        return;
+      }
       error = parseApiError(e);
     }
   }
@@ -296,18 +295,18 @@
   }
 
   .main-heading {
-    margin: 0 0 12px 0;
-    font-size: 24px;
+    margin: 0 0 8px 0;
+    font-size: 20px;
     font-weight: 700;
     line-height: 1.25;
     color: var(--auth-text);
-    letter-spacing: -0.3px;
+    letter-spacing: -0.2px;
   }
 
   .sub-heading {
-    margin: 0 0 16px 0;
-    font-size: 15px;
-    line-height: 1.4;
+    margin: 0 0 24px 0;
+    font-size: 14px;
+    line-height: 1.35;
     color: var(--auth-text-secondary);
     max-width: 320px;
   }

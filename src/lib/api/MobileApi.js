@@ -80,8 +80,8 @@ function sortFolders(folders, order) {
   });
 }
 
-import { parseApiError } from "$lib/utils/errors";
-export { parseApiError };
+import { parseApiError, isNo2FaError } from "$lib/utils/errors";
+export { parseApiError, isNo2FaError };
 
 export default class MobileApi extends BaseAPI {
   resolve_sync = null;
@@ -566,6 +566,32 @@ export default class MobileApi extends BaseAPI {
       lastName: last_name,
     });
     return this._handleLoginResponse(response);
+  }
+
+  async submitRegisterWithAvatar(first_name, last_name = null, photo_id = null, avatar_type = "PRESET_AVATAR") {
+    const response = await invoke("register_full", {
+      firstName: first_name,
+      lastName: last_name,
+      photoId: photo_id,
+      avatarType: photo_id ? avatar_type : null,
+    });
+    return this._handleLoginResponse(response);
+  }
+
+  async checkCallStatus(track_id) {
+    const response = await invoke("check_call_status", { trackId: track_id });
+    if (response?.tokenAttrs?.LOGIN?.token || response?.token) {
+      return this._handleLoginResponse(response);
+    }
+    return response;
+  }
+
+  async authByTrack(track_id) {
+    const response = await invoke("auth_by_track", { trackId: track_id });
+    if (response?.tokenAttrs?.LOGIN?.token || response?.token) {
+      return this._handleLoginResponse(response);
+    }
+    return response;
   }
 
   async login(code) {
