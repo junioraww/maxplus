@@ -1,5 +1,5 @@
 <script>
-  import { save } from "@tauri-apps/plugin-dialog";
+  import { save, open } from "@tauri-apps/plugin-dialog";
   import { invoke } from "@tauri-apps/api/core";
   import {
     onMount,
@@ -15,6 +15,7 @@
     getAccount,
     getCurrentAccount,
     setCurrentAccount,
+    addAccount,
   } from "$lib/stores/accounts";
   import { openLockScreen } from "$lib/stores/lockScreen";
   import { resetImageCaches } from "$lib/utils/images";
@@ -31,6 +32,12 @@
   let holdTimer;
   let unregisterMenuBack = null;
   let unregisterGeneralBack = null;
+
+  let newMenu = null;
+  let holdNewTimer;
+  let longPressedNew = false;
+  let unregisterNewMenuBack = null;
+  let fileInputRef;
 
   let accounts = [];
   let loadingAccounts = true;
@@ -141,6 +148,124 @@
     goto("/auth/login");
   }
 
+  function startHoldNew(e) {
+    longPressedNew = false;
+    clearTimeout(holdNewTimer);
+
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+
+    holdNewTimer = setTimeout(() => {
+      longPressedNew = true;
+      openNewMenu(clientX, clientY);
+    }, 450);
+  }
+
+  function cancelHoldNew() {
+    clearTimeout(holdNewTimer);
+    setTimeout(() => {
+      longPressedNew = false;
+    }, 150);
+  }
+
+  function openNewMenu(x, y) {
+    closeMenu();
+    const maxX = window.innerWidth - 220;
+    const maxY = window.innerHeight - 150;
+
+    newMenu = {
+      x: Math.min(x, maxX),
+      y: Math.min(y, maxY)
+    };
+
+    if (unregisterNewMenuBack) {
+      unregisterNewMenuBack();
+    }
+    unregisterNewMenuBack = registerBackHandler(() => {
+      closeNewMenu();
+      return true;
+    });
+  }
+
+  function closeNewMenu() {
+    newMenu = null;
+    if (unregisterNewMenuBack) {
+      unregisterNewMenuBack();
+      unregisterNewMenuBack = null;
+    }
+  }
+
+  async function handleImportJson(jsonText) {
+    let json;
+    try {
+      json = JSON.parse(jsonText);
+    } catch {
+      return alert("JSON-файл содержит ошибки!");
+    }
+
+    if (!json.version || json.type !== "account") {
+      return alert("Неверный файл — это не конфиг аккаунта!");
+    }
+
+    if (json.version === 1) {
+      const token = json.meta?.token || json.token;
+      const device = json.meta?.device || json.meta || null;
+      if (!token) {
+        return alert("В файле отсутствует токен авторизации!");
+      }
+      const response = await addAccount(token, device);
+      await setCurrentAccount(response.id);
+      currentUser.set(undefined);
+      goto("/");
+    } else {
+      return alert("Это конфиг для более новой версии Max+!");
+    }
+  }
+
+  async function importAccount() {
+    closeMenu();
+    closeNewMenu();
+    try {
+      const path = await open({
+        multiple: false,
+        directory: false,
+        filters: [
+          {
+            name: "Аккаунт с токеном (.json)",
+            extensions: ["json"],
+          },
+        ],
+      });
+
+      if (path) {
+        const data = await invoke("read_file", { path });
+        const text = new TextDecoder().decode(new Uint8Array(data));
+        await handleImportJson(text);
+        return;
+      }
+    } catch (e) {
+      console.warn("Native file dialog failed or unavailable", e);
+    }
+
+    if (fileInputRef) {
+      fileInputRef.click();
+    }
+  }
+
+  function handleFileInputChange(e) {
+    const file = e.target?.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      const text = event.target?.result;
+      if (typeof text === "string") {
+        await handleImportJson(text);
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = "";
+  }
+
   function startHold(e, account) {
     longPressed = false;
     clearTimeout(holdTimer);
@@ -218,12 +343,19 @@
     if (menu && !longPressed && !e.target.closest(".context-menu")) {
       closeMenu();
     }
+    if (newMenu && !longPressedNew && !e.target.closest(".context-menu")) {
+      closeNewMenu();
+    }
   }
 
   onDestroy(() => {
     if (unregisterMenuBack) {
       unregisterMenuBack();
       unregisterMenuBack = null;
+    }
+    if (unregisterNewMenuBack) {
+      unregisterNewMenuBack();
+      unregisterNewMenuBack = null;
     }
     if (unregisterGeneralBack) {
       unregisterGeneralBack();
@@ -310,7 +442,26 @@
       {/each}
     {/if}
 
-    <div on:click={addNew} class="account">
+    <div
+      class="account"
+      on:click={() => {
+        if (longPressedNew) return;
+        if (!newMenu) addNew();
+      }}
+      on:contextmenu={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setTimeout(() => {
+          openNewMenu(e.clientX, e.clientY);
+        }, 0);
+      }}
+      on:touchstart={(e) => startHoldNew(e)}
+      on:touchend={cancelHoldNew}
+      on:touchmove={cancelHoldNew}
+      on:mousedown={(e) => e.button === 0 && startHoldNew(e)}
+      on:mouseup={cancelHoldNew}
+      on:mouseleave={cancelHoldNew}
+    >
       <div class="avatar">
         <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
           <line x1="12" y1="5" x2="12" y2="19"></line>
@@ -320,6 +471,31 @@
       <a>Новый</a>
     </div>
   </div>
+
+  {#if newMenu}
+    <div
+      class="context-menu"
+      style="left:{newMenu.x}px; top:{newMenu.y}px"
+      on:click|stopPropagation
+    >
+      <button on:click={importAccount}>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 8px;">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+          <polyline points="7 10 12 15 17 10"></polyline>
+          <line x1="12" y1="15" x2="12" y2="3"></line>
+        </svg>
+        Импорт аккаунта
+      </button>
+    </div>
+  {/if}
+
+  <input
+    type="file"
+    accept=".json"
+    style="display: none;"
+    bind:this={fileInputRef}
+    on:change={handleFileInputChange}
+  />
 
   {#if menu}
     <div
@@ -557,6 +733,8 @@
   }
 
   .context-menu button {
+    display: flex;
+    align-items: center;
     border: none;
     background: transparent;
     color: var(--select-text);

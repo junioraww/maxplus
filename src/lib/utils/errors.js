@@ -1,3 +1,10 @@
+export function isNo2FaError(err) {
+  if (!err) return false;
+  const raw = typeof err === "string" ? err : (err.error || err.message || err.code || err.title || "");
+  const str = String(raw).toLowerCase();
+  return str.includes("no2fa") || str.includes("error.profile.active.session.no2fa") || str.includes("auth_no_2fa");
+}
+
 export function parseApiError(err) {
   if (!err) return "Неизвестная ошибка";
   if (typeof err === "string") {
