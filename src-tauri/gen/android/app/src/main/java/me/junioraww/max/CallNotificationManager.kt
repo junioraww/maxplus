@@ -77,17 +77,31 @@ object CallNotificationManager {
   fun showIncomingCallNotification(context: Context, data: Map<String, String>) {
     val prefs = getPrefs(context)
     if (!prefs.getBoolean(KEY_ENABLED, true)) return
+
+    val conversationId = data["conversationId"] ?: data["vcId"] ?: data["conference_id"] ?: data["cid"] ?: data["chat_id"] ?: data["call_id"] ?: ""
+    val callerId = data["callerId"] ?: data["suid"] ?: data["caller_id"] ?: data["from"] ?: ""
+    val explicitAccount = (data["account_id"] ?: data["explicit_account"])?.toLongOrNull()
+      ?: (data["c"]?.toLongOrNull()?.takeIf { it > 1000L })
+    val callerIdLong = callerId.toLongOrNull() ?: 0L
+    val chatIdLong = (data["chat_id"] ?: data["cid"] ?: data["conversationId"])?.toLongOrNull() ?: callerIdLong
+
+    val helper = NotificationHelper(context)
+    val account = if (explicitAccount != null && explicitAccount > 0L) {
+      explicitAccount
+    } else if (chatIdLong > 0L) {
+      helper.resolveAccountForChat(chatIdLong)
+    } else {
+      0L
+    }
+
+    if (!helper.isNotificationsEnabled(account)) return
+    if (chatIdLong > 0L && helper.isChatMuted(account, chatIdLong)) return
+    if (callerIdLong > 0L && helper.isChatMuted(account, callerIdLong)) return
+
     createCallChannel(context)
 
     val soundEnabled = prefs.getBoolean(KEY_SOUND, true)
     val vibrationEnabled = prefs.getBoolean(KEY_VIBRATION, true)
-
-    val conversationId = data["conversationId"] ?: data["vcId"] ?: data["conference_id"] ?: data["cid"] ?: data["chat_id"] ?: data["call_id"] ?: ""
-    val callerId = data["callerId"] ?: data["suid"] ?: data["caller_id"] ?: data["from"] ?: ""
-    val account = (data["account_id"] ?: data["explicit_account"])?.toLongOrNull()
-      ?: (data["c"]?.toLongOrNull()?.takeIf { it > 1000L })
-      ?: 0L
-    val callerIdLong = callerId.toLongOrNull() ?: 0L
     val rawCallerName = data["userName"] ?: data["title"] ?: data["callerName"] ?: data["caller_name"] ?: data["name"]
     val callerName = rawCallerName?.takeIf { it.isNotBlank() && !it.startsWith("Пользователь ") && !it.startsWith("User ") }
       ?: if (callerId.isNotEmpty()) "Пользователь $callerId" else "Входящий вызов"

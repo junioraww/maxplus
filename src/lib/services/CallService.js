@@ -12,7 +12,7 @@ import { getCurrentAccount, getDevice } from '$lib/stores/accounts';
 import { initHandshake, acceptHandshake, processAccept } from '$lib/crypto/asymmetric';
 import { dismissRequest } from '$components/ChatWindow/e2e';
 import { startIncomingRingtone, startOutgoingRingback, stopCallAudio, playRejectionTone } from '$lib/services/callAudio';
-import { showDesktopCallNotification, cancelDesktopCallNotification } from '$lib/utils/notifications';
+import { showDesktopCallNotification, cancelDesktopCallNotification, isChatMuted } from '$lib/utils/notifications';
 import { getContactDirect } from '$lib/stores/contacts';
 import { NativeRustPeerConnection } from '$lib/services/NativeRustPeerConnection';
 import { createSyntheticAudioStream, createSyntheticVideoStream } from '$lib/utils/mediaFallback';
@@ -2829,7 +2829,7 @@ class MaxCallSession {
     this.destroy();
   }
 
-  destroy(shouldResetUi = true) {
+  async destroy(shouldResetUi = true) {
     if (this.#destroyed) return;
     this.#destroyed = true;
     log('MaxCallSession destroyed');
@@ -2879,7 +2879,7 @@ class MaxCallSession {
     try { this.#sfuCommandChannel?.close(); } catch {}
     try { this.#sfuNotificationChannel?.close(); } catch {}
     if (this.#pc) {
-      try { this.#pc.close()?.catch?.(() => {}); } catch {}
+      try { await this.#pc.close(); } catch {}
       this.#pc = null;
     }
     this.#isSfuPc = false;
@@ -3017,24 +3017,28 @@ function _genConversationId() {
   );
 }
 
+let _isStartingCall = false;
+
 export const CallService = {
   async placeAudioCall(peerId, peerName, peerAvatar, mode = CALL_MODE.PLAIN) {
+    if (_isStartingCall) return;
     if (!peerId || Number(peerId) === Number(get(currentUser))) {
       showAlert('Нельзя позвонить самому себе');
       return;
     }
+    _isStartingCall = true;
     _closeMatchingChat(peerId);
-    await this._endActive();
-    patchCallState({
-      phase: CALL_PHASE.CONNECTING,
-      callType: 'audio',
-      mode,
-      peerId,
-      peerName,
-      peerAvatar,
-      errorText: null,
-    });
     try {
+      await this._endActive();
+      patchCallState({
+        phase: CALL_PHASE.CONNECTING,
+        callType: 'audio',
+        mode,
+        peerId,
+        peerName,
+        peerAvatar,
+        errorText: null,
+      });
       const convId = _genConversationId();
       const internalParams = await _buildInternalParams();
       const resp = await invoke('begin_call', {
@@ -3057,26 +3061,30 @@ export const CallService = {
       _activeSession = null;
       showAlert('Не удалось начать звонок: ' + (e?.message || e));
       resetCallState();
+    } finally {
+      _isStartingCall = false;
     }
   },
 
   async placeVideoCall(peerId, peerName, peerAvatar, mode = CALL_MODE.PLAIN) {
+    if (_isStartingCall) return;
     if (!peerId || Number(peerId) === Number(get(currentUser))) {
       showAlert('Нельзя позвонить самому себе');
       return;
     }
+    _isStartingCall = true;
     _closeMatchingChat(peerId);
-    await this._endActive();
-    patchCallState({
-      phase: CALL_PHASE.CONNECTING,
-      callType: 'video',
-      mode,
-      peerId,
-      peerName,
-      peerAvatar,
-      errorText: null,
-    });
     try {
+      await this._endActive();
+      patchCallState({
+        phase: CALL_PHASE.CONNECTING,
+        callType: 'video',
+        mode,
+        peerId,
+        peerName,
+        peerAvatar,
+        errorText: null,
+      });
       const convId = _genConversationId();
       const internalParams = await _buildInternalParams();
       const resp = await invoke('begin_call', {
@@ -3099,6 +3107,8 @@ export const CallService = {
       _activeSession = null;
       showAlert('Не удалось начать видеозвонок: ' + (e?.message || e));
       resetCallState();
+    } finally {
+      _isStartingCall = false;
     }
   },
 
@@ -3172,30 +3182,39 @@ export const CallService = {
         peerAvatar,
       });
       this._pendingIncoming = { endpoint, conversationId, callerId, isVideo, convParams };
-      startIncomingRingtone();
-      showDesktopCallNotification({
-        callerName: peerName,
-        isVideo,
-        avatar: peerAvatar,
-      });
+      const isMuted = (callerId && isChatMuted(callerId)) || (conversationId && isChatMuted(conversationId));
+      if (!isMuted) {
+        startIncomingRingtone();
+        showDesktopCallNotification({
+          callerName: peerName,
+          isVideo,
+          avatar: peerAvatar,
+          chatId: callerId || conversationId,
+        });
+      }
     } catch (e) {
       log('handleIncomingPush failed:', e);
     }
   },
 
   async acceptIncoming(mode = null) {
+    if (_isStartingCall) return;
+    _isStartingCall = true;
     stopCallAudio();
     invoke('cancel_call_notification').catch(() => {});
     cancelDesktopCallNotification().catch(() => {});
     const pending = this._pendingIncoming;
-    if (!pending) return;
+    if (!pending) {
+      _isStartingCall = false;
+      return;
+    }
     this._pendingIncoming = null;
     _closeMatchingChat(pending.callerId);
-    await this._endActive();
-    patchCallState({ phase: CALL_PHASE.CONNECTING, connectionStatus: 'connecting' });
-    const session = new MaxCallSession();
-    _activeSession = session;
     try {
+      await this._endActive();
+      patchCallState({ phase: CALL_PHASE.CONNECTING, connectionStatus: 'connecting' });
+      const session = new MaxCallSession();
+      _activeSession = session;
       await session.begin({
         endpoint: pending.endpoint,
         conversationId: pending.conversationId,
@@ -3210,6 +3229,8 @@ export const CallService = {
       try { await session.hangup(); } catch {}
       resetCallState();
       _activeSession = null;
+    } finally {
+      _isStartingCall = false;
     }
   },
 
@@ -3324,19 +3345,21 @@ export const CallService = {
   },
 
   async joinConferenceByLink(joinLink, isVideo = false, mode = CALL_MODE.PLAIN) {
-    await this._endActive();
-    patchCallState({
-      phase: CALL_PHASE.ACTIVE,
-      callType: isVideo ? 'video' : 'audio',
-      mode,
-      peerName: 'Групповой звонок',
-      isGroup: true,
-      startedAt: Date.now(),
-      errorText: null,
-      connectionStatus: 'connecting',
-    });
-    this._showOngoingNotification();
+    if (_isStartingCall) return;
+    _isStartingCall = true;
     try {
+      await this._endActive();
+      patchCallState({
+        phase: CALL_PHASE.ACTIVE,
+        callType: isVideo ? 'video' : 'audio',
+        mode,
+        peerName: 'Групповой звонок',
+        isGroup: true,
+        startedAt: Date.now(),
+        errorText: null,
+        connectionStatus: 'connecting',
+      });
+      this._showOngoingNotification();
       let token = joinLink.trim();
       if (token.includes('/')) {
         token = token.split('/').pop();
@@ -3361,6 +3384,8 @@ export const CallService = {
       try { if (_activeSession) await _activeSession.hangup(); } catch {}
       _activeSession = null;
       resetCallState();
+    } finally {
+      _isStartingCall = false;
     }
   },
 
@@ -3474,8 +3499,9 @@ export const CallService = {
   async _endActive() {
     this._cancelOngoingNotification();
     if (_activeSession) {
-      _activeSession.destroy(false);
+      const s = _activeSession;
       _activeSession = null;
+      await s.destroy(false);
     }
   },
 

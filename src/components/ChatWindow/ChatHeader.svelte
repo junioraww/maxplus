@@ -7,6 +7,7 @@
   import { getChatSettings } from "$lib/stores/messages";
   import { getContact } from "$lib/stores/contacts";
   import { CallService } from "$lib/services/CallService";
+  import { activeCall, CALL_PHASE } from "$lib/stores/calls";
   import { getMountStore } from "$lib/plugins/mount-registry";
 
   const pluginHeaderLeadings = getMountStore("chat:header-leading");
@@ -113,7 +114,9 @@
       <button
         class="header-call-btn"
         type="button"
+        disabled={$activeCall.phase !== CALL_PHASE.IDLE}
         on:click|stopPropagation={() => {
+          if ($activeCall.phase !== CALL_PHASE.IDLE) return;
           const mode = ($chatSettings?.session?.shared_secret || $chatSettings?.password) ? 'secure' : 'plain';
           CallService.placeAudioCall(avatarUserId, title, $peerContact?.avatar || $peerContact?.baseUrl, mode);
         }}

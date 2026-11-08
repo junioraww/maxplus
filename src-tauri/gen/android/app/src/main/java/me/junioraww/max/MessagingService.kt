@@ -25,7 +25,7 @@ class MessagingService : FirebaseMessagingService() {
             return
         }
 
-        if (AppState.isAppInForeground || MaxBackgroundService.isServiceRunning) {
+        if (AppState.isAppInForeground || MaxBackgroundService.isDaemonConnected) {
             return
         }
 

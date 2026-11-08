@@ -106,7 +106,11 @@ pub fn accounts_add(
         }),
     )?;
 
+    let is_first = store["accounts"].as_array().map(|a| a.is_empty()).unwrap_or(true);
     store["accounts"].as_array_mut().unwrap().push(entry.clone());
+    if is_first || store["current"].is_null() {
+        store["current"] = json!(id);
+    }
     save_accounts(&app, &store)?;
 
     Ok(entry)
