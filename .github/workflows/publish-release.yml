@@ -30,7 +30,7 @@ jobs:
       CI_ENDPOINT: ${{ vars.SITE_CI_ENDPOINT || secrets.SITE_CI_ENDPOINT || vars.SITE_CI_URL || secrets.SITE_CI_URL }}
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       TAG: ${{ inputs.tag_name }}
-      TITLE: ${{ inputs.name || inputs.tag_name }}
+      TITLE: ${{ inputs.name || format('MaxPlus {0}', inputs.tag_name) }}
       NOTES: ${{ inputs.body || 'Production release update' }}
     steps:
       - name: Checkout
@@ -56,6 +56,7 @@ jobs:
           else
             echo "Auto-discovering latest successful workflow artifacts matching ${TAG}..."
             WORKFLOWS=(
+              "Build Pipeline"
               "Build Max+ Android"
               "Build Max+ Windows"
               "Build Max+ macOS"
@@ -150,6 +151,7 @@ jobs:
               curl -sS --fail-with-body -X POST "$CI_ENDPOINT" \
                 -H "X-CI-Secret: $CI_SECRET" \
                 -F "tag_name=$TAG" \
+                -F "name=$TITLE" \
                 -F "files=@$file"
             fi
           done

@@ -1,12 +1,7 @@
 name: Dev Build Pipeline
 
 on:
-  push:
-    branches:
-      - main
-      - dev
-      - "feat/**"
-      - "fix/**"
+  workflow_dispatch:
   workflow_dispatch:
     inputs:
       rumax_branch:

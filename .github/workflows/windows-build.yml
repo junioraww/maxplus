@@ -1,9 +1,6 @@
 name: Build Max+ Windows
 
 on:
-  push:
-    branches:
-      - main
   workflow_dispatch:
 
 jobs:
