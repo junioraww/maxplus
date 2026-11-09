@@ -1,5 +1,5 @@
 <script>
-  import { onMount } from "svelte";
+  import { onMount, onDestroy } from "svelte";
   import { goto } from "$app/navigation";
   import { page } from "$app/stores";
   import SettingsPageWrapper from "$components/settings/SettingsPageWrapper.svelte";
@@ -24,6 +24,19 @@
   let loading = true;
 
   onMount(async () => {
+    await loadData();
+    if (typeof window !== "undefined") {
+      window.addEventListener("focus", loadData);
+    }
+  });
+
+  onDestroy(() => {
+    if (typeof window !== "undefined") {
+      window.removeEventListener("focus", loadData);
+    }
+  });
+
+  async function loadData() {
     try {
       const [acc, biometry] = await Promise.all([
         getCurrentAccount(),
@@ -39,7 +52,7 @@
     } finally {
       loading = false;
     }
-  });
+  }
 
   async function handleAutoLockChange(seconds) {
     if (!account) return;
