@@ -89,6 +89,7 @@ jobs:
           ORIGINAL_APPIMAGE=$(ls src-tauri/target/release/bundle/appimage/*.AppImage | head -n 1)
           LITE_APPIMAGE="${ORIGINAL_APPIMAGE%.AppImage}-lite.AppImage"
           $ORIGINAL_APPIMAGE --appimage-extract
+          chmod -R a+rX squashfs-root
           rm -rf squashfs-root/usr/lib
           mkdir -p squashfs-root/usr/lib
           printf '%s\n' \
@@ -100,8 +101,8 @@ jobs:
             'unset GST_PLUGIN_PATH_1_0' \
             'unset GST_PLUGIN_SCANNER' \
             'exec "${HERE}/usr/bin/maxplus" "$@"' > squashfs-root/AppRun
-          chmod +x squashfs-root/AppRun
-          ARCH=x86_64 ./appimagetool --appimage-extract-and-run squashfs-root "$LITE_APPIMAGE"
+          chmod a+rx squashfs-root/AppRun
+          ARCH=x86_64 ./appimagetool --appimage-extract-and-run --no-check-permissions squashfs-root "$LITE_APPIMAGE"
           rm -rf squashfs-root appimagetool
 
       - uses: actions/upload-artifact@v4
