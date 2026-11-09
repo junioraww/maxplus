@@ -14,7 +14,6 @@
 
   import Message from "$components/ChatWindow/Message.svelte";
   import PinnedMessage from "$components/ChatWindow/PinnedMessage.svelte";
-  import Bubbles from "$components/Bubbles.svelte";
   import "$lib/styles/AnimatedPanel.css";
   import API, {
     currentUser,
@@ -1695,8 +1694,6 @@
   }}
   on:click|capture={handleClick}
 >
-  <Bubbles />
-
   {#if viewerOpen}
     <MediaViewer
       chatId={chat.id}

@@ -479,36 +479,40 @@
   {#if activeTab === "emoji"}
     <div class="emoji-view">
       <div class="emoji-tabs-bar">
-        {#each emojiCategories as cat (cat.id)}
-          <button
-            type="button"
-            class="emoji-tab-item"
-            class:selected={selectedEmojiCat === cat.id}
-            on:click={() => scrollToEmojiCategory(cat.id)}
-            title={cat.name}
-          >
-            {cat.icon}
-          </button>
-        {/each}
+        <div class="emoji-tabs-inner">
+          {#each emojiCategories as cat (cat.id)}
+            <button
+              type="button"
+              class="emoji-tab-item"
+              class:selected={selectedEmojiCat === cat.id}
+              on:click={() => scrollToEmojiCategory(cat.id)}
+              title={cat.name}
+            >
+              {cat.icon}
+            </button>
+          {/each}
+        </div>
       </div>
 
       <div class="emoji-scroll-area" bind:this={emojiScrollEl}>
-        {#each emojiCategories as cat (cat.id)}
-          <div class="category-block" data-emoji-cat={cat.id}>
-            <div class="category-title">{cat.name}</div>
-            <div class="emoji-grid">
-              {#each cat.emojis as em}
-                <button
-                  type="button"
-                  class="emoji-item"
-                  on:click={() => insertEmoji(em)}
-                >
-                  {em}
-                </button>
-              {/each}
+        <div class="emoji-content-inner">
+          {#each emojiCategories as cat (cat.id)}
+            <div class="category-block" data-emoji-cat={cat.id}>
+              <div class="category-title">{cat.name}</div>
+              <div class="emoji-grid">
+                {#each cat.emojis as em}
+                  <button
+                    type="button"
+                    class="emoji-item"
+                    on:click={() => insertEmoji(em)}
+                  >
+                    {em}
+                  </button>
+                {/each}
+              </div>
             </div>
-          </div>
-        {/each}
+          {/each}
+        </div>
       </div>
     </div>
   {:else if activeTab === "stickers"}
@@ -542,54 +546,56 @@
 
       {#if !query}
         <div class="pack-tabs-bar">
-          {#if recentsSection}
+          <div class="pack-tabs-inner">
+            {#if recentsSection}
+              <button
+                type="button"
+                class="pack-tab-item"
+                class:selected={selectedSetId === "recents"}
+                on:click={() => scrollToSection("recents")}
+                title="Недавние"
+              >
+                <svg viewBox="0 0 24 24" width="20" height="20">
+                  <path
+                    fill="currentColor"
+                    d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67z"
+                  />
+                </svg>
+              </button>
+            {/if}
+
+            {#each favoriteSections as sec (sec.id)}
+              <button
+                type="button"
+                class="pack-tab-item"
+                class:selected={selectedSetId === sec.id}
+                on:click={() => scrollToSection(sec.id)}
+                title={sec.name}
+              >
+                {#if sec.iconUrl}
+                  <img src={sec.iconUrl} alt="" class="tab-pack-img" />
+                {:else}
+                  <div class="tab-placeholder">{sec.name.slice(0, 1)}</div>
+                {/if}
+              </button>
+            {/each}
+
             <button
               type="button"
-              class="pack-tab-item"
-              class:selected={selectedSetId === "recents"}
-              on:click={() => scrollToSection("recents")}
-              title="Недавние"
+              class="pack-tab-item add-pack-tab"
+              on:click={() => {
+                showCatalogModal = true;
+              }}
+              title="Каталог стикеров"
             >
               <svg viewBox="0 0 24 24" width="20" height="20">
                 <path
                   fill="currentColor"
-                  d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67z"
+                  d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"
                 />
               </svg>
             </button>
-          {/if}
-
-          {#each favoriteSections as sec (sec.id)}
-            <button
-              type="button"
-              class="pack-tab-item"
-              class:selected={selectedSetId === sec.id}
-              on:click={() => scrollToSection(sec.id)}
-              title={sec.name}
-            >
-              {#if sec.iconUrl}
-                <img src={sec.iconUrl} alt="" class="tab-pack-img" />
-              {:else}
-                <div class="tab-placeholder">{sec.name.slice(0, 1)}</div>
-              {/if}
-            </button>
-          {/each}
-
-          <button
-            type="button"
-            class="pack-tab-item add-pack-tab"
-            on:click={() => {
-              showCatalogModal = true;
-            }}
-            title="Каталог стикеров"
-          >
-            <svg viewBox="0 0 24 24" width="20" height="20">
-              <path
-                fill="currentColor"
-                d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"
-              />
-            </svg>
-          </button>
+          </div>
         </div>
       {/if}
 
@@ -598,93 +604,95 @@
         bind:this={contentScrollEl}
         on:scroll={handleContentScroll}
       >
-        {#if $stickersLoading && !recentsSection && favoriteSections.length === 0 && recommendedSections.length === 0}
-          <div class="loading-state">
-            <div class="spinner"></div>
-            <span>Загрузка стикеров...</span>
-          </div>
-        {:else if query}
-          {#if isSearching}
+        <div class="stickers-content-inner">
+          {#if $stickersLoading && !recentsSection && favoriteSections.length === 0 && recommendedSections.length === 0}
             <div class="loading-state">
               <div class="spinner"></div>
+              <span>Загрузка стикеров...</span>
             </div>
-          {:else if searchResults.length === 0}
-            <div class="empty-state">
-              <span>Ничего не найдено</span>
-            </div>
+          {:else if query}
+            {#if isSearching}
+              <div class="loading-state">
+                <div class="spinner"></div>
+              </div>
+            {:else if searchResults.length === 0}
+              <div class="empty-state">
+                <span>Ничего не найдено</span>
+              </div>
+            {:else}
+              <div class="stickers-grid">
+                {#each searchResults as st (st.id)}
+                  <button
+                    type="button"
+                    class="sticker-cell"
+                    on:click={() => selectSticker(st)}
+                    on:contextmenu|preventDefault
+                    on:mousedown={() => startPeek(st)}
+                    on:mouseup={endPeek}
+                    on:touchstart={() => startPeek(st)}
+                    on:touchend={endPeek}
+                    title={st.tags?.join(", ") || ""}
+                  >
+                    <StickerMedia
+                      url={st.url}
+                      lottieUrl={st.lottieUrl}
+                      size="100%"
+                      autoplay={false}
+                      loop={true}
+                    />
+                  </button>
+                {/each}
+              </div>
+            {/if}
           {:else}
-            <div class="stickers-grid">
-              {#each searchResults as st (st.id)}
-                <button
-                  type="button"
-                  class="sticker-cell"
-                  on:click={() => selectSticker(st)}
-                  on:contextmenu|preventDefault
-                  on:mousedown={() => startPeek(st)}
-                  on:mouseup={endPeek}
-                  on:touchstart={() => startPeek(st)}
-                  on:touchend={endPeek}
-                  title={st.tags?.join(", ") || ""}
-                >
-                  <StickerMedia
-                    url={st.url}
-                    lottieUrl={st.lottieUrl}
-                    size="100%"
-                    autoplay={false}
-                    loop={true}
-                  />
-                </button>
-              {/each}
-            </div>
-          {/if}
-        {:else}
-          {#if recentsSection}
-            <StickerSection
-              section={recentsSection}
-              isFavorite={false}
-              initialInView={true}
-              on:select={(e) => selectSticker(e.detail.sticker)}
-              on:peekStart={(e) => startPeek(e.detail.sticker)}
-              on:peekEnd={endPeek}
-            />
-          {/if}
-
-          {#if favoriteSections.length > 0}
-            <div class="group-title">Мои стикеры</div>
-            {#each favoriteSections as sec, idx (sec.id)}
+            {#if recentsSection}
               <StickerSection
-                section={sec}
-                isFavorite={true}
-                initialInView={idx < 2}
-                on:select={(e) => selectSticker(e.detail.sticker)}
-                on:peekStart={(e) => startPeek(e.detail.sticker)}
-                on:peekEnd={endPeek}
-                on:openPack={(e) => {
-                  openedSetId = e.detail.setId;
-                  showPackModal = true;
-                }}
-              />
-            {/each}
-          {/if}
-
-          {#if visibleRecommended.length > 0}
-            <div class="group-title">Рекомендуемые</div>
-            {#each visibleRecommended as sec, idx (sec.id)}
-              <StickerSection
-                section={sec}
+                section={recentsSection}
                 isFavorite={false}
-                initialInView={favoriteSections.length === 0 && idx < 2}
+                initialInView={true}
                 on:select={(e) => selectSticker(e.detail.sticker)}
                 on:peekStart={(e) => startPeek(e.detail.sticker)}
                 on:peekEnd={endPeek}
-                on:openPack={(e) => {
-                  openedSetId = e.detail.setId;
-                  showPackModal = true;
-                }}
               />
-            {/each}
+            {/if}
+
+            {#if favoriteSections.length > 0}
+              <div class="group-title">Мои стикеры</div>
+              {#each favoriteSections as sec, idx (sec.id)}
+                <StickerSection
+                  section={sec}
+                  isFavorite={true}
+                  initialInView={idx < 2}
+                  on:select={(e) => selectSticker(e.detail.sticker)}
+                  on:peekStart={(e) => startPeek(e.detail.sticker)}
+                  on:peekEnd={endPeek}
+                  on:openPack={(e) => {
+                    openedSetId = e.detail.setId;
+                    showPackModal = true;
+                  }}
+                />
+              {/each}
+            {/if}
+
+            {#if visibleRecommended.length > 0}
+              <div class="group-title">Рекомендуемые</div>
+              {#each visibleRecommended as sec, idx (sec.id)}
+                <StickerSection
+                  section={sec}
+                  isFavorite={false}
+                  initialInView={favoriteSections.length === 0 && idx < 2}
+                  on:select={(e) => selectSticker(e.detail.sticker)}
+                  on:peekStart={(e) => startPeek(e.detail.sticker)}
+                  on:peekEnd={endPeek}
+                  on:openPack={(e) => {
+                    openedSetId = e.detail.setId;
+                    showPackModal = true;
+                  }}
+                />
+              {/each}
+            {/if}
           {/if}
-        {/if}
+        </div>
       </div>
     </div>
   {:else}
@@ -750,12 +758,20 @@
   .sticker-panel-wrapper {
     display: flex;
     flex-direction: column;
-    height: 340px;
+    height: var(--keyboard-height, 290px);
     background: var(--bg-app);
     border-top: 1px solid var(--border-subtle);
     user-select: none;
     position: relative;
     overflow: hidden;
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  @media (min-width: 601px) {
+    .sticker-panel-wrapper {
+      height: 340px;
+    }
   }
 
   .panel-mode-toggle {
@@ -862,12 +878,23 @@
   .emoji-tabs-bar {
     display: flex;
     align-items: center;
-    gap: 4px;
     padding: 4px 8px;
     overflow-x: auto;
     border-bottom: 1px solid var(--border-card);
     scrollbar-width: none;
     flex-shrink: 0;
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  .emoji-tabs-inner {
+    max-width: 520px;
+    width: 100%;
+    margin: 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    box-sizing: border-box;
   }
 
   .emoji-tabs-bar::-webkit-scrollbar {
@@ -905,9 +932,18 @@
     padding: 12px 16px;
     display: flex;
     flex-direction: column;
-    gap: 16px;
     scrollbar-width: thin;
     scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+  }
+
+  .emoji-content-inner {
+    max-width: 520px;
+    width: 100%;
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    box-sizing: border-box;
   }
 
   .category-title {
@@ -952,10 +988,14 @@
     display: flex;
     flex-direction: column;
     min-height: 0;
+    width: 100%;
   }
 
   .search-bar {
     padding: 8px 12px 6px;
+    width: 100%;
+    box-sizing: border-box;
+    flex-shrink: 0;
   }
 
   .search-input-box {
@@ -965,6 +1005,10 @@
     border-radius: 20px;
     padding: 8px 12px;
     gap: 8px;
+    max-width: 520px;
+    width: 100%;
+    margin: 0 auto;
+    box-sizing: border-box;
   }
 
   .search-icon {
@@ -999,12 +1043,23 @@
   .pack-tabs-bar {
     display: flex;
     align-items: center;
-    gap: 4px;
     padding: 4px 8px;
     overflow-x: auto;
     border-bottom: 1px solid var(--border-card);
     scrollbar-width: none;
     flex-shrink: 0;
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  .pack-tabs-inner {
+    max-width: 520px;
+    width: 100%;
+    margin: 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    box-sizing: border-box;
   }
 
   .pack-tabs-bar::-webkit-scrollbar {
@@ -1071,6 +1126,13 @@
     scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
   }
 
+  .stickers-content-inner {
+    max-width: 520px;
+    width: 100%;
+    margin: 0 auto;
+    box-sizing: border-box;
+  }
+
   .group-title {
     font-size: 11px;
     font-weight: 700;
@@ -1090,7 +1152,8 @@
 
   @media (min-width: 601px) {
     .stickers-grid {
-      grid-template-columns: repeat(auto-fill, minmax(0, 80px));
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 8px;
     }
   }
 

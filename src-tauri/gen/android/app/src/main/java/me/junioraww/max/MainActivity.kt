@@ -9,6 +9,7 @@ import android.util.Log
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsAnimationCompat
 import androidx.core.view.WindowInsetsCompat
 
 class MainActivity : TauriActivity() {
@@ -170,15 +171,44 @@ class MainActivity : TauriActivity() {
   private var cachedBottomDp = 0
   private var cachedLeftDp = 0
   private var cachedRightDp = 0
+  private var lastDispatchedKeyboardOpen = false
+  private var lastKnownKeyboardHeightDp = 0
+
+  private fun dispatchKeyboardState(isOpen: Boolean, heightDp: Int) {
+    if (heightDp > 0) {
+      lastKnownKeyboardHeightDp = heightDp
+    }
+    if (lastDispatchedKeyboardOpen == isOpen && (heightDp == 0 || lastKnownKeyboardHeightDp == heightDp)) {
+      return
+    }
+    lastDispatchedKeyboardOpen = isOpen
+
+    val wv = currentWebView ?: return
+    val insetDp = if (isOpen) lastKnownKeyboardHeightDp else 0
+    val script = "document.documentElement.style.setProperty('--keyboard-inset', '${insetDp}px');" +
+      (if (lastKnownKeyboardHeightDp > 0) "document.documentElement.style.setProperty('--keyboard-height', '${lastKnownKeyboardHeightDp}px');" else "") +
+      "window.dispatchEvent(new CustomEvent('native-keyboard', { detail: { isOpen: $isOpen, height: $lastKnownKeyboardHeightDp } }));"
+    wv.post {
+      try {
+        wv.evaluateJavascript(script, null)
+      } catch (e: Throwable) {
+        Log.e("MaxPlus", "dispatchKeyboardState error", e)
+      }
+    }
+  }
 
   private fun applyInsetsToWebView() {
     val wv = currentWebView ?: return
+    val kbHeight = if (lastKnownKeyboardHeightDp > 0) lastKnownKeyboardHeightDp else 290
+    val kbInset = if (lastDispatchedKeyboardOpen) lastKnownKeyboardHeightDp else 0
     val script = "document.documentElement.style.setProperty('--safe-top', '${cachedTopDp}px');" +
       "document.documentElement.style.setProperty('--safe-bottom', '${cachedBottomDp}px');" +
       "document.documentElement.style.setProperty('--safe-left', '${cachedLeftDp}px');" +
       "document.documentElement.style.setProperty('--safe-right', '${cachedRightDp}px');" +
       "document.documentElement.style.setProperty('--safe-area-top', '${cachedTopDp}px');" +
-      "document.documentElement.style.setProperty('--safe-area-bottom', '${cachedBottomDp}px');"
+      "document.documentElement.style.setProperty('--safe-area-bottom', '${cachedBottomDp}px');" +
+      "document.documentElement.style.setProperty('--keyboard-inset', '${kbInset}px');" +
+      "document.documentElement.style.setProperty('--keyboard-height', '${kbHeight}px');"
     wv.post {
       try {
         wv.evaluateJavascript(script, null)
@@ -206,6 +236,45 @@ class MainActivity : TauriActivity() {
     MaxDaemonWatchdogWorker.schedule(applicationContext)
     Log.d("MaxPlus", "MainActivity.onCreate")
 
+    val animCallback = object : WindowInsetsAnimationCompat.Callback(DISPATCH_MODE_STOP) {
+      override fun onStart(
+        animation: WindowInsetsAnimationCompat,
+        bounds: WindowInsetsAnimationCompat.BoundsCompat
+      ): WindowInsetsAnimationCompat.BoundsCompat {
+        if ((animation.typeMask and WindowInsetsCompat.Type.ime()) != 0) {
+          val imeHeightPx = bounds.upperBound.bottom - bounds.lowerBound.bottom
+          val density = resources.displayMetrics.density
+          if (density > 0f) {
+            val targetHeightDp = (imeHeightPx / density).toInt()
+            if (targetHeightDp > 0) {
+              dispatchKeyboardState(true, targetHeightDp)
+            }
+          }
+        }
+        return super.onStart(animation, bounds)
+      }
+
+      override fun onProgress(
+        insets: WindowInsetsCompat,
+        runningAnimations: MutableList<WindowInsetsAnimationCompat>
+      ): WindowInsetsCompat {
+        return insets
+      }
+
+      override fun onEnd(animation: WindowInsetsAnimationCompat) {
+        super.onEnd(animation)
+        if ((animation.typeMask and WindowInsetsCompat.Type.ime()) != 0) {
+          val rootInsets = ViewCompat.getRootWindowInsets(window.decorView)
+          val isImeVisible = rootInsets?.isVisible(WindowInsetsCompat.Type.ime()) ?: false
+          val imeHeightPx = rootInsets?.getInsets(WindowInsetsCompat.Type.ime())?.bottom ?: 0
+          val density = resources.displayMetrics.density
+          val heightDp = if (density > 0f) (imeHeightPx / density).toInt() else 0
+          dispatchKeyboardState(isImeVisible && heightDp > 0, heightDp)
+        }
+      }
+    }
+    ViewCompat.setWindowInsetsAnimationCallback(window.decorView, animCallback)
+
     ViewCompat.setOnApplyWindowInsetsListener(window.decorView) { _, windowInsets ->
       val insets = windowInsets.getInsets(
         WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout()
@@ -217,6 +286,15 @@ class MainActivity : TauriActivity() {
         cachedLeftDp = (insets.left / density).toInt()
         cachedRightDp = (insets.right / density).toInt()
         applyInsetsToWebView()
+
+        val imeInsets = windowInsets.getInsets(WindowInsetsCompat.Type.ime())
+        val isImeVisible = windowInsets.isVisible(WindowInsetsCompat.Type.ime())
+        val imeHeightDp = (imeInsets.bottom / density).toInt()
+        if (isImeVisible && imeHeightDp > 0) {
+          dispatchKeyboardState(true, imeHeightDp)
+        } else if (!isImeVisible) {
+          dispatchKeyboardState(false, 0)
+        }
       }
       windowInsets
     }
@@ -260,6 +338,7 @@ class MainActivity : TauriActivity() {
   override fun onPause() {
     super.onPause()
     AppState.setAppInForeground(false)
+    dispatchKeyboardState(false, 0)
   }
   
   override fun onDestroy() {

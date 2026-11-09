@@ -1,6 +1,7 @@
 <script>
   import { createEventDispatcher } from "svelte";
   import { fade } from "svelte/transition";
+  import { keyboardOpen } from "$lib/stores/keyboard";
 
   export let showScrollDown = false;
   export let chatType = "";
@@ -23,6 +24,7 @@
     class:nije={chatType === "CHANNEL"}
     class:vise={hasReply}
     class:with-stickers={showStickerPanel}
+    class:keyboard-open={$keyboardOpen || showStickerPanel}
   >
     <button
       class="scroll-down-btn"
@@ -47,12 +49,20 @@
 <style>
   .scroll-down-container {
     position: fixed;
-    bottom: calc(80px + var(--safe-bottom, 0px));
+    bottom: calc(80px + var(--safe-bottom, 0px) + var(--keyboard-inset, 0px));
     right: 10px;
     width: 55px;
     height: 55px;
     z-index: 100;
-    transition: bottom 0.2s ease;
+    transition: bottom 0.25s cubic-bezier(0.1, 0.9, 0.2, 1);
+  }
+
+  .scroll-down-container.keyboard-open {
+    bottom: calc(80px + var(--keyboard-inset, 0px));
+  }
+
+  .scroll-down-container.keyboard-open.vise {
+    bottom: calc(140px + var(--keyboard-inset, 0px));
   }
 
   .scroll-down-container.nije {
@@ -60,15 +70,15 @@
   }
 
   .scroll-down-container.vise {
-    bottom: calc(140px + var(--safe-bottom, 0px));
+    bottom: calc(140px + var(--safe-bottom, 0px) + var(--keyboard-inset, 0px));
   }
 
   .scroll-down-container.with-stickers {
-    bottom: calc(420px + var(--safe-bottom, 0px));
+    bottom: calc(80px + var(--keyboard-height, 340px));
   }
 
   .scroll-down-container.with-stickers.vise {
-    bottom: calc(480px + var(--safe-bottom, 0px));
+    bottom: calc(140px + var(--keyboard-height, 340px));
   }
 
   .scroll-down-btn {

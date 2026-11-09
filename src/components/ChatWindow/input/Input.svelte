@@ -22,6 +22,7 @@
   import API, { currentUser } from "$lib/stores/api";
   import { getChat } from "$lib/stores/messages";
   import { searchStickers } from "$lib/stores/stickers";
+  import { keyboardOpen, keyboardHeight } from "$lib/stores/keyboard";
   import { showAlert } from "$lib/utils/alert";
   import StickerSuggestionsDropout from "$components/ChatWindow/Stickers/StickerSuggestionsDropout.svelte";
   import StickerPanel from "$components/ChatWindow/Stickers/StickerPanel.svelte";
@@ -944,6 +945,29 @@
     }
   }
 
+  let isTransitioningToKeyboard = false;
+  let transitionTimer = null;
+
+  function setTransitioningToKeyboard() {
+    isTransitioningToKeyboard = true;
+    if (transitionTimer) clearTimeout(transitionTimer);
+    transitionTimer = setTimeout(() => {
+      isTransitioningToKeyboard = false;
+    }, 600);
+  }
+
+  $: if ($keyboardOpen) {
+    if (transitionTimer) {
+      clearTimeout(transitionTimer);
+      transitionTimer = null;
+    }
+    isTransitioningToKeyboard = false;
+  }
+
+  $: isKeyboardVisible = $keyboardOpen || isTransitioningToKeyboard;
+  $: isBottomOpen = showStickerPanel || isKeyboardVisible;
+  $: bottomPaneHeight = isBottomOpen ? $keyboardHeight : 0;
+
   function toggleStickerPanel() {
     showStickerPanel = !showStickerPanel;
     if (showStickerPanel) {
@@ -952,11 +976,17 @@
       if (isMobile && textareaEl) {
         textareaEl.blur();
       }
+    } else {
+      if (isMobile && textareaEl) {
+        setTransitioningToKeyboard();
+        textareaEl.focus();
+      }
     }
   }
 
   function handleTextareaFocus() {
     if (isMobile && showStickerPanel) {
+      setTransitioningToKeyboard();
       showStickerPanel = false;
     }
   }
@@ -1767,7 +1797,7 @@
       on:send={(e) => sendReviewedVideoNote(e.detail)}
     />
   {:else}
-    <div class="input-controls">
+    <div class="input-controls" class:keyboard-open={isBottomOpen}>
       {#if isRecording}
         <RecordingBar
           {recordMode}
@@ -1935,10 +1965,25 @@
             class="emoji-btn"
             class:active={showStickerPanel}
             type="button"
-            title="Эмодзи и стикеры"
+            title={showStickerPanel ? "Клавиатура" : "Эмодзи и стикеры"}
             on:click={toggleStickerPanel}
           >
-            <img src="icons/smile.svg" alt="smile" />
+            {#if showStickerPanel}
+              <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="2" y="4" width="20" height="16" rx="2" />
+                <line x1="6" y1="8" x2="6.01" y2="8" />
+                <line x1="10" y1="8" x2="10.01" y2="8" />
+                <line x1="14" y1="8" x2="14.01" y2="8" />
+                <line x1="18" y1="8" x2="18.01" y2="8" />
+                <line x1="6" y1="12" x2="6.01" y2="12" />
+                <line x1="10" y1="12" x2="10.01" y2="12" />
+                <line x1="14" y1="12" x2="14.01" y2="12" />
+                <line x1="18" y1="12" x2="18.01" y2="12" />
+                <line x1="7" y1="16" x2="17" y2="16" />
+              </svg>
+            {:else}
+              <img src="icons/smile.svg" alt="smile" />
+            {/if}
           </button>
         </div>
 
@@ -1990,6 +2035,11 @@
         showStickerPanel = false;
       }}
       on:insertEmoji={handleInsertEmoji}
+    />
+  {:else}
+    <div
+      class="keyboard-spacer"
+      style="height: {bottomPaneHeight}px;"
     />
   {/if}
 
@@ -2067,6 +2117,11 @@
     max-width: 100%;
     min-width: 0;
     box-sizing: border-box;
+    transition: padding-bottom 0.15s ease;
+  }
+
+  .input-controls.keyboard-open {
+    padding-bottom: 10px;
   }
 
   .input-container {
@@ -2336,5 +2391,12 @@
     pointer-events: none !important;
     cursor: not-allowed !important;
     filter: grayscale(1) !important;
+  }
+
+  .keyboard-spacer {
+    height: 0px;
+    width: 100%;
+    flex-shrink: 0;
+    transition: height 0.25s cubic-bezier(0.1, 0.9, 0.2, 1);
   }
 </style>

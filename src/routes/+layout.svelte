@@ -39,6 +39,7 @@
   import { handleBackButton, registerBackHandler } from "$lib/utils/backButton";
   import { getMountStore } from "$lib/plugins/mount-registry";
   import { initAutoLockWatcher } from "$lib/stores/autoLock";
+  import { initKeyboardTracker } from "$lib/stores/keyboard";
   import { lockScreenState, closeLockScreen } from "$lib/stores/lockScreen";
   import LockScreen from "$components/main/auth/LockScreen.svelte";
 
@@ -80,6 +81,7 @@
   setContext("onBack", onBack);
 
   onMount(async () => {
+    initKeyboardTracker();
     initTheme();
     cleanupAutoLock = initAutoLockWatcher();
     await initProxyConfig();

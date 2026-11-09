@@ -246,6 +246,11 @@
     margin-bottom: 14px;
     content-visibility: auto;
     contain-intrinsic-size: auto 200px;
+    max-width: 520px;
+    margin-left: auto;
+    margin-right: auto;
+    width: 100%;
+    box-sizing: border-box;
   }
 
   .sticker-section.is-favorite-card {
@@ -348,7 +353,8 @@
 
   @media (min-width: 601px) {
     .stickers-grid {
-      grid-template-columns: repeat(auto-fill, minmax(0, 80px));
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 8px;
     }
   }
 
