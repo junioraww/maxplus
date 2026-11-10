@@ -14,7 +14,7 @@
     "test": "playwright test",
     "tauri": "tauri"
   },
-  "license": "MIT",
+  "license": "GPL-3.0",
   "dependencies": {
     "@choochmeque/tauri-plugin-biometry-api": "0.3.0-rc.3",
     "@choochmeque/tauri-plugin-notifications-api": "^0.5.0-rc.13",
