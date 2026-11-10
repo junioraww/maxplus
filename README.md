@@ -6,7 +6,7 @@
 
 **Неофициальный клиент «Макс» с поддержкой сквозного E2E-шифрования.**
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg?style=for-the-badge)](https://opensource.org/licenses/MIT)
+[![License: GPL-3.0](https://img.shields.io/badge/License-GPL--3.0-blue.svg?style=for-the-badge)](LICENSE)
 [![Rust](https://img.shields.io/badge/Rust-red?style=for-the-badge&logo=rust&logoColor=white)](https://www.rust-lang.org/)
 [![Tauri](https://img.shields.io/badge/Tauri-24C8D8?style=for-the-badge&logo=tauri&logoColor=white)](https://tauri.app/)
 [![Svelte](https://img.shields.io/badge/Svelte-FF3E00?style=for-the-badge&logo=svelte&logoColor=white)](https://svelte.dev/)
@@ -35,6 +35,7 @@
 - [Разработка](#разработка)
 - [Сборка проекта](#сборка-проекта)
 - [Поддержать проект](#-поддержи-проект)
+- [Лицензия](#лицензия)
 - [Источники](#благодарности)
 
 ## Особенности
@@ -221,6 +222,16 @@ rm -rf ~/.local/share/org.meowkie.max
    <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=junioraww/maxplus&type=date&legend=top-left" />
  </picture>
 </a>
+
+## Лицензия
+
+Copyright (C) 2025—2026 @junioraww
+
+Проект распространяется под лицензией [GNU General Public License v3.0](LICENSE) со следующим дополнительным разрешением в соответствии со статьёй 7 GNU GPLv3:
+
+> **Plugin Exception:**  
+> Разрешается использовать, распространять и подключать сторонние плагины (включая пакеты расширений `.mxp`), взаимодействующие с Max+ исключительно через его штатный API плагинов, независимо от условий лицензирования этих плагинов.  
+> Данное исключение **не распространяется** на сам исходный код клиента Max+ и любые его прямые модификации. Кодовая база клиента остаётся строго под лицензией GNU GPLv3.
 
 ## Благодарности
 
