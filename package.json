@@ -19,7 +19,6 @@
     "@choochmeque/tauri-plugin-biometry-api": "0.3.0-rc.3",
     "@choochmeque/tauri-plugin-notifications-api": "^0.5.0-rc.13",
     "@tauri-apps/api": "^2.12.0",
-    "@tauri-apps/plugin-barcode-scanner": "^2.5.0",
     "@tauri-apps/plugin-dialog": "^2.8.0",
     "@tauri-apps/plugin-opener": "^2.7.0",
     "@tauri-apps/plugin-os": "^2.4.0",

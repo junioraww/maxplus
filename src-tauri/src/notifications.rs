@@ -1463,3 +1463,29 @@ pub async fn cancel_ongoing_call_notification() -> Result<(), String> {
     Ok(())
 }
 
+#[cfg(target_os = "android")]
+#[tauri::command]
+pub fn is_standalone_mode() -> bool {
+    if let Some(vm) = GLOBAL_JVM.get() {
+        let res = vm.attach_current_thread(|env| -> Result<bool, jni::errors::Error> {
+            let main_class = env.find_class(jni_str!("me/junioraww/max/MainActivity"))
+                .or_else(|_| env.find_class(jni_str!("org/meowkie/max/MainActivity")))?;
+            let is_standalone = env.call_static_method(
+                main_class,
+                jni_str!("isStandaloneBuild"),
+                jni_sig!("()Z"),
+                &[],
+            )?.z()?;
+            Ok(is_standalone)
+        });
+        return res.unwrap_or(true);
+    }
+    true
+}
+
+#[cfg(not(target_os = "android"))]
+#[tauri::command]
+pub fn is_standalone_mode() -> bool {
+    true
+}
+
