@@ -13,14 +13,7 @@ import { goto } from "$app/navigation";
   import {
     open
   } from "@tauri-apps/plugin-dialog";
-  import {
-    scan,
-    cancel,
-    Format,
-    checkPermissions,
-    requestPermissions,
-    openAppSettings,
-  } from "@tauri-apps/plugin-barcode-scanner";
+  import QRScannerModal from "$components/main/QRScannerModal.svelte";
 
   import { set as sessionSet, openSettingsPage, openAvatarGallery } from "$lib/stores/session";
   import { currentUserDetails } from "$lib/stores/api";
@@ -257,66 +250,24 @@ import { goto } from "$app/navigation";
     }
   }
 
-  async function scanner() {
-    let content = "";
+  let qrScannerOpen = false;
 
-    if (/android|ios/.test(platform)) {
-      let cameraAllowed = await checkPermissions();
+  function scanner() {
+    qrScannerOpen = true;
+  }
 
-      if (cameraAllowed.includes("prompt")) await requestPermissions();
-      else if (cameraAllowed === "denied") {
-        alert(
-          "Для сканирования QR нужно разрешение камеры." +
-            "\nА зачем ещё вы это используете?",
-        );
-        await openAppSettings();
-      }
-
-      if ((await checkPermissions()) !== "granted") return;
-
-      closeScanner = () => cancel();
-      unregisterScanner = registerBackHandler(() => {
-        if (closeScanner) closeScanner();
-      });
-      let scanned;
-      try {
-        scanned = await scan({ formats: [Format.QRCode] });
-      } finally {
-        closeScanner = null;
-        if (unregisterScanner) {
-          unregisterScanner();
-          unregisterScanner = null;
-        }
-      }
-      if (!scanned?.content) return;
-      content = scanned.content;
-    } else {
-      const image = await open({
-        multiple: false,
-        directory: false,
-        filters: [
-          {
-            name: "Изображения",
-            extensions: ["png", "jpeg", "jpg"],
-          },
-        ],
-      });
-
-      if (!image) return;
-
-      const data = await readQRCode(image);
-
-      if (!data) return alert("QR-код не найден!");
-
-      content = data;
-    }
-
+  function handleQRScan(content) {
+    qrScannerOpen = false;
+    if (!content) return;
     if (content.includes(":auth")) {
       $API.call(1, { interactive: true });
       $API.call(96, {});
-      const response = await $API.call(290, { qrLink: content });
-      if (response.error) alert(response.title);
-    } else alert(content);
+      $API.call(290, { qrLink: content }).then((response) => {
+        if (response?.error) alert(response.title);
+      });
+    } else {
+      alert(content);
+    }
   }
 
   onMount(async () => {
@@ -393,6 +344,13 @@ import { goto } from "$app/navigation";
 {#if safeAvatarModalOpen}
   <SafeAvatarPickerModal
     onClose={() => (safeAvatarModalOpen = false)}
+  />
+{/if}
+
+{#if qrScannerOpen}
+  <QRScannerModal
+    onScan={handleQRScan}
+    onClose={() => (qrScannerOpen = false)}
   />
 {/if}
 

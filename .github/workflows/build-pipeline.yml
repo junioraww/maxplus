@@ -470,51 +470,51 @@ jobs:
           bunx tauri android build --apk --split-per-abi
           bunx tauri android build --apk
           cd src-tauri/gen/android
-          ./gradlew assembleFcmRelease
+          ./gradlew :app:assembleArmPlayRelease :app:assembleUniversalPlayRelease
 
       - name: List All Android Outputs
         run: |
           find src-tauri/gen/android/app/build/outputs/apk -type f -name "*.apk" || true
 
-      - name: Upload Standalone arm64 APK
+      - name: Upload FOSS arm64 APK
         uses: actions/upload-artifact@v4
         with:
-          name: maxplus-android-arm64
+          name: maxplus-android-foss-arm64
           path: |
-            src-tauri/gen/android/app/build/outputs/apk/**/*standalone*/*arm64*/**/*.apk
+            src-tauri/gen/android/app/build/outputs/apk/**/*foss*/*arm64*/**/*.apk
             src-tauri/gen/android/app/build/outputs/apk/arm64/release/*.apk
 
-      - name: Upload Standalone Universal APK
+      - name: Upload FOSS Universal APK
         uses: actions/upload-artifact@v4
         with:
-          name: universal-apk
+          name: maxplus-android-foss-universal
           path: |
-            src-tauri/gen/android/app/build/outputs/apk/**/*standalone*/*universal*/**/*.apk
+            src-tauri/gen/android/app/build/outputs/apk/**/*foss*/*universal*/**/*.apk
             src-tauri/gen/android/app/build/outputs/apk/universal/release/*.apk
 
-      - name: Upload Standalone arm APK
+      - name: Upload FOSS arm APK
         uses: actions/upload-artifact@v4
         with:
-          name: maxplus-android-arm
+          name: maxplus-android-foss-arm
           path: |
-            src-tauri/gen/android/app/build/outputs/apk/**/*standalone*/*arm*/**/*.apk
+            src-tauri/gen/android/app/build/outputs/apk/**/*foss*/*arm*/**/*.apk
             !src-tauri/gen/android/app/build/outputs/apk/**/*arm64*/**
 
-      - name: Upload FCM arm64 APK
+      - name: Upload Play arm64 APK
         uses: actions/upload-artifact@v4
         with:
-          name: maxplus-android-fcm-arm64
+          name: maxplus-android-play-arm64
           path: |
-            src-tauri/gen/android/app/build/outputs/apk/**/*fcm*/*arm64*/**/*.apk
-            src-tauri/gen/android/app/build/outputs/apk/**/*fcm*/**/app-*-arm64*.apk
+            src-tauri/gen/android/app/build/outputs/apk/**/*play*/*arm64*/**/*.apk
+            src-tauri/gen/android/app/build/outputs/apk/**/*play*/**/app-*-arm64*.apk
 
-      - name: Upload FCM Universal APK
+      - name: Upload Play Universal APK
         uses: actions/upload-artifact@v4
         with:
-          name: maxplus-android-fcm-universal
+          name: maxplus-android-play-universal
           path: |
-            src-tauri/gen/android/app/build/outputs/apk/**/*fcm*/*universal*/**/*.apk
-            src-tauri/gen/android/app/build/outputs/apk/**/*fcm*/**/app-*-universal*.apk
+            src-tauri/gen/android/app/build/outputs/apk/**/*play*/*universal*/**/*.apk
+            src-tauri/gen/android/app/build/outputs/apk/**/*play*/**/app-*-universal*.apk
           if-no-files-found: warn
 
   build-ios:

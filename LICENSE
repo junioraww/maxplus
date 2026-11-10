@@ -230,3 +230,15 @@ The hypothetical commands `show w' and `show c' should show the appropriate part
 You should also get your employer (if you work as a programmer) or school, if any, to sign a “copyright disclaimer” for the program, if necessary. For more information on this, and how to apply and follow the GNU GPL, see <https://www.gnu.org/licenses/>.
 
 The GNU General Public License does not permit incorporating your program into proprietary programs. If your program is a subroutine library, you may consider it more useful to permit linking proprietary applications with the library. If this is what you want to do, use the GNU Lesser General Public License instead of this License. But first, please read <https://www.gnu.org/philosophy/why-not-lgpl.html>.
+
+---
+
+Additional permission under GNU General Public License version 3 section 7:
+
+If you modify this Program, or any covered work, by linking or combining it
+with Google Play Services client libraries, Firebase client libraries, or any
+other proprietary Android platform APIs provided by Google LLC (including
+libraries in the com.google.android.gms.* and com.google.firebase.* namespaces),
+containing parts covered by the terms of the Android Software Development Kit
+License Agreement or other proprietary Google Terms of Service, the licensors
+of this Program grant you additional permission to convey the resulting work.

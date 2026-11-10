@@ -90,17 +90,20 @@ jobs:
             [ -f "$file" ] || continue
             filename=$(basename "$file")
             case "$file" in
-              *fcm*/*.apk|*FCM*/*.apk)
-                cp "$file" "release_assets/maxplus-fcm-arm64-${TARGET_VERSION}.apk"
+              *play*/*arm64*.apk|*play-arm64*/*.apk|*fcm*/*.apk|*FCM*/*.apk)
+                cp "$file" "release_assets/maxplus-play-arm64-${TARGET_VERSION}.apk"
                 ;;
-              *maxplus-android-arm64*/*.apk)
-                cp "$file" "release_assets/maxplus-arm64-${TARGET_VERSION}.apk"
+              *play*/*universal*.apk|*play-universal*/*.apk)
+                cp "$file" "release_assets/maxplus-play-universal-${TARGET_VERSION}.apk"
                 ;;
-              *maxplus-android-arm*/*.apk)
-                cp "$file" "release_assets/maxplus-arm-${TARGET_VERSION}.apk"
+              *foss*/*arm64*.apk|*foss-arm64*/*.apk|*maxplus-android-arm64*/*.apk)
+                cp "$file" "release_assets/maxplus-foss-arm64-${TARGET_VERSION}.apk"
                 ;;
-              *universal*/*.apk)
-                cp "$file" "release_assets/maxplus-universal-${TARGET_VERSION}.apk"
+              *foss*/*universal*.apk|*foss-universal*/*.apk|*universal*/*.apk)
+                cp "$file" "release_assets/maxplus-foss-universal-${TARGET_VERSION}.apk"
+                ;;
+              *foss*/*arm*.apk|*foss-arm*/*.apk|*maxplus-android-arm*/*.apk)
+                cp "$file" "release_assets/maxplus-foss-arm-${TARGET_VERSION}.apk"
                 ;;
               *maxplus-ios*/*.ipa)
                 cp "$file" "release_assets/maxplus-ios-${TARGET_VERSION}.ipa"

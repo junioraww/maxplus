@@ -38,7 +38,38 @@ object CallNotificationManager {
   private var activeVibrator: Vibrator? = null
 
   @Volatile
+  private var callScreenWakeLock: android.os.PowerManager.WakeLock? = null
+
+  @Volatile
   var customContext: Context? = null
+
+  private fun acquireScreenWakeLock(context: Context) {
+    try {
+      releaseScreenWakeLock()
+      val powerManager = context.getSystemService(Context.POWER_SERVICE) as? android.os.PowerManager
+      callScreenWakeLock = powerManager?.newWakeLock(
+        @Suppress("DEPRECATION")
+        (android.os.PowerManager.SCREEN_BRIGHT_WAKE_LOCK or android.os.PowerManager.ACQUIRE_CAUSES_WAKEUP),
+        "MaxPlus:IncomingCallScreenWake"
+      )?.apply {
+        setReferenceCounted(false)
+        acquire(30000L)
+      }
+    } catch (e: Throwable) {
+      android.util.Log.w("MaxPlus", "Failed to acquire call screen wake lock", e)
+    }
+  }
+
+  private fun releaseScreenWakeLock() {
+    try {
+      callScreenWakeLock?.let {
+        if (it.isHeld) {
+          it.release()
+        }
+      }
+    } catch (_: Throwable) {}
+    callScreenWakeLock = null
+  }
 
   private external fun isAccountPrivacyActiveNative(account: Long, appDir: String): Boolean
 
@@ -228,6 +259,7 @@ object CallNotificationManager {
     val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
     notificationManager.notify(CALL_NOTIFICATION_ID, builder.build())
 
+    acquireScreenWakeLock(context)
     playAlerts(context, soundEnabled, vibrationEnabled)
   }
 
@@ -333,6 +365,7 @@ object CallNotificationManager {
 
   fun cancelCallNotification(context: Context) {
     stopAlerts()
+    releaseScreenWakeLock()
     val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
     notificationManager.cancel(CALL_NOTIFICATION_ID)
   }
@@ -382,6 +415,7 @@ object CallNotificationManager {
   }
 
   fun stopAlerts() {
+    releaseScreenWakeLock()
     try {
       activeRingtone?.stop()
     } catch (_: Throwable) {}

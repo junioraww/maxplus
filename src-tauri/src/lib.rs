@@ -52,10 +52,6 @@ pub fn run() {
         .plugin(tauri_plugin_biometry::init())
         .plugin(tauri_plugin_opener::init());
 
-    #[cfg(any(target_os = "android", target_os = "ios"))]
-    let builder = builder
-        .plugin(tauri_plugin_barcode_scanner::init());
-
     #[cfg(target_os = "ios")]
     let builder = builder
         .plugin(tauri_plugin_safe_area_insets_css::init())
@@ -322,6 +318,7 @@ pub fn run() {
             notifications::reject_call,
             notifications::show_ongoing_call_notification,
             notifications::cancel_ongoing_call_notification,
+            notifications::is_standalone_mode,
             notifications::check_pending_open_chat,
             notifications::check_pending_call_action,
             notifications::set_app_locked,

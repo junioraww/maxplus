@@ -28,13 +28,13 @@ android {
 
     flavorDimensions += listOf("distribution")
     productFlavors {
-        create("standalone") {
+        create("foss") {
             dimension = "distribution"
             isDefault = true
             applicationId = "me.junioraww.max"
             buildConfigField("boolean", "USE_PUSHLESS_DAEMON", "true")
         }
-        create("fcm") {
+        create("play") {
             dimension = "distribution"
             applicationId = "ru.oneme.app"
             buildConfigField("boolean", "USE_PUSHLESS_DAEMON", "false")
@@ -117,10 +117,15 @@ dependencies {
     implementation("androidx.appcompat:appcompat:1.6.1")
     implementation("com.google.android.material:material:1.8.0")
     implementation("androidx.work:work-runtime-ktx:2.9.1")
-    implementation("com.google.firebase:firebase-messaging:23.4.1")
+    "playImplementation"("com.google.firebase:firebase-messaging:23.4.1")
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test.ext:junit:1.1.4")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.5.0")
+}
+
+configurations.matching { it.name.startsWith("foss") }.configureEach {
+    exclude(group = "com.google.firebase")
+    exclude(group = "com.google.android.gms")
 }
 
 configurations.all {
@@ -131,4 +136,11 @@ configurations.all {
 }
 
 apply(from = "tauri.build.gradle.kts")
-apply(plugin = "com.google.gms.google-services")
+
+if (file("google-services.json").exists()) {
+    val isPlayBuild = gradle.startParameter.taskNames.any { it.contains("Play", ignoreCase = true) }
+    val isFossOnly = gradle.startParameter.taskNames.isNotEmpty() && gradle.startParameter.taskNames.all { it.contains("Foss", ignoreCase = true) }
+    if (isPlayBuild || !isFossOnly) {
+        apply(plugin = "com.google.gms.google-services")
+    }
+}
