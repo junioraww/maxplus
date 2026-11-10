@@ -2,4 +2,22 @@ Max+ (maxplus)
 Copyright (C) 2025—2026 @junioraww <https://github.com/junioraww>
 
 This program is licensed under the GNU General Public License v3.0
-with the Plugin Exception (see README.md).
+with the following additional permissions under GNU GPLv3 Section 7:
+
+1. Plugin Exception:
+   Permission is granted to use, distribute, and link third-party plugins
+   (including .mxp extension packages) communicating with Max+ exclusively
+   through its standard plugin API, regardless of the license terms of those plugins.
+   This exception does not apply to the source code of Max+ itself or its direct
+   modifications, which remain strictly governed by the GNU GPLv3.
+
+2. Google Play Services / Firebase Exception:
+   If you link, combine, or modify this Program, or any covered work, with
+   Google Play Services client libraries, Firebase client libraries, or any
+   other proprietary Android platform APIs provided by Google LLC (including
+   libraries in the com.google.android.gms.* and com.google.firebase.* namespaces),
+   containing parts covered by the terms of the Android Software Development Kit
+   License Agreement or other proprietary Google Terms of Service, the licensors
+   of this Program grant you additional permission to convey the resulting work,
+   provided that the terms of the GNU GPLv3 are met for all parts of the work
+   other than those proprietary libraries.

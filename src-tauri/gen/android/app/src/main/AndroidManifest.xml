@@ -92,18 +92,6 @@
         </receiver>
         
         <service
-          android:name="app.tauri.notification.TauriFirebaseMessagingService"
-          tools:node="remove" />
-
-        <service
-          android:name=".MessagingService"
-          android:exported="true">
-          <intent-filter android:priority="999">
-            <action android:name="com.google.firebase.MESSAGING_EVENT" />
-          </intent-filter>
-        </service>
-        
-        <service
             android:name=".ScreenCaptureService"
             android:enabled="true"
             android:exported="false"

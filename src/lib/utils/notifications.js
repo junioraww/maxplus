@@ -301,6 +301,11 @@ export async function setupPushNotifications() {
   if (currentOs === 'android') {
     await ensureMessagesChannel();
 
+    const isStandalone = await invoke('is_standalone_mode').catch(() => true);
+    if (isStandalone) {
+      return;
+    }
+
     try {
       const fcmToken = await registerForPushNotifications();
 

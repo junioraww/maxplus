@@ -1,0 +1,8 @@
+MAX+ is a fast, lightweight and privacy-focused open source client for the MAX messaging platform.
+
+Key Features:
+• Two-Layer End-to-End Encryption: Protects messages and calls using modern cryptographic protocols (x25519, ChaCha20-Poly1305).
+• Zero Google Play Services Dependency: Fully functional standalone background connection for reliable real-time pushless messaging and incoming call notifications.
+• Audio and Video Calls: High-quality peer-to-peer and group calls with screen wake-up support.
+• Multi-Account & Biometric Lock: Keep your data secure with biometric encryption keys.
+• Free & Open Source: Licensed under GPL-3.0 with complete transparency and zero tracking.

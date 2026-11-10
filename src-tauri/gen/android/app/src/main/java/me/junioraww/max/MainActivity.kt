@@ -4,8 +4,10 @@ import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.media.projection.MediaProjectionManager
+import android.os.Build
 import android.os.Bundle
 import android.util.Log
+import android.view.WindowManager
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
@@ -16,6 +18,11 @@ class MainActivity : TauriActivity() {
   companion object {
     @Volatile var instance: MainActivity? = null
     @Volatile var appContext: Context? = null
+
+    @JvmStatic
+    fun isStandaloneBuild(): Boolean {
+      return BuildConfig.USE_PUSHLESS_DAEMON
+    }
 
     @JvmStatic
     fun getApplicationContextStatic(): Context? {
@@ -101,8 +108,25 @@ class MainActivity : TauriActivity() {
         put("vcp", vcp)
       }
       notifyCallActionNative("dismiss", json.toString())
+      resetScreenLockFlags()
     } catch (e: Throwable) {
       Log.e("MaxPlus", "forwardCallDismiss error", e)
+    }
+  }
+
+  fun resetScreenLockFlags() {
+    runOnUiThread {
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+        setShowWhenLocked(false)
+        setTurnScreenOn(false)
+      } else {
+        @Suppress("DEPRECATION")
+        window.clearFlags(
+          WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
+          WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON or
+          WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
+        )
+      }
     }
   }
 
@@ -113,6 +137,21 @@ class MainActivity : TauriActivity() {
     if (action == null || !action.startsWith(expectedPrefix)) return
     val callAction = intent.getStringExtra("call_action")
     if (callAction != null) {
+      if (callAction == "show_incoming" || callAction == "answer") {
+        runOnUiThread {
+          if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+            setShowWhenLocked(true)
+            setTurnScreenOn(true)
+          } else {
+            @Suppress("DEPRECATION")
+            window.addFlags(
+              WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
+              WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON or
+              WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
+            )
+          }
+        }
+      }
       CallNotificationManager.stopAlerts()
       CallNotificationManager.cancelCallNotification(this)
       val rawCallData = intent.getStringExtra("call_data")
