@@ -48,6 +48,16 @@ class MainActivity : TauriActivity() {
     fun notifyScreenCaptureResultStatic(success: Boolean, port: Int, width: Int, height: Int) {
       instance?.notifyScreenCaptureResultNative(success, port, width, height)
     }
+
+    @JvmStatic
+    fun setCamouflageState(active: Boolean, label: String) {
+      val ctx = getApplicationContextStatic() ?: return
+      try {
+        val pm = ctx.packageManager
+      } catch (e: Throwable) {
+        Log.e("MaxPlus", "setCamouflageState error", e)
+      }
+    }
   }
 
   init {

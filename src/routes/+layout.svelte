@@ -42,6 +42,8 @@
   import { initKeyboardTracker } from "$lib/stores/keyboard";
   import { lockScreenState, closeLockScreen } from "$lib/stores/lockScreen";
   import LockScreen from "$components/main/auth/LockScreen.svelte";
+  import { isCamouflageLocked, loadCamouflageSettings } from "$lib/camouflage/store";
+  import DecoyApp from "$components/camouflage/DecoyApp.svelte";
 
   const pluginGlobalModals = getMountStore("global:modal");
   const pluginGlobalOverlays = getMountStore("global:overlay");
@@ -81,6 +83,7 @@
   setContext("onBack", onBack);
 
   onMount(async () => {
+    loadCamouflageSettings().catch(() => {});
     initKeyboardTracker();
     initTheme();
     cleanupAutoLock = initAutoLockWatcher();
@@ -193,7 +196,7 @@
 
   if (browser) window.alert = showAlert;
 
-  $: if (browser && $Session?.loaded) {
+  $: if (browser && ($Session?.loaded || $isCamouflageLocked)) {
     unmountLoader();
   }
 </script>
@@ -245,7 +248,9 @@
 <GlobalMediaPlayer />
 <MediaPlaylistModal />
 <TraceOverlay />
-{#if $lockScreenState}
+{#if $isCamouflageLocked}
+  <DecoyApp isPreview={false} />
+{:else if $lockScreenState}
   <LockScreen
     isOverlay={true}
     mode={$lockScreenState?.mode || "decrypt"}

@@ -133,7 +133,7 @@ import { goto } from "$app/navigation";
       },
       {
         icon: "crypto.svg",
-        text: "Графический ключ",
+        text: "Блокировка приложения",
         action: () => openSettingsPage("lock"),
       },
       {

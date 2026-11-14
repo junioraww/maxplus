@@ -44,6 +44,22 @@
             window.scrollTo(0, 0);
           }
         }, { passive: false });
+
+        if (window.__CAMOUFLAGE_BOOT__) {
+          document.documentElement.classList.add("camo-boot");
+          const camo = window.__CAMOUFLAGE_DATA__;
+          if (camo?.proceduralTheme?.cssVars) {
+            for (const [k, v] of Object.entries(camo.proceduralTheme.cssVars)) {
+              document.documentElement.style.setProperty(k, v);
+            }
+          }
+          if (window.__CAMOUFLAGE_CSS__) {
+            const st = document.createElement("style");
+            st.id = "camo-instant-css";
+            st.textContent = window.__CAMOUFLAGE_CSS__;
+            document.head.appendChild(st);
+          }
+        }
       })();
     </script>
     <style>
@@ -58,6 +74,33 @@
         overscroll-behavior: none;
         background-color: #131417;
         color-scheme: dark;
+      }
+
+      html.camo-boot,
+      html.camo-boot body {
+        background-color: var(--camo-bg, #000000) !important;
+        color: var(--camo-text, #ffffff) !important;
+      }
+
+      html.camo-boot #initial-loader {
+        display: none !important;
+      }
+
+      #camo-instant-root {
+        position: fixed;
+        inset: 0;
+        width: 100%;
+        height: 100dvh;
+        z-index: 999998;
+        background-color: var(--camo-bg, #000000);
+        color: var(--camo-text, #ffffff);
+        font-family: var(--camo-font, system-ui, sans-serif);
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        user-select: none;
+        -webkit-user-select: none;
+        box-sizing: border-box;
       }
 
       #app {
@@ -213,33 +256,47 @@
         <span id="initial-credits-text" class="credits-text"></span>
       </div>
     </div>
+    <div id="camo-instant-root" class="camo-root" style="display: none;"></div>
     <div id="app">%sveltekit.body%</div>
     <script>
-      (async () => {
-        try {
-          let list = [
-            ["contributor", "JuniorAww", "Разработал", 5],
-            ["contributor", "hu553in", "Адаптировал", 5],
-            ["contributor", "megazoll", "Улучшил", 1]
-          ];
-
-          const invoke = window.__TAURI_INTERNALS__?.invoke || window.__TAURI__?.core?.invoke;
-          if (invoke) {
-            const disk = await invoke("common_store_load", { store: "credits_cache" }).catch(() => null);
-            if (Array.isArray(disk) && disk.length) list = disk;
+      (() => {
+        if (window.__CAMOUFLAGE_BOOT__) {
+          const loader = document.getElementById("initial-loader");
+          if (loader) loader.remove();
+          const root = document.getElementById("camo-instant-root");
+          if (root && window.__CAMOUFLAGE_HTML__) {
+            root.innerHTML = window.__CAMOUFLAGE_HTML__;
+            root.style.display = "flex";
           }
+          return;
+        }
 
-          const getW = x => Math.max(1, +(x?.[3] ?? x?.p) || 1);
-          let rnd = Math.random() * list.reduce((sum, item) => sum + getW(item), 0);
-          const chosen = list.find(item => (rnd -= getW(item)) < 0) || list.at(-1);
+        (async () => {
+          try {
+            let list = [
+              ["contributor", "JuniorAww", "Разработал", 5],
+              ["contributor", "hu553in", "Адаптировал", 5],
+              ["contributor", "megazoll", "Улучшил", 1]
+            ];
 
-          const name = chosen?.[1] ?? chosen?.name ?? "";
-          const text = chosen?.[2] ?? chosen?.text ?? "";
-          const str = [text, name].filter(Boolean).join(" ");
+            const invoke = window.__TAURI_INTERNALS__?.invoke || window.__TAURI__?.core?.invoke;
+            if (invoke) {
+              const disk = await invoke("common_store_load", { store: "credits_cache" }).catch(() => null);
+              if (Array.isArray(disk) && disk.length) list = disk;
+            }
 
-          const el = document.getElementById("initial-credits-text");
-          if (el && str) el.textContent = str;
-        } catch {}
+            const getW = x => Math.max(1, +(x?.[3] ?? x?.p) || 1);
+            let rnd = Math.random() * list.reduce((sum, item) => sum + getW(item), 0);
+            const chosen = list.find(item => (rnd -= getW(item)) < 0) || list.at(-1);
+
+            const name = chosen?.[1] ?? chosen?.name ?? "";
+            const text = chosen?.[2] ?? chosen?.text ?? "";
+            const str = [text, name].filter(Boolean).join(" ");
+
+            const el = document.getElementById("initial-credits-text");
+            if (el && str) el.textContent = str;
+          } catch {}
+        })();
       })();
     </script>
   </body>

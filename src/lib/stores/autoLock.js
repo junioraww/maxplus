@@ -1,6 +1,11 @@
 import { writable, get } from "svelte/store";
 import { getCurrentAccount, setAccountMeta } from "$lib/stores/accounts";
 import { openLockScreen, lockScreenState } from "$lib/stores/lockScreen";
+import {
+  isCamouflageLocked,
+  lockCamouflage,
+  camouflageSettings
+} from "$lib/camouflage/store";
 
 export const AUTO_LOCK_OPTIONS = [
   { value: -1, label: "Отключено" },
@@ -60,10 +65,16 @@ async function triggerLock() {
   if (typeof window === "undefined") return;
   if (isLocking) return;
   if (window.location.pathname.startsWith("/auth")) return;
-  if (get(lockScreenState)) return;
+  if (get(lockScreenState) || get(isCamouflageLocked)) return;
 
   isLocking = true;
   try {
+    const camo = get(camouflageSettings);
+    if (camo?.enabled && camo?.autoLock) {
+      lockCamouflage();
+      return;
+    }
+
     const account = await getCurrentAccount().catch(() => null);
     if (!account || !account.encryption) return;
 
@@ -90,7 +101,7 @@ export function initAutoLockWatcher() {
   activityEvents.forEach((ev) => window.addEventListener(ev, updateActivity, { passive: true }));
 
   const checkElapsedAndLock = () => {
-    if (get(lockScreenState)) return;
+    if (get(lockScreenState) || get(isCamouflageLocked)) return;
     const timer = get(autoLockTimer);
     if (timer < 0) return;
 
@@ -106,7 +117,7 @@ export function initAutoLockWatcher() {
   };
 
   const handleVisibilityChange = () => {
-    if (get(lockScreenState)) return;
+    if (get(lockScreenState) || get(isCamouflageLocked)) return;
     const timer = get(autoLockTimer);
     if (timer < 0) return;
 
@@ -121,7 +132,7 @@ export function initAutoLockWatcher() {
   };
 
   const handleBlur = () => {
-    if (get(lockScreenState)) return;
+    if (get(lockScreenState) || get(isCamouflageLocked)) return;
     const timer = get(autoLockTimer);
     if (timer < 0) return;
     hiddenAt = Date.now();
@@ -142,7 +153,7 @@ export function initAutoLockWatcher() {
   import("@tauri-apps/api/window").then(({ getCurrentWindow }) => {
     const win = getCurrentWindow();
     win.onFocusChanged(({ payload: focused }) => {
-      if (get(lockScreenState)) return;
+      if (get(lockScreenState) || get(isCamouflageLocked)) return;
       const timer = get(autoLockTimer);
       if (timer < 0) return;
 
@@ -160,7 +171,7 @@ export function initAutoLockWatcher() {
   }).catch(() => {});
 
   const intervalId = setInterval(() => {
-    if (get(lockScreenState)) return;
+    if (get(lockScreenState) || get(isCamouflageLocked)) return;
     const timer = get(autoLockTimer);
     if (timer <= 0) return;
 

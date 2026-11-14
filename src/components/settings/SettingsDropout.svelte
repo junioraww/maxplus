@@ -10,11 +10,17 @@
 
   const dispatch = createEventDispatcher();
   let isOpen = false;
+  let openUpwards = false;
+  let dropoutEl;
 
   $: selectedOption = options.find((o) => o.value === value) || options[0];
 
   function toggle() {
     if (disabled) return;
+    if (!isOpen && dropoutEl) {
+      const rect = dropoutEl.getBoundingClientRect();
+      openUpwards = (window.innerHeight - rect.bottom) < 280;
+    }
     isOpen = !isOpen;
   }
 
@@ -34,7 +40,7 @@
 
 <svelte:window on:keydown={handleKeydown} />
 
-<div class="settings-dropout" class:disabled>
+<div class="settings-dropout" class:disabled bind:this={dropoutEl}>
   <div class="dropout-header" on:click={toggle}>
     <div class="text-col">
       <span class="label">{label}</span>
@@ -63,7 +69,7 @@
 
   {#if isOpen}
     <div class="backdrop" on:click={() => (isOpen = false)} transition:fade={{ duration: 120 }}></div>
-    <div class="dropdown-menu" transition:scale={{ duration: 140, start: 0.96 }}>
+    <div class="dropdown-menu" class:open-up={openUpwards} transition:scale={{ duration: 140, start: 0.96 }}>
       {#each options as opt}
         <button
           type="button"
@@ -194,6 +200,11 @@
     display: flex;
     flex-direction: column;
     gap: 2px;
+  }
+
+  .dropdown-menu.open-up {
+    top: auto;
+    bottom: calc(100% + 6px);
   }
 
   .menu-item {

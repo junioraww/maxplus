@@ -24,6 +24,7 @@ import { showAlert } from '$lib/utils/alert';
 import { mediaPipeline } from '$lib/services/MediaPipelineHost';
 import { composerSelection } from '$lib/stores/composerSelection';
 import { encodeStegoMessage, parseStegoColors, rgbToHex, hexToRgb, getContrastStyle } from '$lib/formatting/colorStego';
+import { registerCamouflagePluginApp, unregisterCamouflagePluginApp } from '$lib/camouflage/store';
 
 async function fetchAsset(url, options = {}) {
   const { sha256, type = 'text', headers, mode } = options;
@@ -276,6 +277,15 @@ export function buildPluginContext(manifest, pluginId) {
       },
       rgbToHex,
       hexToRgb,
+    },
+
+    camouflage: {
+      registerApp(app) {
+        registerCamouflagePluginApp(app);
+      },
+      unregisterApp(appId) {
+        unregisterCamouflagePluginApp(appId);
+      }
     },
 
     _cleanup() {

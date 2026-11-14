@@ -636,6 +636,8 @@ export default class MobileApi extends BaseAPI {
     await setCurrentAccount(accountEntry.id);
 
     const contact = payload.profile?.contact || payload.contact;
+    const resolvedUserId = contact?.id || payload.accountId || payload.account_id || payload.profile?.id || payload.account?.id || payload.userId || payload.user_id || accountEntry.id;
+
     if (contact) {
       const fullContact = {
         ...contact,
@@ -643,16 +645,14 @@ export default class MobileApi extends BaseAPI {
       };
       await setAccountContact(accountEntry.id, fullContact);
       currentUserDetails.set(fullContact);
-      currentUser.set(contact.id);
-    } else {
-      const accountId = payload.accountId || payload.account_id || payload.profile?.id || payload.account?.id || payload.userId || payload.user_id;
-      currentUser.set(accountId || accountEntry.id);
     }
 
     const ok = await this.init(true, true);
     if (!ok) {
       throw new Error("Не удалось подключиться к серверу после входа");
     }
+
+    currentUser.set(resolvedUserId);
 
     return {
       success: true,
@@ -856,9 +856,24 @@ export default class MobileApi extends BaseAPI {
         console.log('Current account', account);
 
         const t0 = Date.now();
-        const synced = await invoke("sync_client", {
-          accountId: account.id
-        });
+        let synced = null;
+        for (let attempt = 0; attempt < 3; attempt++) {
+          try {
+            synced = await invoke("sync_client", {
+              accountId: account.id
+            });
+            if (synced && !synced.error && (!synced.type || synced.type === "ApiResponse") && !synced.text) {
+              break;
+            }
+          } catch (err) {
+            const errStr = typeof err === "object" ? (err.text || err.message || JSON.stringify(err)) : String(err);
+            if (attempt < 2 && (errStr.includes("channel closed") || errStr.includes("OneshotRecvError") || errStr.includes("ConnectionClosed") || errStr.includes("Not connected") || errStr.includes("Соединение закрыто"))) {
+              await new Promise(r => setTimeout(r, 600 * (attempt + 1)));
+              continue;
+            }
+            throw err;
+          }
+        }
         const t1 = Date.now();
 
         const isError = !synced || Boolean(synced.error) || (synced.type && synced.type !== "ApiResponse") || Boolean(synced.text);

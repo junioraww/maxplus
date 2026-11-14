@@ -10,15 +10,6 @@
   import SferumTab from "$components/main/SferumTab.svelte";
   import Logs from "./settings/logs/+page.svelte";
   import Notifications from "./settings/notifications/+page.svelte";
-  import ProfileSettings from "./settings/profile/+page.svelte";
-  import LockSettings from "./settings/lock/+page.svelte";
-  import TwoFactorSettings from "./settings/two_factor/+page.svelte";
-  import DictionarySettings from "./settings/e2e/dictionary/+page.svelte";
-  import AboutSettings from "./settings/about/+page.svelte";
-  import SessionsSettings from "./settings/sessions/+page.svelte";
-  import PluginsSettings from "./settings/plugins/+page.svelte";
-  import AdvancedSettings from "./settings/advanced/+page.svelte";
-  import PrivacySettings from "./settings/privacy/+page.svelte";
   import Panel from "$components/Panel.svelte";
   import Card from "$components/main/Card.svelte";
   import ChatWindow from "$components/ChatWindow.svelte";
@@ -46,19 +37,32 @@
     notifications: Notifications,
   };
 
-  const SETTINGS_PAGES = {
-    profile: ProfileSettings,
-    notifications: Notifications,
-    privacy: PrivacySettings,
-    lock: LockSettings,
-    two_factor: TwoFactorSettings,
-    dictionary: DictionarySettings,
-    logs: Logs,
-    about: AboutSettings,
-    sessions: SessionsSettings,
-    plugins: PluginsSettings,
-    advanced: AdvancedSettings,
+  const SETTINGS_LOADERS = {
+    profile: () => import("./settings/profile/+page.svelte"),
+    notifications: () => Promise.resolve({ default: Notifications }),
+    privacy: () => import("./settings/privacy/+page.svelte"),
+    lock: () => import("./settings/lock/+page.svelte"),
+    two_factor: () => import("./settings/two_factor/+page.svelte"),
+    dictionary: () => import("./settings/e2e/dictionary/+page.svelte"),
+    logs: () => Promise.resolve({ default: Logs }),
+    about: () => import("./settings/about/+page.svelte"),
+    sessions: () => import("./settings/sessions/+page.svelte"),
+    plugins: () => import("./settings/plugins/+page.svelte"),
+    advanced: () => import("./settings/advanced/+page.svelte"),
   };
+
+  let activeSettingsComponent = null;
+
+  $: {
+    const pageKey = $Session.settingsPage;
+    if (pageKey && SETTINGS_LOADERS[pageKey]) {
+      SETTINGS_LOADERS[pageKey]().then((mod) => {
+        activeSettingsComponent = mod.default;
+      });
+    } else {
+      activeSettingsComponent = null;
+    }
+  }
 
   $: pages = ($panelConfig.items || [])
     .filter((id) => CATALOG[id] && COMPONENT_MAP[id])
@@ -340,10 +344,10 @@
     <ChatWindow {chatId}/>
   {/each}
 
-  {#if $Session.settingsPage && SETTINGS_PAGES[$Session.settingsPage]}
+  {#if $Session.settingsPage && activeSettingsComponent}
     <div class="settings-page-overlay">
       <svelte:component
-        this={SETTINGS_PAGES[$Session.settingsPage]}
+        this={activeSettingsComponent}
         onClose={closeSettingsPage}
       />
     </div>
