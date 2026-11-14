@@ -2,7 +2,6 @@ name: Dev Build Pipeline
 
 on:
   workflow_dispatch:
-  workflow_dispatch:
     inputs:
       rumax_branch:
         description: "Branch of rumax to use"

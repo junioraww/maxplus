@@ -5,7 +5,8 @@
     get as sessionGet,
     set as sessionSet,
   } from "$lib/stores/session";
-  import { getAccounts, getDevice } from "$lib/stores/accounts";
+  import { getAccounts, getDevice, saveDevice } from "$lib/stores/accounts";
+  import { generateDevice } from "$lib/utils/device";
   import { activeThemeId, toggleTheme } from "$lib/stores/theme";
   import API from "$lib/stores/api";
   import { isNo2FaError } from "$lib/api/MobileApi";
@@ -27,23 +28,25 @@
   let error = "";
   let loading = false;
   let phoneInputRef;
-  let hasOpenedDevice = false;
-  let pendingAuthAfterClose = false;
 
   $: requiredLength = country.mask ? (country.mask.match(/#/g) || []).length : 10;
   $: isValid = rawDigits.length === requiredLength;
 
-  $: if (pendingAuthAfterClose && !$Session?.devicesPage) {
-    pendingAuthAfterClose = false;
-    hasOpenedDevice = true;
-    performAuth();
+  async function ensureDevice() {
+    let dev = sessionGet("device");
+    if (!dev?.deviceId) {
+      dev = await getDevice().catch(() => null);
+    }
+    if (!dev?.deviceId) {
+      dev = generateDevice();
+      await saveDevice(dev);
+    }
+    sessionSet("device", dev);
+    return dev;
   }
 
   onMount(async () => {
-    if (!sessionGet("device")) {
-      const dev = await getDevice().catch(() => null);
-      if (dev) sessionSet("device", dev);
-    }
+    await ensureDevice();
 
     const savedPhone = sessionGet("phone");
     if (savedPhone) {
@@ -75,7 +78,6 @@
 
   function handlePhoneInput(e) {
     error = "";
-    hasOpenedDevice = false;
     const inputVal = e.target.value;
     setRawDigits(inputVal);
   }
@@ -83,7 +85,6 @@
   function handleCountrySelect(e) {
     country = e.detail;
     isPickerOpen = false;
-    hasOpenedDevice = false;
     setRawDigits(rawDigits);
     if (typeof window !== "undefined") {
       window.scrollTo(0, 0);
@@ -106,7 +107,7 @@
     await toggleTheme();
   }
 
-  function handleContinue() {
+  async function handleContinue() {
     if (loading) return;
 
     if (!isValid) {
@@ -114,12 +115,7 @@
       return;
     }
 
-    if (!hasOpenedDevice) {
-      pendingAuthAfterClose = true;
-      sessionSet("devicesPage", true);
-      return;
-    }
-
+    await ensureDevice();
     performAuth();
   }
 

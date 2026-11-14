@@ -317,14 +317,16 @@
     position: relative;
     display: flex;
     flex-direction: column;
-    min-height: 100%;
+    height: 100%;
+    height: 100dvh;
+    max-height: 100dvh;
     width: 100%;
     background-color: var(--auth-bg);
     color: var(--auth-text);
     box-sizing: border-box;
     padding-top: var(--safe-top, 0px);
     padding-bottom: var(--safe-bottom, 0px);
-    overflow-x: hidden;
+    overflow: hidden;
   }
 
   .auth-screen.dark-theme {
@@ -341,6 +343,7 @@
   }
 
   .top-nav {
+    flex-shrink: 0;
     display: flex;
     align-items: center;
     padding: 8px 12px;
@@ -371,10 +374,14 @@
 
   .content-container {
     flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    -webkit-overflow-scrolling: touch;
     display: flex;
     flex-direction: column;
     align-items: center;
-    padding: 24px 20px 0;
+    padding: 24px 20px 16px;
     box-sizing: border-box;
     width: 100%;
     max-width: 440px;
@@ -439,6 +446,7 @@
   }
 
   .avatar-hero-container {
+    flex-shrink: 0;
     display: flex;
     justify-content: center;
     margin-bottom: 24px;
@@ -502,8 +510,10 @@
   }
 
   .presets-section {
+    flex-shrink: 0;
     width: 100%;
     margin-top: 8px;
+    padding-bottom: 16px;
   }
 
   .presets-title {
@@ -582,7 +592,11 @@
   }
 
   .bottom-section {
-    padding: 16px 16px calc(16px + env(safe-area-inset-bottom, 0px));
+    flex-shrink: 0;
+    position: relative;
+    z-index: 10;
+    background-color: var(--auth-bg);
+    padding: 12px 16px calc(16px + env(safe-area-inset-bottom, 0px));
     display: flex;
     flex-direction: column;
     align-items: center;
