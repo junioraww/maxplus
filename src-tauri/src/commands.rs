@@ -5,7 +5,7 @@ use crate::state::AppState;
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use rumax::{Error, TelemetryChat, models::{Identity, FetchHistoryOptions}};
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, State, Window};
 
 fn p(s: String) -> Result<u64, Value> {
     s.parse().map_err(|_| Error::Other("Invalid ID".into()).to_json())
@@ -624,4 +624,43 @@ pub async fn two_factor(
         return Err(json!({ "type": "Error", "text": err }));
     }
     Ok(payload)
+}
+
+#[tauri::command]
+pub async fn set_camouflage_icon(
+    app: AppHandle,
+    window: Window,
+    rgba: Vec<u8>,
+    png_base64: Option<String>,
+    width: u32,
+    height: u32,
+    label: Option<String>,
+) -> Result<(), String> {
+    crate::camouflage::apply_camouflage(
+        &app,
+        &window,
+        crate::camouflage::CamouflageDescriptor {
+            rgba,
+            png_base64,
+            width,
+            height,
+            label,
+        },
+    )
+}
+
+#[tauri::command]
+pub async fn restore_camouflage_icon(
+    app: AppHandle,
+    window: Window,
+) -> Result<(), String> {
+    crate::camouflage::restore_camouflage(&app, &window)
+}
+
+#[tauri::command]
+pub async fn save_camouflage_shell(
+    app: AppHandle,
+    html: String,
+) -> Result<(), String> {
+    crate::camouflage::save_camouflage_shell(&app, html)
 }

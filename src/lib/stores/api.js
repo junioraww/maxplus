@@ -23,6 +23,7 @@ import {
   set as sessionSet
 } from "$lib/stores/session";
 import { openLockScreen } from "$lib/stores/lockScreen";
+import { initCamouflageOnStartup, isCamouflageLocked } from "$lib/camouflage/store";
 import { setStoriesCurrentUserId } from "$lib/stores/stories";
 import { resetImageCaches } from "$lib/utils/images";
 import { clearCachingUtils } from "$lib/utils/caching";
@@ -52,6 +53,12 @@ currentUser.subscribe(async userId => {
       const enc = data.encryption;
 
       if (enc.type !== "pin-1" && enc.type !== "hardware-1") return alert("Данные зашифрованы неизвестным способом!");
+
+      await initCamouflageOnStartup();
+      if (get(isCamouflageLocked)) {
+        sessionSet("loaded", true);
+        return;
+      }
 
       openLockScreen({ mode: "decrypt", from: "/auth/select" });
       sessionSet("loaded", true);
