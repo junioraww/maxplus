@@ -14,6 +14,8 @@
   let currentDev = null;
   let currentAccId = null;
   let telemetryMode = "fake";
+  let isExporting = false;
+  let isImporting = false;
 
   onMount(async () => {
     glow = true;
@@ -105,56 +107,81 @@
   ];
 
   async function exportDevice() {
-    const device = await getDevice();
+    if (isExporting) return;
+    isExporting = true;
+    try {
+      let device = currentDev || (await getDevice().catch(() => null)) || sessionGet("device");
+      if (!device || !device.deviceId) {
+        device = generateDevice();
+        sessionSet("device", device);
+        await saveDevice(device);
+        update(device, false);
+      }
 
-    if (!device.deviceId) return alert("Текущий конфиг сломан!");
+      const dataToSave = {
+        version: 1,
+        type: "device",
+        ...device
+      };
 
-    const dataToSave = {
-      version: 1,
-      type: "device",
-      ...device
-    };
+      const path = await save({
+        defaultPath: "device.json",
+        filters: [
+          {
+            name: "Конфиг девайса (.json)",
+            extensions: ["json"],
+          },
+        ],
+      });
 
-    const path = await save({
-      defaultPath: "device.json",
-      filters: [
-        {
-          name: "Конфиг девайса (.json)",
-          extensions: ["json"],
-        },
-      ],
-    });
+      if (!path) return;
 
-    if (!path) return;
-
-    const json = JSON.stringify(dataToSave, null, 2);
-    await writeFile(path, json);
+      const json = JSON.stringify(dataToSave, null, 2);
+      await invoke("write_file_string", { path, content: json });
+    } catch (e) {
+      console.error(e);
+    } finally {
+      isExporting = false;
+    }
   }
 
   async function importDevice() {
-    const select = await invoke("pick", { type: "JSON" });
+    if (isImporting) return;
+    isImporting = true;
 
-    if (!select) return;
-
-    const data = await readFile(select.uri);
-    const text = new TextDecoder("utf-8").decode(data);
-
-    let json;
     try {
-      json = JSON.parse(text);
+      const select = await invoke("pick", { type: "JSON" }).catch(() => null);
+      if (!select?.uri) return;
+
+      const data = await invoke("read_file", { path: select.uri });
+      const text = new TextDecoder().decode(new Uint8Array(data));
+
+      let json;
+      try {
+        json = JSON.parse(text);
+      } catch (e) {
+        return alert("JSON-файл содержит ошибки!");
+      }
+
+      if (!json.version || json.type !== "device") {
+        return alert("Неверный файл — это не конфиг девайса!");
+      }
+
+      if (json.version === 1) {
+        const { version, type, ...cut } = json;
+        sessionSet("device", cut);
+        await saveDevice(cut);
+        if (currentAccId) {
+          await setAccountMeta(currentAccId, "device", cut).catch(() => null);
+        }
+        update(cut, true);
+      } else {
+        return alert("Это конфиг для более новой версии Max+!");
+      }
     } catch (e) {
-      return alert("JSON-файл содержит ошибки!");
-    }
-
-    if (!json.version || json.type !== "device") return alert("Неверный файл - это не конфиг девайса!");
-
-    if (json.version === 1) {
-      const { version, type, ...cut } = json;
-      sessionSet("device", cut);
-      await saveDevice(cut);
-      update(cut, true);
-    } else {
-      return alert("Это конфиг для более новой версии Max+!");
+      console.error(e);
+    } finally {
+      isImporting = false;
     }
   }
 
