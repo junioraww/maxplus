@@ -9,10 +9,6 @@ import { goto } from "$app/navigation";
   import {
     platform as getPlatform
   } from "@tauri-apps/plugin-os";
-  import { convertFileSrc, invoke } from "@tauri-apps/api/core";
-  import {
-    open
-  } from "@tauri-apps/plugin-dialog";
   import QRScannerModal from "$components/main/QRScannerModal.svelte";
 
   import { set as sessionSet, openSettingsPage, openAvatarGallery } from "$lib/stores/session";
@@ -199,58 +195,8 @@ import { goto } from "$app/navigation";
     clearKeys();
   }
 
-  async function readQRCode(filePath) {
-    let url = "";
-    try {
-      const cleanPath = filePath.replace(/^file:\/\//, "");
-      try {
-        url = convertFileSrc(cleanPath);
-      } catch {
-        const bytes = await invoke("read_file", { path: cleanPath });
-        const blob = new Blob([new Uint8Array(bytes)]);
-        url = URL.createObjectURL(blob);
-      }
-
-      const img = new Image();
-      img.crossOrigin = "anonymous";
-      img.src = url;
-
-      await new Promise((resolve, reject) => {
-        img.onload = resolve;
-        img.onerror = reject;
-      });
-
-      const canvas = document.createElement("canvas");
-      canvas.width = img.naturalWidth || img.width;
-      canvas.height = img.naturalHeight || img.height;
-      const ctx = canvas.getContext("2d", { willReadFrequently: true });
-      if (!ctx) return null;
-      ctx.drawImage(img, 0, 0);
-
-      if (typeof window !== "undefined" && "BarcodeDetector" in window) {
-        try {
-          const detector = new window.BarcodeDetector({ formats: ["qr_code"] });
-          const barcodes = await detector.detect(canvas);
-          if (barcodes?.length > 0 && barcodes[0].rawValue) {
-            return barcodes[0].rawValue;
-          }
-        } catch {}
-      }
-
-      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      const { default: jsQR } = await import("jsqr");
-      const code = jsQR(imageData.data, imageData.width, imageData.height, {
-        inversionAttempts: "attemptBoth",
-      });
-      return code?.data || null;
-    } finally {
-      if (url.startsWith("blob:")) {
-        URL.revokeObjectURL(url);
-      }
-    }
-  }
-
   let qrScannerOpen = false;
+  let isHandlingQR = false;
 
   function scanner() {
     qrScannerOpen = true;
@@ -258,14 +204,20 @@ import { goto } from "$app/navigation";
 
   function handleQRScan(content) {
     qrScannerOpen = false;
-    if (!content) return;
+    if (!content || isHandlingQR) return;
+    isHandlingQR = true;
     if (content.includes(":auth")) {
       $API.call(1, { interactive: true });
       $API.call(96, {});
-      $API.call(290, { qrLink: content }).then((response) => {
-        if (response?.error) alert(response.title);
-      });
+      $API.call(290, { qrLink: content })
+        .then((response) => {
+          if (response?.error) alert(response.title);
+        })
+        .finally(() => {
+          isHandlingQR = false;
+        });
     } else {
+      isHandlingQR = false;
       alert(content);
     }
   }
