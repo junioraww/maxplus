@@ -2040,7 +2040,7 @@
     <div
       class="keyboard-spacer"
       style="height: {bottomPaneHeight}px;"
-    />
+    ></div>
   {/if}
 
   {#if contextMenuState}

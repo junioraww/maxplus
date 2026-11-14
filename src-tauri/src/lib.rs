@@ -1,3 +1,4 @@
+pub mod camouflage;
 mod proxy_auth;
 mod commands;
 mod crypto;
@@ -19,6 +20,71 @@ use std::sync::Arc;
 use tauri::{Emitter, Manager};
 #[cfg(desktop)]
 use tauri::webview::{PermissionKind, PermissionResponse};
+
+#[derive(Default)]
+struct CamouflageBootPlugin {
+    script: Option<String>,
+    app_label: Option<String>,
+    icon_rgba: Option<(Vec<u8>, u32, u32)>,
+}
+
+impl<R: tauri::Runtime> tauri::plugin::Plugin<R> for CamouflageBootPlugin {
+    fn name(&self) -> &'static str {
+        "camouflage-boot"
+    }
+
+    fn initialize(
+        &mut self,
+        app: &tauri::AppHandle<R>,
+        _config: serde_json::Value,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        if let Ok(app_dir) = app.path().app_data_dir() {
+            let camo_file = app_dir.join("data").join("common").join("camouflage");
+            if let Some(camo_val) = stores::storage::Storage::new(None).load(&camo_file) {
+                if camo_val.get("enabled").and_then(|v| v.as_bool()).unwrap_or(false) {
+                    let label = camo_val
+                        .get("appLabel")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("Калькулятор")
+                        .to_string();
+                    self.app_label = Some(label);
+                    let json_str = serde_json::to_string(&camo_val).unwrap_or_else(|_| "{}".to_string());
+                    let css_json = serde_json::to_string(camouflage::CAMOUFLAGE_CSS).unwrap_or_else(|_| "\"\"".to_string());
+                    let mut script = format!(
+                        "window.__CAMOUFLAGE_BOOT__ = true;\nwindow.__CAMOUFLAGE_DATA__ = {};\nwindow.__CAMOUFLAGE_CSS__ = {};\n",
+                        json_str,
+                        css_json
+                    );
+                    if let Some(shell_html) = camouflage::load_cached_shell(&app_dir) {
+                        let escaped = serde_json::to_string(&shell_html).unwrap_or_else(|_| "\"\"".to_string());
+                        script.push_str(&format!("window.__CAMOUFLAGE_HTML__ = {};\n", escaped));
+                    }
+                    self.script = Some(script);
+
+                    self.icon_rgba = camouflage::load_cached_icon(&app_dir);
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn initialization_script(&self) -> Option<String> {
+        self.script.clone()
+    }
+
+    fn window_created(&mut self, window: tauri::window::Window<R>) {
+        if let Some(title) = &self.app_label {
+            let _ = window.set_title(title);
+        }
+        #[cfg(desktop)]
+        if let Some((rgba, w, h)) = &self.icon_rgba {
+            let img = tauri::image::Image::new(rgba.as_slice(), *w, *h);
+            let _ = window.set_icon(img);
+        }
+        #[cfg(not(desktop))]
+        let _ = window;
+    }
+}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -50,7 +116,8 @@ pub fn run() {
         .plugin(tauri_plugin_os::init())
         .plugin(tauri_plugin_notifications::init())
         .plugin(tauri_plugin_biometry::init())
-        .plugin(tauri_plugin_opener::init());
+        .plugin(tauri_plugin_opener::init())
+        .plugin(CamouflageBootPlugin::default());
 
     #[cfg(target_os = "ios")]
     let builder = builder
@@ -342,6 +409,9 @@ pub fn run() {
             commands::exit_app,
             commands::parse_mxp,
             commands::begin_call,
+            commands::set_camouflage_icon,
+            commands::restore_camouflage_icon,
+            commands::save_camouflage_shell,
             commands::open_conference,
             commands::enter_call_by_link,
             commands::make_call_invite_link,
