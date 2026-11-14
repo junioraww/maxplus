@@ -543,10 +543,7 @@ pub fn start_daemon(app_dir: String, account_id: i64) {
                 client.set_user_id(server_user_id).await;
                 client.set_token(token).await;
 
-                let mut connected = client.connect(identity.clone(), true).await.is_ok();
-                if !connected {
-                    connected = client.connect(identity, false).await.is_ok();
-                }
+                let connected = client.connect(identity, true).await.is_ok();
 
                 if !connected {
                     #[cfg(target_os = "android")]

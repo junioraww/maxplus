@@ -115,11 +115,7 @@ pub extern "system" fn Java_org_meowkie_max_ReplyReceiver_sendReplyNative<'local
                         client.set_token(token).await;
 
                         android_log(3, "MaxPlusJNI", "sendReplyNative: connecting via mobile transport...");
-                        let mut connected = client.connect(identity.clone(), true).await.is_ok();
-                        if !connected {
-                            android_log(5, "MaxPlusJNI", "sendReplyNative: mobile transport failed, trying websocket fallback...");
-                            connected = client.connect(identity, false).await.is_ok();
-                        }
+                        let connected = client.connect(identity, true).await.is_ok();
 
                         if connected {
                             android_log(3, "MaxPlusJNI", "sendReplyNative: connected, starting sync...");
@@ -334,7 +330,7 @@ pub fn resolve_contact_info_internal(
                         client.set_user_id(server_user_id).await;
                         client.set_token(token).await;
 
-                        if client.connect(identity, false).await.is_ok() {
+                        if client.connect(identity, true).await.is_ok() {
                             if client.sync(None).await.is_ok() {
                                 let mut found_name = None;
                                 let mut found_url = None;
