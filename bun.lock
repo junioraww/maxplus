@@ -8,7 +8,6 @@
         "@choochmeque/tauri-plugin-biometry-api": "0.3.0-rc.3",
         "@choochmeque/tauri-plugin-notifications-api": "^0.5.0-rc.13",
         "@tauri-apps/api": "^2.12.0",
-        "@tauri-apps/plugin-barcode-scanner": "^2.5.0",
         "@tauri-apps/plugin-dialog": "^2.8.0",
         "@tauri-apps/plugin-opener": "^2.7.0",
         "@tauri-apps/plugin-os": "^2.4.0",
@@ -190,8 +189,6 @@
     "@tauri-apps/cli-win32-ia32-msvc": ["@tauri-apps/cli-win32-ia32-msvc@2.12.0", "", { "os": "win32", "cpu": "ia32" }, "sha512-SsBjvq4f7YaBGqcWoE3cycoItPf0SrQeqFqWWgfxoeZWAIz01E31LDSeZ2p/etJiIY0R9oi045chkFfb0O7WGw=="],
 
     "@tauri-apps/cli-win32-x64-msvc": ["@tauri-apps/cli-win32-x64-msvc@2.12.0", "", { "os": "win32", "cpu": "x64" }, "sha512-9zzDKYUH4TKKBgRdDdVQX8fiRO5gJ8hD1nGsHU9DOHG5Jpm3arjbu9Xg1frR20EusG3Sl8X0dppoO/4EoUXUGg=="],
-
-    "@tauri-apps/plugin-barcode-scanner": ["@tauri-apps/plugin-barcode-scanner@2.5.0", "", { "dependencies": { "@tauri-apps/api": "^2.12.0" } }, "sha512-aabj7xQ8tOtE7OXZQgfcE/CaEvCKnzO20R/H2VMTm8IwGGahnrvK3+B6Wgozs4fcKYOrRgIhxjdq6qLXyztTJQ=="],
 
     "@tauri-apps/plugin-dialog": ["@tauri-apps/plugin-dialog@2.8.0", "", { "dependencies": { "@tauri-apps/api": "^2.12.0" } }, "sha512-HSSD5C8UFE9ijD1wue84F7jjaIReFmj8AAPtS+xyjYRltJafIc4BiWHY7SJ6vbbew6u+YljEJHfyNfy5VwywXg=="],
 

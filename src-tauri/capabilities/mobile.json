@@ -3,7 +3,6 @@
   "platforms": ["android", "iOS"],
   "windows": ["main"],
   "permissions": [
-    "barcode-scanner:default",
     "deep-link:default",
     "biometry:default",
     {

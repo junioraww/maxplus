@@ -16,9 +16,36 @@
   let stream = null;
   let scanning = false;
   let scanTimer = null;
+  let scanTimeout = null;
+  let isProcessingFrame = false;
   let errorMsg = null;
   let unregisterBack = null;
   let fileInputEl;
+  let hasScanned = false;
+  let detectorInstance = null;
+  let jsQRInstance = null;
+
+  async function getJsQR() {
+    if (!jsQRInstance) {
+      const mod = await import("jsqr");
+      jsQRInstance = mod.default || mod;
+    }
+    return jsQRInstance;
+  }
+
+  function getBarcodeDetector() {
+    if (typeof window !== "undefined" && "BarcodeDetector" in window) {
+      if (!detectorInstance) {
+        try {
+          detectorInstance = new window.BarcodeDetector({ formats: ["qr_code"] });
+        } catch (_) {
+          detectorInstance = null;
+        }
+      }
+      return detectorInstance;
+    }
+    return null;
+  }
 
   function close() {
     stopCamera();
@@ -31,7 +58,8 @@
   }
 
   function handleScan(content) {
-    if (!content) return;
+    if (!content || hasScanned) return;
+    hasScanned = true;
     stopCamera();
     if (unregisterBack) {
       unregisterBack();
@@ -70,9 +98,14 @@
 
   function stopCamera() {
     scanning = false;
+    isProcessingFrame = false;
     if (scanTimer) {
       cancelAnimationFrame(scanTimer);
       scanTimer = null;
+    }
+    if (scanTimeout) {
+      clearTimeout(scanTimeout);
+      scanTimeout = null;
     }
     if (stream) {
       stream.getTracks().forEach((track) => track.stop());
@@ -84,54 +117,60 @@
   }
 
   async function decodeFrame() {
-    if (!scanning || !videoEl || videoEl.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) {
-      if (scanning) scanTimer = requestAnimationFrame(decodeFrame);
-      return;
-    }
+    if (!scanning || isProcessingFrame || hasScanned) return;
+    isProcessingFrame = true;
 
-    const vw = videoEl.videoWidth;
-    const vh = videoEl.videoHeight;
-    if (!vw || !vh) {
-      if (scanning) scanTimer = requestAnimationFrame(decodeFrame);
-      return;
-    }
+    try {
+      if (!videoEl || videoEl.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) {
+        return;
+      }
 
-    if (typeof window !== "undefined" && "BarcodeDetector" in window) {
-      try {
-        const detector = new window.BarcodeDetector({ formats: ["qr_code"] });
-        const barcodes = await detector.detect(videoEl);
-        if (barcodes?.length > 0 && barcodes[0].rawValue) {
-          handleScan(barcodes[0].rawValue);
-          return;
-        }
-      } catch (_) {}
-    }
+      const vw = videoEl.videoWidth;
+      const vh = videoEl.videoHeight;
+      if (!vw || !vh) {
+        return;
+      }
 
-    if (!canvasEl) {
-      canvasEl = document.createElement("canvas");
-    }
-    canvasEl.width = Math.min(vw, 640);
-    canvasEl.height = Math.round((canvasEl.width / vw) * vh);
-    const ctx = canvasEl.getContext("2d", { willReadFrequently: true });
-    if (ctx) {
-      ctx.drawImage(videoEl, 0, 0, canvasEl.width, canvasEl.height);
-      const imageData = ctx.getImageData(0, 0, canvasEl.width, canvasEl.height);
-      try {
-        const { default: jsQR } = await import("jsqr");
-        const code = jsQR(imageData.data, imageData.width, imageData.height, {
-          inversionAttempts: "attemptBoth",
-        });
-        if (code?.data) {
-          handleScan(code.data);
-          return;
-        }
-      } catch (_) {}
-    }
+      const detector = getBarcodeDetector();
+      if (detector) {
+        try {
+          const barcodes = await detector.detect(videoEl);
+          if (barcodes?.length > 0 && barcodes[0].rawValue) {
+            handleScan(barcodes[0].rawValue);
+            return;
+          }
+        } catch (_) {}
+      }
 
-    if (scanning) {
-      setTimeout(() => {
-        if (scanning) scanTimer = requestAnimationFrame(decodeFrame);
-      }, 150);
+      if (!canvasEl) {
+        canvasEl = document.createElement("canvas");
+      }
+      canvasEl.width = Math.min(vw, 640);
+      canvasEl.height = Math.round((canvasEl.width / vw) * vh);
+      const ctx = canvasEl.getContext("2d", { willReadFrequently: true });
+      if (ctx) {
+        ctx.drawImage(videoEl, 0, 0, canvasEl.width, canvasEl.height);
+        const imageData = ctx.getImageData(0, 0, canvasEl.width, canvasEl.height);
+        try {
+          const jsQR = await getJsQR();
+          const code = jsQR(imageData.data, imageData.width, imageData.height, {
+            inversionAttempts: "attemptBoth",
+          });
+          if (code?.data) {
+            handleScan(code.data);
+            return;
+          }
+        } catch (_) {}
+      }
+    } finally {
+      isProcessingFrame = false;
+      if (scanning && !hasScanned) {
+        scanTimeout = setTimeout(() => {
+          if (scanning && !hasScanned) {
+            scanTimer = requestAnimationFrame(decodeFrame);
+          }
+        }, 150);
+      }
     }
   }
 
@@ -157,9 +196,9 @@
       if (!ctx) return null;
       ctx.drawImage(img, 0, 0);
 
-      if (typeof window !== "undefined" && "BarcodeDetector" in window) {
+      const detector = getBarcodeDetector();
+      if (detector) {
         try {
-          const detector = new window.BarcodeDetector({ formats: ["qr_code"] });
           const barcodes = await detector.detect(canvas);
           if (barcodes?.length > 0 && barcodes[0].rawValue) {
             return barcodes[0].rawValue;
@@ -168,7 +207,7 @@
       }
 
       const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      const { default: jsQR } = await import("jsqr");
+      const jsQR = await getJsQR();
       const code = jsQR(imageData.data, imageData.width, imageData.height, {
         inversionAttempts: "attemptBoth",
       });
