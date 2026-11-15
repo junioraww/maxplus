@@ -112,7 +112,7 @@
     try {
       let device = currentDev || (await getDevice().catch(() => null)) || sessionGet("device");
       if (!device || !device.deviceId) {
-        device = generateDevice();
+        device = await generateDevice();
         sessionSet("device", device);
         await saveDevice(device);
         update(device, false);
@@ -186,7 +186,7 @@
   }
 
   async function rerollDevice() {
-    const device = generateDevice();
+    const device = await generateDevice();
     sessionSet("device", device);
     await saveDevice(device);
     update(device, true);
