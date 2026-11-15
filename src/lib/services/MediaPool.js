@@ -12,7 +12,7 @@ function getMediaPoolHost() {
       mediaPoolHost = document.createElement("div");
       mediaPoolHost.id = "maxplus-media-pool-host";
       mediaPoolHost.setAttribute("aria-hidden", "true");
-      mediaPoolHost.style.cssText = "position:fixed;width:1px;height:1px;top:-9999px;left:-9999px;opacity:0.001;pointer-events:none;overflow:hidden;z-index:-1;";
+      mediaPoolHost.style.cssText = "position:fixed;width:1px;height:1px;top:0px;left:0px;opacity:0.001;pointer-events:none;overflow:hidden;z-index:-9999;";
       document.body.appendChild(mediaPoolHost);
     }
   }
@@ -59,7 +59,15 @@ class MediaPoolEngine {
 
   acquire(key, options = {}, consumer) {
     let entry = this.pool.get(key);
-    const initialType = options?.type === "image" ? "image" : "video";
+    let initialType = options?.type;
+    if (!initialType || initialType === "auto") {
+      const s = options?.src || key || "";
+      if ((s.includes("/api/avatars/") && s.includes("/media")) || /\.(mp4|webm|mov|ogg)($|\?)/i.test(s)) {
+        initialType = "video";
+      } else {
+        initialType = "image";
+      }
+    }
 
     if (!entry) {
       entry = new MediaEntry(key, initialType, options.src);
@@ -108,7 +116,9 @@ class MediaPoolEngine {
     entry.refCount = Math.max(0, entry.refCount - 1);
 
     if (entry.visibleConsumers.size === 0 && entry.type === "video" && entry.source && !entry.source.paused) {
-      entry.source.pause();
+      try {
+        entry.source.pause();
+      } catch {}
     }
 
     if (entry.refCount === 0) {
@@ -136,7 +146,7 @@ class MediaPoolEngine {
               entry.source.play().then(() => this._ensureRenderLoop()).catch(() => {});
             }
           }
-          if (entry.status === "ready" && entry.source.videoWidth > 0) {
+          if (entry.status === "ready" && entry.source.videoWidth > 0 && entry.source.readyState >= 2) {
             const masterFrame = entry.masterCanvas || this._updateMasterCanvas(entry, entry.source) || entry.source;
             consumer.onFrame?.(masterFrame);
           }
@@ -148,7 +158,9 @@ class MediaPoolEngine {
     } else {
       entry.visibleConsumers.delete(consumer);
       if (entry.visibleConsumers.size === 0 && entry.type === "video" && entry.source && !entry.source.paused) {
-        entry.source.pause();
+        try {
+          entry.source.pause();
+        } catch {}
       }
     }
   }
@@ -156,16 +168,17 @@ class MediaPoolEngine {
   _updateMasterCanvas(entry, video) {
     const vw = video.videoWidth;
     const vh = video.videoHeight;
-    if (vw <= 0 || vh <= 0) return null;
+    if (vw <= 0 || vh <= 0 || video.readyState < 2) return null;
 
-    if (!entry.masterCanvas) {
-      const size = 256;
+    const targetSize = Math.max(256, Math.min(vw, vh, 512));
+
+    if (!entry.masterCanvas || entry.masterCanvas.width !== targetSize) {
       if (typeof document !== "undefined") {
         entry.masterCanvas = document.createElement("canvas");
-        entry.masterCanvas.width = size;
-        entry.masterCanvas.height = size;
+        entry.masterCanvas.width = targetSize;
+        entry.masterCanvas.height = targetSize;
       } else if (typeof OffscreenCanvas !== "undefined") {
-        entry.masterCanvas = new OffscreenCanvas(size, size);
+        entry.masterCanvas = new OffscreenCanvas(targetSize, targetSize);
       }
       if (entry.masterCanvas) {
         entry.masterCtx = entry.masterCanvas.getContext("2d");
@@ -188,8 +201,8 @@ class MediaPoolEngine {
       sy = (vh - vw) / 2;
     }
 
-    entry.masterCtx.clearRect(0, 0, 256, 256);
-    entry.masterCtx.drawImage(video, sx, sy, sSide, sSide, 0, 0, 256, 256);
+    entry.masterCtx.clearRect(0, 0, targetSize, targetSize);
+    entry.masterCtx.drawImage(video, sx, sy, sSide, sSide, 0, 0, targetSize, targetSize);
     return entry.masterCanvas;
   }
 
@@ -207,22 +220,22 @@ class MediaPoolEngine {
     }
 
     if (!localUrl) {
-      setTimeout(async () => {
+      let retried = false;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        await new Promise((r) => setTimeout(r, 600));
         if (entry.status !== "loading") return;
         try {
-          const retryUrl = await getAssetUrl(src);
-          if (retryUrl) {
-            if (entry.type === "video") {
-              this._loadVideo(entry, retryUrl, options);
-            } else {
-              this._loadImage(entry, retryUrl, options.targetEntityId);
-            }
-            return;
+          localUrl = await getAssetUrl(src);
+          if (localUrl) {
+            retried = true;
+            break;
           }
         } catch {}
+      }
+      if (!retried || !localUrl) {
         this._handleError(entry, new Error("Failed to resolve asset URL"));
-      }, 400);
-      return;
+        return;
+      }
     }
 
     if (entry.type === "video") {
@@ -246,6 +259,7 @@ class MediaPoolEngine {
     video.setAttribute("playsinline", "");
     video.setAttribute("webkit-playsinline", "");
     video.setAttribute("autoplay", "");
+    video.removeAttribute("poster");
 
     entry.source = video;
 
@@ -258,14 +272,14 @@ class MediaPoolEngine {
 
     const markReady = () => {
       if (isDisposed) return;
-      if (video.videoWidth <= 0 || video.videoHeight <= 0) {
+      if (video.videoWidth <= 0 || video.videoHeight <= 0 || video.readyState < 2) {
         return;
       }
 
+      const masterFrame = this._updateMasterCanvas(entry, video) || video;
+
       if (entry.status !== "ready") {
         entry.status = "ready";
-        const masterFrame = this._updateMasterCanvas(entry, video) || video;
-
         for (const consumer of entry.consumers) {
           consumer.onReady(entry);
           if (entry.visibleConsumers.has(consumer)) {
@@ -302,8 +316,7 @@ class MediaPoolEngine {
       if (video.parentNode) {
         video.parentNode.removeChild(video);
       }
-      entry.type = "image";
-      this._loadImage(entry, url, options.targetEntityId);
+      this._handleError(entry, new Error("Failed to load video element"));
     };
 
     video.addEventListener("loadedmetadata", markReady);
@@ -403,9 +416,7 @@ class MediaPoolEngine {
       if (
         entry.type === "video" &&
         entry.visibleConsumers.size > 0 &&
-        entry.source &&
-        !entry.source.paused &&
-        entry.source.readyState >= 2
+        entry.source
       ) {
         this.isRendering = true;
         this.rafId = requestAnimationFrame(this.render);
@@ -424,6 +435,7 @@ class MediaPoolEngine {
     this.lastRenderTime = timestamp || Date.now();
 
     let hasActiveVideos = false;
+    let hasVisibleVideos = false;
 
     for (const entry of this.pool.values()) {
       if (entry.type !== "video" || entry.visibleConsumers.size === 0) {
@@ -432,6 +444,17 @@ class MediaPoolEngine {
 
       const video = entry.source;
       if (!video) {
+        continue;
+      }
+
+      hasVisibleVideos = true;
+
+      if (video.paused || video.readyState < 2) {
+        const now = Date.now();
+        if (video.paused && now - entry.lastPlayAttempt > 1000) {
+          entry.lastPlayAttempt = now;
+          video.play().then(() => this._ensureRenderLoop()).catch(() => {});
+        }
         continue;
       }
 
@@ -447,15 +470,6 @@ class MediaPoolEngine {
         }
       }
 
-      if (video.paused || video.readyState < 2) {
-        const now = Date.now();
-        if (video.paused && now - entry.lastPlayAttempt > 1000) {
-          entry.lastPlayAttempt = now;
-          video.play().then(() => this._ensureRenderLoop()).catch(() => {});
-        }
-        continue;
-      }
-
       const masterFrame = this._updateMasterCanvas(entry, video) || video;
       hasActiveVideos = true;
       for (const consumer of entry.visibleConsumers) {
@@ -463,7 +477,7 @@ class MediaPoolEngine {
       }
     }
 
-    if (hasActiveVideos) {
+    if (hasActiveVideos || hasVisibleVideos) {
       this.rafId = requestAnimationFrame(this.render);
     } else {
       this.isRendering = false;

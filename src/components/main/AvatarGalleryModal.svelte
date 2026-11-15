@@ -10,6 +10,7 @@
 
   export let initialUrl = null;
   export let initialPhotoId = null;
+  export let fallbackUrl = null;
   export let userId = null;
   export let isOwnProfile = false;
   export let canUpload = false;
@@ -41,6 +42,14 @@
     } catch {}
     const match = url.match(/(?:photoId=|id=|\/)(\d{6,20})(?:[/?&.]|$)/);
     return match ? Number(match[1]) : null;
+  }
+
+  function isSafeMediaUrl(url) {
+    if (!url || typeof url !== "string") return false;
+    return (
+      (url.includes("/api/avatars/") && url.includes("/media")) ||
+      /\.(mp4|webm|mov|ogg)($|\?)/i.test(url)
+    );
   }
 
   let items = initialUrl
@@ -911,7 +920,9 @@
         >
           <MediaCanvas
             src={prevUrl}
+            type={isSafeMediaUrl(prevUrl) ? "video" : "image"}
             size={modalMediaSize}
+            alwaysVisible={true}
             class="ag-media"
           />
         </div>
@@ -922,11 +933,30 @@
           class="ag-image-wrapper"
           style={mainTransformStyle}
         >
-          <MediaCanvas
-            src={currentUrl}
-            size={modalMediaSize}
-            class="ag-media"
-          />
+          {#if isSafeMediaUrl(currentUrl)}
+            {#if fallbackUrl && currentIndex === 0}
+              <img
+                src={fallbackUrl}
+                class="ag-fallback-underlay"
+                alt=""
+              />
+            {/if}
+            <MediaCanvas
+              src={currentUrl}
+              type="video"
+              size={modalMediaSize}
+              alwaysVisible={true}
+              class="ag-media"
+            />
+          {:else}
+            <MediaCanvas
+              src={currentUrl}
+              type="image"
+              size={modalMediaSize}
+              alwaysVisible={true}
+              class="ag-media"
+            />
+          {/if}
         </div>
       {:else if isLoadingHistory}
         <div class="ag-shimmer"></div>
@@ -939,7 +969,9 @@
         >
           <MediaCanvas
             src={nextUrl}
+            type={isSafeMediaUrl(nextUrl) ? "video" : "image"}
             size={modalMediaSize}
+            alwaysVisible={true}
             class="ag-media"
           />
         </div>
@@ -1117,6 +1149,16 @@
     height: 100% !important;
     aspect-ratio: 1 / 1 !important;
     border-radius: inherit !important;
+  }
+
+  .ag-fallback-underlay {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    border-radius: inherit;
+    z-index: 0;
   }
 
   .ag-shimmer {

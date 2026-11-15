@@ -5,49 +5,48 @@ import { clearSafeAvatarImageCache, getAssetUrl } from "$lib/utils/images";
 import { decodeStegoPayload } from "$lib/utils/stego";
 import { getCurrentAccount } from "$lib/stores/accounts";
 
-function initMap() {
-  const map = new Map();
-  if (typeof window !== "undefined") {
-    try {
-      const saved = localStorage.getItem("maxplus_safe_avatar_map");
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) {
-          for (const [k, v] of parsed) {
-            map.set(Number(k), v);
-          }
-        }
-      }
-    } catch {}
-  }
-  return map;
-}
+export const safeAvatarDebugStore = writable(false);
+export const safeAvatarMapStore = writable(new Map());
 
-function initDebug() {
-  if (typeof window !== "undefined") {
-    try {
-      return localStorage.getItem("maxplus_avatar_debug") === "1";
-    } catch {}
-  }
-  return false;
-}
-
-export const safeAvatarDebugStore = writable(initDebug());
-export const safeAvatarMapStore = writable(initMap());
+let isStoreLoaded = false;
+let pendingSave = null;
 
 if (typeof window !== "undefined") {
-  safeAvatarDebugStore.subscribe((val) => {
-    try {
-      if (val) localStorage.setItem("maxplus_avatar_debug", "1");
-      else localStorage.removeItem("maxplus_avatar_debug");
-    } catch {}
-  });
+  invoke("common_store_load", { store: "safe_avatar_map" })
+    .then((saved) => {
+      if (Array.isArray(saved)) {
+        safeAvatarMapStore.update((map) => {
+          for (const [k, v] of saved) {
+            map.set(Number(k), v);
+          }
+          return map;
+        });
+      }
+      isStoreLoaded = true;
+    })
+    .catch(() => {
+      isStoreLoaded = true;
+    });
+
+  invoke("common_store_load", { store: "avatar_debug" })
+    .then((val) => {
+      if (val === true || val === "1") {
+        safeAvatarDebugStore.set(true);
+      }
+    })
+    .catch(() => {});
 
   safeAvatarMapStore.subscribe((map) => {
-    try {
+    if (!isStoreLoaded) return;
+    if (pendingSave) clearTimeout(pendingSave);
+    pendingSave = setTimeout(() => {
       const entries = Array.from(map.entries());
-      localStorage.setItem("maxplus_safe_avatar_map", JSON.stringify(entries));
-    } catch {}
+      invoke("common_store_save", { store: "safe_avatar_map", data: entries }).catch(() => {});
+    }, 150);
+  });
+
+  safeAvatarDebugStore.subscribe((val) => {
+    invoke("common_store_save", { store: "avatar_debug", data: Boolean(val) }).catch(() => {});
   });
 }
 
@@ -81,13 +80,25 @@ async function processStegoQueue() {
 async function scanSingleAvatarStego(url, targetId) {
   if (!url || !targetId || typeof document === "undefined") return;
   const resolvedUrl = (await getAssetUrl(url).catch(() => null)) || url;
-  const img = new Image();
+  let img = new Image();
   img.crossOrigin = "anonymous";
-  await new Promise((resolve, reject) => {
-    img.onload = resolve;
-    img.onerror = reject;
+  const loaded = await new Promise((resolve) => {
+    img.onload = () => resolve(true);
+    img.onerror = () => resolve(false);
     img.src = resolvedUrl;
   });
+  if (!loaded && resolvedUrl !== url) {
+    img = new Image();
+    img.crossOrigin = "anonymous";
+    const retryLoaded = await new Promise((resolve) => {
+      img.onload = () => resolve(true);
+      img.onerror = () => resolve(false);
+      img.src = url;
+    });
+    if (!retryLoaded) return;
+  } else if (!loaded) {
+    return;
+  }
 
   const sw = img.naturalWidth || img.width;
   const sh = img.naturalHeight || img.height;
@@ -128,11 +139,7 @@ export async function clearAllSafeAvatarCaches() {
   scannedStegoKeys.clear();
   stegoQueue.length = 0;
   safeAvatarMapStore.set(new Map());
-  if (typeof localStorage !== "undefined") {
-    try {
-      localStorage.removeItem("maxplus_safe_avatar_map");
-    } catch {}
-  }
+  invoke("common_store_save", { store: "safe_avatar_map", data: [] }).catch(() => {});
   MediaPool.purgeSafeAvatars();
   clearSafeAvatarImageCache();
   try {

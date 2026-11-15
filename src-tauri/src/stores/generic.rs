@@ -14,6 +14,10 @@ fn common_store_path(app: &AppHandle, store: &str) -> Result<PathBuf, String> {
         "plugin_meta" => Ok(app_dir.join("data").join("common").join("plugin_meta")),
         "stories_cache" => Ok(app_dir.join("data").join("common").join("stories_cache")),
         "camouflage" => Ok(app_dir.join("data").join("common").join("camouflage")),
+        "safe_avatar_map" => Ok(app_dir.join("data").join("common").join("safe_avatar_map")),
+        "avatar_debug" => Ok(app_dir.join("data").join("common").join("avatar_debug")),
+        "avatar_settings" => Ok(app_dir.join("data").join("common").join("avatar_settings")),
+        "maxplus_custom_uplink" => Ok(app_dir.join("data").join("common").join("maxplus_custom_uplink")),
         _ => Err(format!("Unknown common store: {store}")),
     }
 }

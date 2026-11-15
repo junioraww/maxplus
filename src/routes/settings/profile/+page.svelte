@@ -79,6 +79,7 @@
       openAvatarGallery({
         initialUrl: galleryUrl,
         initialPhotoId: selfPhotoId,
+        fallbackUrl: selfAvatarUrl,
         userId: $currentUserDetails?.id,
         isOwnProfile: true,
         canUpload: true,

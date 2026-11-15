@@ -125,10 +125,6 @@ export async function installSafeAvatar(avatarUid, targetId, onProgress) {
 
   safeAvatarMapStore.update((map) => {
     map.set(Number(currentTargetId), cleanUid);
-    try {
-      const entries = Array.from(map.entries());
-      localStorage.setItem("maxplus_safe_avatar_map", JSON.stringify(entries));
-    } catch {}
     return map;
   });
 
