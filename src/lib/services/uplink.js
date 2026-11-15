@@ -1,3 +1,5 @@
+import { invoke } from "@tauri-apps/api/core";
+
 const DEFAULT_UPLINK = "https://maxplus.dev";
 const MIRRORS = [
   "https://maxplus.dev",
@@ -6,13 +8,21 @@ const MIRRORS = [
 ];
 
 let activeMirror = DEFAULT_UPLINK;
+let customUplink = null;
+
+if (typeof window !== "undefined") {
+  invoke("common_store_load", { store: "maxplus_custom_uplink" })
+    .then((val) => {
+      if (typeof val === "string" && val.trim().startsWith("http")) {
+        customUplink = val.trim().replace(/\/+$/, "");
+      }
+    })
+    .catch(() => {});
+}
 
 export function getActiveUplink() {
-  if (typeof window !== "undefined") {
-    const custom = localStorage.getItem("maxplus_custom_uplink");
-    if (custom && custom.trim().startsWith("http")) {
-      return custom.trim().replace(/\/+$/, "");
-    }
+  if (customUplink && customUplink.trim().startsWith("http")) {
+    return customUplink.trim().replace(/\/+$/, "");
   }
   return activeMirror;
 }
@@ -20,15 +30,17 @@ export function getActiveUplink() {
 export function setActiveUplink(url) {
   if (!url) {
     activeMirror = DEFAULT_UPLINK;
+    customUplink = null;
     if (typeof window !== "undefined") {
-      localStorage.removeItem("maxplus_custom_uplink");
+      invoke("common_store_save", { store: "maxplus_custom_uplink", data: null }).catch(() => {});
     }
     return;
   }
   const clean = url.trim().replace(/\/+$/, "");
   activeMirror = clean;
+  customUplink = clean;
   if (typeof window !== "undefined") {
-    localStorage.setItem("maxplus_custom_uplink", clean);
+    invoke("common_store_save", { store: "maxplus_custom_uplink", data: clean }).catch(() => {});
   }
 }
 

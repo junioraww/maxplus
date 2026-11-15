@@ -1,7 +1,7 @@
 import { invoke, convertFileSrc } from '@tauri-apps/api/core';
 import { getCachedFile, setCachedFile } from "../stores/cache";
 import { getCurrentAccount } from "../stores/accounts";
-import { getVideoProxyBase } from './proxyConfig';
+import { getVideoProxyBase, initProxyConfig, getProxyConfig } from './proxyConfig';
 
 const MAX_CONCURRENT_DOWNLOADS = 16;
 let activeDownloads = 0;
@@ -141,16 +141,31 @@ export async function getAssetUrl(src, accountId = null) {
     if (src.startsWith("data:") || src.startsWith("blob:") || isProxiedMediaUrl(src)) {
         return src;
     }
+    await initProxyConfig();
     if (!src.startsWith("http://") && !src.startsWith("https://")) {
         const res = getProxiedMediaUrl(src);
-        setCachedProxied(cacheKey, res);
+        if (res) {
+            const cfg = getProxyConfig();
+            if (cfg.videoToken || !isProxiedMediaUrl(res)) {
+                setCachedProxied(cacheKey, res);
+            }
+        }
         return res;
     }
     const path = await getLocalFilePath(src, accountId);
     if (path) {
         const res = getProxiedMediaUrl(path);
-        setCachedProxied(cacheKey, res);
+        if (res) {
+            const cfg = getProxyConfig();
+            if (cfg.videoToken || !isProxiedMediaUrl(res)) {
+                setCachedProxied(cacheKey, res);
+            }
+        }
         return res;
+    }
+    const fallback = getProxiedMediaUrl(src);
+    if (fallback) {
+        return fallback;
     }
     return null;
 }

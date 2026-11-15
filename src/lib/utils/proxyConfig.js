@@ -26,11 +26,14 @@ if (typeof window !== "undefined") {
 
 export async function initProxyConfig() {
   readWindowProxy();
+  if (config.videoToken && config.videoPort) {
+    return config;
+  }
   if (initPromise) return initPromise;
 
   initPromise = (async () => {
     try {
-      if (typeof window !== "undefined" && window.__TAURI_INTERNALS__) {
+      if (typeof window !== "undefined") {
         const res = await invoke("get_proxy_config");
         if (res) {
           if (res.video_port) config.videoPort = res.video_port;
@@ -40,6 +43,7 @@ export async function initProxyConfig() {
         }
       }
     } catch {}
+    initPromise = null;
     return config;
   })();
 

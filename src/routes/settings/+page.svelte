@@ -47,6 +47,7 @@ import { goto } from "$app/navigation";
       openAvatarGallery({
         initialUrl: galleryUrl,
         initialPhotoId: selfPhotoId,
+        fallbackUrl: selfAvatarUrl,
         userId: contact?.id ?? $currentUser,
         isOwnProfile: true,
         canUpload: true,
@@ -295,6 +296,7 @@ import { goto } from "$app/navigation";
 
 {#if safeAvatarModalOpen}
   <SafeAvatarPickerModal
+    initialTab="catalog"
     onClose={() => (safeAvatarModalOpen = false)}
   />
 {/if}
@@ -358,6 +360,8 @@ import { goto } from "$app/navigation";
     cursor: pointer;
     box-shadow: 0 3px 8px rgba(0, 0, 0, 0.35);
     transition: background 0.15s, transform 0.12s;
+    z-index: 10;
+    pointer-events: auto;
   }
 
   .self-avatar-safe-badge:hover {

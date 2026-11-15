@@ -122,68 +122,6 @@ fn parse_range(rh: Option<&str>, file_len: u64) -> Option<(u64, u64)> {
     }
 }
 
-fn respond_with_file_stream(request: tiny_http::Request, mut file: std::fs::File, file_len: u64, mime: &str) {
-    let mut range_header = None;
-    for h in request.headers() {
-        if h.field.as_str().as_str().eq_ignore_ascii_case("Range") {
-            range_header = Some(h.value.to_string());
-            break;
-        }
-    }
-
-    let mut headers = vec![
-        Header::from_bytes(&b"Access-Control-Allow-Origin"[..], b"*").unwrap(),
-        Header::from_bytes(&b"Accept-Ranges"[..], b"bytes").unwrap(),
-        Header::from_bytes(&b"Content-Type"[..], mime.as_bytes()).unwrap(),
-        Header::from_bytes(&b"Content-Disposition"[..], b"inline").unwrap(),
-        Header::from_bytes(&b"Cache-Control"[..], b"public, max-age=31536000, immutable").unwrap(),
-    ];
-
-    if let Some((start, end)) = parse_range(range_header.as_deref(), file_len) {
-        let length = (end - start + 1) as usize;
-        if file.seek(SeekFrom::Start(start)).is_ok() {
-            headers.push(
-                Header::from_bytes(
-                    &b"Content-Range"[..],
-                    format!("bytes {}-{}/{}", start, end, file_len).as_bytes(),
-                )
-                .unwrap(),
-            );
-            headers.push(
-                Header::from_bytes(
-                    &b"Content-Length"[..],
-                    length.to_string().as_bytes(),
-                )
-                .unwrap(),
-            );
-            let res = Response::new(
-                206.into(),
-                headers,
-                file.take(length as u64),
-                Some(length),
-                None,
-            );
-            let _ = request.respond(res);
-            return;
-        }
-    }
-
-    headers.push(Header::from_bytes(
-        &b"Content-Length"[..],
-        file_len.to_string().as_bytes(),
-    ).unwrap());
-
-    let _ = file.seek(SeekFrom::Start(0));
-    let res = Response::new(
-        200.into(),
-        headers,
-        file,
-        Some(file_len as usize),
-        None,
-    );
-    let _ = request.respond(res);
-}
-
 fn respond_with_bytes(request: tiny_http::Request, data: Vec<u8>, mime: &str) {
     let file_len = data.len() as u64;
     let mut range_header = None;
@@ -196,6 +134,17 @@ fn respond_with_bytes(request: tiny_http::Request, data: Vec<u8>, mime: &str) {
 
     let mut headers = vec![
         Header::from_bytes(&b"Access-Control-Allow-Origin"[..], b"*").unwrap(),
+        Header::from_bytes(&b"Access-Control-Allow-Methods"[..], b"GET, HEAD, OPTIONS").unwrap(),
+        Header::from_bytes(
+            &b"Access-Control-Allow-Headers"[..],
+            b"Range, Origin, X-Requested-With, Content-Type, Accept, X-Proxy-Token, X-Maxplus-Token, Authorization",
+        )
+        .unwrap(),
+        Header::from_bytes(
+            &b"Access-Control-Expose-Headers"[..],
+            b"Content-Range, Content-Length, Accept-Ranges",
+        )
+        .unwrap(),
         Header::from_bytes(&b"Accept-Ranges"[..], b"bytes").unwrap(),
         Header::from_bytes(&b"Content-Type"[..], mime.as_bytes()).unwrap(),
         Header::from_bytes(&b"Content-Disposition"[..], b"inline").unwrap(),
@@ -262,8 +211,8 @@ fn handle_local_file(request: tiny_http::Request, mut path: &str) {
         path
     };
 
-    let mut file = match std::fs::File::open(path) {
-        Ok(f) => f,
+    let raw_bytes = match std::fs::read(path) {
+        Ok(b) => b,
         Err(e) => {
             eprintln!("[VideoProxy] File Not Found: {} (error: {})", path, e);
             respond_error(request, 404, "File Not Found");
@@ -271,48 +220,31 @@ fn handle_local_file(request: tiny_http::Request, mut path: &str) {
         }
     };
 
-    let file_len = match file.metadata() {
-        Ok(m) => m.len(),
-        Err(_) => {
-            respond_error(request, 500, "File metadata error");
-            return;
-        }
-    };
-
-    let mut magic = [0u8; 16];
-    let magic_read = file.read(&mut magic).unwrap_or(0);
-    let is_enc = magic_read >= 3 && &magic[0..3] == b"ENC";
-
-    if is_enc {
-        let mut raw_bytes = Vec::new();
-        if file.seek(SeekFrom::Start(0)).is_err() || file.read_to_end(&mut raw_bytes).is_err() {
-            respond_error(request, 500, "Read error");
-            return;
-        }
+    let mut data = if raw_bytes.starts_with(b"ENC") {
         let Some(key) = get_active_crypto_key() else {
             respond_error(request, 404, "Encrypted file locked");
             return;
         };
-        let mut data = match crate::stores::Storage::decrypt(&raw_bytes, &key) {
+        match crate::stores::Storage::decrypt(&raw_bytes, &key) {
             Ok(d) => d,
             Err(_) => {
                 respond_error(request, 404, "Decryption error");
                 return;
             }
-        };
-        if data.starts_with(b"\x1a\x45\xdf\xa3") {
-            let limit = std::cmp::min(data.len(), 4096);
-            if let Some(pos) = data[..limit].windows(4).position(|w| w == b"\x53\xc0\x81\x01") {
-                data[pos + 3] = 0;
-            }
         }
-        let mime = detect_mime_from_bytes(&data, path);
-        respond_with_bytes(request, data, &mime);
-        return;
+    } else {
+        raw_bytes
+    };
+
+    if data.starts_with(b"\x1a\x45\xdf\xa3") {
+        let limit = std::cmp::min(data.len(), 4096);
+        if let Some(pos) = data[..limit].windows(4).position(|w| w == b"\x53\xc0\x81\x01") {
+            data[pos + 3] = 0;
+        }
     }
 
-    let mime = detect_mime_from_bytes(&magic[..magic_read], path);
-    respond_with_file_stream(request, file, file_len, &mime);
+    let mime = detect_mime_from_bytes(&data, path);
+    respond_with_bytes(request, data, &mime);
 }
 
 fn handle_request(request: tiny_http::Request, client: &reqwest::blocking::Client, token: &str) {
@@ -445,10 +377,7 @@ fn handle_request(request: tiny_http::Request, client: &reqwest::blocking::Clien
 
     let mut rb = client
         .get(&url)
-        .header(
-            "User-Agent",
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        )
+        .header("User-Agent", rumax::constants::Constants::USER_AGENT)
         .header("Referer", "https://max.ru/");
 
     let mut is_range_offset = false;
@@ -633,6 +562,7 @@ pub fn start_video_proxy() {
 
     thread::spawn(move || {
         let mut builder = reqwest::blocking::Client::builder()
+            .user_agent(rumax::constants::Constants::USER_AGENT)
             .connect_timeout(Duration::from_secs(10));
         if let Ok(cert) = reqwest::Certificate::from_pem(rumax::MINTSIFRY_ROOT_CA) {
             builder = builder.add_root_certificate(cert);

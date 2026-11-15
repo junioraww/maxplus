@@ -511,6 +511,7 @@
       _openAvatarGallery({
         initialUrl: galleryUrl,
         initialPhotoId: ownPhotoId,
+        fallbackUrl: avatar,
         userId: !chat || chat.type === "DIALOG" ? ($contact?.id ?? userId) : null,
         isOwnProfile,
         canUpload: canUploadAvatar,

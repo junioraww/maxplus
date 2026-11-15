@@ -8,6 +8,7 @@
   export let targetEntityId = null;
   export let alt = "";
   export let style = "";
+  export let alwaysVisible = false;
   let className = "";
   export { className as class };
 
@@ -18,7 +19,7 @@
   let observer = null;
   let currentKey = null;
   let isReady = false;
-  let isVisible = false;
+  let isVisible = true;
 
   function drawCover(source) {
     if (!ctx || !canvasEl || !source) return;
@@ -157,7 +158,7 @@
       canvasEl.addEventListener("contextrestored", handleContextRestored);
     }
 
-    if (typeof IntersectionObserver !== "undefined") {
+    if (!alwaysVisible && typeof IntersectionObserver !== "undefined") {
       observer = new IntersectionObserver((entries) => {
         for (const entry of entries) {
           isVisible = entry.isIntersecting;
