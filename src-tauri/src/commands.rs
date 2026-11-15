@@ -188,6 +188,15 @@ delegate_cmd!(get_poll_updates(chat_id: i64, message_id: String, poll_id: i64) =
 delegate_cmd!(get_poll_voters(chat_id: i64, message_id: String, poll_id: i64, answer_id: i64, from: Option<i64>, count: Option<i32>) => get_poll_voters(chat_id, p(message_id)?, poll_id, answer_id, from, count));
 
 #[tauri::command]
+pub fn generate_device(is_mobile: Option<bool>) -> Identity {
+    if is_mobile.unwrap_or(true) {
+        Identity::generate_mobile()
+    } else {
+        Identity::generate_web()
+    }
+}
+
+#[tauri::command]
 pub async fn set_presence(state: State<'_, AppState>, online: bool) -> Result<(), ()> {
     state.client.set_presence(online).await;
     Ok(())

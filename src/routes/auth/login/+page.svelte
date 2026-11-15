@@ -38,7 +38,7 @@
       dev = await getDevice().catch(() => null);
     }
     if (!dev?.deviceId) {
-      dev = generateDevice();
+      dev = await generateDevice();
       await saveDevice(dev);
     }
     sessionSet("device", dev);
