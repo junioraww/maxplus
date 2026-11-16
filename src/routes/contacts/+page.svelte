@@ -1,317 +1,328 @@
 <script>
-  import { goto } from "$app/navigation";
   import { writable, derived } from "svelte/store";
-  import API, {
-    currentRealContacts,
-    currentUser,
-  } from "$lib/stores/api";
-  import {
-    getContact,
-    getCachedContacts
-  } from "$lib/stores/contacts";
-  import {
-    set as sessionSet,
-    showConfirm
-  } from "$lib/stores/session";
+  import API, { currentRealContacts, currentUser, currentUserDetails } from "$lib/stores/api";
+  import { getContact } from "$lib/stores/contacts";
+  import { openChat, showConfirm } from "$lib/stores/session";
+  import Session from "$lib/stores/session";
   import Search from "$components/main/Search.svelte";
   import Signature from "$components/main/Signature.svelte";
   import Avatar from "$components/main/Avatar.svelte";
-
-  import AddContactBtn from "$components/main/AddContactBtn.svelte";
-
-  import "$lib/styles/AnimatedPanel.css";
+  import { showAlert } from "$lib/utils/alert";
 
   export let hideHeader = false;
 
-  let grouped = {};
   let filter = "";
-  let showAll = false;
-
   const contactStores = writable([]);
 
-  $: if (showAll) {
-    getCachedContacts().then(contacts => {
-      contactStores.set(
-        contacts.map(contact => getContact(contact.id))
-      );
-    });
-  } else {
-    contactStores.set(
-      $currentRealContacts.map(id => getContact(id))
-    );
-  }
+  $: contactStores.set(($currentRealContacts || []).map((id) => getContact(id)));
 
   const contactsStore = derived(
     contactStores,
     ($stores, set) => {
       const values = [];
-      const unsubscribers = $stores.map((store, index) => {
-        return store.subscribe(value => {
-          values[index] = value;
+      const unsubs = $stores.map((s, idx) =>
+        s.subscribe((val) => {
+          values[idx] = val;
           set([...values]);
-        });
-      });
-
-      return () => {
-        unsubscribers.forEach(unsub => unsub());
-      };
+        })
+      );
+      return () => unsubs.forEach((u) => u());
     },
     []
   );
 
   $: grouped = $contactsStore
     .filter(
-      (x) =>
-        x && x.id !== $currentUser &&
-        (!filter || x.names?.[0]?.name.match(new RegExp(filter, "i"))) &&
-        (showAll || (x.options?.includes("TT") && x.status !== "REMOVED" && x.accountStatus !== undefined))
+      (c) =>
+        c &&
+        c.id !== $currentUser &&
+        c.status !== "REMOVED" &&
+        (!filter || c.names?.[0]?.name?.toLowerCase().includes(filter.toLowerCase()))
     )
     .sort((a, b) =>
       (a.names?.[0]?.name || "").localeCompare(b.names?.[0]?.name || "", "ru")
     )
     .reduce((acc, c) => {
-      const letter = (c.names?.[0]?.name || "").charAt(0).toUpperCase();
+      const letter = (c.names?.[0]?.name || "#").charAt(0).toUpperCase();
       (acc[letter] ??= []).push(c);
       return acc;
     }, {});
 
-  async function removeContact(id) {
-    await $API.removeContact(id);
+  function openDirect(contact) {
+    const dialogId = Number(BigInt($currentUser) ^ BigInt(contact.id));
+    openChat(dialogId);
   }
 
-  const search = (query) => {
-    filter = query;
-  };
-
-  const filterSwap = (event) => {
-    showAll = event?.target?.checked || false;
-  };
-
-  const open = (e, contact) => {
-    const toDelete = [".delete"].some((x) => e.target.closest(x));
-    if (toDelete) {
-      removeContact(contact.id);
-    } else {
-      sessionSet("profile", { userId: contact.id });
-    }
-  };
-
-  async function deleteSelected() {
-    if (selectedChats.size === 0) return;
+  async function handleDeleteContact(contact, event) {
+    event.stopPropagation();
     const ok = await showConfirm({
-      title: "Удалить чаты?",
-      message: `Вы точно хотите удалить выбранные чаты (${selectedChats.size})? Это действие нельзя отменить.`,
+      title: "Удалить контакт?",
+      message: `Удалить ${contact.names?.[0]?.name || "пользователя"} из контактов?`,
       confirmText: "Удалить",
       isDangerous: true,
     });
     if (ok) {
-      await onConfirmDelete();
+      await $API.removeContact(contact.id);
+      showAlert("Контакт удален");
     }
   }
 
-  async function onConfirmDelete() {
-    await $API.removeContact(id);
-    clearSelection();
+  function handleInvite() {
+    const nick = $currentUserDetails?.nick;
+    const link = nick ? `https://max.ru/${nick}` : ($currentUser ? `https://max.ru/u/${$currentUser}` : "https://max.ru");
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(link).then(() => {
+        showAlert("Ссылка на ваш профиль скопирована");
+      });
+    } else {
+      showAlert(link);
+    }
   }
 </script>
 
-<div class="container" class:modal-mode={hideHeader}>
+<div class="contacts-layout" class:modal-mode={hideHeader}>
   {#if !hideHeader}
-    <header>
-      <div class="row">
-        <h3 style="margin-left: 15px;">Контакты</h3>
-        <div style="margin-right: 15px;" class="flex-end">
-          <AddContactBtn />
-        </div>
+    <div class="contacts-header">
+      <div class="contacts-title-row">
+        <h3>Контакты</h3>
+        <button
+          class="add-contact-btn"
+          on:click={() => ($Session.contactModal = true)}
+          aria-label="Добавить контакт"
+        >
+          <img src="/icons/plus.svg" alt="" width="20" height="20" />
+        </button>
       </div>
-      <Search input={search} placeholder="Имя, фамилия или ник" />
-    </header>
+      <Search input={(q) => (filter = q)} placeholder="Поиск контактов" />
+    </div>
   {:else}
     <div class="modal-search-wrapper">
-      <Search input={search} placeholder="Имя, фамилия или ник" />
+      <Search input={(q) => (filter = q)} placeholder="Поиск контактов" />
     </div>
   {/if}
 
-  <label class="showAll" style={hideHeader ? "margin-left: 0; padding-right: 15px;" : "margin-left: -15px;"}>
-    <input
-      type="checkbox"
-      id="only-added"
-      name="only-added"
-      on:click={filterSwap}
-    />
-    <span class="checkmark"></span>
-    Отобразить полный кеш
-  </label>
-
-  <main class="content">
-    {#each Object.keys(grouped) as letter}
-      <a>{letter}</a>
-      {#each grouped[letter] as contact}
-        <div class="contact" on:click={(e) => open(e, contact)}>
-          <Avatar contactId={contact.id} size={44} />
-          <div class="column">
-            <div class="name">
-              {contact.names[0].name}
-            </div>
-            <a><Signature contactId={contact.id} /></a>
+  <div class="contacts-content">
+    {#if !filter}
+      <div class="quick-rows">
+        <div class="quick-row" on:click={handleInvite}>
+          <div class="quick-icon share-icon">
+            <img src="/icons/link.svg" alt="" width="18" height="18" />
           </div>
-          <div class="action">
-            {#if $currentRealContacts.includes(contact.id) && contact.status !== "REMOVED"}
-              <a class="delete">Удалить</a>
-            {:else}
-              <a>Не контакт</a>
-            {/if}
-          </div>
+          <span>Пригласить друзей</span>
         </div>
-      {/each}
-    {/each}
-    {#if Object.keys(grouped).length === 0}
-      <a style="font-size:14px">Ничего не найдено!</a>
+
+        <div class="quick-row" on:click={() => ($Session.contactModal = true)}>
+          <div class="quick-icon add-icon">
+            <img src="/icons/user-plus.svg" alt="" width="18" height="18" />
+          </div>
+          <span>Добавить контакт</span>
+        </div>
+      </div>
     {/if}
-  </main>
+
+    <div class="contacts-list">
+      {#each Object.keys(grouped) as letter (letter)}
+        <div class="letter-separator">{letter}</div>
+        {#each grouped[letter] as contact (contact.id)}
+          <div class="contact-item" on:click={() => openDirect(contact)}>
+            <Avatar contactId={contact.id} size={44} />
+            <div class="contact-info">
+              <div class="contact-name">{contact.names?.[0]?.name || "Без имени"}</div>
+              <div class="contact-status"><Signature contactId={contact.id} /></div>
+            </div>
+            <button
+              class="delete-btn"
+              on:click={(e) => handleDeleteContact(contact, e)}
+              title="Удалить контакт"
+            >
+              <img src="/icons/trash.svg" alt="" width="16" height="16" />
+            </button>
+          </div>
+        {/each}
+      {/each}
+
+      {#if Object.keys(grouped).length === 0}
+        <div class="empty-msg">Контакты не найдены</div>
+      {/if}
+    </div>
+  </div>
 </div>
 
 <style>
-  .container {
-    height: 100%;
+  .contacts-layout {
     display: flex;
     flex-direction: column;
+    height: 100%;
     overflow: hidden;
+    background: #16171b;
+  }
+
+  .contacts-header {
+    padding: calc(10px + var(--safe-top, 0px)) 16px 10px;
+    background: #1c1d22;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  }
+
+  .contacts-title-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .contacts-title-row h3 {
+    margin: 0;
+    font-size: 18px;
+    font-weight: 600;
+    color: #ffffff;
+  }
+
+  .add-contact-btn {
+    background: none;
+    border: none;
+    color: #0077ff;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 6px;
+    border-radius: 50%;
+  }
+
+  .add-contact-btn:hover {
+    background: rgba(0, 119, 255, 0.12);
   }
 
   .modal-search-wrapper {
-    padding: 8px 12px 4px;
-    flex-shrink: 0;
+    padding: 10px 14px 6px;
+    background: #1c1d22;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
   }
 
-  header {
-    z-index: 10;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 10px;
-    width: 100%;
-    padding: calc(10px + var(--safe-top, 0px)) 0 5px 0;
-    margin-top: 0;
-    margin-bottom: 5px;
-  }
-
-  header h3 {
-    margin: 0;
-    font-size: 18px;
-    color: #ccc;
-  }
-
-  .row {
-    width: 100%;
-    display: flex;
-    flex-direction: row;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 4px;
-  }
-
-  .flex-end {
-    display: flex;
-    gap: 15px;
-  }
-
-  .showAll {
-    color: #999;
-    width: 100%;
-    display: flex;
-    align-items: center;
-    justify-content: flex-end;
-    gap: 8px;
-    font-size: 14px;
-    cursor: pointer;
-  }
-
-  .showAll input {
-    display: none;
-  }
-
-  .checkmark {
-    width: 18px;
-    height: 18px;
-    border: 2px solid #ccc;
-    border-radius: 6px;
-    position: relative;
-    transition: all 0.2s ease;
-  }
-
-  .checkmark::after {
-    content: "";
-    position: absolute;
-    left: 7px;
-    top: 2px;
-    width: 4px;
-    height: 10px;
-    border: solid white;
-    border-width: 0 2px 2px 0;
-    transform: rotate(45deg) scale(0);
-    transition: transform 0.1s ease;
-  }
-
-  .showAll input:checked + .checkmark {
-    background-color: #4f46e5;
-    border-color: #4f46e5;
-  }
-
-  .showAll input:checked + .checkmark::after {
-    transform: rotate(45deg) scale(1);
-  }
-
-  .showAll:hover .checkmark {
-    border-color: #4f46e5;
-  }
-
-  .content {
-    flex: 1 1 auto;
-    min-height: 0;
-    color: #ccc;
-    padding: 10px;
-    display: flex;
-    flex-direction: column;
-    gap: 14px;
+  .contacts-content {
+    flex: 1;
     overflow-y: auto;
     overflow-x: hidden;
   }
 
-  .contact {
-    position: relative;
-    height: 40px;
-    width: 100%;
+  .quick-rows {
     display: flex;
-    flex-direction: row;
-    align-items: center;
-    cursor: pointer;
-    gap: 16px;
+    flex-direction: column;
+    padding: 6px 12px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
   }
 
-  .contact .column {
+  .quick-row {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 10px 4px;
+    cursor: pointer;
+    border-radius: 10px;
+    color: #ffffff;
+    font-size: 15px;
+    font-weight: 500;
+  }
+
+  .quick-row:hover {
+    background: rgba(255, 255, 255, 0.04);
+  }
+
+  .quick-icon {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #ffffff;
+  }
+
+  .quick-icon.share-icon {
+    background: #2563eb;
+  }
+
+  .quick-icon.add-icon {
+    background: #0077ff;
+  }
+
+  .contacts-list {
+    display: flex;
+    flex-direction: column;
+    padding: 4px 8px 24px;
+  }
+
+  .letter-separator {
+    padding: 12px 14px 4px;
+    font-size: 13px;
+    font-weight: 700;
+    color: #0077ff;
+  }
+
+  .contact-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 10px;
+    border-radius: 12px;
+    cursor: pointer;
+    transition: background-color 0.15s ease;
+  }
+
+  .contact-item:hover {
+    background: rgba(255, 255, 255, 0.04);
+  }
+
+  .contact-info {
+    flex: 1;
+    min-width: 0;
     display: flex;
     flex-direction: column;
   }
 
-  .contact .name {
-    font-size: 14px;
+  .contact-name {
+    font-size: 15px;
+    font-weight: 500;
+    color: #ffffff;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .contact-status {
+    font-size: 13px;
+    color: #8c93a0;
+  }
+
+  .delete-btn {
+    background: none;
+    border: none;
+    color: #6d7380;
+    cursor: pointer;
+    padding: 6px;
+    border-radius: 50%;
     display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    transition: opacity 0.15s ease, color 0.15s ease;
   }
 
-  .contact a {
-    font-size: 12px;
-    color: #999;
-    position: relative;
+  .contact-item:hover .delete-btn {
+    opacity: 1;
   }
 
-  .contact .delete {
-    color: #f88;
+  .delete-btn:hover {
+    color: #ff4d4f;
+    background: rgba(255, 77, 79, 0.1);
   }
 
-  .contact .action {
-    position: absolute;
-    right: 10px;
-    margin-bottom: 10px;
+  .empty-msg {
+    padding: 32px 16px;
+    text-align: center;
+    color: #6d7380;
+    font-size: 14px;
   }
 </style>

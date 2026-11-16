@@ -290,7 +290,7 @@
     display: flex;
     justify-content: center;
     align-items: flex-end;
-    z-index: 1000;
+    z-index: var(--z-modal, 7);
   }
 
   .modal {

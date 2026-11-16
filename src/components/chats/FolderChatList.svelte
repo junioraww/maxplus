@@ -20,6 +20,7 @@
     if (visibleCount < chats.length) {
       visibleCount = Math.min(visibleCount + CHUNK_SIZE, chats.length);
     }
+    dispatch("loadMore");
   }
 
   function handleIntersect(entries) {
@@ -100,6 +101,21 @@
     {#if visibleCount < chats.length}
       <div bind:this={sentinelEl} class="scroll-sentinel"></div>
     {/if}
+
+    <div class="chat-list-bottom-actions">
+      <button class="bottom-action-item" on:click={() => dispatch("findContact")}>
+        <div class="action-icon-wrap">
+          <img src="/icons/phone.svg" width="24" height="24" alt="" />
+        </div>
+        <span class="action-label">Найти по номеру телефона</span>
+      </button>
+      <button class="bottom-action-item" on:click={() => dispatch("inviteLink")}>
+        <div class="action-icon-wrap">
+          <img src="/icons/link.svg" width="24" height="24" alt="" />
+        </div>
+        <span class="action-label">Пригласить по ссылке</span>
+      </button>
+    </div>
   {/if}
 </div>
 
@@ -126,5 +142,53 @@
     width: 100%;
     pointer-events: none;
     opacity: 0;
+  }
+
+  .chat-list-bottom-actions {
+    display: flex;
+    flex-direction: column;
+    padding: 8px 0 24px;
+    margin-top: 4px;
+  }
+
+  .bottom-action-item {
+    display: flex;
+    align-items: center;
+    height: 56px;
+    padding: 0 12px 0 18px;
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    text-align: left;
+    transition: background-color 0.15s ease;
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  .bottom-action-item:hover {
+    background-color: var(--bg-surface-subtle, rgba(255, 255, 255, 0.05));
+  }
+
+  .action-icon-wrap {
+    width: 24px;
+    height: 24px;
+    margin-right: 18px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+
+  .action-icon-wrap img {
+    width: 24px;
+    height: 24px;
+    opacity: 0.9;
+  }
+
+  .action-label {
+    font-size: 15px;
+    font-weight: 500;
+    color: var(--text-primary, #ffffff);
+    line-height: 20px;
   }
 </style>

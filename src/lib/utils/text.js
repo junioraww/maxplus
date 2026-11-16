@@ -1,5 +1,16 @@
 import { getAttachText, getSystemText } from "$lib/utils/attachs";
 
+export function normalizePhone(raw) {
+  if (!raw) return "";
+  let digits = raw.replace(/\D/g, "");
+  if (digits.length === 10 && digits.startsWith("9")) {
+    digits = "7" + digits;
+  } else if (digits.length === 11 && digits.startsWith("8")) {
+    digits = "7" + digits.slice(1);
+  }
+  return digits ? "+" + digits : "";
+}
+
 export function escapeHtml(str = "") {
   return str
     .replace(/&/g, "&amp;")

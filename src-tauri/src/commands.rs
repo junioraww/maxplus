@@ -64,6 +64,7 @@ delegate_cmd!(set_profile_photo(photo_token: String) => set_profile_photo(photo_
 delegate_cmd!(get_calls(count: i64, forward: bool) => get_calls(forward, count));
 delegate_cmd!(call(action_id: u16, payload: Value) => call(action_id, payload));
 delegate_cmd!(create_group(title: String, participant_ids: Option<Vec<i64>>, notify: Option<bool>) => create_group(title, participant_ids, notify));
+delegate_cmd!(create_channel(title: String, participant_ids: Option<Vec<i64>>, notify: Option<bool>) => create_channel(title, participant_ids, notify));
 delegate_cmd!(delete_chat(chat_id: i64, last_event_time: Option<i64>, for_all: Option<bool>) => delete_chat(chat_id, last_event_time, for_all));
 delegate_cmd!(resolve_channel_by_name(link: String) => resolve_channel_by_name(link));
 delegate_cmd!(join_channel(link: String) => join_channel(link));

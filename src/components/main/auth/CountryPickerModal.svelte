@@ -199,7 +199,7 @@
     width: 100%;
     max-width: 100vw;
     background: rgba(0, 0, 0, 0.45);
-    z-index: 1000;
+    z-index: var(--z-modal, 7);
     display: flex;
     flex-direction: column;
     justify-content: flex-end;

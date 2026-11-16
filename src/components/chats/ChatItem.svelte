@@ -64,6 +64,26 @@
   })();
   $: attaches = getAttachText(currentChat || chat, shownMessage);
 
+  $: previewThumbUrl = (() => {
+    if (!shownMessage?.attaches || !shownMessage.attaches.length) return null;
+    const a = shownMessage.attaches.find(x => {
+      const t = x._type || x.type;
+      return t === "PHOTO" || t === "VIDEO" || t === "STICKER";
+    });
+    if (!a) return null;
+    const t = a._type || a.type;
+    if (t === "PHOTO") {
+      return a.previewUrl || a.thumbnailUrl || a.baseUrl || a.url || null;
+    }
+    if (t === "VIDEO") {
+      return a.thumbnailUrl || a.previewUrl || a.url || null;
+    }
+    if (t === "STICKER") {
+      return a.url || a.baseUrl || null;
+    }
+    return null;
+  })();
+
   $: timeDisplay = (() => {
     if (!shownMessage?.time) return "";
     const msgDate = new Date(shownMessage.time + sessionGet("drift"));
@@ -226,15 +246,11 @@
     <div class="row top">
       <div class="title-wrap">
         {#if isBot}
-          <img src="icons/bot.svg" class="bot-badge-icon" alt="" />
+          <img src="/icons/bot.svg" class="bot-badge-icon" alt="" />
         {/if}
         <span class="name">{title}</span>
         {#if muted}
-          <svg class="muted-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
-            <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
-            <line x1="2" y1="2" x2="22" y2="22"></line>
-          </svg>
+          <img src="/icons/mute.svg" class="muted-icon" alt="" />
         {/if}
         {#each $pluginChatBadges as item (item.id)}
           <span class="plugin-mount-inline plugin-chat-badge" data-plugin-mount={item.pluginId || item.id}>
@@ -246,21 +262,14 @@
       <div class="meta">
         {#if isMe}
           {#if isRead}
-            <svg class="status-icon read" viewBox="0 0 18 16" width="16" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <polyline points="1.5 8 5.5 12 12.5 4"></polyline>
-              <polyline points="6.5 8 10.5 12 17.5 4"></polyline>
-            </svg>
+            <img src="/icons/status-read.svg" class="status-icon read" alt="" />
           {:else}
-            <svg class="status-icon" viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <polyline points="2.5 8 6.5 12 14.5 4"></polyline>
-            </svg>
+            <img src="/icons/status-delivered.svg" class="status-icon" alt="" />
           {/if}
         {/if}
         <span class="time">{timeDisplay}</span>
         {#if isPinned}
-          <svg class="pin-icon" viewBox="0 0 16 16" width="15" height="15" fill="currentColor">
-            <path d="M9.828.722a.5.5 0 0 1 .354.146l4.95 4.95a.5.5 0 0 1 0 .707c-.48.48-1.072.588-1.503.588-.177 0-.335-.018-.46-.039l-3.134 3.134a5.927 5.927 0 0 1 .16 1.013c.046.702-.032 1.687-.72 2.375a.5.5 0 0 1-.707 0l-2.829-2.828-3.182 3.182c-.195.195-1.219.923-1.414.728-.195-.195.533-1.22.728-1.414l3.182-3.182-2.828-2.829a.5.5 0 0 1 0-.707c.688-.688 1.673-.767 2.375-.72a5.922 5.922 0 0 1 1.013.16l3.134-3.133a2.772 2.772 0 0 1-.04-.461c0-.43.108-1.022.589-1.503a.5.5 0 0 1 .353-.146z"/>
-          </svg>
+          <img src="/icons/pin.svg" class="pin-icon" alt="" />
         {/if}
         {#each $pluginChatTrailings as item (item.id)}
           <span class="plugin-mount-inline plugin-chat-trailing" data-plugin-mount={item.pluginId || item.id}>
@@ -271,17 +280,22 @@
     </div>
 
     <div class="row bottom">
-      <p class="preview">
-        {#if isMe}<span class="you-prefix">Вы: </span>{/if}
-        {#if attaches}
-          <b>{attaches}</b>{#if shownMessage?.text}, {/if}
+      <div class="preview-wrap">
+        {#if previewThumbUrl}
+          <img src={previewThumbUrl} class="preview-thumb" alt="" />
         {/if}
-        {#if replace}
-          {@html replace.text}
-        {:else}
-          {(shownMessage?.text || getSystemText(shownMessage, false) || "").replace(/<[^>]*>/g, "")}
-        {/if}
-      </p>
+        <p class="preview">
+          {#if isMe}<span class="you-prefix">Вы: </span>{/if}
+          {#if attaches}
+            <b>{attaches}</b>{#if shownMessage?.text}, {/if}
+          {/if}
+          {#if replace}
+            {@html replace.text}
+          {:else}
+            {(shownMessage?.text || getSystemText(shownMessage, false) || "").replace(/<[^>]*>/g, "")}
+          {/if}
+        </p>
+      </div>
       {#if unread > 0}
         <div class="badge" class:muted>
           {unread > 99 ? "99+" : unread}
@@ -295,8 +309,8 @@
   .chat-item {
     display: flex;
     align-items: center;
-    min-height: 80px;
-    padding: 9px 6px;
+    min-height: 72px;
+    padding: 9px 12px;
     box-sizing: border-box;
     cursor: pointer;
     transition: background-color 0.15s ease;
@@ -343,6 +357,10 @@
     min-width: 0;
   }
 
+  .row.bottom {
+    align-items: flex-start;
+  }
+
   .title-wrap {
     display: flex;
     align-items: center;
@@ -362,8 +380,10 @@
   }
 
   .muted-icon {
-    color: var(--text-muted, #8b929e);
+    width: 16px;
+    height: 16px;
     flex-shrink: 0;
+    opacity: 0.65;
   }
 
   .meta {
@@ -382,17 +402,38 @@
   }
 
   .status-icon {
-    color: var(--text-muted, #8b929e);
+    width: 16px;
+    height: 16px;
     flex-shrink: 0;
+    opacity: 0.65;
   }
 
   .status-icon.read {
-    color: var(--read-tick, #34b7f1);
+    opacity: 1;
   }
 
   .pin-icon {
-    color: var(--text-muted, #8b929e);
+    width: 15px;
+    height: 15px;
     flex-shrink: 0;
+    opacity: 0.65;
+  }
+
+  .preview-wrap {
+    display: flex;
+    align-items: flex-start;
+    flex: 1;
+    min-width: 0;
+  }
+
+  .preview-thumb {
+    width: 18px;
+    height: 18px;
+    border-radius: 4px;
+    object-fit: cover;
+    flex-shrink: 0;
+    margin-right: 6px;
+    margin-top: 1px;
   }
 
   .preview {
@@ -400,10 +441,14 @@
     font-size: 15px;
     line-height: 20px;
     color: var(--text-secondary, #8b929e);
-    white-space: nowrap;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
     overflow: hidden;
     text-overflow: ellipsis;
     flex: 1;
+    min-width: 0;
+    word-break: break-word;
   }
 
   .you-prefix {
@@ -427,6 +472,7 @@
     flex-shrink: 0;
     box-sizing: border-box;
     line-height: 1;
+    margin-top: 1px;
   }
 
   .badge.muted {

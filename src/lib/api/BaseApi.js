@@ -50,6 +50,7 @@ export default class API {
     getCalls() { throw "getCalls: Unimplemented" }
     updateProfile() { throw "updateProfile: Unimplemented" }
     createGroup() { throw "createGroup: Unimplemented" }
+    createChannel() { throw "createChannel: Unimplemented" }
     deleteChat() { throw "deleteChat: Unimplemented" }
     leaveChannel() { throw "leaveChannel: Unimplemented" }
     leaveChat() { throw "leaveChat: Unimplemented" }

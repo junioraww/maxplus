@@ -1,6 +1,7 @@
 <script>
   import { onMount } from "svelte";
   import { fade, slide } from "svelte/transition";
+  import { convertFileSrc } from "@tauri-apps/api/core";
   import API, { currentUser, currentUserDetails } from "$lib/stores/api";
   import { getUplinkUrl, getSafeAvatarMediaUrl, getSafeAvatarPreviewUrl } from "$lib/services/uplink";
   import { installSafeAvatar } from "$lib/services/AvatarInstallService";
@@ -9,6 +10,7 @@
   export let onClose = () => {};
   export let onApplySuccess = () => {};
   export let onUploadStandard = null;
+  export let onSelectAvatar = null;
   export let initialTab = "standard";
   export let initialUid = "";
 
@@ -84,6 +86,16 @@
     try {
       if (typeof onUploadStandard === "function") {
         await onUploadStandard();
+      } else if (typeof onSelectAvatar === "function") {
+        const picked = await $API.pickAndUploadPhoto(false);
+        if (picked) {
+          const preview = picked.localPath ? convertFileSrc(picked.localPath) : null;
+          await onSelectAvatar({
+            photoToken: picked.photoToken,
+            localPath: picked.localPath,
+            previewUrl: preview,
+          });
+        }
       } else {
         await $API.uploadProfilePhoto();
       }
@@ -98,6 +110,16 @@
 
   async function handleApplyUid(uid) {
     if (isApplying || !uid) return;
+    if (typeof onSelectAvatar === "function") {
+      await onSelectAvatar({
+        uid,
+        previewUrl: getSafeAvatarPreviewUrl(uid),
+        mediaUrl: getSafeAvatarMediaUrl(uid),
+      });
+      onApplySuccess();
+      onClose();
+      return;
+    }
     isApplying = true;
     errorMessage = "";
     applyStatus = "Инициализация...";
@@ -436,7 +458,7 @@
               disabled={isApplying}
               on:click={() => handleApplyUid(selectedAvatar.avatar_uid)}
             >
-              Установить в профиль
+              {onSelectAvatar ? "Выбрать аватарку" : "Установить в профиль"}
             </button>
             <button
               type="button"
@@ -456,7 +478,7 @@
   .avatar-modal-backdrop {
     position: fixed;
     inset: 0;
-    z-index: var(--z-picker, 9);
+    z-index: var(--z-picker, 110);
     background: rgba(0, 0, 0, 0.82);
     display: flex;
     align-items: flex-end;

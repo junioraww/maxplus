@@ -362,7 +362,7 @@
     display: flex;
     align-items: flex-end;
     justify-content: center;
-    z-index: 120;
+    z-index: var(--z-modal, 7);
   }
 
   .tg-modal {

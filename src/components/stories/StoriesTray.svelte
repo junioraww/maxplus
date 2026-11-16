@@ -107,7 +107,6 @@
   .stories-tray-content {
     width: 100%;
     height: 88px;
-    border-bottom: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.06));
     background: transparent;
     box-sizing: border-box;
   }

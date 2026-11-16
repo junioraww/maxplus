@@ -1216,7 +1216,7 @@
     position: absolute;
     top: 40px;
     right: 0;
-    z-index: 150;
+    z-index: var(--z-dropdown, 6);
     min-width: 190px;
     background: var(--bg-surface-2, #26262e);
     border: 1px solid rgba(255, 255, 255, 0.08);
@@ -1278,7 +1278,7 @@
     justify-content: center;
     cursor: pointer;
     transition: transform 0.15s, box-shadow 0.15s;
-    z-index: 90;
+    z-index: var(--z-floating, 5);
   }
 
   .fab-new-call:hover {

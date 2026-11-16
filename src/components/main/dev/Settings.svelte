@@ -100,7 +100,7 @@
     width: 100vw;
     height: 100vh;
     background-color: #202025ee;
-    z-index: 200;
+    z-index: var(--z-modal, 7);
     display: flex;
     align-items: center;
     color: white;
