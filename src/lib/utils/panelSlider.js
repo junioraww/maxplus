@@ -3,6 +3,8 @@ export function panelSlider(node, options = {}) {
     getPagesCount = () => 0,
     getActive = () => 0,
     canDrag = () => true,
+    nested = false,
+    ignoreSelector = null,
     onPrepare = () => {},
     onDragStart = () => {},
     onDragMove = () => {},
@@ -57,6 +59,7 @@ export function panelSlider(node, options = {}) {
 
   function isInteractiveElement(target) {
     if (!target || typeof target.closest !== "function") return false;
+    if (ignoreSelector && target.closest(ignoreSelector)) return true;
     return Boolean(
       target.closest(
         "input, textarea, select, [contenteditable], .no-drag, [data-no-drag], .tabs-container, .folder-tabs-row, .slider, input[type='range'], .edit-toolbar, .star-badge, .remove-badge, .modal, .dialog"
@@ -90,6 +93,11 @@ export function panelSlider(node, options = {}) {
   function handleTouchMove(e) {
     if (!isTouchTracking || e.touches.length !== 1) return;
 
+    if (e.__panelSliderHandled && !isDragEngaged) {
+      isTouchTracking = false;
+      return;
+    }
+
     const currentX = e.touches[0].clientX;
     const currentY = e.touches[0].clientY;
     const diffX = currentX - touchStartX;
@@ -101,6 +109,14 @@ export function panelSlider(node, options = {}) {
         return;
       }
       if (Math.abs(diffX) > 8 && Math.abs(diffX) > Math.abs(diffY) * 1.15) {
+        if (nested) {
+          const active = getActive();
+          const total = getPagesCount();
+          if ((active === 0 && diffX > 0) || (active === total - 1 && diffX < 0)) {
+            isTouchTracking = false;
+            return;
+          }
+        }
         isDragEngaged = true;
         onDragStart();
       } else {
@@ -110,6 +126,7 @@ export function panelSlider(node, options = {}) {
 
     if (isDragEngaged) {
       if (e.cancelable) e.preventDefault();
+      e.__panelSliderHandled = true;
       const active = getActive();
       const total = getPagesCount();
       const offset = calculateOffset(diffX, active, total);
@@ -165,6 +182,11 @@ export function panelSlider(node, options = {}) {
 
     const onMouseMove = (moveEv) => {
       if (!isMouseTracking) return;
+      if (moveEv.__panelSliderHandled && !isMouseEngaged) {
+        cleanupMouseListeners();
+        isMouseTracking = false;
+        return;
+      }
       const currentX = moveEv.clientX;
       const currentY = moveEv.clientY;
       const diffX = currentX - mouseStartX;
@@ -172,6 +194,15 @@ export function panelSlider(node, options = {}) {
 
       if (!isMouseEngaged) {
         if (Math.abs(diffX) > 8 && Math.abs(diffX) > Math.abs(diffY) * 1.15) {
+          if (nested) {
+            const active = getActive();
+            const total = getPagesCount();
+            if ((active === 0 && diffX > 0) || (active === total - 1 && diffX < 0)) {
+              cleanupMouseListeners();
+              isMouseTracking = false;
+              return;
+            }
+          }
           isMouseEngaged = true;
           document.body.style.userSelect = "none";
           document.body.style.cursor = "grabbing";
@@ -187,6 +218,7 @@ export function panelSlider(node, options = {}) {
 
       if (isMouseEngaged) {
         moveEv.preventDefault();
+        moveEv.__panelSliderHandled = true;
         const active = getActive();
         const total = getPagesCount();
         const offset = calculateOffset(diffX, active, total);
@@ -257,6 +289,8 @@ export function panelSlider(node, options = {}) {
       getPagesCount = newOptions.getPagesCount || (() => 0);
       getActive = newOptions.getActive || (() => 0);
       canDrag = newOptions.canDrag || (() => true);
+      nested = Boolean(newOptions.nested);
+      ignoreSelector = newOptions.ignoreSelector || null;
       onPrepare = newOptions.onPrepare || (() => {});
       onDragStart = newOptions.onDragStart || (() => {});
       onDragMove = newOptions.onDragMove || (() => {});

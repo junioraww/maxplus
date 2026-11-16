@@ -310,6 +310,7 @@
       getPagesCount: () => pages.length,
       getActive: () => active,
       canDrag: () => pages.length > 1 && $Session.openedChats.length === 0 && !$Session.settingsPage,
+      ignoreSelector: ".no-panel-drag, [data-no-panel-drag]",
       onPrepare: () => ensureNeighborCardsMounted(active),
       onDragStart: handleDragStart,
       onDragMove: handleDragMove,

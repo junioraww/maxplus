@@ -19,6 +19,16 @@
   let isLongPress = false;
   let touchStartX = 0;
   let touchStartY = 0;
+  let tabsEl;
+
+  $: if (activeFolder && tabsEl) {
+    const activeTabEl = tabsEl.querySelector(".tab.active");
+    if (activeTabEl) {
+      const parentWrapper = activeTabEl.closest(".tab-wrapper") || activeTabEl;
+      const targetLeft = parentWrapper.offsetLeft - (tabsEl.clientWidth - parentWrapper.offsetWidth) / 2;
+      tabsEl.scrollTo({ left: Math.max(0, targetLeft), behavior: "smooth" });
+    }
+  }
 
   function selectFolder(folder) {
     if (isEditing || isLongPress) return;
@@ -119,7 +129,7 @@
 {/each}
 
 <div class="tabs-container">
-  <div class="tabs">
+  <div class="tabs" bind:this={tabsEl}>
     {#each folders as folder, index (folder.id)}
       {@const unread = unreadCounts.get(folder.id) || 0}
       <div
