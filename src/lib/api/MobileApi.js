@@ -41,6 +41,7 @@ import {
   getChat,
   loadChats,
   saveChats,
+  isChatInUserList,
 } from "$lib/stores/messages";
 import {
   getContact,
@@ -238,7 +239,14 @@ export default class MobileApi extends BaseAPI {
 
           currentRealChats.update((ids) => {
             const idStr = String(message.chatId);
-            const filtered = (ids || []).filter(id => String(id) !== idStr);
+            const currentList = ids || [];
+            const alreadyInList = currentList.some(id => String(id) === idStr);
+            const latestInfo = chat.getInfo();
+            const shouldBeInList = alreadyInList || isChatInUserList(latestInfo, myId);
+            if (!shouldBeInList) {
+              return currentList;
+            }
+            const filtered = currentList.filter(id => String(id) !== idStr);
             return [message.chatId, ...filtered];
           });
 
@@ -963,7 +971,9 @@ export default class MobileApi extends BaseAPI {
       for (const c of updatedCurrentChats) {
         getChat(c.id).chatInfo.set(c);
       }
-      currentRealChats.set(updatedCurrentChats.map(x => x.id));
+      const myCurrentId = profile?.contact?.id || get(currentUser);
+      const userActiveChats = updatedCurrentChats.filter(c => isChatInUserList(c, myCurrentId));
+      currentRealChats.set(userActiveChats.map(x => x.id));
 
       const telemetrySetupResp = await invoke("set_chats_for_telemetry", {
         chats: currentChats.map(c => ({ chatId: c.id, chatType: c.type }))
@@ -1895,13 +1905,27 @@ export default class MobileApi extends BaseAPI {
       }
     } catch {}
 
+    const myId = get(currentUser);
+    const chatEntry = getChat(channelId);
+    let updatedChat = null;
+    chatEntry.chatInfo.update(prev => {
+      const base = prev || chat;
+      const parts = { ...(base.participants || {}) };
+      if (myId) parts[myId] = 0;
+      updatedChat = { ...base, status: "LEFT", participants: parts };
+      return updatedChat;
+    });
+    if (updatedChat) {
+      await saveChats([ updatedChat ]).catch(() => {});
+    }
+
     currentRealChats.update(chats => {
       const idx = chats.indexOf(chat.id);
       if (idx !== -1) chats.splice(idx, 1);
       return chats;
     });
 
-    if (chat.participants) chat.participants[get(currentUser)] = 0;
+    if (chat.participants && myId) chat.participants[myId] = 0;
   }
 
   async leaveChat(chat) {
@@ -1920,6 +1944,20 @@ export default class MobileApi extends BaseAPI {
         });
       }
     } catch {}
+
+    const myId = get(currentUser);
+    const chatEntry = getChat(chatId);
+    let updatedChat = null;
+    chatEntry.chatInfo.update(prev => {
+      const base = prev || chat;
+      const parts = { ...(base.participants || {}) };
+      if (myId) parts[myId] = 0;
+      updatedChat = { ...base, status: "LEFT", participants: parts };
+      return updatedChat;
+    });
+    if (updatedChat) {
+      await saveChats([ updatedChat ]).catch(() => {});
+    }
 
     currentRealChats.update(chats => {
       const idx = chats.indexOf(chat.id);
@@ -1948,6 +1986,17 @@ export default class MobileApi extends BaseAPI {
         });
       }
     } catch {}
+
+    const chatEntry = getChat(chatId);
+    let updatedChat = null;
+    chatEntry.chatInfo.update(prev => {
+      const base = prev || chat;
+      updatedChat = { ...base, status: "DELETED" };
+      return updatedChat;
+    });
+    if (updatedChat) {
+      await saveChats([ updatedChat ]).catch(() => {});
+    }
 
     currentRealChats.update(chats => {
       const idx = chats.indexOf(chat.id);

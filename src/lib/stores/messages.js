@@ -162,6 +162,45 @@ export const updateChatInfo = (chatId, updater) => {
   }
 };
 
+export const isChatInUserList = (chat, myId) => {
+  if (!chat || chat.id == null) return false;
+
+  const status = String(chat.status || "").toUpperCase();
+  if (status === "LEFT" || status === "REMOVED" || status === "CLOSED" || status === "DELETED" || status === "BLOCKED") {
+    return false;
+  }
+
+  const rawType = String(chat.type || "").toUpperCase();
+
+  const isParticipant = () => {
+    if (!chat.participants || typeof chat.participants !== "object") return false;
+    const num = Number(myId);
+    const str = String(myId);
+    const val = chat.participants[num] !== undefined ? chat.participants[num] : chat.participants[str];
+    return val !== undefined && val !== null && val !== 0;
+  };
+
+  if (rawType === "CHANNEL") {
+    if (chat.isMember === true || chat.isSubscribed === true) return true;
+    return isParticipant();
+  }
+
+  if (rawType === "CHAT" || rawType === "GROUP" || rawType === "SUPERGROUP") {
+    if (chat.isMember === true) return true;
+    return isParticipant();
+  }
+
+  if (rawType === "DIALOG") {
+    const hasLastMessage = Boolean(
+      chat.lastMessage && (chat.lastMessage.id || chat.lastMessage.time || chat.lastMessage.text)
+    );
+    const hasMessages = Number(chat.messagesCount || 0) > 0;
+    return hasLastMessage || hasMessages;
+  }
+
+  return true;
+};
+
 export const getAllChats = () => {
   const ids = get(currentRealChats) || [];
   return ids.map(id => getChat(id).getInfo()).filter(Boolean);

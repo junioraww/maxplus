@@ -17,11 +17,13 @@
   import "$lib/styles/AnimatedPanel.css";
   import API, {
     currentUser,
+    currentRealChats,
   } from "$lib/stores/api";
   import {
     getChatSettings,
     getChat,
     saveChats,
+    isChatInUserList,
   } from "$lib/stores/messages";
   import {
     getContact
@@ -190,6 +192,28 @@
   let showUnreadSeparator = false;
   $: unreadBadgeCount = Math.max(0, Number(chat?.newMessages ?? 0));
   $: chatSettings = getChatSettings(chat?.id ?? chatId);
+  $: isChannel = chat?.type === "CHANNEL";
+  $: isChannelMember = Boolean(
+    chat?.id &&
+    ($currentRealChats || []).includes(chat.id) &&
+    isChatInUserList(chat, $currentUser)
+  );
+
+  let subscribingChannel = false;
+  async function handleChannelSubscribe() {
+    if (subscribingChannel || !chat) return;
+    subscribingChannel = true;
+    try {
+      const link = chat.link || (chat.id ? String(chat.id) : null);
+      if (link) {
+        await $API.joinChannel(link);
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      subscribingChannel = false;
+    }
+  }
 
   function handleCloseChat() {
     if (savePositionTimeout) {
@@ -1913,6 +1937,17 @@
       loading={botStarting}
       onStart={handleBotStart}
     />
+  {:else if isChannel && !isChannelMember}
+    <div class="channel-preview-bar">
+      <button
+        type="button"
+        class="channel-subscribe-btn"
+        disabled={subscribingChannel}
+        on:click={handleChannelSubscribe}
+      >
+        {subscribingChannel ? "Подписка..." : "Подписаться"}
+      </button>
+    </div>
   {:else if chat.type !== "CHANNEL" && $chatSettings}
     <Input
       bind:this={inputComponent}
@@ -2191,5 +2226,47 @@
     font-weight: 500;
     color: var(--accent-color, #5288ec);
     white-space: nowrap;
+  }
+
+  .channel-preview-bar {
+    width: 100%;
+    padding: 8px 16px;
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--bg-primary, #1e1e24);
+    border-top: 1px solid var(--border-color, rgba(255, 255, 255, 0.08));
+    flex-shrink: 0;
+  }
+
+  .channel-subscribe-btn {
+    width: 100%;
+    max-width: 480px;
+    height: 42px;
+    background: var(--accent-color, #2b82eb);
+    color: #ffffff;
+    border: none;
+    border-radius: 10px;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: opacity 0.15s ease, transform 0.1s ease;
+  }
+
+  .channel-subscribe-btn:hover {
+    opacity: 0.92;
+  }
+
+  .channel-subscribe-btn:active {
+    transform: scale(0.98);
+  }
+
+  .channel-subscribe-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
   }
 </style>
