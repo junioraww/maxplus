@@ -278,7 +278,7 @@
   .dock-pill.dragging {
     transition: none;
     cursor: grabbing;
-    z-index: 1002;
+    z-index: 10;
     box-shadow: 0 10px 24px rgba(0, 0, 0, 0.6);
   }
 

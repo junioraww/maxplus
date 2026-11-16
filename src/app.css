@@ -149,6 +149,7 @@ img {
   --z-picker: 110;
   --z-toast: 120;
   --z-loader: 130;
+  --z-lock: 140;
 }
 
 [data-theme="dark"] {

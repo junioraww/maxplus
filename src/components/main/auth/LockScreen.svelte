@@ -673,7 +673,7 @@
     left: 0;
     right: 0;
     bottom: 0;
-    z-index: 99999;
+    z-index: var(--z-lock, 140);
     background: #0e0e12;
     display: flex;
     flex-direction: column;

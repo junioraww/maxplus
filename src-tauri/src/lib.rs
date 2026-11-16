@@ -257,6 +257,7 @@ pub fn run() {
             commands::update_profile,
             commands::set_profile_photo,
             commands::create_group,
+            commands::create_channel,
             commands::delete_chat,
             commands::resolve_channel_by_name,
             commands::join_channel,

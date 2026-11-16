@@ -53,7 +53,7 @@
     right: 10px;
     width: 55px;
     height: 55px;
-    z-index: 100;
+    z-index: var(--z-floating, 5);
     transition: bottom 0.25s cubic-bezier(0.1, 0.9, 0.2, 1);
   }
 

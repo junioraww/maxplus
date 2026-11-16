@@ -25,7 +25,8 @@
 
   import { escapeHtml } from "$lib/utils/text";
   import { debounce } from "$lib/utils/debounce";
-  import { openChat, openContactsModal, openFolderEdit } from "$lib/stores/session";
+  import Session, { openChat, openStartConversation, openContactsModal, openFolderEdit } from "$lib/stores/session";
+  import ChatsListSearchScreen from "$components/main/ChatsListSearchScreen.svelte";
   import API, {
     currentSessionCalls,
     currentRealChats,
@@ -117,29 +118,9 @@
   $: isSelectionMode = selectedChats.size > 0;
 
   let isSearchOpen = false;
-  let searchInputEl;
-  let searchQuery = "";
-  let searchPublic = [];
-  let searchMsg = [];
 
   function openSearch() {
     isSearchOpen = true;
-    setTimeout(() => {
-      searchInputEl?.focus();
-    }, 50);
-  }
-
-  function closeSearch() {
-    isSearchOpen = false;
-    searchQuery = "";
-    searchPublic = [];
-    searchMsg = [];
-  }
-
-  function handleKeyDown(e) {
-    if (e.key === "Escape" && isSearchOpen) {
-      closeSearch();
-    }
   }
 
   function handleChatLongPress(event) {
@@ -419,44 +400,9 @@
     }
   }
 
-  async function handleSearch(search) {
-    searchQuery = search;
-    if (!search || !search.trim().length) {
-      searchPublic = [];
-      searchMsg = [];
-      return;
-    }
-    if (await debounce("pubsearch", 700)) return;
-    if (!searchQuery || !searchQuery.trim().length) {
-      searchPublic = [];
-      searchMsg = [];
-      return;
-    }
-
-    try {
-      const { result: publicResult } = (await $API.searchPublic(search)) || {};
-      if (publicResult && Array.isArray(publicResult)) {
-        for (const entry of publicResult) {
-          if (entry.chat) {
-            entry.chat.avatar = entry.chat.baseIconUrl;
-          } else if (entry.contact) {
-            entry.contact = entry.contact.contact || entry.contact;
-            entry.contact.avatar = entry.contact.baseUrl;
-          }
-        }
-        searchPublic = publicResult;
-      } else {
-        searchPublic = [];
-      }
-    } catch {
-      searchPublic = [];
-    }
-
-    try {
-      const { result: msgResult } = (await $API.searchMsg(search)) || {};
-      searchMsg = Array.isArray(msgResult) ? msgResult : [];
-    } catch {
-      searchMsg = [];
+  function handleKeyDown(e) {
+    if (e.key === "Escape" && isSelectionMode) {
+      clearSelection();
     }
   }
 
@@ -471,19 +417,7 @@
       <div class="action-header" transition:fly={{ y: -50, duration: 200 }}>
         <div class="action-left">
           <button class="icon-btn" on:click={() => { if ($forwardDraft && $forwardDraft.messages?.length) { clearForwardDraft(); } clearSelection(); }}>
-            <svg
-              viewBox="0 0 24 24"
-              width="24"
-              height="24"
-              stroke="currentColor"
-              stroke-width="2"
-              fill="none"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-            >
-              <line x1="18" y1="6" x2="6" y2="18"></line>
-              <line x1="6" y1="6" x2="18" y2="18"></line>
-            </svg>
+            <img src="/icons/close.svg" width="24" height="24" alt="" />
           </button>
           <span class="selection-count">{selectedChats.size}</span>
         </div>
@@ -495,106 +429,19 @@
             </button>
           {:else}
             <button class="icon-btn" on:click={pinSelected} title="Закрепить">
-              <svg
-                viewBox="0 0 24 24"
-                width="20"
-                height="20"
-                stroke="currentColor"
-                stroke-width="2"
-                fill="none"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-              >
-                <path d="M21.41 11.58l-9-9C12.05 2.22 11.55 2 11 2H4a2 2 0 0 0-2 2v7c0 .55.22 1.05.59 1.42l9 9c.36.36.86.58 1.41.58s1.05-.22 1.41-.59l7-7c.37-.36.59-.86.59-1.41s-.23-1.06-.59-1.42zM5.5 7A1.5 1.5 0 1 1 7 5.5 1.5 1.5 0 0 1 5.5 7z"></path>
-              </svg>
+              <img src="/icons/pin.svg" width="20" height="20" alt="" />
             </button>
             <button class="icon-btn" on:click={muteNotifications} title="Уведомления">
-              <svg
-                viewBox="0 0 24 24"
-                width="20"
-                height="20"
-                stroke="currentColor"
-                stroke-width="2"
-                fill="none"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-              >
-                <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
-                <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
-              </svg>
+              <img src="/icons/mute.svg" width="20" height="20" alt="" />
             </button>
             <button class="icon-btn" on:click={addToFolder} title="В папку">
-              <svg
-                viewBox="0 0 24 24"
-                width="20"
-                height="20"
-                stroke="currentColor"
-                stroke-width="2"
-                fill="none"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-              >
-                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
-              </svg>
+              <img src="/icons/folder.svg" width="20" height="20" alt="" />
             </button>
             <button class="icon-btn" on:click={downloadSelected} title="Скачать">
-              <svg
-                viewBox="0 0 24 24"
-                width="20"
-                height="20"
-                stroke="currentColor"
-                stroke-width="2"
-                fill="none"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-              >
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                <polyline points="7 10 12 15 17 10"></polyline>
-                <line x1="12" y1="15" x2="12" y2="3"></line>
-              </svg>
+              <img src="/icons/download.svg" width="20" height="20" alt="" />
             </button>
             <button class="icon-btn" on:click={deleteSelected} title="Удалить">
-              <svg
-                viewBox="0 0 24 24"
-                width="20"
-                height="20"
-                stroke="currentColor"
-                stroke-width="2"
-                fill="none"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-              >
-                <polyline points="3 6 5 6 21 6"></polyline>
-                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-              </svg>
-            </button>
-          {/if}
-        </div>
-      </div>
-    {:else if isSearchOpen}
-      <div class="search-toolbar" transition:fade={{ duration: 150 }}>
-        <button class="action-circle-btn" on:click={closeSearch} title="Назад">
-          <svg viewBox="0 0 24 24" width="22" height="22" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
-            <line x1="19" y1="12" x2="5" y2="12"></line>
-            <polyline points="12 19 5 12 12 5"></polyline>
-          </svg>
-        </button>
-        <div class="search-field-box">
-          <input
-            type="text"
-            bind:this={searchInputEl}
-            bind:value={searchQuery}
-            on:input={(e) => handleSearch(e.target.value)}
-            placeholder="Поиск"
-            class="search-input"
-            autofocus
-          />
-          {#if searchQuery.length}
-            <button class="clear-search-btn" on:click={() => { searchQuery = ""; handleSearch(""); }}>
-              <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
-                <line x1="18" y1="6" x2="6" y2="18"></line>
-                <line x1="6" y1="6" x2="18" y2="18"></line>
-              </svg>
+              <img src="/icons/trash.svg" width="20" height="20" alt="" />
             </button>
           {/if}
         </div>
@@ -604,10 +451,7 @@
         <div class="toolbar-title-box">
           {#if $forwardDraft && $forwardDraft.messages?.length > 0}
             <button class="action-circle-btn" on:click={() => { clearForwardDraft(); clearSelection(); }} title="Отмена">
-              <svg viewBox="0 0 24 24" width="22" height="22" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
-                <line x1="18" y1="6" x2="6" y2="18"></line>
-                <line x1="6" y1="6" x2="18" y2="18"></line>
-              </svg>
+              <img src="/icons/close.svg" width="22" height="22" alt="" />
             </button>
             <h1 class="toolbar-title">Выбери получателя</h1>
           {:else}
@@ -649,16 +493,10 @@
         {#if !$forwardDraft || !$forwardDraft.messages?.length}
           <div class="toolbar-actions">
             <button class="action-circle-btn" on:click={openSearch} title="Поиск">
-              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <circle cx="11" cy="11" r="8"></circle>
-                <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-              </svg>
+              <img src="/icons/search.svg" alt="" width="20" height="20" />
             </button>
-            <button class="action-circle-btn" on:click={() => openContactsModal()} title="Новый чат">
-              <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <line x1="12" y1="5" x2="12" y2="19"></line>
-                <line x1="5" y1="12" x2="19" y2="12"></line>
-              </svg>
+            <button class="action-circle-btn plus-btn" on:click={openStartConversation} title="Новый чат">
+              <img src="/icons/plus.svg" alt="" width="20" height="20" />
             </button>
           </div>
         {/if}
@@ -681,6 +519,23 @@
       on:editFolder={(e) => {
         openFolderEdit(e.detail);
       }}
+      on:readFolder={async (e) => {
+        const folder = e.detail;
+        if (!folder) return;
+        const chatsInFolder = chatsByFolderId.get(folder.id) || [];
+        for (const c of chatsInFolder) {
+          if (c?.id) {
+            try {
+              await $API?.markAsRead?.(c.id);
+            } catch {}
+          }
+        }
+      }}
+      on:deleteFolder={(e) => {
+        const folder = e.detail;
+        if (!folder || folder.id === 0 || folder.id === "all.chat.folder") return;
+        deleteFolder(folder.id);
+      }}
       on:addFolder={() => {
         openFolderEdit({ isNew: true });
       }}
@@ -692,61 +547,18 @@
   {/if}
 
   {#if isSearchOpen}
-    <div class="search-scrollable">
-      {#if searchPublic.length}
-        {#each searchPublic as result, i ((result.chat || result.contact)?.id ?? i)}
-          <ChatItem
-            chat={result.chat || result.contact}
-            on:open={async () => {
-              let chatId;
-              if (result.chat) chatId = result.chat.id;
-              else if (result.contact) {
-                const contact = result.contact;
-                chatId = Number(BigInt($currentUser) ^ BigInt(contact.id));
-                await updateContact(contact);
-              }
-              openChat(chatId);
-            }}
-          />
-        {/each}
-        <hr />
-      {/if}
+    <ChatsListSearchScreen on:close={() => (isSearchOpen = false)} />
+  {/if}
 
-      {#if searchMsg.length}
-        {#each searchMsg as result, i (result.chatId ? `${result.chatId}_${result.message?.id ?? i}` : i)}
-          {@const chat = getChat(result.chatId).getInfo()}
-          {#if chat && result.message}
-            {@const hl = result.highlights[0]}
-            <ChatItem
-              {chat}
-              replace={{
-                message: result.message,
-                text: escapeHtml(result.message.text).replace(
-                  new RegExp(hl, "gi"),
-                  `<b>${hl}</b>`,
-                ),
-              }}
-              on:open={() => openChat(result.chatId)}
-            />
-          {/if}
-        {/each}
-        <hr />
-      {/if}
-
-      {#if !searchPublic.length && !searchMsg.length && searchQuery.trim().length > 0}
-        <div class="empty-search-state">Ничего не найдено</div>
-      {/if}
-    </div>
-  {:else}
-    <div
-      class="folders-slider"
-      class:no-panel-drag={isSelectionMode}
-      use:panelSlider={{
-        getPagesCount: () => localFolders.length,
-        getActive: () => activeFolderIndex,
-        canDrag: () => localFolders.length > 1 && !isSelectionMode,
-        nested: true,
-        onPrepare: () => ensureNeighborFoldersMounted(activeFolderIndex),
+  <div
+    class="folders-slider"
+    class:no-panel-drag={isSelectionMode}
+    use:panelSlider={{
+      getPagesCount: () => localFolders.length,
+      getActive: () => activeFolderIndex,
+      canDrag: () => localFolders.length > 1 && !isSelectionMode,
+      nested: true,
+      onPrepare: () => ensureNeighborFoldersMounted(activeFolderIndex),
         onDragStart: handleFolderDragStart,
         onDragMove: handleFolderDragMove,
         onDragEnd: handleFolderDragEnd,
@@ -770,6 +582,13 @@
                 on:open={(e) => e.detail && openChat(e.detail)}
                 on:longpress={handleChatLongPress}
                 on:toggle={handleChatToggle}
+                on:findContact={openContactAdd}
+                on:inviteLink={openContactAdd}
+                on:loadMore={() => {
+                  if ($API?.loadMoreChats) {
+                    $API.loadMoreChats();
+                  }
+                }}
                 on:scroll={(e) => {
                   if (e.detail?.scrollTop > 20) {
                     storiesTrayEl?.collapse();
@@ -783,7 +602,6 @@
         {/each}
       </div>
     </div>
-  {/if}
 </div>
 
 <style>
@@ -899,82 +717,36 @@
   }
 
   .action-circle-btn {
-    width: 40px;
-    height: 40px;
-    border-radius: 50%;
+    width: 32px;
+    height: 32px;
+    border-radius: 12px;
     border: none;
-    background: none;
+    background: var(--bg-surface-subtle, rgba(255, 255, 255, 0.08));
     color: var(--text-primary, #ffffff);
     display: flex;
     align-items: center;
     justify-content: center;
     cursor: pointer;
     padding: 0;
-    transition: background-color 0.15s ease;
+    transition: background-color 0.15s ease, opacity 0.15s ease;
+  }
+
+  .action-circle-btn img {
+    width: 20px;
+    height: 20px;
+  }
+
+  .action-circle-btn.plus-btn {
+    background: var(--accent-primary, #248bfe);
+    color: #ffffff;
+  }
+
+  .action-circle-btn.plus-btn:hover {
+    background: var(--accent-primary-hover, #1a7ae6);
   }
 
   .action-circle-btn:hover {
-    background-color: rgba(255, 255, 255, 0.08);
-  }
-
-  .search-toolbar {
-    display: flex;
-    align-items: center;
-    width: 100%;
-    height: 52px;
-    padding: 0 12px 0 8px;
-    box-sizing: border-box;
-    gap: 8px;
-  }
-
-  .search-field-box {
-    flex: 1;
-    position: relative;
-    display: flex;
-    align-items: center;
-    height: 38px;
-    background-color: var(--bg-input, #26262e);
-    border-radius: 10px;
-    box-sizing: border-box;
-    padding: 0 36px 0 14px;
-  }
-
-  .search-input {
-    width: 100%;
-    height: 100%;
-    outline: none;
-    border: none;
-    background: none;
-    color: var(--text-primary, #ffffff);
-    font-size: 16px;
-    line-height: 20px;
-    padding: 0;
-  }
-
-  .search-input::placeholder {
-    color: var(--text-muted, #8b929e);
-  }
-
-  .clear-search-btn {
-    position: absolute;
-    right: 8px;
-    top: 50%;
-    transform: translateY(-50%);
-    width: 24px;
-    height: 24px;
-    border-radius: 50%;
-    border: none;
-    background: none;
-    color: var(--text-muted, #8b929e);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    padding: 0;
-  }
-
-  .clear-search-btn:hover {
-    color: var(--text-primary, #ffffff);
+    background-color: var(--bg-surface-subtle-hover, rgba(255, 255, 255, 0.14));
   }
 
   .action-header {
@@ -983,7 +755,7 @@
     left: 0;
     width: 100%;
     height: 100%;
-    z-index: 20;
+    z-index: var(--z-header, 4);
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -1078,28 +850,6 @@
     contain: layout paint style;
     content-visibility: auto;
     contain-intrinsic-size: 100% 600px;
-  }
-
-  hr {
-    width: 92%;
-    border: none;
-    border-top: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.06));
-    margin: 8px auto;
-  }
-
-  .search-scrollable {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    overflow-y: auto;
-    padding-top: 4px;
-  }
-
-  .empty-search-state {
-    text-align: center;
-    color: var(--text-muted, #8b929e);
-    font-size: 15px;
-    margin-top: 40px;
   }
 
   .placeholder {

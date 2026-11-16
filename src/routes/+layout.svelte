@@ -22,7 +22,7 @@
   import ContactsModal from "$components/main/ContactsModal.svelte";
   import QRScannerModal from "$components/main/QRScannerModal.svelte";
   import DevSettings from "$components/main/dev/Settings.svelte";
-  import AddContactModal from "$components/main/AddContactModal.svelte";
+  import ContactAddBottomSheet from "$components/main/ContactAddBottomSheet.svelte";
   import DevicesSettings from "$components/main/devices/Settings.svelte";
   import GlobalMediaPlayer from "$components/media/GlobalMediaPlayer.svelte";
   import MediaPlaylistModal from "$components/media/MediaPlaylistModal.svelte";
@@ -38,10 +38,12 @@
   import CallsSheetHost from '$components/calls/CallsSheetHost.svelte';
   import FolderEditModal from '$components/chats/FolderEditModal.svelte';
   import ConfirmModal from '$components/main/ConfirmModal.svelte';
+  import StartConversationScreen from "$components/main/StartConversationScreen.svelte";
   import { MediaPool } from "$lib/services/MediaPool";
 
   import Session, {
     closeAvatarGallery,
+    closeStartConversation,
     closeContactsModal,
     closeSafeAvatarPicker,
     closeQrScanner,
@@ -215,6 +217,7 @@
     $Session?.avatarGallery ||
     $Session?.contactModal ||
     $Session?.contactsModal ||
+    $Session?.startConversationModal ||
     $Session?.safeAvatarPicker ||
     $Session?.qrScanner ||
     $Session?.folderEdit ||
@@ -239,6 +242,10 @@
   }
 </script>
 
+{#if $Session.startConversationModal}
+  <StartConversationScreen on:close={() => closeStartConversation()} />
+{/if}
+
 {#if $Session.devSettings}
   <DevSettings />
 {/if}
@@ -252,7 +259,7 @@
 {/if}
 
 {#if $Session.contactModal}
-  <AddContactModal on:close={() => ($Session.contactModal = false)} />
+  <ContactAddBottomSheet on:close={() => ($Session.contactModal = false)} />
 {/if}
 
 {#if $Session.avatarGallery}

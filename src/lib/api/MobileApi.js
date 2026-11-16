@@ -5,6 +5,7 @@ import { pluginEmit } from "$lib/plugins/events";
 import { dismissRequest } from "$components/ChatWindow/e2e";
 
 import { invoke } from "$lib/utils/invoke";
+import { normalizePhone } from "$lib/utils/text";
 import {
   currentUser,
   currentUserDetails,
@@ -1409,9 +1410,10 @@ export default class MobileApi extends BaseAPI {
   async addContact(name, phone) {
     await this.waitSync();
     let oldContact;
+    const formatted = normalizePhone(phone);
 
     try {
-      let response = await invoke("get_by_phone", { phone });
+      let response = await invoke("get_by_phone", { phone: formatted });
       oldContact = response.contact;
       if (!oldContact) throw response;
     } catch (error) {
@@ -1854,25 +1856,52 @@ export default class MobileApi extends BaseAPI {
     return updatedChat || res;
   }
 
-  async createGroup(title) {
+  async #registerNewChat(result, title, type) {
+    const data = result?.payload || result;
+    const chat = data?.chat || result?.chat;
+    const chatId = chat?.id || data?.chatId || result?.chatId || data?.message?.chatId;
+    if (!chat && !chatId) return null;
+    const finalChat = chat || { id: chatId, title, type };
+    if (chatId) {
+      getChat(chatId).chatInfo.set(finalChat);
+      await saveChats([finalChat]).catch(() => {});
+      currentRealChats.update((x) => [...(x || []).filter((id) => id !== chatId), chatId]);
+    }
+    return finalChat;
+  }
+
+  async createGroup(title, participantIds = [], notify = true) {
     await this.waitSync();
     const result = await invoke("create_group", {
       title,
-      participantIds: [],
+      participantIds: participantIds.map((id) => Number(id)),
+      notify,
     });
+    return this.#registerNewChat(result, title, "CHAT");
+  }
 
-    const payload = result.payload;
-
-    if (!payload) return null;
-
-    if (payload.chat) {
-      getChat(payload.chatId).chatInfo.set(payload.chat);
-      await saveChats([payload.chat]).catch(() => {});
+  async createChannel(title, participantIds = [], description = null, notify = true) {
+    await this.waitSync();
+    let result;
+    const payload = {
+      title,
+      participantIds: participantIds.map((id) => Number(id)),
+      notify,
+    };
+    try {
+      result = await invoke("create_channel", payload);
+    } catch {
+      result = await invoke("create_group", payload);
     }
-
-    currentRealChats.update(x => [...(x || []), payload.chatId]);
-
-    return payload.chat;
+    const finalChat = await this.#registerNewChat(result, title, "CHANNEL");
+    if (description && finalChat?.id) {
+      await invoke("change_group_profile", {
+        chatId: Number(finalChat.id),
+        title: null,
+        description,
+      }).catch(() => {});
+    }
+    return finalChat;
   }
 
   async joinChannel(link) {

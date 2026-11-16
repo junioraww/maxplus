@@ -68,7 +68,7 @@
     width: 100%;
     height: 100%;
     background: #1e1e1e;
-    z-index: 100;
+    z-index: var(--z-modal, 7);
     display: flex;
     flex-direction: column;
   }

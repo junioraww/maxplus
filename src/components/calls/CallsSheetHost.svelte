@@ -6,6 +6,7 @@
   import { currentRealContacts } from "$lib/stores/api";
   import { getCachedContacts } from "$lib/stores/contacts";
   import { showAlert } from "$lib/utils/alert";
+  import { closeStartConversation } from "$lib/stores/session";
 
   let createdRoomLink = "";
   let creatingRoom = false;
@@ -67,6 +68,7 @@
     const link = createdRoomLink;
     const mode = createSecureMode ? CALL_MODE.SECURE : CALL_MODE.PLAIN;
     closeCallSheet();
+    closeStartConversation();
     if (link) await CallService.joinConferenceByLink(link, video, mode);
   }
 
@@ -161,9 +163,7 @@
   {:else if $callSheetModal.type === "new_call"}
     <BottomSheet title="Новый звонок" maxHeight="85vh" on:close={closeCallSheet}>
       <div class="search-box">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#8b929e" stroke-width="2" stroke-linecap="round">
-          <circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-        </svg>
+        <img src="/icons/search.svg" alt="" width="18" height="18" />
         <input type="text" placeholder="Поиск по контактам..." bind:value={contactSearchQuery} class="search-input" />
       </div>
 
@@ -192,13 +192,14 @@
 
 <style>
   .sheet-desc { margin: 0 0 16px; font-size: 13px; color: var(--text-muted, #8b929e); text-align: center; }
-  .row { display: flex; gap: 8px; width: 100%; box-sizing: border-box; }
+  .row { display: flex; align-items: center; flex-wrap: nowrap; gap: 8px; width: 100%; box-sizing: border-box; }
   .btn-group { margin-top: 16px; }
   .mb { margin-bottom: 12px; }
   .field {
-    flex: 1; min-width: 0; width: 100%; box-sizing: border-box;
+    flex: 1 1 auto; min-width: 0; width: 0; box-sizing: border-box;
     background: var(--bg-app, #17181c); border: 1px solid rgba(255, 255, 255, 0.1);
     border-radius: 12px; padding: 11px 14px; color: #fff; font-size: 14px; outline: none;
+    user-select: text; -webkit-user-select: text;
   }
   .btn {
     height: 44px; border: none; border-radius: 22px; font-size: 14px; font-weight: 600;
@@ -206,7 +207,8 @@
     transition: background 0.15s, opacity 0.15s;
   }
   .copy-btn {
-    padding: 0 16px; flex-shrink: 0; background: var(--accent-primary, #248bfe); color: #fff;
+    flex: 0 0 auto; width: auto; min-width: 110px; white-space: nowrap;
+    padding: 0 16px; background: var(--accent-primary, #248bfe); color: #fff;
   }
   .copy-btn.copied { background: var(--status-success, #4ade80); color: #0b2413; }
   .primary-btn { flex: 1; background: var(--accent-primary, #248bfe); color: #fff; }

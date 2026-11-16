@@ -547,7 +547,7 @@
     position: absolute;
     top: calc(16px + var(--safe-top, 0px));
     left: 16px;
-    z-index: 100;
+    z-index: var(--z-header, 4);
     width: 44px;
     height: 44px;
     display: flex;

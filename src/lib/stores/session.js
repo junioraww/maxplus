@@ -114,6 +114,14 @@ export function closeAvatarGallery() {
   data.update(current => ({ ...current, avatarGallery: null }));
 }
 
+export function openStartConversation() {
+  data.update(current => ({ ...current, startConversationModal: true }));
+}
+
+export function closeStartConversation() {
+  data.update(current => ({ ...current, startConversationModal: false }));
+}
+
 export function openContactsModal() {
   data.update(current => ({ ...current, contactsModal: true }));
 }
