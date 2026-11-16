@@ -35,6 +35,7 @@
   } from "$lib/stores/api";
   import {
     getChat,
+    isChatInUserList,
   } from "$lib/stores/messages";
   import {
     getContact,
@@ -281,7 +282,7 @@
     const chats = [];
     for (let i = 0; i < $currentRealChats.length; i++) {
       const found = getChat($currentRealChats[i]).getInfo();
-      if (found) chats.push(found);
+      if (found && isChatInUserList(found, $currentUser)) chats.push(found);
     }
     const result = new Map();
     for (let f = 0; f < localFolders.length; f++) {
