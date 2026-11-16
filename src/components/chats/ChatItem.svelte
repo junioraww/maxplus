@@ -1,31 +1,18 @@
 <script>
   import { createEventDispatcher } from "svelte";
   import { get } from "svelte/store";
-  import {
-    currentUser,
-  } from "$lib/stores/api";
-  import {
-    getContact
-  } from "$lib/stores/contacts";
-  import {
-    getAttachText,
-    getSystemText,
-  } from "$lib/utils/attachs";
-  import Session, {
-    openChat,
-    get as sessionGet
-  } from "$lib/stores/session";
-  import {
-    getChat
-  } from "$lib/stores/messages";
+  import { currentUser } from "$lib/stores/api";
+  import { getContact } from "$lib/stores/contacts";
+  import { getAttachText, getSystemText } from "$lib/utils/attachs";
+  import Session, { openChat, get as sessionGet } from "$lib/stores/session";
+  import { getChat } from "$lib/stores/messages";
   import { isChatMuted } from "$lib/utils/notifications";
   import { getMountStore } from "$lib/plugins/mount-registry";
+  import Avatar from "$components/main/Avatar.svelte";
 
   const pluginChatLeadings = getMountStore("chat-item:leading");
   const pluginChatBadges = getMountStore("chat-item:badge");
   const pluginChatTrailings = getMountStore("chat-item:trailing");
-
-  import Avatar from "$components/main/Avatar.svelte";
 
   export let chat;
   export let replace;
@@ -58,6 +45,7 @@
 
   $: muted = isChatMuted(currentChat);
   $: isBot = $contact?.options?.includes("BOT") || chat?.options?.BOT === true || chat?.options?.IS_BOT === true;
+  $: isPinned = Boolean(currentChat?.favIndex || currentChat?.pinned || chat?.favIndex || chat?.pinned);
 
   $: title =
     chat.id === 0
@@ -178,8 +166,8 @@
 
   function handleClick(e) {
     if (isLongPress || hasMoved) {
-      e.stopPropagation();
-      e.preventDefault();
+      e?.stopPropagation?.();
+      e?.preventDefault?.();
       return;
     }
 
@@ -227,6 +215,7 @@
     <Avatar
       {chat}
       contactId={peerId}
+      size={56}
       {selectionMode}
       {isSelected}
       allowStories={!selectionMode}
@@ -235,31 +224,44 @@
 
   <div class="content">
     <div class="row top">
-      <span class="name">
+      <div class="title-wrap">
         {#if isBot}
           <img src="icons/bot.svg" class="bot-badge-icon" alt="" />
         {/if}
-        {title}
-        {#each $pluginChatBadges as item (item.id)}
-          <span class="plugin-mount-inline plugin-chat-badge" data-plugin-mount={item.pluginId || item.id}>
-            {@html item.html}
-          </span>
-        {/each}
-      </span>
-      <div class="meta">
+        <span class="name">{title}</span>
         {#if muted}
-          <svg class="muted-icon" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="#8e8e93" stroke-width="2">
+          <svg class="muted-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
             <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
             <line x1="2" y1="2" x2="22" y2="22"></line>
           </svg>
         {/if}
-        {#if isMe}
-          <span class="status-icon" class:read={isRead}>
-            {isRead ? "✓✓" : "✓"}
+        {#each $pluginChatBadges as item (item.id)}
+          <span class="plugin-mount-inline plugin-chat-badge" data-plugin-mount={item.pluginId || item.id}>
+            {@html item.html}
           </span>
+        {/each}
+      </div>
+
+      <div class="meta">
+        {#if isMe}
+          {#if isRead}
+            <svg class="status-icon read" viewBox="0 0 18 16" width="16" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="1.5 8 5.5 12 12.5 4"></polyline>
+              <polyline points="6.5 8 10.5 12 17.5 4"></polyline>
+            </svg>
+          {:else}
+            <svg class="status-icon" viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="2.5 8 6.5 12 14.5 4"></polyline>
+            </svg>
+          {/if}
         {/if}
         <span class="time">{timeDisplay}</span>
+        {#if isPinned}
+          <svg class="pin-icon" viewBox="0 0 16 16" width="15" height="15" fill="currentColor">
+            <path d="M9.828.722a.5.5 0 0 1 .354.146l4.95 4.95a.5.5 0 0 1 0 .707c-.48.48-1.072.588-1.503.588-.177 0-.335-.018-.46-.039l-3.134 3.134a5.927 5.927 0 0 1 .16 1.013c.046.702-.032 1.687-.72 2.375a.5.5 0 0 1-.707 0l-2.829-2.828-3.182 3.182c-.195.195-1.219.923-1.414.728-.195-.195.533-1.22.728-1.414l3.182-3.182-2.828-2.829a.5.5 0 0 1 0-.707c.688-.688 1.673-.767 2.375-.72a5.922 5.922 0 0 1 1.013.16l3.134-3.133a2.772 2.772 0 0 1-.04-.461c0-.43.108-1.022.589-1.503a.5.5 0 0 1 .353-.146z"/>
+          </svg>
+        {/if}
         {#each $pluginChatTrailings as item (item.id)}
           <span class="plugin-mount-inline plugin-chat-trailing" data-plugin-mount={item.pluginId || item.id}>
             {@html item.html}
@@ -270,10 +272,9 @@
 
     <div class="row bottom">
       <p class="preview">
-        {#if isMe}<span class="you-prefix">Вы:</span>{/if}
+        {#if isMe}<span class="you-prefix">Вы: </span>{/if}
         {#if attaches}
-          <b>{attaches}</b>{#if shownMessage?.text},
-          {/if}
+          <b>{attaches}</b>{#if shownMessage?.text}, {/if}
         {/if}
         {#if replace}
           {@html replace.text}
@@ -282,7 +283,7 @@
         {/if}
       </p>
       {#if unread > 0}
-        <div class="badge" class:muted style={unread >= 99 ? "width: 26px;" : ""}>
+        <div class="badge" class:muted>
           {unread > 99 ? "99+" : unread}
         </div>
       {/if}
@@ -293,9 +294,12 @@
 <style>
   .chat-item {
     display: flex;
-    padding: 8px 10px;
+    align-items: center;
+    min-height: 80px;
+    padding: 9px 6px;
+    box-sizing: border-box;
     cursor: pointer;
-    transition: background-color 0.2s;
+    transition: background-color 0.15s ease;
     gap: 12px;
     user-select: none;
     position: relative;
@@ -309,14 +313,19 @@
     background-color: rgba(59, 130, 246, 0.15);
   }
 
-  /*.online-badge {
-        position: absolute; bottom: 2px; right: 2px;
-        width: 12px; height: 12px;
-        background-color: var(--status-success);
-        border: 2px solid #1e1e1e;
-        border-radius: 50%;
-        z-index: 1;
-    }*/
+  .avatar-click-area {
+    cursor: pointer;
+    flex-shrink: 0;
+    border-radius: 50%;
+    transition: opacity 0.15s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .avatar-click-area:hover {
+    opacity: 0.92;
+  }
 
   .content {
     flex: 1;
@@ -331,42 +340,66 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
+    min-width: 0;
+  }
+
+  .title-wrap {
+    display: flex;
+    align-items: center;
+    min-width: 0;
+    gap: 4px;
+    flex: 1;
   }
 
   .name {
-    font-weight: 500;
+    font-weight: 600;
     font-size: 16px;
-    color: var(--text-primary);
+    line-height: 20px;
+    color: var(--text-primary, #ffffff);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
   }
 
-  .meta {
-    display: flex;
-    align-items: center;
-    gap: 5px;
+  .muted-icon {
+    color: var(--text-muted, #8b929e);
     flex-shrink: 0;
   }
 
+  .meta {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-shrink: 0;
+    margin-left: 8px;
+  }
+
   .time {
-    font-size: 12px;
-    color: #888;
+    font-size: 13px;
+    line-height: 16px;
+    color: var(--text-muted, #8b929e);
+    white-space: nowrap;
   }
 
   .status-icon {
-    font-size: 12px;
-    color: #888;
+    color: var(--text-muted, #8b929e);
+    flex-shrink: 0;
   }
 
   .status-icon.read {
-    color: var(--status-success);
+    color: var(--read-tick, #34b7f1);
+  }
+
+  .pin-icon {
+    color: var(--text-muted, #8b929e);
+    flex-shrink: 0;
   }
 
   .preview {
     margin: 0;
-    font-size: 14px;
-    color: #aaa;
+    font-size: 15px;
+    line-height: 20px;
+    color: var(--text-secondary, #8b929e);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -374,53 +407,37 @@
   }
 
   .you-prefix {
-    color: #fff;
+    color: var(--text-primary, #ffffff);
   }
 
   .badge {
-    background-color: var(--badge-unread);
-    color: white;
-    font-size: 11px;
-    font-weight: bold;
-    width: 20px;
+    background-color: var(--badge-unread, #3b82f6);
+    color: #ffffff;
+    font-size: 13px;
+    font-weight: 600;
+    font-feature-settings: "tnum";
+    min-width: 20px;
     height: 20px;
-    border-radius: 16px;
-    display: flex;
+    padding: 0 6px;
+    border-radius: 20px;
+    display: inline-flex;
     align-items: center;
     justify-content: center;
     margin-left: 8px;
     flex-shrink: 0;
+    box-sizing: border-box;
+    line-height: 1;
   }
 
   .badge.muted {
     background-color: #4b4b56;
-    color: #bbb;
+    color: #dddddd;
   }
 
   .bot-badge-icon {
     width: 14px;
     height: 14px;
-    margin-right: 4px;
-    vertical-align: -2px;
-    display: inline-block;
-    opacity: 0.85;
-  }
-
-  .muted-icon {
-    opacity: 0.85;
-    margin-right: 2px;
-    display: inline-block;
-    vertical-align: -1px;
-  }
-
-  .avatar-click-area {
-    cursor: pointer;
     flex-shrink: 0;
-    border-radius: 50%;
-    transition: opacity 0.15s ease;
-  }
-
-  .avatar-click-area:hover {
-    opacity: 0.88;
+    opacity: 0.9;
   }
 </style>

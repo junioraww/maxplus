@@ -107,7 +107,7 @@
   .chat-list-inner {
     flex: 1;
     overflow-y: auto;
-    margin: 6px 0;
+    margin: 0;
     display: flex;
     flex-direction: column;
     contain: layout;
@@ -116,8 +116,9 @@
 
   .state {
     text-align: center;
-    color: #777;
-    margin-top: 50px;
+    color: var(--text-muted, #8b929e);
+    font-size: 16px;
+    margin-top: 60px;
   }
 
   .scroll-sentinel {

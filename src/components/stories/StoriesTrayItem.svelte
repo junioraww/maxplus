@@ -20,7 +20,7 @@
   <div class="ring-container">
     <StoryRing
       {preview}
-      size={56}
+      size={62}
       on:click={() => onOwnerClick(preview)}
     />
   </div>
@@ -34,22 +34,30 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 6px;
+    width: 62px;
+    height: 88px;
     cursor: pointer;
     flex-shrink: 0;
+    box-sizing: border-box;
+    justify-content: flex-start;
+    padding-bottom: 6px;
   }
 
   .ring-container {
     position: relative;
-    width: 56px;
-    height: 56px;
+    width: 62px;
+    height: 62px;
+    flex-shrink: 0;
   }
 
   .owner-name-label {
-    font-size: 11px;
-    font-weight: 500;
+    margin-top: auto;
+    font-size: 12px;
+    line-height: 16px;
+    font-weight: 400;
+    letter-spacing: 0.025em;
     color: var(--text-color, #e4e7eb);
-    max-width: 64px;
+    max-width: 62px;
     text-align: center;
     white-space: nowrap;
     overflow: hidden;
