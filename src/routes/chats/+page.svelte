@@ -8,13 +8,19 @@
   import FolderChatList from "$components/chats/FolderChatList.svelte";
   import FolderTabs from "$components/chats/FolderTabs.svelte";
   import StoriesTray from "$components/stories/StoriesTray.svelte";
-  import { openStoryComposer } from "$lib/stores/stories";
-  import AddContactBtn from "$components/main/AddContactBtn.svelte";
-  import Search from "$components/main/Search.svelte";
+  import Avatar from "$components/main/Avatar.svelte";
+  import { openStoryComposer, sortedStoriesFeed, selfStoryPreview } from "$lib/stores/stories";
   import MediaPlaybackHeader from "$components/media/MediaPlaybackHeader.svelte";
   import { activeMedia } from "$lib/stores/mediaPlayback";
 
   let storiesTrayEl;
+  let isStoriesExpanded = true;
+
+  $: myId = Number($currentUser);
+  $: selfPreview = $selfStoryPreview;
+  $: otherStoryPreviews = ($sortedStoriesFeed || []).filter((p) => Number(p.owner?.ownerId) !== myId);
+  $: hasStories = otherStoryPreviews.length > 0 || (selfPreview && (selfPreview.totalCount || 0) > 0);
+  $: topStoryAvatars = otherStoryPreviews.slice(0, 3);
 
   import { escapeHtml } from "$lib/utils/text";
   import { debounce } from "$lib/utils/debounce";
@@ -62,11 +68,6 @@
 
   $: {
     const rawFolders = $currentFolders || [];
-    const allFolder = rawFolders.find(isAllChatsFolder) || {
-      id: "all.chat.folder",
-      title: "Все",
-      filters: null,
-    };
     const allIndex = rawFolders.findIndex(isAllChatsFolder);
     const nonAll = rawFolders.filter((f) => !isAllChatsFolder(f));
 
@@ -88,6 +89,7 @@
       if (activeFolderIndex === -1) activeFolderIndex = 0;
     }
   }
+
   let activeFolder = null;
   let activeFolderIndex = 0;
   $: if (!activeFolder && localFolders.length > 0)
@@ -112,16 +114,37 @@
 
   $: isSelectionMode = selectedChats.size > 0;
 
+  let isSearchOpen = false;
+  let searchInputEl;
   let searchQuery = "";
   let searchPublic = [];
   let searchMsg = [];
 
+  function openSearch() {
+    isSearchOpen = true;
+    setTimeout(() => {
+      searchInputEl?.focus();
+    }, 50);
+  }
+
+  function closeSearch() {
+    isSearchOpen = false;
+    searchQuery = "";
+    searchPublic = [];
+    searchMsg = [];
+  }
+
+  function handleKeyDown(e) {
+    if (e.key === "Escape" && isSearchOpen) {
+      closeSearch();
+    }
+  }
+
   function handleChatLongPress(event) {
     const chat = event.detail;
-    // вибрация уже сработала в компоненте
     if (!selectedChats.has(chat.id)) {
       selectedChats.add(chat.id);
-      selectedChats = selectedChats; // триггер реактивности
+      selectedChats = selectedChats;
     }
   }
 
@@ -153,7 +176,6 @@
 
   function deleteSelected() {
     if (!confirm(`Удалить ${selectedChats.size} чат(ов)?`)) return;
-    // $API.deleteChats([...selectedChats]);
     clearSelection();
   }
 
@@ -162,12 +184,7 @@
   }
 
   function addToFolder() {
-    alert(
-      "Открыть модальное окно выбора папки для " +
-        selectedChats.size +
-        " чатов",
-    );
-    // clearSelection();
+    alert("Открыть модальное окно выбора папки для " + selectedChats.size + " чатов");
   }
 
   async function muteNotifications() {
@@ -259,31 +276,6 @@
 
   $: contactIdSet = new Set($currentRealContacts || []);
 
-  function getChatsForFolder(folder, allChats, realChats, myId, contactIds) {
-    if (!allChats || !realChats || !folder) return [];
-    const chatMap = new Map();
-    for (let i = 0; i < allChats.length; i++) {
-      chatMap.set(String(allChats[i].id), allChats[i]);
-    }
-    const chats = [];
-    for (let i = 0; i < realChats.length; i++) {
-      const found = chatMap.get(String(realChats[i]));
-      if (found) chats.push(found);
-    }
-
-    const filtered = chats.filter((chat) =>
-      chatMatchesFolder(chat, folder, myId, contactIds)
-    );
-    return filtered.sort((a, b) => {
-      const pinA = a.favIndex || (a.pinned ? 1 : 0);
-      const pinB = b.favIndex || (b.pinned ? 1 : 0);
-      if (pinA !== pinB) return pinB - pinA;
-      const timeA = a.lastMessage?.time || a.lastEventTime || 0;
-      const timeB = b.lastMessage?.time || b.lastEventTime || 0;
-      return timeB - timeA;
-    });
-  }
-
   $: chatsByFolderId = (() => {
     if (!$currentRealChats || !localFolders.length) return new Map();
     const chats = [];
@@ -308,6 +300,21 @@
       result.set(folder.id, filtered);
     }
     return result;
+  })();
+
+  $: folderUnreadMap = (() => {
+    const map = new Map();
+    for (let f = 0; f < localFolders.length; f++) {
+      const folder = localFolders[f];
+      const folderChats = chatsByFolderId.get(folder.id) || [];
+      let count = 0;
+      for (let c = 0; c < folderChats.length; c++) {
+        const u = folderChats[c]?.newMessages || 0;
+        if (u > 0) count += u;
+      }
+      map.set(folder.id, count);
+    }
+    return map;
   })();
 
   function getFolderChats(folder) {
@@ -426,6 +433,8 @@
   });
 </script>
 
+<svelte:window on:keydown={handleKeyDown} />
+
 <div class="layout">
   <div class="header-container">
     {#if isSelectionMode}
@@ -439,13 +448,12 @@
               stroke="currentColor"
               stroke-width="2"
               fill="none"
-              ><line x1="18" y1="6" x2="6" y2="18"></line><line
-                x1="6"
-                y1="6"
-                x2="18"
-                y2="18"
-              ></line></svg
+              stroke-linecap="round"
+              stroke-linejoin="round"
             >
+              <line x1="18" y1="6" x2="6" y2="18"></line>
+              <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
           </button>
           <span class="selection-count">{selectedChats.size}</span>
         </div>
@@ -464,16 +472,13 @@
                 stroke="currentColor"
                 stroke-width="2"
                 fill="none"
-                ><path
-                  d="M21.41 11.58l-9-9C12.05 2.22 11.55 2 11 2H4a2 2 0 0 0-2 2v7c0 .55.22 1.05.59 1.42l9 9c.36.36.86.58 1.41.58s1.05-.22 1.41-.59l7-7c.37-.36.59-.86.59-1.41s-.23-1.06-.59-1.42zM5.5 7A1.5 1.5 0 1 1 7 5.5 1.5 1.5 0 0 1 5.5 7z"
-                ></path></svg
+                stroke-linecap="round"
+                stroke-linejoin="round"
               >
+                <path d="M21.41 11.58l-9-9C12.05 2.22 11.55 2 11 2H4a2 2 0 0 0-2 2v7c0 .55.22 1.05.59 1.42l9 9c.36.36.86.58 1.41.58s1.05-.22 1.41-.59l7-7c.37-.36.59-.86.59-1.41s-.23-1.06-.59-1.42zM5.5 7A1.5 1.5 0 1 1 7 5.5 1.5 1.5 0 0 1 5.5 7z"></path>
+              </svg>
             </button>
-            <button
-              class="icon-btn"
-              on:click={muteNotifications}
-              title="Уведомления"
-            >
+            <button class="icon-btn" on:click={muteNotifications} title="Уведомления">
               <svg
                 viewBox="0 0 24 24"
                 width="20"
@@ -481,9 +486,12 @@
                 stroke="currentColor"
                 stroke-width="2"
                 fill="none"
-                ><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"
-                ></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg
+                stroke-linecap="round"
+                stroke-linejoin="round"
               >
+                <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
+                <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
+              </svg>
             </button>
             <button class="icon-btn" on:click={addToFolder} title="В папку">
               <svg
@@ -493,10 +501,11 @@
                 stroke="currentColor"
                 stroke-width="2"
                 fill="none"
-                ><path
-                  d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"
-                ></path></svg
+                stroke-linecap="round"
+                stroke-linejoin="round"
               >
+                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+              </svg>
             </button>
             <button class="icon-btn" on:click={downloadSelected} title="Скачать">
               <svg
@@ -506,14 +515,13 @@
                 stroke="currentColor"
                 stroke-width="2"
                 fill="none"
-                ><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"
-                ></path><polyline points="7 10 12 15 17 10"></polyline><line
-                  x1="12"
-                  y1="15"
-                  x2="12"
-                  y2="3"
-                ></line></svg
+                stroke-linecap="round"
+                stroke-linejoin="round"
               >
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                <polyline points="7 10 12 15 17 10"></polyline>
+                <line x1="12" y1="15" x2="12" y2="3"></line>
+              </svg>
             </button>
             <button class="icon-btn" on:click={deleteSelected} title="Удалить">
               <svg
@@ -523,85 +531,137 @@
                 stroke="currentColor"
                 stroke-width="2"
                 fill="none"
-                ><polyline points="3 6 5 6 21 6"></polyline><path
-                  d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"
-                ></path></svg
+                stroke-linecap="round"
+                stroke-linejoin="round"
               >
+                <polyline points="3 6 5 6 21 6"></polyline>
+                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+              </svg>
+            </button>
+          {/if}
+        </div>
+      </div>
+    {:else if isSearchOpen}
+      <div class="search-toolbar" transition:fade={{ duration: 150 }}>
+        <button class="action-circle-btn" on:click={closeSearch} title="Назад">
+          <svg viewBox="0 0 24 24" width="22" height="22" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="19" y1="12" x2="5" y2="12"></line>
+            <polyline points="12 19 5 12 12 5"></polyline>
+          </svg>
+        </button>
+        <div class="search-field-box">
+          <input
+            type="text"
+            bind:this={searchInputEl}
+            bind:value={searchQuery}
+            on:input={(e) => handleSearch(e.target.value)}
+            placeholder="Поиск"
+            class="search-input"
+            autofocus
+          />
+          {#if searchQuery.length}
+            <button class="clear-search-btn" on:click={() => { searchQuery = ""; handleSearch(""); }}>
+              <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="18" y1="6" x2="6" y2="18"></line>
+                <line x1="6" y1="6" x2="18" y2="18"></line>
+              </svg>
             </button>
           {/if}
         </div>
       </div>
     {:else}
-      <div class="normal-header">
-        <div class="row">
-          <div style="display: flex; align-items: center; gap: 10px; margin-left: 15px;">
-            {#if $forwardDraft && $forwardDraft.messages?.length > 0}
-              <button class="icon-btn" on:click={() => { clearForwardDraft(); clearSelection(); }} title="Отмена">
-                <svg
-                  viewBox="0 0 24 24"
-                  width="22"
-                  height="22"
-                  stroke="currentColor"
-                  stroke-width="2"
-                  fill="none"
-                  ><line x1="18" y1="6" x2="6" y2="18"></line><line
-                    x1="6"
-                    y1="6"
-                    x2="18"
-                    y2="18"
-                  ></line></svg
-                >
-              </button>
-              <h3 style="margin: 0;">Выбери получателя</h3>
-            {:else}
-              <h3 style="margin: 0;">Чаты</h3>
-            {/if}
-          </div>
-          {#if !$forwardDraft || !$forwardDraft.messages?.length}
-            <div style="margin-right: 15px; display: flex; align-items: center; gap: 8px;">
+      <div class="main-toolbar">
+        <div class="toolbar-title-box">
+          {#if $forwardDraft && $forwardDraft.messages?.length > 0}
+            <button class="action-circle-btn" on:click={() => { clearForwardDraft(); clearSelection(); }} title="Отмена">
+              <svg viewBox="0 0 24 24" width="22" height="22" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="18" y1="6" x2="6" y2="18"></line>
+                <line x1="6" y1="6" x2="18" y2="18"></line>
+              </svg>
+            </button>
+            <h1 class="toolbar-title">Выбери получателя</h1>
+          {:else}
+            <h1 class="toolbar-title">Чаты</h1>
+            {#if !isStoriesExpanded}
               <button
-                class="top-btn contacts-header-btn animated-panel"
-                on:click={() => openContactsModal()}
-                title="Контакты"
+                type="button"
+                class="stories-badge-btn"
+                on:click={() => {
+                  isStoriesExpanded = true;
+                }}
+                title="Истории"
+                aria-label="Развернуть истории"
+                transition:fade={{ duration: 150 }}
               >
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
-                  <circle cx="9" cy="7" r="4"></circle>
-                  <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
-                  <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
-                </svg>
+                {#if topStoryAvatars.length > 0}
+                  <div class="peanut-avatars-stack">
+                    {#each topStoryAvatars as item, idx (item.owner?.ownerId || idx)}
+                      <div class="peanut-avatar-wrap" style="z-index: {4 - idx};">
+                        <Avatar
+                          userId={item.owner?.ownerId}
+                          contactId={item.owner?.ownerId}
+                          size={24}
+                          enableStoryRing={false}
+                        />
+                      </div>
+                    {/each}
+                  </div>
+                {:else}
+                  <div class="new-story-gradient-icon">
+                    <img src="/svg/new-story.svg" alt="" width="32" height="32" class="new-story-img" />
+                  </div>
+                {/if}
               </button>
-              <AddContactBtn />
-            </div>
+            {/if}
           {/if}
         </div>
-        <Search input={handleSearch} placeholder="Поиск" />
+
+        {#if !$forwardDraft || !$forwardDraft.messages?.length}
+          <div class="toolbar-actions">
+            <button class="action-circle-btn" on:click={openSearch} title="Поиск">
+              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="11" cy="11" r="8"></circle>
+                <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+              </svg>
+            </button>
+            <button class="action-circle-btn" on:click={() => openContactsModal()} title="Новый чат">
+              <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="12" y1="5" x2="12" y2="19"></line>
+                <line x1="5" y1="12" x2="19" y2="12"></line>
+              </svg>
+            </button>
+          </div>
+        {/if}
       </div>
     {/if}
   </div>
 
-  <FolderTabs
-    folders={localFolders}
-    bind:activeFolder
-    on:folderChange={onFolderTabClick}
-    on:reorder={handleReorderFolders}
-    on:editFolder={(e) => {
-      openFolderEdit(e.detail);
-    }}
-    on:addFolder={() => {
-      openFolderEdit({ isNew: true });
-    }}
-  />
+  {#if !isSearchOpen}
+    <StoriesTray
+      bind:this={storiesTrayEl}
+      bind:isExpanded={isStoriesExpanded}
+      on:compose={() => openStoryComposer()}
+    />
+    <FolderTabs
+      folders={localFolders}
+      bind:activeFolder
+      unreadCounts={folderUnreadMap}
+      on:folderChange={onFolderTabClick}
+      on:reorder={handleReorderFolders}
+      on:editFolder={(e) => {
+        openFolderEdit(e.detail);
+      }}
+      on:addFolder={() => {
+        openFolderEdit({ isNew: true });
+      }}
+    />
+  {/if}
 
   {#if $activeMedia}
     <MediaPlaybackHeader isChatHeader={false} />
   {/if}
 
-  {#if !searchQuery.length}
-    <StoriesTray bind:this={storiesTrayEl} on:compose={() => openStoryComposer()} />
-  {/if}
-
-  {#if searchQuery.length}
+  {#if isSearchOpen}
     <div class="search-scrollable">
       {#if searchPublic.length}
         {#each searchPublic as result, i ((result.chat || result.contact)?.id ?? i)}
@@ -609,16 +669,12 @@
             chat={result.chat || result.contact}
             on:open={async () => {
               let chatId;
-
               if (result.chat) chatId = result.chat.id;
               else if (result.contact) {
                 const contact = result.contact;
-
                 chatId = Number(BigInt($currentUser) ^ BigInt(contact.id));
-
                 await updateContact(contact);
               }
-
               openChat(chatId);
             }}
           />
@@ -646,42 +702,43 @@
         {/each}
         <hr />
       {/if}
+
+      {#if !searchPublic.length && !searchMsg.length && searchQuery.trim().length > 0}
+        <div class="empty-search-state">Ничего не найдено</div>
+      {/if}
+    </div>
+  {:else}
+    <div
+      class="swipe-container"
+      bind:this={scrollContainer}
+      on:scroll={handleScroll}
+    >
+      {#each localFolders as folder, i (folder.id)}
+        <div class="folder-page">
+          {#if shouldRender(i)}
+            {@const folderChats = chatsByFolderId.get(folder.id) || []}
+            <FolderChatList
+              chats={folderChats}
+              {isSelectionMode}
+              {selectedChats}
+              loading={$currentlySyncing && i === activeFolderIndex && (!$currentRealChats || $currentRealChats.length === 0)}
+              on:open={(e) => e.detail && openChat(e.detail)}
+              on:longpress={handleChatLongPress}
+              on:toggle={handleChatToggle}
+              on:scroll={(e) => {
+                if (e.detail?.scrollTop > 20) {
+                  storiesTrayEl?.collapse();
+                }
+              }}
+            />
+          {:else}
+            <div class="placeholder"></div>
+          {/if}
+        </div>
+      {/each}
     </div>
   {/if}
-
-  <div
-    class="swipe-container"
-    bind:this={scrollContainer}
-    on:scroll={handleScroll}
-  >
-    {#each localFolders as folder, i (folder.id)}
-      <div class="folder-page">
-        {#if shouldRender(i)}
-          {@const folderChats = chatsByFolderId.get(folder.id) || []}
-          <FolderChatList
-            chats={folderChats}
-            {isSelectionMode}
-            {selectedChats}
-            loading={$currentlySyncing && i === activeFolderIndex && (!$currentRealChats || $currentRealChats.length === 0)}
-            on:open={(e) => e.detail && openChat(e.detail)}
-            on:longpress={handleChatLongPress}
-            on:toggle={handleChatToggle}
-            on:scroll={(e) => {
-              if (e.detail?.scrollTop > 20) {
-                storiesTrayEl?.collapse();
-              }
-            }}
-            on:wheelUp={() => storiesTrayEl?.expand()}
-            on:wheelDown={() => storiesTrayEl?.collapse()}
-          />
-        {:else}
-          <div class="placeholder"></div>
-        {/if}
-      </div>
-    {/each}
-  </div>
 </div>
-
 
 <style>
   .layout {
@@ -690,19 +747,188 @@
     height: 100%;
     width: 100%;
     overflow: hidden;
+    background: transparent;
   }
 
   .header-container {
-    padding: calc(15px + var(--safe-top, 0px)) 0 0 0;
+    padding: var(--safe-top, 0px) 0 0 0;
     position: relative;
     flex-shrink: 0;
-    min-height: calc(80px + var(--safe-top, 0px));
+    height: calc(52px + var(--safe-top, 0px));
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
+    background: transparent;
   }
 
-  .normal-header {
+  .main-toolbar {
     display: flex;
-    flex-direction: column;
-    gap: 10px;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    height: 52px;
+    padding: 0 12px 0 16px;
+    box-sizing: border-box;
+  }
+
+  .toolbar-title-box {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-width: 0;
+  }
+
+  .toolbar-title {
+    margin: 0;
+    font-size: 20px;
+    font-weight: 700;
+    line-height: 24px;
+    color: var(--text-primary, #ffffff);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    letter-spacing: -0.2px;
+  }
+
+  .stories-badge-btn {
+    background: none;
+    border: none;
+    padding: 0;
+    margin: 0 0 0 8px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 16px;
+    flex-shrink: 0;
+    transition: transform 0.15s ease;
+  }
+
+  .stories-badge-btn:active {
+    transform: scale(0.92);
+  }
+
+  .peanut-avatars-stack {
+    display: flex;
+    align-items: center;
+    height: 28px;
+  }
+
+  .peanut-avatar-wrap {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    margin-right: -8px;
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 0 0 2px var(--bg-app, #17181c), 0 0 0 3.5px #3b82f6;
+    background: var(--bg-app, #17181c);
+    overflow: hidden;
+  }
+
+  .new-story-gradient-icon {
+    width: 32px;
+    height: 32px;
+    background: transparent;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .new-story-img {
+    width: 32px;
+    height: 32px;
+    display: block;
+    pointer-events: none;
+    user-select: none;
+  }
+
+  .toolbar-actions {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex-shrink: 0;
+  }
+
+  .action-circle-btn {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    border: none;
+    background: none;
+    color: var(--text-primary, #ffffff);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    padding: 0;
+    transition: background-color 0.15s ease;
+  }
+
+  .action-circle-btn:hover {
+    background-color: rgba(255, 255, 255, 0.08);
+  }
+
+  .search-toolbar {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    height: 52px;
+    padding: 0 12px 0 8px;
+    box-sizing: border-box;
+    gap: 8px;
+  }
+
+  .search-field-box {
+    flex: 1;
+    position: relative;
+    display: flex;
+    align-items: center;
+    height: 38px;
+    background-color: var(--bg-input, #26262e);
+    border-radius: 10px;
+    box-sizing: border-box;
+    padding: 0 36px 0 14px;
+  }
+
+  .search-input {
+    width: 100%;
+    height: 100%;
+    outline: none;
+    border: none;
+    background: none;
+    color: var(--text-primary, #ffffff);
+    font-size: 16px;
+    line-height: 20px;
+    padding: 0;
+  }
+
+  .search-input::placeholder {
+    color: var(--text-muted, #8b929e);
+  }
+
+  .clear-search-btn {
+    position: absolute;
+    right: 8px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    border: none;
+    background: none;
+    color: var(--text-muted, #8b929e);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    padding: 0;
+  }
+
+  .clear-search-btn:hover {
+    color: var(--text-primary, #ffffff);
   }
 
   .action-header {
@@ -715,21 +941,22 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: var(--safe-top, 0px) 10px 0;
+    padding: var(--safe-top, 0px) 12px 0 16px;
     box-sizing: border-box;
-    border-bottom: 1px solid #333;
+    border-bottom: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.06));
+    background: var(--bg-app, #17181c);
   }
 
   .action-left {
     display: flex;
     align-items: center;
-    gap: 15px;
+    gap: 16px;
   }
 
   .selection-count {
     font-size: 18px;
     font-weight: 600;
-    color: #fff;
+    color: #ffffff;
   }
 
   .action-right {
@@ -741,21 +968,22 @@
   .icon-btn {
     background: none;
     border: none;
-    color: #eee;
+    color: var(--text-primary, #ffffff);
     padding: 8px;
     border-radius: 50%;
     cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
+    transition: background-color 0.15s ease;
   }
 
   .icon-btn:hover {
-    background-color: rgba(255, 255, 255, 0.1);
+    background-color: rgba(255, 255, 255, 0.08);
   }
 
   .send-forward-btn {
-    color: #7b4cd6;
+    color: var(--accent-primary, #248bfe);
   }
 
   .send-forward-btn .send-icon {
@@ -765,21 +993,6 @@
     -webkit-mask: url("/icons/send.svg") no-repeat center / contain;
     mask: url("/icons/send.svg") no-repeat center / contain;
     display: inline-block;
-  }
-
-  .send-forward-btn:hover {
-    color: #9d70ff;
-  }
-
-  .row {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-  }
-
-  h3 {
-    margin: 0;
-    color: #eee;
   }
 
   .swipe-container {
@@ -815,28 +1028,29 @@
   }
 
   hr {
-    width: 90%;
-    color: #fff2;
+    width: 92%;
+    border: none;
+    border-top: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.06));
+    margin: 8px auto;
   }
 
   .search-scrollable {
+    flex: 1;
     display: flex;
     flex-direction: column;
     overflow-y: auto;
+    padding-top: 4px;
   }
 
-  .contacts-header-btn {
-    width: 30px;
-    height: 30px;
-    border-radius: 11px;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    cursor: pointer;
-    background: #2b2d30;
-    border: none;
-    color: white;
+  .empty-search-state {
+    text-align: center;
+    color: var(--text-muted, #8b929e);
+    font-size: 15px;
+    margin-top: 40px;
   }
 
+  .placeholder {
+    width: 100%;
+    height: 100%;
+  }
 </style>
-
