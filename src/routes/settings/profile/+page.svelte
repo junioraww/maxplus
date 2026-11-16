@@ -3,8 +3,7 @@
   import { page } from "$app/stores";
   import SettingsPageWrapper from "$components/settings/SettingsPageWrapper.svelte";
   import Avatar from "$components/main/Avatar.svelte";
-  import SafeAvatarPickerModal from "$components/main/SafeAvatarPickerModal.svelte";
-  import { openAvatarGallery } from "$lib/stores/session";
+  import { openAvatarGallery, openSafeAvatarPicker } from "$lib/stores/session";
   import API, { currentUserDetails } from "$lib/stores/api";
   import { safeAvatarMapStore } from "$lib/services/AvatarSyncManager";
   import { getSafeAvatarMediaUrl } from "$lib/services/uplink";
@@ -16,7 +15,14 @@
   let description = "";
   let updated = "";
   let initialized = false;
-  let safeAvatarModalOpen = false;
+
+  function openProfileAvatarPicker() {
+    openSafeAvatarPicker({
+      initialUid: deepAvatarUid || "",
+      initialTab: deepAvatarUid ? "id" : "catalog",
+      onApplySuccess: () => notify("Аватарка успешно установлена")
+    });
+  }
 
   const original = {
     firstName: "",
@@ -43,7 +49,7 @@
   $: from = $page.url.searchParams.get("from") || "/?card=settings";
   $: deepAvatarUid = $page.url.searchParams.get("avatar");
   $: if (deepAvatarUid) {
-    safeAvatarModalOpen = true;
+    openProfileAvatarPicker();
   }
 
   let loading = false;
@@ -175,7 +181,7 @@
           type="button"
           class="avatar-camera-badge"
           title="Сменить аватарку"
-          on:click|stopPropagation={() => (safeAvatarModalOpen = true)}
+          on:click|stopPropagation={openProfileAvatarPicker}
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
             <line x1="12" y1="5" x2="12" y2="19"/>
@@ -188,7 +194,7 @@
         <button
           type="button"
           class="avatar-action-btn primary"
-          on:click={() => (safeAvatarModalOpen = true)}
+          on:click={openProfileAvatarPicker}
         >
           Сменить аватарку
         </button>
@@ -262,15 +268,6 @@
     {/if}
   </svelte:fragment>
 </SettingsPageWrapper>
-
-{#if safeAvatarModalOpen}
-  <SafeAvatarPickerModal
-    initialUid={deepAvatarUid || ""}
-    initialTab={deepAvatarUid ? "id" : "catalog"}
-    onClose={() => (safeAvatarModalOpen = false)}
-    onApplySuccess={() => notify("Аватарка успешно установлена")}
-  />
-{/if}
 
 <style>
   .badge {

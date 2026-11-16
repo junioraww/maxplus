@@ -18,6 +18,9 @@
   import Alerts from '$components/main/Alerts.svelte';
   import ProfileModal from "$components/ProfileModal.svelte";
   import AvatarGalleryModal from "$components/main/AvatarGalleryModal.svelte";
+  import SafeAvatarPickerModal from "$components/main/SafeAvatarPickerModal.svelte";
+  import ContactsModal from "$components/main/ContactsModal.svelte";
+  import QRScannerModal from "$components/main/QRScannerModal.svelte";
   import DevSettings from "$components/main/dev/Settings.svelte";
   import AddContactModal from "$components/main/AddContactModal.svelte";
   import DevicesSettings from "$components/main/devices/Settings.svelte";
@@ -29,11 +32,22 @@
   import StoryComposerModal from "$components/stories/StoryComposerModal.svelte";
   import { isStoryComposerOpen, closeStoryComposer, activeStoryViewer } from "$lib/stores/stories";
   import { videoCropState, closeVideoCropModal } from "$lib/stores/videoCrop";
-  import { activeCall, CALL_PHASE } from '$lib/stores/calls';
+  import { activeCall, CALL_PHASE, callSheetModal } from '$lib/stores/calls';
   import CallScreen from '$components/calls/CallScreen.svelte';
   import FloatingCallBadge from '$components/calls/FloatingCallBadge.svelte';
+  import CallsSheetHost from '$components/calls/CallsSheetHost.svelte';
+  import FolderEditModal from '$components/chats/FolderEditModal.svelte';
+  import ConfirmModal from '$components/main/ConfirmModal.svelte';
+  import { MediaPool } from "$lib/services/MediaPool";
 
-  import Session, { closeAvatarGallery } from "$lib/stores/session";
+  import Session, {
+    closeAvatarGallery,
+    closeContactsModal,
+    closeSafeAvatarPicker,
+    closeQrScanner,
+    closeFolderEdit,
+    closeConfirmModal
+  } from "$lib/stores/session";
   import { initDeepLink } from "$lib/utils/deepLink";
   import { initProxyConfig } from "$lib/utils/proxyConfig";
   import { handleBackButton, registerBackHandler } from "$lib/utils/backButton";
@@ -196,6 +210,30 @@
 
   if (browser) window.alert = showAlert;
 
+  $: isAnyModalActive = Boolean(
+    $Session?.profile ||
+    $Session?.avatarGallery ||
+    $Session?.contactModal ||
+    $Session?.contactsModal ||
+    $Session?.safeAvatarPicker ||
+    $Session?.qrScanner ||
+    $Session?.folderEdit ||
+    $Session?.confirmModal ||
+    Boolean($callSheetModal) ||
+    $isStoryComposerOpen ||
+    Boolean($activeStoryViewer) ||
+    $videoCropState?.isOpen ||
+    $lockScreenState
+  );
+
+  $: if (browser) {
+    if (isAnyModalActive) {
+      MediaPool.pause();
+    } else {
+      MediaPool.resume();
+    }
+  }
+
   $: if (browser && ($Session?.loaded || $isCamouflageLocked)) {
     unmountLoader();
   }
@@ -224,13 +262,47 @@
   />
 {/if}
 
+{#if $Session.contactsModal}
+  <ContactsModal on:close={() => closeContactsModal()} />
+{/if}
+
+{#if $Session.safeAvatarPicker}
+  <SafeAvatarPickerModal
+    {...$Session.safeAvatarPicker}
+    onClose={() => closeSafeAvatarPicker()}
+  />
+{/if}
+
+{#if $Session.qrScanner}
+  <QRScannerModal
+    {...$Session.qrScanner}
+    onClose={() => closeQrScanner()}
+  />
+{/if}
+
+{#if $Session.folderEdit}
+  <FolderEditModal
+    folder={$Session.folderEdit.folder}
+    on:close={() => closeFolderEdit()}
+  />
+{/if}
+
+{#if $Session.confirmModal}
+  <ConfirmModal
+    {...$Session.confirmModal}
+    on:close={() => closeConfirmModal()}
+  />
+{/if}
+
+<CallsSheetHost />
+
 {#if isAuthRoute}
   <div class="auth-underlay" class:dark-underlay={$activeThemeId === "dark"}></div>
 {/if}
 
 {#if $Session.loaded}
   {#key $page.url.pathname}
-    <main in:fade={{ duration: 150 }}>
+    <main in:fade={{ duration: 150 }} inert={isAnyModalActive}>
       <slot />
     </main>
   {/key}
@@ -298,6 +370,7 @@
 
 <svelte:body
   class:modal-media-active={$isStoryComposerOpen || Boolean($activeStoryViewer)}
+  class:modal-open={isAnyModalActive}
   class:auth-light-body={isAuthRoute && $activeThemeId === "light"}
   class:auth-dark-body={isAuthRoute && $activeThemeId === "dark"}
 />
@@ -321,6 +394,10 @@
 
   .auth-underlay.dark-underlay {
     background-color: #121316;
+  }
+
+  :global(body.modal-open main *) {
+    animation-play-state: paused !important;
   }
 
   :global(body.modal-media-active *) {

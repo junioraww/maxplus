@@ -1,6 +1,6 @@
 <script>
-  import { fade, fly } from "svelte/transition";
-  import { createEventDispatcher } from "svelte";
+  import { createEventDispatcher, onDestroy } from "svelte";
+  import { registerBackHandler } from "$lib/utils/backButton";
 
   export let title = "Подтверждение";
   export let message = "Вы уверены?";
@@ -11,128 +11,105 @@
   export let onCancel = null;
 
   const dispatch = createEventDispatcher();
+  let isClosing = false;
 
   function handleCancel() {
-    if (onCancel) onCancel();
-    dispatch("cancel");
-    dispatch("close");
+    if (isClosing) return;
+    isClosing = true;
+    setTimeout(() => {
+      if (onCancel) onCancel();
+      dispatch("cancel");
+      dispatch("close");
+    }, 180);
   }
 
   function handleConfirm() {
-    if (onConfirm) onConfirm();
-    dispatch("confirm");
-    dispatch("close");
+    if (isClosing) return;
+    isClosing = true;
+    setTimeout(() => {
+      if (onConfirm) onConfirm();
+      dispatch("confirm");
+      dispatch("close");
+    }, 180);
   }
+
+  const unregisterBack = registerBackHandler(() => {
+    handleCancel();
+    return false;
+  });
+
+  onDestroy(() => unregisterBack());
 </script>
 
 <div
   class="modal-backdrop"
-  transition:fade={{ duration: 200 }}
+  class:modal-closing={isClosing}
   on:click={handleCancel}
+  role="presentation"
 >
   <div
-    class="modal"
-    transition:fly={{ y: 20, duration: 250 }}
+    class="modal-card"
+    class:modal-closing={isClosing}
     on:click|stopPropagation
+    role="alertdialog"
   >
-    <div class="content">
-      <h3>{title}</h3>
-      <p>{message}</p>
+    <div class="modal-content">
+      <h3 class="modal-title">{title}</h3>
+      {#if message}<p class="modal-message">{message}</p>{/if}
       <slot />
     </div>
 
-    <div class="footer">
-      <button class="btn cancel" on:click={handleCancel}>{cancelText}</button>
-      <button
-        class="btn confirm"
-        class:danger={isDangerous}
-        on:click={handleConfirm}
-      >
-        {confirmText}
-      </button>
+    <div class="modal-actions">
+      <button class="action-btn cancel-btn" on:click={handleCancel} type="button">{cancelText}</button>
+      <button class="action-btn confirm-btn" class:danger={isDangerous} on:click={handleConfirm} type="button">{confirmText}</button>
     </div>
   </div>
 </div>
 
 <style>
   .modal-backdrop {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background: rgba(0, 0, 0, 0.72);
-    z-index: var(--z-modal, 7);
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    will-change: opacity;
+    position: fixed; inset: 0; background: rgba(0, 0, 0, 0.68);
+    z-index: var(--z-modal, 7); display: flex; justify-content: center; align-items: center;
+    padding: 20px; box-sizing: border-box;
+    animation: modalFadeIn 0.18s cubic-bezier(0.2, 0.9, 0.3, 1) forwards;
   }
-
-  .modal {
-    background: #252525;
-    width: 85%;
-    max-width: 320px;
-    border-radius: 14px;
-    display: flex;
-    flex-direction: column;
-    color: #fff;
-    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6);
-    border: 1px solid #333;
-    overflow: hidden;
+  .modal-backdrop.modal-closing {
+    animation: modalFadeOut 0.18s cubic-bezier(0.4, 0, 1, 1) forwards;
+  }
+  .modal-card {
+    background: var(--bg-surface, #1e2025); width: 100%; max-width: 340px;
+    border-radius: 20px; display: flex; flex-direction: column; color: #fff;
+    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.6); border: 1px solid rgba(255, 255, 255, 0.08);
+    overflow: hidden; padding: 24px 20px 20px; box-sizing: border-box;
     will-change: transform, opacity;
-    transform: translateZ(0);
+    animation: modalPopIn 0.22s cubic-bezier(0.2, 0.9, 0.3, 1) forwards;
   }
-
-  .content {
-    padding: 24px 20px;
-    text-align: center;
+  .modal-card.modal-closing {
+    animation: modalPopOut 0.18s cubic-bezier(0.4, 0, 1, 1) forwards;
   }
-
-  .content h3 {
-    margin: 0 0 10px 0;
-    font-size: 18px;
-    font-weight: 600;
-    color: #fff;
+  @keyframes modalFadeIn { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes modalFadeOut { from { opacity: 1; } to { opacity: 0; } }
+  @keyframes modalPopIn {
+    from { opacity: 0; transform: scale3d(0.92, 0.92, 1); }
+    to { opacity: 1; transform: scale3d(1, 1, 1); }
   }
-
-  .content p {
-    margin: 0;
-    font-size: 14px;
-    color: #aaa;
-    line-height: 1.5;
+  @keyframes modalPopOut {
+    from { opacity: 1; transform: scale3d(1, 1, 1); }
+    to { opacity: 0; transform: scale3d(0.92, 0.92, 1); }
   }
-
-  .footer {
-    display: flex;
-    border-top: 1px solid #333;
-    height: 50px;
+  .modal-content { text-align: center; display: flex; flex-direction: column; gap: 8px; }
+  .modal-title { margin: 0; font-size: 18px; font-weight: 600; color: #fff; }
+  .modal-message { margin: 0; font-size: 14px; color: var(--text-secondary, #8b929e); line-height: 1.45; }
+  .modal-actions { display: flex; gap: 10px; margin-top: 24px; }
+  .action-btn {
+    flex: 1; height: 44px; border-radius: 22px; border: none; font-size: 14px; font-weight: 600;
+    cursor: pointer; display: flex; align-items: center; justify-content: center;
+    transition: background 0.15s, opacity 0.15s;
   }
-
-  .btn {
-    flex: 1;
-    background: transparent;
-    border: none;
-    font-size: 16px;
-    cursor: pointer;
-    transition: 0.2s;
-  }
-
-  .btn:active {
-    background: #333;
-  }
-
-  .btn.cancel {
-    color: #007afd;
-    border-right: 1px solid #333;
-  }
-
-  .btn.confirm {
-    color: #007afd;
-    font-weight: 600;
-  }
-
-  .btn.confirm.danger {
-    color: #ff4b4b;
-  }
+  .cancel-btn { background: rgba(255, 255, 255, 0.08); color: #fff; }
+  .cancel-btn:hover { background: rgba(255, 255, 255, 0.14); }
+  .confirm-btn { background: var(--accent-primary, #248bfe); color: #fff; }
+  .confirm-btn:hover { background: var(--accent-primary-hover, #1b74d9); }
+  .confirm-btn.danger { background: var(--status-danger, #ef4444); }
+  .confirm-btn.danger:hover { background: #dc2626; }
 </style>

@@ -10,10 +10,10 @@
     getCachedContacts
   } from "$lib/stores/contacts";
   import {
-    set as sessionSet
+    set as sessionSet,
+    showConfirm
   } from "$lib/stores/session";
   import Search from "$components/main/Search.svelte";
-  import ConfirmModal from "$components/main/ConfirmModal.svelte";
   import Signature from "$components/main/Signature.svelte";
   import Avatar from "$components/main/Avatar.svelte";
 
@@ -26,7 +26,6 @@
   let grouped = {};
   let filter = "";
   let showAll = false;
-  let showDeleteConfirm = false;
 
   const contactStores = writable([]);
 
@@ -97,16 +96,22 @@
     }
   };
 
-  function deleteSelected() {
+  async function deleteSelected() {
     if (selectedChats.size === 0) return;
-    showDeleteConfirm = true;
+    const ok = await showConfirm({
+      title: "Удалить чаты?",
+      message: `Вы точно хотите удалить выбранные чаты (${selectedChats.size})? Это действие нельзя отменить.`,
+      confirmText: "Удалить",
+      isDangerous: true,
+    });
+    if (ok) {
+      await onConfirmDelete();
+    }
   }
 
   async function onConfirmDelete() {
     await $API.removeContact(id);
-
     clearSelection();
-    showDeleteConfirm = false;
   }
 </script>
 
@@ -125,17 +130,6 @@
     <div class="modal-search-wrapper">
       <Search input={search} placeholder="Имя, фамилия или ник" />
     </div>
-  {/if}
-
-  {#if showDeleteConfirm}
-    <ConfirmModal
-      title="Удалить чаты?"
-      message={`Вы точно хотите удалить выбранные чаты (${selectedChats.size})? Это действие нельзя отменить.`}
-      confirmText="Удалить"
-      isDangerous={true}
-      on:cancel={() => (showDeleteConfirm = false)}
-      on:confirm={onConfirmDelete}
-    />
   {/if}
 
   <label class="showAll" style={hideHeader ? "margin-left: 0; padding-right: 15px;" : "margin-left: -15px;"}>

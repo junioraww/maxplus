@@ -14,16 +14,24 @@ export const CALL_MODE = Object.freeze({
   SECURE: 'secure',
 });
 
-const initialStubs = typeof window !== 'undefined' && localStorage.getItem('maxplus_call_use_stubs') === 'true';
+let inMemoryStubs = false;
 
-export const callUseStubs = writable(initialStubs);
+export const callUseStubs = writable(inMemoryStubs);
 
 export function setCallUseStubs(enabled) {
-  callUseStubs.set(Boolean(enabled));
-  if (typeof window !== 'undefined') {
-    localStorage.setItem('maxplus_call_use_stubs', enabled ? 'true' : 'false');
-  }
-  patchCallState({ useStubs: Boolean(enabled) });
+  inMemoryStubs = Boolean(enabled);
+  callUseStubs.set(inMemoryStubs);
+  patchCallState({ useStubs: inMemoryStubs });
+}
+
+export const callSheetModal = writable(null);
+
+export function openCallSheet(type, data = {}) {
+  callSheetModal.set({ type, ...data });
+}
+
+export function closeCallSheet() {
+  callSheetModal.set(null);
 }
 
 const INITIAL_STATE = {
@@ -63,7 +71,7 @@ const INITIAL_STATE = {
   peerVideoOn: false,
   peerScreenOn: false,
   incomingSecureRequest: null,
-  useStubs: initialStubs,
+  useStubs: inMemoryStubs,
   isRecording: false,
 };
 
