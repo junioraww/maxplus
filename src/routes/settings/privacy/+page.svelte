@@ -1,6 +1,7 @@
 <script>
   import { onMount } from "svelte";
-  import { fade, scale } from "svelte/transition";
+  import { fade, fly } from "svelte/transition";
+  import { cubicOut } from "svelte/easing";
   import SettingsPageWrapper from "$components/settings/SettingsPageWrapper.svelte";
   import { page } from "$app/stores";
   import { get } from "svelte/store";
@@ -529,11 +530,14 @@
     class="modal-backdrop"
     on:click|self={() => (showModal = false)}
     transition:fade={{ duration: 150 }}
+    role="presentation"
   >
     <div
       class="modal-card"
-      transition:scale={{ duration: 180, start: 0.94 }}
+      transition:fly={{ y: 240, duration: 240, easing: cubicOut }}
+      role="dialog"
     >
+      <div class="bottom-sheet-handle"></div>
       <h3 class="modal-title">{modalTitle}</h3>
       {#if modalDescription}
         <p class="modal-desc">{modalDescription}</p>
@@ -554,7 +558,7 @@
           </div>
         {/each}
       </div>
-      <button class="modal-cancel-btn" on:click={() => (showModal = false)}>Отмена</button>
+      <button class="modal-cancel-btn" on:click={() => (showModal = false)} type="button">Отмена</button>
     </div>
   </div>
 {/if}
@@ -564,20 +568,23 @@
     class="modal-backdrop"
     on:click|self={() => (showHiddenConfirmModal = false)}
     transition:fade={{ duration: 150 }}
+    role="presentation"
   >
     <div
       class="modal-card"
-      transition:scale={{ duration: 180, start: 0.94 }}
+      transition:fly={{ y: 240, duration: 240, easing: cubicOut }}
+      role="dialog"
     >
+      <div class="bottom-sheet-handle"></div>
       <h3 class="modal-title">Скрыть статус «В сети»?</h3>
       <p class="modal-desc">
         Если вы скроете время своей активности, вы также не сможете видеть точное время захода других пользователей — вместо него будет отображаться «Был(а) недавно».
       </p>
       <div class="modal-actions">
-        <button class="modal-btn secondary" on:click={() => (showHiddenConfirmModal = false)}>
+        <button class="modal-btn secondary" on:click={() => (showHiddenConfirmModal = false)} type="button">
           Отмена
         </button>
-        <button class="modal-btn primary" on:click={confirmHidden}>
+        <button class="modal-btn primary" on:click={confirmHidden} type="button">
           Скрыть
         </button>
       </div>
@@ -594,11 +601,14 @@
       addSearchQuery = "";
     }}
     transition:fade={{ duration: 150 }}
+    role="presentation"
   >
     <div
       class="modal-card blacklist-card fixed-height"
-      transition:fade={{ duration: 150 }}
+      transition:fly={{ y: 240, duration: 240, easing: cubicOut }}
+      role="dialog"
     >
+      <div class="bottom-sheet-handle"></div>
       {#if blacklistMode === "list"}
         <div class="blacklist-header">
           <div class="blacklist-header-left">
@@ -879,28 +889,37 @@
     inset: 0;
     background: rgba(0, 0, 0, 0.65);
     display: flex;
-    align-items: center;
+    align-items: flex-end;
     justify-content: center;
     z-index: var(--z-modal, 7);
-    padding: 16px;
   }
 
   .modal-card {
-    background: #26262e;
-    border: 1px solid #3a3a44;
-    border-radius: 14px;
-    padding: 20px;
+    background: var(--bg-surface, #1e2025);
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 20px 20px 0 0;
+    padding: 12px 20px calc(20px + var(--safe-bottom, 0px));
     width: 100%;
-    max-width: 420px;
-    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+    max-width: 480px;
+    box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.5);
     display: flex;
     flex-direction: column;
     gap: 16px;
+    box-sizing: border-box;
+  }
+
+  .bottom-sheet-handle {
+    width: 40px;
+    height: 4px;
+    border-radius: 2px;
+    background: rgba(255, 255, 255, 0.2);
+    margin: 0 auto 4px;
+    flex-shrink: 0;
   }
 
   .modal-card.fixed-height {
-    height: 480px;
-    max-height: 85vh;
+    height: 75vh;
+    max-height: calc(100vh - var(--safe-top, 0px) - 20px);
   }
 
   .modal-title {
@@ -971,42 +990,60 @@
   }
 
   .modal-cancel-btn {
-    padding: 10px;
+    height: 44px;
     border: none;
-    background: transparent;
-    color: #999;
+    background: rgba(255, 255, 255, 0.08);
+    color: #ffffff;
     cursor: pointer;
-    font-size: 0.92rem;
-    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    border-radius: 22px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.15s;
   }
 
   .modal-cancel-btn:hover {
-    color: #fff;
+    background: rgba(255, 255, 255, 0.14);
   }
 
   .modal-actions {
     display: flex;
-    justify-content: flex-end;
     gap: 10px;
+    margin-top: 8px;
   }
 
   .modal-btn {
-    padding: 8px 16px;
-    border-radius: 8px;
-    font-size: 0.92rem;
+    flex: 1;
+    height: 44px;
+    border-radius: 22px;
+    font-size: 14px;
     cursor: pointer;
     border: none;
-    font-weight: 500;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.15s;
   }
 
   .modal-btn.secondary {
     background: rgba(255, 255, 255, 0.08);
-    color: #ccc;
+    color: #ffffff;
+  }
+
+  .modal-btn.secondary:hover {
+    background: rgba(255, 255, 255, 0.14);
   }
 
   .modal-btn.primary {
-    background: #0ea5e9;
-    color: #fff;
+    background: var(--accent-primary, #248bfe);
+    color: #ffffff;
+  }
+
+  .modal-btn.primary:hover {
+    background: var(--accent-primary-hover, #1b74d9);
   }
 
   .blacklist-card {

@@ -1,6 +1,11 @@
 <script>
   import { createEventDispatcher } from "svelte";
+  import BottomSheet from "$components/main/BottomSheet.svelte";
   import FolderEditChatItem from "$components/chats/FolderEditChatItem.svelte";
+  import API, { currentRealChats } from "$lib/stores/api";
+  import { getChat } from "$lib/stores/messages";
+  import { showAlert } from "$lib/utils/alert";
+  import { showConfirm, closeFolderEdit } from "$lib/stores/session";
 
   export let folder = null;
   export let allChats = [];
@@ -51,39 +56,59 @@
     });
   }
 
-  function save() {
+  async function save() {
     const trimmed = title.trim();
     if (!trimmed) {
-      alert("Введите название папки");
+      showAlert("Введите название папки");
       return;
     }
     if (filters.length === 0 && includedChats.length === 0) {
-      alert("Выберите хотя бы один фильтр или чат");
+      showAlert("Выберите хотя бы один фильтр или чат");
       return;
     }
 
-    dispatch("save", {
+    const payload = {
       id: isNew ? generateUuid() : String(folder.id),
       title: trimmed,
       filters: filters.map(Number),
       include: includedChats.map(Number),
       options: (folder?.options || []).map(Number),
       favorites: (folder?.favorites || []).map(Number),
-    });
+    };
+
+    dispatch("save", payload);
+    try {
+      await $API.updateFolder(payload);
+    } catch {}
+    close();
   }
 
-  function handleDelete() {
+  async function handleDelete() {
     if (isNew || !folder?.id) return;
-    if (confirm(`Удалить папку «${folder.title}»? Чаты останутся на месте.`)) {
-      dispatch("delete", folder.id);
-    }
+    const ok = await showConfirm({
+      title: "Удалить папку?",
+      message: `Удалить папку «${folder.title}»? Чаты останутся на месте.`,
+      confirmText: "Удалить",
+      isDangerous: true,
+    });
+    if (!ok) return;
+    dispatch("delete", folder.id);
+    try {
+      await $API.deleteFolders([folder.id]);
+    } catch {}
+    close();
   }
 
   function close() {
     dispatch("close");
+    closeFolderEdit();
   }
 
-  $: filteredChats = (allChats || []).filter((chat) => {
+  $: resolvedChats = allChats && allChats.length > 0
+    ? allChats
+    : ($currentRealChats || []).map(id => getChat(id)?.getInfo()).filter(Boolean);
+
+  $: filteredChats = (resolvedChats || []).filter((chat) => {
     if (!searchQuery.trim()) return true;
     const q = searchQuery.toLowerCase();
     const chatTitle = (chat.title || "").toLowerCase();
@@ -91,145 +116,86 @@
   });
 </script>
 
-<div class="modal-backdrop" on:click={close}>
-  <div class="modal" on:click|stopPropagation>
-    <div class="header">
-      <h3>{isNew ? "Новая папка" : "Редактирование папки"}</h3>
-      <button class="close-btn" on:click={close}>&times;</button>
+<BottomSheet
+  title={isNew ? "Новая папка" : "Редактирование папки"}
+  maxHeight="88vh"
+  on:close={close}
+>
+  <div class="folder-edit-body">
+    <div class="form-group">
+      <label class="form-label">Название папки</label>
+      <input
+        type="text"
+        maxlength="20"
+        bind:value={title}
+        placeholder="Например: Работа"
+        class="form-input"
+      />
     </div>
 
-    <div class="content">
-      <div class="form-group">
-        <label>Название папки</label>
+    <div class="form-group">
+      <label class="form-label">Фильтры</label>
+      <div class="filters-grid">
+        {#each filterOptions as opt}
+          <button
+            class="filter-chip"
+            class:active={filters.includes(opt.id)}
+            on:click={() => toggleFilter(opt.id)}
+            type="button"
+          >
+            {opt.label}
+          </button>
+        {/each}
+      </div>
+    </div>
+
+    <div class="form-group">
+      <div class="chat-section-header">
+        <label class="form-label">Включенные чаты ({includedChats.length})</label>
         <input
           type="text"
-          maxlength="20"
-          bind:value={title}
-          placeholder="Например: Работа"
+          class="form-input chat-search-input"
+          placeholder="Поиск чатов..."
+          bind:value={searchQuery}
         />
       </div>
-
-      <div class="form-group">
-        <label>Фильтры</label>
-        <div class="filters-grid">
-          {#each filterOptions as opt}
-            <button
-              class="filter-chip"
-              class:active={filters.includes(opt.id)}
-              on:click={() => toggleFilter(opt.id)}
-            >
-              {opt.label}
-            </button>
-          {/each}
-        </div>
-      </div>
-
-      <div class="form-group">
-        <div class="chat-section-header">
-          <label>Включенные чаты ({includedChats.length})</label>
-          <input
-            type="text"
-            class="chat-search-input"
-            placeholder="Поиск чатов..."
-            bind:value={searchQuery}
+      <div class="chats-list">
+        {#each filteredChats as chat (chat.id)}
+          <FolderEditChatItem
+            {includedChats}
+            {toggleChat}
+            {chat}
           />
-        </div>
-        <div class="chats-list">
-          {#each filteredChats as chat (chat.id)}
-            <FolderEditChatItem
-              {includedChats}
-              {toggleChat}
-              {chat}
-            />
-          {/each}
-        </div>
+        {/each}
       </div>
     </div>
+  </div>
 
-    <div class="footer">
+  <svelte:fragment slot="footer">
+    <div class="sheet-footer-actions">
       {#if !isNew}
-        <button class="btn delete-btn" on:click={handleDelete}>
+        <button class="footer-btn delete-btn" on:click={handleDelete} type="button">
           Удалить
         </button>
       {/if}
-      <div class="footer-actions">
-        <button class="btn cancel" on:click={close}>Отмена</button>
-        <button class="btn save" on:click={save}>
+      <div class="right-buttons">
+        <button class="footer-btn cancel-btn" on:click={close} type="button">
+          Отмена
+        </button>
+        <button class="footer-btn save-btn" on:click={save} type="button">
           {isNew ? "Создать" : "Сохранить"}
         </button>
       </div>
     </div>
-  </div>
-</div>
+  </svelte:fragment>
+</BottomSheet>
 
 <style>
-  .modal-backdrop {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background: rgba(0, 0, 0, 0.7);
-    z-index: var(--z-modal, 7);
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    padding: 16px;
-    box-sizing: border-box;
-  }
-
-  .modal {
-    background: #22222a;
-    width: 100%;
-    max-width: 440px;
-    max-height: 90vh;
-    border-radius: 14px;
+  .folder-edit-body {
     display: flex;
     flex-direction: column;
-    color: #fff;
-    border: 1px solid #33333d;
-    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.6);
-    overflow: hidden;
-  }
-
-  .header {
-    padding: 16px 20px;
-    border-bottom: 1px solid #2e2e38;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    flex-shrink: 0;
-  }
-
-  .header h3 {
-    margin: 0;
-    font-size: 1.1rem;
-    font-weight: 600;
-  }
-
-  .close-btn {
-    background: none;
-    border: none;
-    color: #999;
-    font-size: 24px;
-    line-height: 1;
-    cursor: pointer;
-    padding: 2px 6px;
-    border-radius: 6px;
-  }
-
-  .close-btn:hover {
-    color: #fff;
-    background: #333;
-  }
-
-  .content {
-    padding: 16px 20px;
-    overflow-y: auto;
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    gap: 18px;
+    gap: 16px;
+    padding: 4px 0 12px;
   }
 
   .form-group {
@@ -238,29 +204,27 @@
     gap: 8px;
   }
 
-  .form-group label {
-    color: #aaa;
+  .form-label {
+    color: var(--text-muted, #8b929e);
     font-size: 13px;
     font-weight: 500;
-    text-transform: uppercase;
-    letter-spacing: 0.4px;
   }
 
-  input[type="text"] {
+  .form-input {
     width: 100%;
-    padding: 10px 14px;
-    border-radius: 8px;
-    border: 1px solid #3a3a46;
-    background: #18181f;
-    color: #fff;
-    font-size: 14px;
     box-sizing: border-box;
+    padding: 10px 14px;
+    background: var(--bg-app, #17181c);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 12px;
+    color: #ffffff;
+    font-size: 14px;
     outline: none;
-    transition: border-color 0.2s;
+    transition: border-color 0.15s;
   }
 
-  input[type="text"]:focus {
-    border-color: #6366f1;
+  .form-input:focus {
+    border-color: var(--accent-primary, #248bfe);
   }
 
   .filters-grid {
@@ -270,25 +234,25 @@
   }
 
   .filter-chip {
-    background: #2a2a34;
-    border: 1px solid #3a3a48;
-    color: #ccc;
-    padding: 6px 14px;
-    border-radius: 20px;
+    padding: 8px 14px;
+    border-radius: 18px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text-secondary, #8b929e);
     font-size: 13px;
     cursor: pointer;
     transition: all 0.15s ease;
   }
 
   .filter-chip:hover {
-    background: #343442;
-    color: #fff;
+    background: rgba(255, 255, 255, 0.1);
+    color: #ffffff;
   }
 
   .filter-chip.active {
-    background: #4f46e5;
-    border-color: #6366f1;
-    color: #fff;
+    background: var(--accent-primary, #248bfe);
+    border-color: var(--accent-primary, #248bfe);
+    color: #ffffff;
     font-weight: 500;
   }
 
@@ -299,71 +263,68 @@
   }
 
   .chat-search-input {
-    padding: 8px 12px !important;
-    font-size: 13px !important;
+    padding: 8px 12px;
+    font-size: 13px;
   }
 
   .chats-list {
-    background: #18181f;
-    border-radius: 10px;
-    border: 1px solid #2e2e3a;
+    background: var(--bg-app, #17181c);
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
     max-height: 220px;
     overflow-y: auto;
   }
 
-  .footer {
-    padding: 14px 20px;
-    border-top: 1px solid #2e2e38;
+  .sheet-footer-actions {
     display: flex;
-    justify-content: space-between;
     align-items: center;
-    flex-shrink: 0;
-    gap: 12px;
+    justify-content: space-between;
+    gap: 10px;
+    width: 100%;
   }
 
-  .footer-actions {
+  .right-buttons {
     display: flex;
     gap: 10px;
     margin-left: auto;
   }
 
-  .btn {
-    padding: 8px 18px;
-    border-radius: 8px;
+  .footer-btn {
+    height: 44px;
+    padding: 0 18px;
+    border-radius: 22px;
     border: none;
-    cursor: pointer;
     font-size: 14px;
-    font-weight: 500;
+    font-weight: 600;
+    cursor: pointer;
     transition: background 0.15s;
   }
 
-  .btn.cancel {
-    background: #2a2a34;
-    color: #aaa;
+  .cancel-btn {
+    background: rgba(255, 255, 255, 0.08);
+    color: #ffffff;
   }
 
-  .btn.cancel:hover {
-    background: #363644;
-    color: #fff;
+  .cancel-btn:hover {
+    background: rgba(255, 255, 255, 0.14);
   }
 
-  .btn.save {
-    background: #4f46e5;
-    color: #fff;
+  .save-btn {
+    background: var(--accent-primary, #248bfe);
+    color: #ffffff;
   }
 
-  .btn.save:hover {
-    background: #4338ca;
+  .save-btn:hover {
+    background: var(--accent-primary-hover, #1b74d9);
   }
 
-  .btn.delete-btn {
-    background: #dc262622;
-    color: #ef4444;
-    border: 1px solid #dc262644;
+  .delete-btn {
+    background: rgba(239, 68, 68, 0.15);
+    color: var(--status-danger, #ef4444);
   }
 
-  .btn.delete-btn:hover {
-    background: #dc2626;
-    color: #fff;
+  .delete-btn:hover {
+    background: var(--status-danger, #ef4444);
+    color: #ffffff;
   }
 </style>

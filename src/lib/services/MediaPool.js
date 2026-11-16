@@ -43,6 +43,7 @@ class MediaPoolEngine {
     this.pool = new Map();
     this.scannedStegoKeys = new Set();
     this.isRendering = false;
+    this.isPaused = false;
     this.rafId = null;
     this.lastRenderTime = 0;
     this.render = this.render.bind(this);
@@ -409,8 +410,36 @@ class MediaPoolEngine {
     }
   }
 
+  pause() {
+    if (this.isPaused) return;
+    this.isPaused = true;
+    if (this.rafId) {
+      cancelAnimationFrame(this.rafId);
+      this.rafId = null;
+    }
+    this.isRendering = false;
+    for (const entry of this.pool.values()) {
+      if (entry.type === "video" && entry.source && !entry.source.paused) {
+        try {
+          entry.source.pause();
+        } catch {}
+      }
+    }
+  }
+
+  resume() {
+    if (!this.isPaused) return;
+    this.isPaused = false;
+    for (const entry of this.pool.values()) {
+      if (entry.type === "video" && entry.visibleConsumers.size > 0 && entry.source && entry.source.paused) {
+        entry.source.play().catch(() => {});
+      }
+    }
+    this._ensureRenderLoop();
+  }
+
   _ensureRenderLoop() {
-    if (this.isRendering) return;
+    if (this.isRendering || this.isPaused) return;
 
     for (const entry of this.pool.values()) {
       if (
@@ -426,7 +455,7 @@ class MediaPoolEngine {
   }
 
   render(timestamp) {
-    if (!this.isRendering) return;
+    if (!this.isRendering || this.isPaused) return;
 
     if (timestamp && timestamp - this.lastRenderTime < 30) {
       this.rafId = requestAnimationFrame(this.render);

@@ -11,7 +11,6 @@
   import InputModal from "$components/main/InputModal.svelte";
   import Signature from "$components/main/Signature.svelte";
   import Avatar from "$components/main/Avatar.svelte";
-  import SafeAvatarPickerModal from "$components/main/SafeAvatarPickerModal.svelte";
   import GroupAddMembersModal from "$components/chats/GroupAddMembersModal.svelte";
   import GroupAdminModal from "$components/chats/GroupAdminModal.svelte";
   import GroupSharedMedia from "$components/chats/GroupSharedMedia.svelte";
@@ -33,6 +32,7 @@
     openChat as _openChat,
     closeChat as _closeChat,
     openAvatarGallery as _openAvatarGallery,
+    openSafeAvatarPicker as _openSafeAvatarPicker,
   } from "$lib/stores/session";
   import API, {
     currentUser,
@@ -494,7 +494,6 @@
 
   let isUploadingAvatar = false;
   let isDeletingAvatar = false;
-  let safeAvatarModalOpen = false;
   let avatarWrapEl;
 
   $: targetProfileEntityId = Number(userId || $contact?.id || (chat?.id && chat.type === "DIALOG" ? chat.id : null) || (isOwnProfile ? $currentUser : 0));
@@ -1208,7 +1207,7 @@
                 class="tg-avatar-edit-badge"
                 title="Обновить фото"
                 disabled={isUploadingAvatar}
-                on:click|stopPropagation={() => (safeAvatarModalOpen = true)}
+                on:click|stopPropagation={() => _openSafeAvatarPicker({ onApplySuccess: () => showToast("Аватарка успешно установлена"), onUploadStandard: handleAvatarUpload })}
               >
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                   <line x1="12" y1="5" x2="12" y2="19"/>
@@ -2071,14 +2070,6 @@
     confirmText="Отозвать и создать"
     on:confirm={() => { showRefreshInviteConfirm = false; refreshInvite(); }}
     on:cancel={() => (showRefreshInviteConfirm = false)}
-  />
-{/if}
-
-{#if safeAvatarModalOpen}
-  <SafeAvatarPickerModal
-    onClose={() => (safeAvatarModalOpen = false)}
-    onApplySuccess={() => showToast("Аватарка успешно установлена")}
-    onUploadStandard={handleAvatarUpload}
   />
 {/if}
 

@@ -9,12 +9,10 @@ import { goto } from "$app/navigation";
   import {
     platform as getPlatform
   } from "@tauri-apps/plugin-os";
-  import QRScannerModal from "$components/main/QRScannerModal.svelte";
 
-  import { set as sessionSet, openSettingsPage, openAvatarGallery } from "$lib/stores/session";
+  import { set as sessionSet, openSettingsPage, openAvatarGallery, openSafeAvatarPicker, openQrScanner, closeQrScanner } from "$lib/stores/session";
   import { currentUserDetails } from "$lib/stores/api";
   import Avatar from "$components/main/Avatar.svelte";
-  import SafeAvatarPickerModal from "$components/main/SafeAvatarPickerModal.svelte";
   import API, { currentUser } from "$lib/stores/api";
   import { getMountStore } from "$lib/plugins/mount-registry";
 
@@ -31,7 +29,6 @@ import { goto } from "$app/navigation";
   let name;
   let selfAvatarBusy = false;
   let selfAvatarWrapEl;
-  let safeAvatarModalOpen = false;
 
   $: selfAvatarUrl = $currentUserDetails?.baseRawUrl || $currentUserDetails?.avatar || $currentUserDetails?.baseUrl || null;
   $: selfPhotoId = $currentUserDetails?.photoId || null;
@@ -196,15 +193,16 @@ import { goto } from "$app/navigation";
     clearKeys();
   }
 
-  let qrScannerOpen = false;
   let isHandlingQR = false;
 
   function scanner() {
-    qrScannerOpen = true;
+    openQrScanner({
+      onScan: handleQRScan
+    });
   }
 
   function handleQRScan(content) {
-    qrScannerOpen = false;
+    closeQrScanner();
     if (!content || isHandlingQR) return;
     isHandlingQR = true;
     if (content.includes(":auth")) {
@@ -243,7 +241,7 @@ import { goto } from "$app/navigation";
         type="button"
         class="self-avatar-safe-badge"
         title="Сменить аватарку"
-        on:click|stopPropagation={() => (safeAvatarModalOpen = true)}
+        on:click|stopPropagation={() => openSafeAvatarPicker({ initialTab: "catalog" })}
       >
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
           <line x1="12" y1="5" x2="12" y2="19"/>
@@ -293,20 +291,6 @@ import { goto } from "$app/navigation";
     {/each}
   </div>
 </div>
-
-{#if safeAvatarModalOpen}
-  <SafeAvatarPickerModal
-    initialTab="catalog"
-    onClose={() => (safeAvatarModalOpen = false)}
-  />
-{/if}
-
-{#if qrScannerOpen}
-  <QRScannerModal
-    onScan={handleQRScan}
-    onClose={() => (qrScannerOpen = false)}
-  />
-{/if}
 
 <style>
   .settings {

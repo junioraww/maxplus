@@ -4,12 +4,11 @@
   import { openDigitalIdApp, openSferumApp, lastClosedMiniApp } from "$lib/stores/webapp";
   import { fetchDigitalIdProfile, deleteDigitalIdProfile, DOCUMENT_TITLES, resetDigitalIdAuth } from "$lib/services/digitalId";
   import Avatar from "$components/main/Avatar.svelte";
-  import ConfirmModal from "$components/main/ConfirmModal.svelte";
+  import { showConfirm } from "$lib/stores/session";
 
   let loading = false;
   let initialLoading = true;
   let error = null;
-  let showUnbindConfirm = false;
   let isLinked = false;
   let digitalProfile = null;
   let documents = [];
@@ -106,12 +105,20 @@
     }
   }
 
-  function handleUnbindDigitalId() {
-    showUnbindConfirm = true;
+  async function handleUnbindDigitalId() {
+    const ok = await showConfirm({
+      title: "Отвязать Цифровой ID?",
+      message: "Данные авторизации ЕСИА будут удалены с этого устройства.",
+      confirmText: "Отвязать",
+      cancelText: "Отмена",
+      isDangerous: true,
+    });
+    if (ok) {
+      await confirmUnbind();
+    }
   }
 
   async function confirmUnbind() {
-    showUnbindConfirm = false;
     loading = true;
     const botId = getDigitalIdBotId();
     try {
@@ -380,18 +387,6 @@
     {/if}
   </div>
 </div>
-
-{#if showUnbindConfirm}
-  <ConfirmModal
-    title="Отвязать Цифровой ID?"
-    message="Данные авторизации ЕСИА будут удалены с этого устройства."
-    confirmText="Отвязать"
-    cancelText="Отмена"
-    isDangerous={true}
-    on:confirm={confirmUnbind}
-    on:cancel={() => (showUnbindConfirm = false)}
-  />
-{/if}
 
 {#if toastMessage}
   <div class="toast-popup">

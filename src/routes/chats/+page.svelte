@@ -11,17 +11,14 @@
   import { openStoryComposer } from "$lib/stores/stories";
   import AddContactBtn from "$components/main/AddContactBtn.svelte";
   import Search from "$components/main/Search.svelte";
-  import FolderEditModal from "$components/chats/FolderEditModal.svelte";
   import MediaPlaybackHeader from "$components/media/MediaPlaybackHeader.svelte";
   import { activeMedia } from "$lib/stores/mediaPlayback";
-  import Contacts from "../contacts/+page.svelte";
 
-  let showContactsModal = false;
   let storiesTrayEl;
 
   import { escapeHtml } from "$lib/utils/text";
   import { debounce } from "$lib/utils/debounce";
-  import { openChat } from "$lib/stores/session";
+  import { openChat, openContactsModal, openFolderEdit } from "$lib/stores/session";
   import API, {
     currentSessionCalls,
     currentRealChats,
@@ -317,32 +314,6 @@
     return chatsByFolderId.get(folder?.id) || [];
   }
 
-  async function handleSaveFolder(folderData) {
-    try {
-      await $API.updateFolder(folderData);
-      showFolderModal = false;
-      folderToEdit = null;
-    } catch (e) {
-      console.error(e);
-      alert("Не удалось сохранить папку");
-    }
-  }
-
-  async function handleDeleteFolder(folderId) {
-    try {
-      await $API.deleteFolders([folderId]);
-      showFolderModal = false;
-      folderToEdit = null;
-      if (activeFolder?.id === folderId) {
-        activeFolder = localFolders[0];
-        activeFolderIndex = 0;
-      }
-    } catch (e) {
-      console.error(e);
-      alert("Не удалось удалить папку");
-    }
-  }
-
   async function handleReorderFolders(event) {
     const newFolders = event.detail;
     localFolders = newFolders;
@@ -453,9 +424,6 @@
     clearTimeout(scrollEndTimeout);
     clearTimeout(scrollTimeout);
   });
-
-  let showFolderModal = false;
-  let folderToEdit = null;
 </script>
 
 <div class="layout">
@@ -593,7 +561,7 @@
             <div style="margin-right: 15px; display: flex; align-items: center; gap: 8px;">
               <button
                 class="top-btn contacts-header-btn animated-panel"
-                on:click={() => (showContactsModal = true)}
+                on:click={() => openContactsModal()}
                 title="Контакты"
               >
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -618,12 +586,10 @@
     on:folderChange={onFolderTabClick}
     on:reorder={handleReorderFolders}
     on:editFolder={(e) => {
-      folderToEdit = e.detail;
-      showFolderModal = true;
+      openFolderEdit(e.detail);
     }}
     on:addFolder={() => {
-      folderToEdit = { isNew: true };
-      showFolderModal = true;
+      openFolderEdit({ isNew: true });
     }}
   />
 
@@ -714,46 +680,6 @@
       </div>
     {/each}
   </div>
-
-  {#if showFolderModal && folderToEdit}
-    <FolderEditModal
-      folder={folderToEdit}
-      allChats={($currentRealChats || []).map(id => getChat(id).getInfo()).filter(Boolean)}
-      on:close={() => {
-        showFolderModal = false;
-        folderToEdit = null;
-      }}
-      on:save={(e) => handleSaveFolder(e.detail)}
-      on:delete={(e) => handleDeleteFolder(e.detail)}
-    />
-  {/if}
-
-  {#if showContactsModal}
-    <div
-      class="contacts-modal-backdrop"
-      transition:fade={{ duration: 220 }}
-      on:click={() => (showContactsModal = false)}
-    >
-      <div
-        class="contacts-modal-panel"
-        transition:fly={{ y: 320, duration: 280, easing: cubicOut }}
-        on:click|stopPropagation
-      >
-        <div class="contacts-modal-top">
-          <span class="contacts-modal-title">Контакты</span>
-          <button class="contacts-modal-close" on:click={() => (showContactsModal = false)}>
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-              <line x1="18" y1="6" x2="6" y2="18"></line>
-              <line x1="6" y1="6" x2="18" y2="18"></line>
-            </svg>
-          </button>
-        </div>
-        <div class="contacts-modal-body">
-          <Contacts hideHeader={true} />
-        </div>
-      </div>
-    </div>
-  {/if}
 </div>
 
 
@@ -912,61 +838,5 @@
     color: white;
   }
 
-  .contacts-modal-backdrop {
-    position: fixed;
-    inset: 0;
-    background: rgba(0, 0, 0, 0.65);
-    z-index: var(--z-modal, 7);
-    display: flex;
-    justify-content: center;
-    align-items: flex-end;
-  }
-
-  .contacts-modal-panel {
-    width: 100%;
-    max-width: 600px;
-    height: 85%;
-    background: #18191b;
-    border-top-left-radius: 16px;
-    border-top-right-radius: 16px;
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-    box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.4);
-  }
-
-  .contacts-modal-top {
-    height: 48px;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 0 16px;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-    flex-shrink: 0;
-  }
-
-  .contacts-modal-title {
-    font-size: 16px;
-    font-weight: 600;
-    color: #fff;
-  }
-
-  .contacts-modal-close {
-    background: transparent;
-    border: none;
-    color: #9ca3af;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 4px;
-    border-radius: 50%;
-  }
-
-  .contacts-modal-body {
-    flex: 1;
-    overflow: hidden;
-    position: relative;
-  }
 </style>
 

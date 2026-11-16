@@ -178,7 +178,7 @@
         {#if isLoading}
           ...
         {:else}
-          {mode === "contact" ? "Добавить контакт" : "Создать группу"}
+          {mode === "contact" ? "Добавить" : "Создать"}
         {/if}
       </button>
     </div>

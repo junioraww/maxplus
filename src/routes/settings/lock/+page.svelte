@@ -346,8 +346,9 @@
   </div>
 
   {#if showPinModal}
-    <div class="modal-backdrop" on:click={() => showPinModal = false}>
-      <div class="modal-card" on:click|stopPropagation>
+    <div class="modal-backdrop" on:click={() => showPinModal = false} role="presentation">
+      <div class="modal-card" on:click|stopPropagation role="dialog">
+        <div class="bottom-sheet-handle"></div>
         <h2>Секретный PIN-код</h2>
         <p>Введите 4 цифры для разблокировки приложения из режима маскировки:</p>
         <input
@@ -674,29 +675,40 @@
   .modal-backdrop {
     position: fixed;
     inset: 0;
-    background: rgba(0, 0, 0, 0.75);
-    z-index: 1000000;
+    background: rgba(0, 0, 0, 0.65);
+    z-index: var(--z-modal, 7);
     display: flex;
-    align-items: center;
+    align-items: flex-end;
     justify-content: center;
-    padding: 20px;
   }
 
   .modal-card {
-    background: #1e2025;
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 16px;
-    padding: 24px;
+    background: var(--bg-surface, #1e2025);
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 20px 20px 0 0;
+    padding: 12px 20px calc(20px + var(--safe-bottom, 0px));
     width: 100%;
-    max-width: 360px;
+    max-width: 480px;
     display: flex;
     flex-direction: column;
     gap: 14px;
+    box-sizing: border-box;
+    box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.5);
+  }
+
+  .bottom-sheet-handle {
+    width: 40px;
+    height: 4px;
+    border-radius: 2px;
+    background: rgba(255, 255, 255, 0.2);
+    margin: 0 auto 6px;
+    flex-shrink: 0;
   }
 
   .modal-card h2 {
     margin: 0;
     font-size: 1.15rem;
+    text-align: center;
   }
 
   .modal-card p {
@@ -704,12 +716,13 @@
     font-size: 0.85rem;
     color: #9ca3af;
     line-height: 1.4;
+    text-align: center;
   }
 
   .modal-card input {
     background: #141518;
     border: 1px solid rgba(255, 255, 255, 0.12);
-    border-radius: 10px;
+    border-radius: 12px;
     color: #ffffff;
     font-size: 1.6rem;
     letter-spacing: 12px;
@@ -721,32 +734,45 @@
   .modal-error {
     font-size: 0.8rem;
     color: #ef4444;
+    text-align: center;
   }
 
   .modal-actions {
     display: flex;
-    justify-content: flex-end;
     gap: 10px;
     margin-top: 6px;
   }
 
   .modal-cancel-btn,
   .modal-save-btn {
+    flex: 1;
+    height: 44px;
     border: none;
-    border-radius: 8px;
+    border-radius: 22px;
     cursor: pointer;
+    font-size: 14px;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.15s;
   }
 
   .modal-cancel-btn {
-    background: transparent;
-    color: #8c8e96;
-    padding: 8px 14px;
+    background: rgba(255, 255, 255, 0.08);
+    color: #ffffff;
+  }
+
+  .modal-cancel-btn:hover {
+    background: rgba(255, 255, 255, 0.14);
   }
 
   .modal-save-btn {
-    background: #25c275;
-    color: #000;
-    font-weight: 600;
-    padding: 8px 16px;
+    background: var(--accent-primary, #248bfe);
+    color: #ffffff;
+  }
+
+  .modal-save-btn:hover {
+    background: var(--accent-primary-hover, #1b74d9);
   }
 </style>

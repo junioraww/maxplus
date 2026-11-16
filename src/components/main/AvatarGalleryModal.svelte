@@ -6,7 +6,7 @@
   import { registerBackHandler } from "$lib/utils/backButton";
   import MediaCanvas from "$components/main/MediaCanvas.svelte";
   import API, { currentUserDetails } from "$lib/stores/api";
-  import SafeAvatarPickerModal from "$components/main/SafeAvatarPickerModal.svelte";
+  import { openSafeAvatarPicker } from "$lib/stores/session";
 
   export let initialUrl = null;
   export let initialPhotoId = null;
@@ -21,8 +21,6 @@
   export let onDelete = null;
   export let onDownloaded = null;
   export let onError = null;
-
-  let safeAvatarModalOpen = false;
 
   const dispatch = createEventDispatcher();
 
@@ -826,7 +824,7 @@
           class="ag-icon-btn"
           title="Сменить аватарку"
           disabled={isUploading}
-          on:click|stopPropagation={() => (safeAvatarModalOpen = true)}
+          on:click|stopPropagation={() => openSafeAvatarPicker({ onUploadStandard: handleUploadClick, onApplySuccess: () => requestClose() })}
         >
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
             <line x1="12" y1="5" x2="12" y2="19" />
@@ -991,17 +989,6 @@
     </button>
   </div>
 </div>
-
-{#if safeAvatarModalOpen}
-  <SafeAvatarPickerModal
-    onClose={() => (safeAvatarModalOpen = false)}
-    onUploadStandard={handleUploadClick}
-    onApplySuccess={() => {
-      safeAvatarModalOpen = false;
-      requestClose();
-    }}
-  />
-{/if}
 
 <style>
   .ag-overlay {
