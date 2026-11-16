@@ -12,6 +12,7 @@
   import { openStoryComposer, sortedStoriesFeed, selfStoryPreview } from "$lib/stores/stories";
   import MediaPlaybackHeader from "$components/media/MediaPlaybackHeader.svelte";
   import { activeMedia } from "$lib/stores/mediaPlayback";
+  import { panelSlider } from "$lib/utils/panelSlider";
 
   let storiesTrayEl;
   let isStoriesExpanded = true;
@@ -333,56 +334,88 @@
     }
   }
 
-  let scrollContainer;
-  let isProgrammaticScroll = false;
-  let scrollTimeout;
-  let scrollRafId = null;
-  let scrollEndTimeout = null;
+  let folderDragOffset = 0;
+  let isFolderDragging = false;
+  let isFolderSnapping = false;
 
-  function handleScroll(e) {
-    if (isProgrammaticScroll) return;
-    const container = e.target;
-    const width = container.clientWidth;
-    if (width === 0) return;
-
-    if (scrollRafId) cancelAnimationFrame(scrollRafId);
-    scrollRafId = requestAnimationFrame(() => {
-      const rawIndex = container.scrollLeft / width;
-      const newIndex = Math.round(rawIndex);
-      if (Math.abs(rawIndex - newIndex) < 0.05 && newIndex !== activeFolderIndex && localFolders[newIndex]) {
-        activeFolderIndex = newIndex;
-        activeFolder = localFolders[newIndex];
+  function ensureNeighborFoldersMounted(idx) {
+    let changed = false;
+    for (const t of [idx - 1, idx, idx + 1]) {
+      if (t >= 0 && t < localFolders.length && !renderedFolderIndices.has(t)) {
+        renderedFolderIndices.add(t);
+        changed = true;
       }
+    }
+    if (changed) {
+      renderedFolderIndices = new Set(renderedFolderIndices);
+    }
+  }
+
+  function handleFolderDragStart() {
+    isFolderDragging = true;
+    isFolderSnapping = false;
+  }
+
+  function handleFolderDragMove(offset) {
+    folderDragOffset = offset;
+    if (offset < 0 && activeFolderIndex + 1 < localFolders.length) {
+      ensureNeighborFoldersMounted(activeFolderIndex + 1);
+    } else if (offset > 0 && activeFolderIndex - 1 >= 0) {
+      ensureNeighborFoldersMounted(activeFolderIndex - 1);
+    }
+  }
+
+  function handleFolderDragEnd(targetIndex, finalOffset, containerWidth) {
+    const oldActive = activeFolderIndex;
+    isFolderDragging = false;
+
+    if (targetIndex === oldActive) {
+      if (finalOffset === 0) {
+        folderDragOffset = 0;
+        return;
+      }
+      isFolderSnapping = true;
+      folderDragOffset = 0;
+      setTimeout(() => {
+        isFolderSnapping = false;
+      }, 280);
+      return;
+    }
+
+    const offsetDelta = (targetIndex - oldActive) * containerWidth;
+    const initialSnapOffset = finalOffset + offsetDelta;
+
+    activeFolderIndex = targetIndex;
+    activeFolder = localFolders[targetIndex];
+    ensureNeighborFoldersMounted(targetIndex);
+
+    folderDragOffset = initialSnapOffset;
+    isFolderSnapping = false;
+
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        isFolderSnapping = true;
+        folderDragOffset = 0;
+        setTimeout(() => {
+          isFolderSnapping = false;
+        }, 280);
+      });
     });
-
-    clearTimeout(scrollEndTimeout);
-    scrollEndTimeout = setTimeout(() => {
-      if (!scrollContainer) return;
-      const currentWidth = scrollContainer.clientWidth;
-      if (currentWidth === 0) return;
-      const finalIndex = Math.round(scrollContainer.scrollLeft / currentWidth);
-      if (finalIndex !== activeFolderIndex && localFolders[finalIndex]) {
-        activeFolderIndex = finalIndex;
-        activeFolder = localFolders[finalIndex];
-      }
-    }, 60);
   }
 
   function onFolderTabClick(event) {
     const folder = event.detail;
-    const index = localFolders.indexOf(folder);
-    if (index !== -1 && scrollContainer) {
-      isProgrammaticScroll = true;
-      activeFolder = folder;
+    const index = localFolders.findIndex((f) => f.id === folder.id);
+    if (index !== -1 && index !== activeFolderIndex) {
       activeFolderIndex = index;
-      scrollContainer.scrollTo({
-        left: index * scrollContainer.clientWidth,
-        behavior: "smooth",
-      });
-      clearTimeout(scrollTimeout);
-      scrollTimeout = setTimeout(() => {
-        isProgrammaticScroll = false;
-      }, 500);
+      activeFolder = folder;
+      folderDragOffset = 0;
+      isFolderDragging = false;
+      isFolderSnapping = true;
+      ensureNeighborFoldersMounted(index);
+      setTimeout(() => {
+        isFolderSnapping = false;
+      }, 280);
     }
   }
 
@@ -427,11 +460,7 @@
     }
   }
 
-  onDestroy(() => {
-    if (scrollRafId) cancelAnimationFrame(scrollRafId);
-    clearTimeout(scrollEndTimeout);
-    clearTimeout(scrollTimeout);
-  });
+  onDestroy(() => {});
 </script>
 
 <svelte:window on:keydown={handleKeyDown} />
@@ -710,33 +739,49 @@
     </div>
   {:else}
     <div
-      class="swipe-container"
-      bind:this={scrollContainer}
-      on:scroll={handleScroll}
+      class="folders-slider"
+      class:no-panel-drag={isSelectionMode}
+      use:panelSlider={{
+        getPagesCount: () => localFolders.length,
+        getActive: () => activeFolderIndex,
+        canDrag: () => localFolders.length > 1 && !isSelectionMode,
+        nested: true,
+        onPrepare: () => ensureNeighborFoldersMounted(activeFolderIndex),
+        onDragStart: handleFolderDragStart,
+        onDragMove: handleFolderDragMove,
+        onDragEnd: handleFolderDragEnd,
+      }}
     >
-      {#each localFolders as folder, i (folder.id)}
-        <div class="folder-page">
-          {#if shouldRender(i)}
-            {@const folderChats = chatsByFolderId.get(folder.id) || []}
-            <FolderChatList
-              chats={folderChats}
-              {isSelectionMode}
-              {selectedChats}
-              loading={$currentlySyncing && i === activeFolderIndex && (!$currentRealChats || $currentRealChats.length === 0)}
-              on:open={(e) => e.detail && openChat(e.detail)}
-              on:longpress={handleChatLongPress}
-              on:toggle={handleChatToggle}
-              on:scroll={(e) => {
-                if (e.detail?.scrollTop > 20) {
-                  storiesTrayEl?.collapse();
-                }
-              }}
-            />
-          {:else}
-            <div class="placeholder"></div>
-          {/if}
-        </div>
-      {/each}
+      <div
+        class="folders-track"
+        class:dragging={isFolderDragging}
+        class:snapping={isFolderSnapping}
+        style="transform: translate3d(calc({-activeFolderIndex * 100}% + {folderDragOffset}px), 0, 0);"
+      >
+        {#each localFolders as folder, i (folder.id)}
+          <div class="folder-page">
+            {#if shouldRender(i)}
+              {@const folderChats = chatsByFolderId.get(folder.id) || []}
+              <FolderChatList
+                chats={folderChats}
+                {isSelectionMode}
+                {selectedChats}
+                loading={$currentlySyncing && i === activeFolderIndex && (!$currentRealChats || $currentRealChats.length === 0)}
+                on:open={(e) => e.detail && openChat(e.detail)}
+                on:longpress={handleChatLongPress}
+                on:toggle={handleChatToggle}
+                on:scroll={(e) => {
+                  if (e.detail?.scrollTop > 20) {
+                    storiesTrayEl?.collapse();
+                  }
+                }}
+              />
+            {:else}
+              <div class="placeholder"></div>
+            {/if}
+          </div>
+        {/each}
+      </div>
     </div>
   {/if}
 </div>
@@ -996,30 +1041,37 @@
     display: inline-block;
   }
 
-  .swipe-container {
+  .folders-slider {
     flex: 1;
-    display: flex;
-    overflow-x: auto;
-    overflow-y: hidden;
-    scroll-snap-type: x mandatory;
-    scrollbar-width: none;
-    -ms-overflow-style: none;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    position: relative;
     cursor: grab;
-    will-change: scroll-position;
-    -webkit-overflow-scrolling: touch;
-    overscroll-behavior-x: contain;
+    user-select: none;
+    -webkit-user-select: none;
   }
 
-  .swipe-container::-webkit-scrollbar {
-    display: none;
+  .folders-track {
+    display: flex;
+    width: 100%;
+    height: 100%;
+    will-change: transform;
+    pointer-events: auto;
+  }
+
+  .folders-track.dragging {
+    transition: none !important;
+  }
+
+  .folders-track.snapping {
+    transition: transform 0.28s cubic-bezier(0.25, 1, 0.5, 1) !important;
   }
 
   .folder-page {
     flex: 0 0 100%;
     width: 100%;
     height: 100%;
-    scroll-snap-align: start;
-    scroll-snap-stop: always;
     display: flex;
     flex-direction: column;
     overflow: hidden;
