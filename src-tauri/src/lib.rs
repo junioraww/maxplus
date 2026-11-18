@@ -14,6 +14,9 @@ mod stores;
 mod video;
 mod webapp_proxy;
 mod webrtc_engine;
+#[cfg(target_os = "windows")]
+mod windows_webview;
+
 
 use state::AppState;
 use std::sync::Arc;
@@ -135,7 +138,7 @@ pub fn run() {
         _ => PermissionResponse::Default,
     });
 
-    builder
+    if let Err(err) = builder
         .setup(|app| {
             #[cfg(any(windows, target_os = "linux"))]
             {
@@ -450,5 +453,10 @@ pub fn run() {
             webrtc_engine::commands::webrtc_set_encryption_keys,
         ])
         .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+    {
+        #[cfg(target_os = "windows")]
+        windows_webview::handle_startup_error(&err);
+        #[cfg(not(target_os = "windows"))]
+        panic!("error while running tauri application: {err}");
+    }
 }

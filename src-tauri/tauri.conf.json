@@ -50,6 +50,11 @@
       "appimage": {
         "bundleMediaFramework": true
       }
+    },
+    "windows": {
+      "webviewInstallMode": {
+        "type": "downloadBootstrapper"
+      }
     }
   },
   "plugins": {
