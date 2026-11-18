@@ -88,10 +88,8 @@
       const list = pubRes?.result;
       if (Array.isArray(list)) {
         for (const item of list) {
-          if (item.chat) item.chat.avatar = item.chat.baseIconUrl;
-          else if (item.contact) {
+          if (item.contact) {
             item.contact = item.contact.contact || item.contact;
-            item.contact.avatar = item.contact.baseUrl;
           }
         }
         searchPublic = list;

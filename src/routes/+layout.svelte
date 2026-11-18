@@ -65,6 +65,8 @@
   const pluginGlobalOverlays = getMountStore("global:overlay");
 
   let settings;
+  let isAnyModalActive = false;
+  let shouldPauseMedia = false;
   const legacyUnregisterMap = new Map();
 
   $: isAuthRoute = $page?.url?.pathname?.startsWith('/auth');
@@ -229,8 +231,15 @@
     $lockScreenState
   );
 
+  $: shouldPauseMedia = Boolean(
+    $lockScreenState ||
+    $videoCropState?.isOpen ||
+    $isStoryComposerOpen ||
+    Boolean($callSheetModal)
+  );
+
   $: if (browser) {
-    if (isAnyModalActive) {
+    if (shouldPauseMedia) {
       MediaPool.pause();
     } else {
       MediaPool.resume();

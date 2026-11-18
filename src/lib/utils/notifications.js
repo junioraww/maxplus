@@ -421,7 +421,7 @@ export async function newMessage(chatId, chat, contact, message) {
   }
 
   let avatarLocalPath = null;
-  const avatarUrl = chatInfo.baseUrl || chatInfo.baseIconUrl || chatInfo.avatar || contact?.avatar;
+  const avatarUrl = chatInfo.baseUrl || chatInfo.baseIconUrl || chatInfo.baseRawUrl || contact?.baseUrl || contact?.baseRawUrl;
   if (avatarUrl) {
     avatarLocalPath = await getLocalFilePath(avatarUrl);
   } else {

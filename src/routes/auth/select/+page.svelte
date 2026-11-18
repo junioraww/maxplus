@@ -414,9 +414,8 @@
               {/if}
             {:else}
               <Avatar
-                accountId={account.id}
                 contactId={account.contact?.id}
-                src={account.contact?.baseRawUrl || account.contact?.baseUrl || account.contact?.avatar || account.contact?.photo}
+                src={account.contact?.baseRawUrl || account.contact?.baseUrl || account.contact?.photo}
                 title={account.contact?.names?.[0]?.firstName || account.meta?.firstName || "Аккаунт"}
                 seed={account.id}
                 size=72

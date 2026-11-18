@@ -67,7 +67,7 @@
     try {
       const details = get(currentUserDetails);
       const firstName = details?.names?.[0]?.firstName || details?.name || "";
-      const rawAvatar = details?.baseRawUrl || details?.avatar || details?.baseUrl || details?.photo || null;
+      const rawAvatar = details?.baseRawUrl || details?.baseUrl || details?.photo || null;
       const avatarBlur = await createBlurredAvatarPreview(rawAvatar);
       return { firstName, avatarBlur };
     } catch {

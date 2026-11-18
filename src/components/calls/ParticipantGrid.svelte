@@ -52,7 +52,7 @@
   $: selfParticipant = {
     id: $activeCall.myCallUserId || 'local_self',
     name: `${selfName} (Вы)`,
-    avatar: $currentUserDetails?.baseRawUrl || $currentUserDetails?.baseUrl || $currentUserDetails?.avatar || $currentUserDetails?.photo || null,
+    avatar: $currentUserDetails?.baseRawUrl || $currentUserDetails?.baseUrl || $currentUserDetails?.photo || null,
     muted: $activeCall.muted,
     video: localVideo,
     stream: localStream,

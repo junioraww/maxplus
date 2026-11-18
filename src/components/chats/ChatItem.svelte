@@ -48,9 +48,9 @@
   $: isPinned = Boolean(currentChat?.favIndex || currentChat?.pinned || chat?.favIndex || chat?.pinned);
 
   $: title =
-    chat.id === 0
+    (currentChat?.id === 0 || chat?.id === 0)
       ? "Избранное"
-      : chat.title || $contact?.names?.[0]?.name || "Без названия";
+      : currentChat?.title || chat?.title || $contact?.names?.[0]?.name || "Без названия";
 
   $: cachedChat = getChat(chat.id);
   $: receivedMessage = cachedChat.receivedMessage;
@@ -233,7 +233,8 @@
       </div>
     {/each}
     <Avatar
-      {chat}
+      chat={currentChat}
+      title={title}
       contactId={peerId}
       size={56}
       {selectionMode}

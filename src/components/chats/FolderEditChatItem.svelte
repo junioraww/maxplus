@@ -28,7 +28,7 @@
     {#if includedChats.includes(chat.id)}✓{/if}
   </div>
   <div class="avatar-wrap">
-    <Avatar {chat} contactId={peerId} size={36} />
+    <Avatar {chat} {title} contactId={peerId} size={36} />
   </div>
   <div class="chat-info">
     <span class="chat-name">{title}</span>

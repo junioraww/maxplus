@@ -225,14 +225,14 @@
       if (isGroup) {
         const chat = getChat(call.chatId).getInfo();
         name = chat?.title || 'Групповой звонок';
-        avatar = chat?.avatar || chat?.baseUrl;
+        avatar = chat?.baseUrl || chat?.baseRawUrl || chat?.baseIconUrl;
       } else {
         const contact = contactsMap[peerId];
         if (contact) {
           const fn = contact.names?.[0]?.firstName || '';
           const ln = contact.names?.[0]?.lastName || '';
           name = `${fn} ${ln}`.trim() || contact.name || 'Собеседник';
-          avatar = contact.avatar || contact.baseUrl;
+          avatar = contact.baseUrl || contact.baseRawUrl;
         }
       }
 

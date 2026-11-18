@@ -234,7 +234,7 @@
     updateAudioAnalysers();
   }
 
-  $: selfAvatarUrl = $currentUserDetails?.baseRawUrl || $currentUserDetails?.baseUrl || $currentUserDetails?.avatar || $currentUserDetails?.photo || null;
+  $: selfAvatarUrl = $currentUserDetails?.baseRawUrl || $currentUserDetails?.baseUrl || $currentUserDetails?.photo || null;
 
   function buildCompositorParticipants() {
     const list = [];
