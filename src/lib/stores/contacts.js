@@ -57,7 +57,7 @@ export function getContactDisplayName(contact) {
 
 export function getContactAvatarUrl(contact) {
   if (!contact) return null;
-  return contact.avatar || contact.baseRawUrl || contact.baseUrl || contact.photo || contact.iconUrl || null;
+  return contact.baseUrl || contact.baseRawUrl || contact.photo || contact.iconUrl || null;
 }
 
 export const getContactDirect = async contactId => {
@@ -68,7 +68,6 @@ export const getContactDirect = async contactId => {
     if (val !== undefined && val !== null) {
       return {
         ...val,
-        avatar: getContactAvatarUrl(val),
         displayName: getContactDisplayName(val),
       };
     }
@@ -80,7 +79,6 @@ export const getContactDirect = async contactId => {
     if (cached) {
       const normalized = {
         ...cached,
-        avatar: getContactAvatarUrl(cached),
         displayName: getContactDisplayName(cached),
       };
       if (cache[id]) {
@@ -93,7 +91,6 @@ export const getContactDirect = async contactId => {
       const raw = resp.contacts[0];
       const contact = {
         ...raw,
-        avatar: getContactAvatarUrl(raw),
         displayName: getContactDisplayName(raw),
       };
       await updateContact(contact);

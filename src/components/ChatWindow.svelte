@@ -52,7 +52,7 @@
   import EditHistoryModal from "$components/ChatWindow/EditHistoryModal.svelte";
   import SeenByModal from "$components/ChatWindow/SeenByModal.svelte";
   import { computeTextDiff } from "$lib/utils/diff";
-  import { clearChatNotification } from "$lib/utils/notifications";
+  import { clearChatNotification, isChatMuted } from "$lib/utils/notifications";
   import { showAlert } from "$lib/utils/alert";
   import {
     selectionState,
@@ -193,6 +193,52 @@
   $: unreadBadgeCount = Math.max(0, Number(chat?.newMessages ?? 0));
   $: chatSettings = getChatSettings(chat?.id ?? chatId);
   $: isChannel = chat?.type === "CHANNEL";
+  $: isChannelOwner = Boolean(
+    chat &&
+    $currentUser != null &&
+    (Number(chat.owner) === Number($currentUser) || Number(chat.creator) === Number($currentUser))
+  );
+  $: channelAdminPerms = (() => {
+    if (!chat || !isChannel || $currentUser == null) return 0;
+    const uidStr = String($currentUser);
+    const uidNum = Number($currentUser);
+    const ap = chat.adminParticipants?.[uidStr] || chat.adminParticipants?.[uidNum];
+    if (ap != null) {
+      if (typeof ap.permissions === "number") return ap.permissions;
+      if (Array.isArray(ap.permissions)) {
+        let mask = 0;
+        if (ap.permissions.includes("POST_MESSAGE")) mask |= 256;
+        if (ap.permissions.includes("EDIT_MESSAGE")) mask |= 512;
+        if (ap.permissions.includes("DELETE_MESSAGE")) mask |= 1024;
+        if (ap.permissions.includes("ADD_REMOVE_MEMBER")) mask |= 2;
+        if (ap.permissions.includes("ADD_ADMIN")) mask |= 4;
+        if (ap.permissions.includes("CHANGE_CHAT_INFO")) mask |= 8;
+        if (ap.permissions.includes("PIN_MESSAGE")) mask |= 16;
+        return mask;
+      }
+    }
+    if (chat.admins?.map(Number).includes(uidNum)) {
+      return 256 | 512 | 1024 | 16 | 8 | 2 | 4;
+    }
+    return 0;
+  })();
+  $: canPostInChannel = Boolean(
+    isChannel &&
+    (isChannelOwner || (channelAdminPerms & 256) !== 0)
+  );
+  $: channelMuted = Boolean(chat && isChatMuted(chat));
+
+  let togglingChannelMute = false;
+  async function handleToggleChannelMute() {
+    if (!chat?.id || togglingChannelMute) return;
+    togglingChannelMute = true;
+    try {
+      const nextDDU = channelMuted ? 0 : -1;
+      await $API.setChatMute(chat.id, nextDDU);
+    } catch {}
+    togglingChannelMute = false;
+  }
+
   $: isChannelMember = Boolean(
     chat?.id &&
     ($currentRealChats || []).includes(chat.id) &&
@@ -1941,14 +1987,25 @@
     <div class="channel-preview-bar">
       <button
         type="button"
-        class="channel-subscribe-btn"
+        class="channel-footer-btn channel-subscribe-btn"
         disabled={subscribingChannel}
         on:click={handleChannelSubscribe}
       >
         {subscribingChannel ? "Подписка..." : "Подписаться"}
       </button>
     </div>
-  {:else if chat.type !== "CHANNEL" && $chatSettings}
+  {:else if isChannel && !canPostInChannel}
+    <div class="channel-preview-bar">
+      <button
+        type="button"
+        class="channel-footer-btn channel-mute-btn"
+        disabled={togglingChannelMute}
+        on:click={handleToggleChannelMute}
+      >
+        {channelMuted ? "Включить уведомления" : "Отключить уведомления"}
+      </button>
+    </div>
+  {:else if $chatSettings}
     <Input
       bind:this={inputComponent}
       bind:replyTo
@@ -2230,43 +2287,56 @@
 
   .channel-preview-bar {
     width: 100%;
-    padding: 8px 16px;
+    padding: 8px 16px calc(10px + var(--safe-bottom, 0px));
     box-sizing: border-box;
     display: flex;
     align-items: center;
     justify-content: center;
-    background: var(--bg-primary, #1e1e24);
-    border-top: 1px solid var(--border-color, rgba(255, 255, 255, 0.08));
+    background: var(--bg-surface, #1e2025);
+    border-top: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
     flex-shrink: 0;
   }
 
-  .channel-subscribe-btn {
+  .channel-footer-btn {
     width: 100%;
     max-width: 480px;
-    height: 42px;
-    background: var(--accent-color, #2b82eb);
-    color: #ffffff;
-    border: none;
-    border-radius: 10px;
+    height: 44px;
+    border-radius: 12px;
     font-size: 15px;
     font-weight: 600;
     cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: opacity 0.15s ease, transform 0.1s ease;
+    transition: opacity 0.15s ease, background 0.15s ease, transform 0.1s ease;
   }
 
-  .channel-subscribe-btn:hover {
-    opacity: 0.92;
-  }
-
-  .channel-subscribe-btn:active {
+  .channel-footer-btn:active {
     transform: scale(0.98);
   }
 
-  .channel-subscribe-btn:disabled {
+  .channel-footer-btn:disabled {
     opacity: 0.6;
     cursor: not-allowed;
+  }
+
+  .channel-subscribe-btn {
+    background: var(--accent-primary, #248bfe);
+    color: #ffffff;
+    border: none;
+  }
+
+  .channel-subscribe-btn:hover {
+    background: var(--accent-primary-hover, #1b74d9);
+  }
+
+  .channel-mute-btn {
+    background: var(--bg-surface-secondary, #26262e);
+    color: var(--text-primary, #ffffff);
+    border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
+  }
+
+  .channel-mute-btn:hover {
+    background: var(--bg-surface-elevated, #2e3038);
   }
 </style>

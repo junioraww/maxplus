@@ -3162,7 +3162,7 @@ export const CallService = {
       if (!endpoint) { log('incoming call without endpoint'); return; }
       const contact = callerId ? await getContactDirect(callerId) : null;
       const peerName = contact?.displayName || contact?.name || pushData.userName || pushData.title || pushData.name || (callerId ? `User ${callerId}` : 'Входящий звонок');
-      const peerAvatar = contact?.avatar || contact?.baseRawUrl || contact?.baseUrl || contact?.photo || null;
+      const peerAvatar = contact?.baseRawUrl || contact?.baseUrl || contact?.photo || null;
       const isVideo = Boolean(
         pushData.isVideo ||
         pushData.type === 'VIDEO' ||

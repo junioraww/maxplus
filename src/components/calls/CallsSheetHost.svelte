@@ -95,7 +95,7 @@
   function selectContactForCall(c) {
     closeCallSheet();
     const name = `${c.names?.[0]?.firstName || ''} ${c.names?.[0]?.lastName || ''}`.trim() || c.name || "Собеседник";
-    CallService.placeAudioCall(c.id, name, c.avatar || c.baseUrl);
+    CallService.placeAudioCall(c.id, name, c.baseUrl || c.baseRawUrl);
   }
 
   $: activeContactsList = $currentRealContacts?.length ? $currentRealContacts : availableContacts;
@@ -173,7 +173,7 @@
         {:else}
           {#each filteredContacts as c (c.id)}
             <div class="contact-item" on:click={() => selectContactForCall(c)} role="button" tabindex="0">
-              <Avatar size={42} contactId={c.id} title={c.name} src={c.avatar || c.baseUrl} />
+              <Avatar size={42} contactId={c.id} title={c.name} src={c.baseUrl || c.baseRawUrl} />
               <div class="contact-info">
                 <span class="contact-name">
                   {c.names?.[0]?.firstName ? `${c.names[0].firstName} ${c.names[0].lastName || ''}`.trim() : (c.name || 'Контакт')}

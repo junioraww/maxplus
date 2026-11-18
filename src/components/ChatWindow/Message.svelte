@@ -179,10 +179,10 @@
       return $currentUserDetails.avatar || $currentUserDetails.baseUrl;
     }
     if (forwardContact) {
-      return forwardContact.avatar || forwardContact.baseUrl;
+      return forwardContact.baseUrl || forwardContact.baseRawUrl;
     }
     if (forwardChat) {
-      return forwardChat.avatar || forwardChat.baseIconUrl || forwardChat.iconUrl;
+      return forwardChat.baseIconUrl || forwardChat.baseUrl || forwardChat.iconUrl;
     }
     return null;
   })();

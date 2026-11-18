@@ -97,7 +97,7 @@
       return;
     }
     if (!peerId) return;
-    const avatar = $contactStore?.avatar || $contactStore?.baseUrl;
+    const avatar = $contactStore?.baseUrl || $contactStore?.baseRawUrl;
     if (isVideo) {
       CallService.placeVideoCall(peerId, peerName, avatar);
     } else {

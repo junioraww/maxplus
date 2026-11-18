@@ -114,7 +114,12 @@
           {@const uid = req.contact?.id || req.id}
           {@const name = req.contact?.displayName || req.contact?.names?.[0]?.name || "Пользователь"}
           <div class="request-row">
-            <Avatar contactId={uid} size={40} />
+            <Avatar
+              contactId={uid}
+              size={40}
+              src={req.contact?.baseUrl || req.contact?.baseRawUrl}
+              title={name}
+            />
             <div class="user-meta">
               <span class="user-title">{name}</span>
               <span class="user-sub">ID: {uid}</span>

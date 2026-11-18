@@ -53,6 +53,8 @@ import {
 import {
   getContactAsync,
 } from "$lib/utils/caching";
+import { safeAvatarMapStore, invalidateStegoScan } from "$lib/services/AvatarSyncManager";
+import { clearSafeAvatarImageCache } from "$lib/utils/images";
 import {
   setupPushNotifications,
   newMessage,
@@ -1428,10 +1430,10 @@ export default class MobileApi extends BaseAPI {
     const result = response.contact;
 
     const contact = {
-      avatar: result.baseUrl,
+      baseUrl: result.baseUrl,
+      baseRawUrl: result.baseRawUrl,
       accountStatus: result.accountStatus,
-      // country: result.country,
-      // photoId: result.photoId,
+      photoId: result.photoId,
       id: result.id,
       names: result.names,
       options: result.options,
@@ -1783,6 +1785,14 @@ export default class MobileApi extends BaseAPI {
       if (account?.id) {
         await setAccountContact(account.id, contact);
       }
+      safeAvatarMapStore.update((map) => {
+        const next = new Map(map);
+        next.delete(Number(contact.id));
+        return next;
+      });
+      clearSafeAvatarImageCache();
+      invalidateStegoScan(contact.id);
+      currentRealChats.update((ids) => [...(ids || [])]);
     }
 
     return contact || res;
@@ -1796,7 +1806,7 @@ export default class MobileApi extends BaseAPI {
       targetPhotoId = Number(this.extractPhotoIdFromUrl(photoUrl) || 0);
     }
     if (!targetPhotoId) {
-      targetPhotoId = Number(details?.photoId || this.extractPhotoIdFromUrl(details?.baseRawUrl || details?.baseUrl || details?.avatar) || 0);
+      targetPhotoId = Number(details?.photoId || this.extractPhotoIdFromUrl(details?.baseRawUrl || details?.baseUrl) || 0);
     }
     if (!targetPhotoId) {
       throw new Error("Не удалось определить ID фотографии для удаления");
@@ -1806,6 +1816,17 @@ export default class MobileApi extends BaseAPI {
       photoId: targetPhotoId,
     });
 
+    const targetUserId = Number(details?.id || get(currentUser) || 0);
+    if (targetUserId) {
+      safeAvatarMapStore.update((map) => {
+        const next = new Map(map);
+        next.delete(targetUserId);
+        return next;
+      });
+      clearSafeAvatarImageCache();
+      invalidateStegoScan(targetUserId);
+    }
+
     const contact = res?.profile?.contact || res?.contact;
     if (contact) {
       currentUserDetails.set(contact);
@@ -1814,18 +1835,19 @@ export default class MobileApi extends BaseAPI {
       if (account?.id) {
         await setAccountContact(account.id, contact);
       }
+      currentRealChats.update((ids) => [...(ids || [])]);
     } else if (details && Number(details.photoId) === targetPhotoId) {
       const updated = { ...details };
       delete updated.baseUrl;
       delete updated.baseRawUrl;
       delete updated.photoId;
-      delete updated.avatar;
       currentUserDetails.set(updated);
       await updateContact(updated);
       const account = await getCurrentAccount().catch(() => null);
       if (account?.id) {
         await setAccountContact(account.id, updated);
       }
+      currentRealChats.update((ids) => [...(ids || [])]);
     }
 
     return contact || res;
@@ -1842,6 +1864,11 @@ export default class MobileApi extends BaseAPI {
 
     const updatedChat = res?.chat;
     if (updatedChat) {
+      safeAvatarMapStore.update((map) => {
+        const next = new Map(map);
+        next.delete(Number(chatId));
+        return next;
+      });
       const chat = getChat(chatId);
       let merged = null;
       chat.chatInfo.update((c) => {
@@ -1851,6 +1878,9 @@ export default class MobileApi extends BaseAPI {
       if (merged) {
         await saveChats([merged]).catch(() => {});
       }
+      clearSafeAvatarImageCache();
+      invalidateStegoScan(chatId);
+      currentRealChats.update((ids) => [...(ids || [])]);
     }
 
     return updatedChat || res;
@@ -2462,6 +2492,104 @@ export default class MobileApi extends BaseAPI {
       forward: Number(forward),
       backward: Number(backward)
     });
+    return res;
+  }
+
+  async setChannelAccess(chatId, access, link = null) {
+    await this.waitSync();
+    const res = await invoke("set_channel_access", {
+      chatId: Number(chatId),
+      access: String(access),
+      link: link ? String(link) : null,
+    });
+    if (res?.chat) {
+      getChat(chatId).chatInfo.update((c) => ({ ...(c || {}), ...res.chat }));
+    }
+    return res;
+  }
+
+  async revokeChannelInviteLink(chatId) {
+    await this.waitSync();
+    const res = await invoke("revoke_channel_invite_link", {
+      chatId: Number(chatId),
+    });
+    if (res?.chat) {
+      getChat(chatId).chatInfo.update((c) => ({ ...(c || {}), ...res.chat }));
+    }
+    return res;
+  }
+
+  async setChannelComments(chatId, enabled) {
+    return this.setChannelOptions(chatId, { comments: Boolean(enabled) });
+  }
+
+  async setChannelOptions(chatId, options = {}) {
+    await this.waitSync();
+    const existingChat = getChat(chatId).getInfo();
+    const curOpts = existingChat?.options || {};
+    const comments = options.comments !== undefined ? options.comments : (options.COMMENTS !== undefined ? options.COMMENTS : Boolean(curOpts.COMMENTS ?? curOpts.comments));
+    const signatures = options.signatures !== undefined ? options.signatures : (options.SIGNATURES !== undefined ? options.SIGNATURES : Boolean(curOpts.SIGNATURES ?? curOpts.signatures));
+    const joinRequest = options.joinRequest !== undefined ? options.joinRequest : (options.JOIN_REQUEST !== undefined ? options.JOIN_REQUEST : Boolean(curOpts.JOIN_REQUEST ?? curOpts.joinRequest));
+
+    const res = await invoke("set_channel_options", {
+      chatId: Number(chatId),
+      comments: Boolean(comments),
+      signatures: Boolean(signatures),
+      joinRequest: Boolean(joinRequest),
+    });
+    const nextOpts = {
+      ...(curOpts || {}),
+      COMMENTS: Boolean(comments),
+      comments: Boolean(comments),
+      SIGNATURES: Boolean(signatures),
+      signatures: Boolean(signatures),
+      JOIN_REQUEST: Boolean(joinRequest),
+      joinRequest: Boolean(joinRequest),
+      ...(res?.chat?.options || {}),
+    };
+    getChat(chatId).chatInfo.update((c) => ({
+      ...(c || {}),
+      ...(res?.chat || {}),
+      options: nextOpts,
+    }));
+    return res;
+  }
+
+  async transferChannelOwnership(chatId, newOwnerId) {
+    await this.waitSync();
+    const res = await invoke("transfer_channel_ownership", {
+      chatId: Number(chatId),
+      newOwnerId: Number(newOwnerId),
+    });
+    if (res?.chat) {
+      getChat(chatId).chatInfo.update((c) => ({ ...(c || {}), ...res.chat, owner: Number(newOwnerId) }));
+    }
+    return res;
+  }
+
+  async grantChannelAdmin(chatId, userId, permissions, alias = null) {
+    await this.waitSync();
+    const res = await invoke("grant_channel_admin", {
+      chatId: Number(chatId),
+      userId: Number(userId),
+      permissions: Number(permissions),
+      alias: alias ? String(alias) : null,
+    });
+    if (res?.chat) {
+      getChat(chatId).chatInfo.update((c) => ({ ...(c || {}), ...res.chat }));
+    }
+    return res;
+  }
+
+  async revokeChannelAdmin(chatId, userId) {
+    await this.waitSync();
+    const res = await invoke("revoke_channel_admin", {
+      chatId: Number(chatId),
+      userId: Number(userId),
+    });
+    if (res?.chat) {
+      getChat(chatId).chatInfo.update((c) => ({ ...(c || {}), ...res.chat }));
+    }
     return res;
   }
 }

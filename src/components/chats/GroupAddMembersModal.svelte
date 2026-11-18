@@ -186,7 +186,12 @@
               on:click={() => toggleSelect(item.id)}
             >
               <div class="avatar-cell">
-                <Avatar contactId={item.id} size={40} />
+                <Avatar
+                  contactId={item.id}
+                  size={40}
+                  src={item.baseUrl || item.baseRawUrl}
+                  title={item.names?.[0]?.name || "Пользователь"}
+                />
               </div>
               <div class="meta-cell">
                 <span class="user-name">{item.names?.[0]?.name || "Пользователь"}</span>
