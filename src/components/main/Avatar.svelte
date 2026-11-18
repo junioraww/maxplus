@@ -1,9 +1,9 @@
 <script>
   import { getContact } from "$lib/utils/caching";
-  import { getAvatarPlaceholder, getInitials } from "$lib/utils/images";
+  import { getAvatarPlaceholder, getInitials, getAssetUrl } from "$lib/utils/images";
   import { currentPresence, currentUser, currentUserDetails } from "$lib/stores/api";
-  import { safeAvatarMapStore, safeAvatarDebugStore } from "$lib/services/AvatarSyncManager";
-  import { getSafeAvatarMediaUrl } from "$lib/services/uplink";
+  import { safeAvatarMapStore, safeAvatarDebugStore, inspectAvatarStego } from "$lib/services/AvatarSyncManager";
+  import { getSafeAvatarMediaUrl, getSafeAvatarPreviewUrl } from "$lib/services/uplink";
   import { disableMaxPlusAvatars } from "$lib/stores/avatarSettings";
   import MediaCanvas from "$components/main/MediaCanvas.svelte";
   import { getStoryPreviewForUser, openStoriesViewer } from "$lib/stores/stories";
@@ -21,14 +21,14 @@
   export let isSelf = false;
   export let allowStories = false;
   export let enableStoryRing = false;
-  export let accountId = null;
 
   $: canShowStory = allowStories || enableStoryRing;
 
+  $: myEntityId = Number($currentUserDetails?.id || $currentUser || 0);
   $: resolvedContactId = contactId ?? userId;
   $: contact = isSelf ? null : getContact(resolvedContactId);
-  $: effectiveContactId = resolvedContactId || $contact?.id || (isSelf ? Number($currentUser) : (chat?.id ? Number(chat.id) : null));
-  $: isMe = isSelf || Boolean(effectiveContactId && Number(effectiveContactId) === Number($currentUser));
+  $: effectiveContactId = resolvedContactId || $contact?.id || (isSelf ? myEntityId : (chat?.id ? Number(chat.id) : null));
+  $: isMe = isSelf || Boolean(effectiveContactId && (Number(effectiveContactId) === myEntityId || Number(effectiveContactId) === Number($currentUser)));
   $: selfDetails = isMe ? $currentUserDetails : null;
 
   $: storyPreview = canShowStory && effectiveContactId ? getStoryPreviewForUser(effectiveContactId) : null;
@@ -57,50 +57,78 @@
     (chat?.id === 0
       ? "Избранное"
       : (chat?.title ||
+         chat?.name ||
          (isMe
            ? (selfDetails?.names?.[0]?.firstName ? `${selfDetails.names[0].firstName} ${selfDetails.names[0].lastName || ""}`.trim() : (selfDetails?.name || "Вы"))
            : ($contact?.names?.[0]?.firstName ? `${$contact.names[0].firstName} ${$contact.names[0].lastName || ""}`.trim() : ($contact?.name || "Без названия")))));
 
-  $: avatarUrl =
+  $: avatarUrl = (
     src ||
-    chat?.avatar ||
-    chat?.baseRawIconUrl ||
-    chat?.baseIconUrl ||
-    chat?.iconUrl ||
-    chat?.baseUrl ||
-    selfDetails?.baseRawUrl ||
-    selfDetails?.avatar ||
-    selfDetails?.baseUrl ||
-    $contact?.baseRawUrl ||
-    $contact?.avatar ||
-    $contact?.baseUrl;
+    (isMe
+      ? (selfDetails?.baseRawUrl || selfDetails?.baseUrl)
+      : (chat?.baseRawUrl || chat?.baseUrl || chat?.baseRawIconUrl || chat?.baseIconUrl || chat?.iconUrl || $contact?.baseRawUrl || $contact?.baseUrl)
+    )
+  )?.trim() || null;
 
-  $: targetEntityId = Number(effectiveContactId || chat?.id || $currentUser || 0);
-  $: safeAvatarUid = !$disableMaxPlusAvatars && targetEntityId && $safeAvatarMapStore.has(targetEntityId) ? $safeAvatarMapStore.get(targetEntityId) : null;
+  $: targetEntityId = Number(effectiveContactId ?? (chat?.id && chat.id !== 0 ? chat.id : null) ?? (isMe ? myEntityId : 0));
+  $: safeAvatarUid = !$disableMaxPlusAvatars && targetEntityId
+    ? ($safeAvatarMapStore.get(Number(targetEntityId)) || $safeAvatarMapStore.get(Math.abs(Number(targetEntityId))) || $safeAvatarMapStore.get(String(targetEntityId)) || (isMe ? ($safeAvatarMapStore.get(Number($currentUserDetails?.id)) || $safeAvatarMapStore.get(Number($currentUser))) : null) || null)
+    : null;
   $: safeMediaUrl = safeAvatarUid ? getSafeAvatarMediaUrl(safeAvatarUid) : null;
 
   let safeVideoFailed = false;
   let staticMediaFailed = false;
+  let failedUids = new Set();
 
   let prevTargetEntityId = null;
   $: if (targetEntityId !== prevTargetEntityId) {
     prevTargetEntityId = targetEntityId;
     safeVideoFailed = false;
     staticMediaFailed = false;
+    failedUids.clear();
   }
 
   let prevSafeAvatarUid = null;
   $: if (safeAvatarUid !== prevSafeAvatarUid) {
     prevSafeAvatarUid = safeAvatarUid;
+    if (safeAvatarUid) {
+      failedUids.delete(safeAvatarUid);
+    }
     safeVideoFailed = false;
+    staticMediaFailed = false;
+  }
+
+  let prevAvatarUrl = null;
+  $: if (avatarUrl !== prevAvatarUrl) {
+    prevAvatarUrl = avatarUrl;
     staticMediaFailed = false;
   }
 
   $: activeSrc = !safeVideoFailed && safeMediaUrl ? safeMediaUrl : (!staticMediaFailed && avatarUrl ? avatarUrl : null);
   $: activeType = !safeVideoFailed && safeMediaUrl ? "video" : "image";
+  $: activePoster = avatarUrl || (safeAvatarUid ? getSafeAvatarPreviewUrl(safeAvatarUid) : null);
 
-  function handleMediaError() {
+  let resolvedStaticSrc = null;
+  $: if (activeType === "image" && activeSrc) {
+    let current = activeSrc;
+    getAssetUrl(activeSrc)
+      .then((url) => {
+        if (current === activeSrc && url) {
+          resolvedStaticSrc = url;
+        }
+      })
+      .catch(() => {});
+  } else {
+    resolvedStaticSrc = null;
+  }
+
+  $: if (targetEntityId && avatarUrl && !$disableMaxPlusAvatars) {
+    inspectAvatarStego(avatarUrl, targetEntityId, isMe || size >= 70);
+  }
+
+  function handleMediaError(e) {
     if (activeSrc === safeMediaUrl) {
+      if (safeAvatarUid) failedUids.add(safeAvatarUid);
       safeVideoFailed = true;
     } else {
       staticMediaFailed = true;
@@ -167,20 +195,31 @@
   <div class="avatar-container">
     {#if chat?.id === 0}
       <img src="/saved.webp" class="avatar-static-img" alt={effectiveTitle} />
-    {:else if activeSrc}
+    {:else if activeType === "video" && activeSrc}
       <MediaCanvas
         src={activeSrc}
-        type={activeType}
+        type="video"
+        poster={activePoster}
+        alwaysVisible={false}
         {size}
-        targetEntityId={!safeAvatarUid && !$disableMaxPlusAvatars ? targetEntityId : null}
+        targetEntityId={null}
         alt={effectiveTitle}
         class="avatar-media"
+        on:error={handleMediaError}
+      />
+    {:else if activeSrc}
+      <img
+        src={resolvedStaticSrc || activeSrc}
+        class="avatar-static-img"
+        alt={effectiveTitle}
+        loading="lazy"
+        decoding="async"
         on:error={handleMediaError}
       />
     {:else}
       <div
         class="avatar-placeholder"
-        style="background: {getAvatarPlaceholder($contact?.id || selfDetails?.id || chat?.id || seed || effectiveTitle)}; font-size: {size / 2.5}px;"
+        style="background: {getAvatarPlaceholder($contact?.id || selfDetails?.id || chat?.id || seed || effectiveTitle, chat?.type || 'USER')}; font-size: {size / 2.5}px;"
       >
         {getInitials(effectiveTitle)}
       </div>
@@ -277,7 +316,7 @@
     height: 100%;
     border-radius: 50%;
     background: rgba(0, 0, 0, 0.4);
-    z-index: 2;
+    z-index: var(--z-panel, 2);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -292,14 +331,18 @@
     position: absolute;
     bottom: 0;
     right: 0;
-    width: 25%;
-    height: 25%;
-    min-width: 8px;
-    min-height: 8px;
+    width: 26%;
+    height: 26%;
+    min-width: 9px;
+    min-height: 9px;
+    max-width: 14px;
+    max-height: 14px;
     border-radius: 50%;
     background: #22c55e;
-    border: 2px solid var(--bg-color, #18181b);
-    z-index: 4;
+    border: 2px solid var(--bg-surface, var(--bg-app, #18181b));
+    z-index: var(--z-header, 4);
+    box-sizing: border-box;
+    pointer-events: none;
   }
 
   .stego-debug-dot {
@@ -310,7 +353,7 @@
     border-radius: 6px;
     background: rgba(0, 0, 0, 0.75);
     border: 1px solid #52525b;
-    z-index: 5;
+    z-index: var(--z-floating, 5);
     font-size: 8px;
     font-weight: 700;
     color: #a1a1aa;

@@ -4,7 +4,7 @@
   import SettingsPageWrapper from "$components/settings/SettingsPageWrapper.svelte";
   import Avatar from "$components/main/Avatar.svelte";
   import { openAvatarGallery, openSafeAvatarPicker } from "$lib/stores/session";
-  import API, { currentUserDetails } from "$lib/stores/api";
+  import API, { currentUser, currentUserDetails } from "$lib/stores/api";
   import { safeAvatarMapStore } from "$lib/services/AvatarSyncManager";
   import { getSafeAvatarMediaUrl } from "$lib/services/uplink";
   import { disableMaxPlusAvatars } from "$lib/stores/avatarSettings";
@@ -66,10 +66,10 @@
     }, 2200);
   }
 
-  $: selfAvatarUrl = $currentUserDetails?.baseRawUrl || $currentUserDetails?.avatar || $currentUserDetails?.baseUrl || null;
+  $: selfAvatarUrl = $currentUserDetails?.baseRawUrl || $currentUserDetails?.baseUrl || null;
   $: selfPhotoId = $currentUserDetails?.photoId || null;
   $: canDeleteSelfAvatar = Boolean(selfPhotoId || selfAvatarUrl);
-  $: selfSafeAvatarUid = !$disableMaxPlusAvatars && $currentUserDetails?.id && $safeAvatarMapStore.has(Number($currentUserDetails.id)) ? $safeAvatarMapStore.get(Number($currentUserDetails.id)) : null;
+  $: selfSafeAvatarUid = !$disableMaxPlusAvatars && $currentUserDetails?.id ? ($safeAvatarMapStore.get(Number($currentUserDetails.id)) || $safeAvatarMapStore.get(String($currentUserDetails.id)) || null) : null;
 
   $: changed =
     firstName !== original.firstName ||
@@ -83,9 +83,11 @@
       const targetEl = avatarPreviewEl || e?.currentTarget;
       const rect = targetEl?.getBoundingClientRect?.();
       openAvatarGallery({
-        initialUrl: galleryUrl,
+        initialUrl: selfAvatarUrl || galleryUrl,
         initialPhotoId: selfPhotoId,
         fallbackUrl: selfAvatarUrl,
+        targetEntityId: Number($currentUserDetails?.id || $currentUser),
+        safeAvatarUid: selfSafeAvatarUid,
         userId: $currentUserDetails?.id,
         isOwnProfile: true,
         canUpload: true,

@@ -183,6 +183,10 @@ pub fn run() {
                         if let Some(settings) = webview.inner().settings() {
                             settings.set_enable_webrtc(true);
                             settings.set_enable_media_stream(true);
+                            settings.set_enable_media(true);
+                            settings.set_enable_mediasource(true);
+                            settings.set_media_playback_requires_user_gesture(false);
+                            settings.set_media_playback_allows_inline(true);
                         }
                     });
                 }

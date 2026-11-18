@@ -65,9 +65,17 @@ export function resetImageCaches(newAccountId = 0) {
     cachedAccountId = newAccountId ? Number(newAccountId) : 0;
 }
 
-export function clearSafeAvatarImageCache() {
-    for (const key of localFilePathCache.keys()) if (key.includes("/api/avatars/")) localFilePathCache.delete(key);
-    for (const key of proxiedUrlCache.keys()) if (key.includes("/api/avatars/")) proxiedUrlCache.delete(key);
+export function clearSafeAvatarImageCache(targetUrl = null) {
+    for (const key of localFilePathCache.keys()) {
+        if (key.includes("/api/avatars/") || (targetUrl && key.includes(targetUrl))) {
+            localFilePathCache.delete(key);
+        }
+    }
+    for (const key of proxiedUrlCache.keys()) {
+        if (key.includes("/api/avatars/") || (targetUrl && key.includes(targetUrl))) {
+            proxiedUrlCache.delete(key);
+        }
+    }
 }
 
 export async function getLocalFilePath(src, accountId = null) {
@@ -236,24 +244,25 @@ export function getAvatarPlaceholder(id, type = "USER") {
         "#e17076", "#7bc862", "#65aadd",
         "#a695e7", "#ee7aae", "#6ec9cb"
     ];
-
-    if (type === "CHAT") {
-        const x = -id % colors.length;
-        const y = -Math.floor(id + id / 2) % colors.length;
-        return `linear-gradient(135deg, ${colors[x]}, ${colors[y]})`;
+    const str = String(id ?? "");
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+        hash = (hash * 31 + str.charCodeAt(i)) | 0;
     }
-
-    return colors[Math.abs(id) % colors.length];
+    const idx = Math.abs(hash) % colors.length;
+    if (type === "CHAT" || type === "CHANNEL") {
+        const nextColor = colors[(idx + 2) % colors.length];
+        return `linear-gradient(135deg, ${colors[idx]}, ${nextColor})`;
+    }
+    return colors[idx];
 }
 
 export function getInitials(name) {
-    if (!name) return "";
-    return name
-    .split(" ")
-    .slice(0, 2)
-    .map((n) => n[0])
-    .join("")
-    .toUpperCase();
+    if (!name || typeof name !== "string") return "";
+    const parts = name.trim().split(/\s+/).filter(Boolean);
+    if (!parts.length) return "";
+    if (parts.length === 1) return Array.from(parts[0])[0].toUpperCase();
+    return (Array.from(parts[0])[0] + Array.from(parts[1])[0]).toUpperCase();
 }
 
 async function generateInitialsImageBuffer(id, name, type = "USER") {

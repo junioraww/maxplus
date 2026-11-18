@@ -5,12 +5,18 @@
   import { save } from "@tauri-apps/plugin-dialog";
   import { registerBackHandler } from "$lib/utils/backButton";
   import MediaCanvas from "$components/main/MediaCanvas.svelte";
-  import API, { currentUserDetails } from "$lib/stores/api";
+  import API, { currentUserDetails, currentUser } from "$lib/stores/api";
   import { openSafeAvatarPicker } from "$lib/stores/session";
+  import { decodeStegoPayload } from "$lib/utils/stego";
+  import { getAssetUrl } from "$lib/utils/images";
+  import { getSafeAvatarMediaUrl } from "$lib/services/uplink";
+  import { safeAvatarMapStore, recordSafeAvatarForTarget, recordSafeAvatarUrl, cleanAvatarUrl } from "$lib/services/AvatarSyncManager";
 
   export let initialUrl = null;
   export let initialPhotoId = null;
   export let fallbackUrl = null;
+  export let targetEntityId = null;
+  export let safeAvatarUid = null;
   export let userId = null;
   export let isOwnProfile = false;
   export let canUpload = false;
@@ -42,17 +48,173 @@
     return match ? Number(match[1]) : null;
   }
 
-  function isSafeMediaUrl(url) {
-    if (!url || typeof url !== "string") return false;
-    return (
-      (url.includes("/api/avatars/") && url.includes("/media")) ||
-      /\.(mp4|webm|mov|ogg)($|\?)/i.test(url)
-    );
+  const startUrl = fallbackUrl || initialUrl;
+  let items = startUrl
+    ? [{ url: startUrl, photoId: initialPhotoId || parsePhotoIdFromUrl(startUrl) }]
+    : [];
+
+  let galleryStegoMap = new Map();
+  let inspectedUrls = new Set();
+
+  $: myId = Number($currentUserDetails?.id || $currentUser || 0);
+  $: isSelf = Boolean(isOwnProfile || (targetEntityId && myId && (Number(targetEntityId) === myId || Math.abs(Number(targetEntityId)) === myId)));
+
+  $: activeProfileUid = safeAvatarUid || (targetEntityId ? (
+    $safeAvatarMapStore.get(Number(targetEntityId)) ||
+    $safeAvatarMapStore.get(Math.abs(Number(targetEntityId))) ||
+    $safeAvatarMapStore.get(String(targetEntityId)) ||
+    (isSelf && myId ? ($safeAvatarMapStore.get(myId) || $safeAvatarMapStore.get(Math.abs(myId))) : null) ||
+    null
+  ) : (isSelf && myId ? ($safeAvatarMapStore.get(myId) || $safeAvatarMapStore.get(Math.abs(myId))) : null));
+
+  $: if (activeProfileUid) {
+    if (initialUrl) {
+      galleryStegoMap.set(initialUrl, activeProfileUid);
+      galleryStegoMap.set(cleanAvatarUrl(initialUrl), activeProfileUid);
+    }
+    if (fallbackUrl) {
+      galleryStegoMap.set(fallbackUrl, activeProfileUid);
+      galleryStegoMap.set(cleanAvatarUrl(fallbackUrl), activeProfileUid);
+    }
+    if (startUrl) {
+      galleryStegoMap.set(startUrl, activeProfileUid);
+      galleryStegoMap.set(cleanAvatarUrl(startUrl), activeProfileUid);
+    }
+    if (items?.[0]?.url) {
+      galleryStegoMap.set(items[0].url, activeProfileUid);
+      galleryStegoMap.set(cleanAvatarUrl(items[0].url), activeProfileUid);
+    }
+    galleryStegoMap = new Map(galleryStegoMap);
   }
 
-  let items = initialUrl
-    ? [{ url: initialUrl, photoId: initialPhotoId || parsePhotoIdFromUrl(initialUrl) }]
-    : [];
+  $: if (items.length > 0) {
+    let changed = false;
+    for (let idx = 0; idx < items.length; idx++) {
+      const u = items[idx]?.url;
+      if (!u || galleryStegoMap.has(u)) continue;
+      const clean = cleanAvatarUrl(u);
+      const cached = (clean ? $safeAvatarMapStore.get(clean) : null) || $safeAvatarMapStore.get(u);
+      if (cached) {
+        galleryStegoMap.set(u, cached);
+        if (clean) galleryStegoMap.set(clean, cached);
+        changed = true;
+      }
+    }
+    if (changed) {
+      galleryStegoMap = new Map(galleryStegoMap);
+    }
+  }
+
+  async function inspectSlideStego(photoUrl, targetId) {
+    if (!photoUrl || !targetId || galleryStegoMap.has(photoUrl) || inspectedUrls.has(photoUrl)) return;
+    inspectedUrls.add(photoUrl);
+    try {
+      const localUrl = (await getAssetUrl(photoUrl).catch(() => null)) || photoUrl;
+      let img = new Image();
+      img.crossOrigin = "anonymous";
+      const loaded = await new Promise((resolve) => {
+        img.onload = () => resolve(true);
+        img.onerror = () => resolve(false);
+        img.src = localUrl;
+      });
+      if (!loaded && localUrl !== photoUrl) {
+        img = new Image();
+        img.crossOrigin = "anonymous";
+        const retryLoaded = await new Promise((resolve) => {
+          img.onload = () => resolve(true);
+          img.onerror = () => resolve(false);
+          img.src = photoUrl;
+        });
+        if (!retryLoaded) return;
+      } else if (!loaded) {
+        return;
+      }
+
+      const sw = img.naturalWidth || img.width;
+      const sh = img.naturalHeight || img.height;
+      if (!sw || !sh || sw < 64 || sh < 64) return;
+      const canvas = document.createElement("canvas");
+      canvas.width = sw;
+      canvas.height = sh;
+      const ctx = canvas.getContext("2d", { willReadFrequently: true });
+      if (!ctx) return;
+      ctx.drawImage(img, 0, 0, sw, sh);
+      const imgData = ctx.getImageData(0, 0, sw, sh);
+      if (!imgData) return;
+
+      const myDetailsId = Number($currentUserDetails?.id || 0);
+      const myAccId = Number($currentUser || 0);
+      const candidateIds = [Number(targetId), Math.abs(Number(targetId))];
+      if (userId) {
+        candidateIds.push(Number(userId), Math.abs(Number(userId)));
+      }
+      if (Number(targetId) === myDetailsId || Number(targetId) === myAccId || isOwnProfile) {
+        if (myDetailsId) candidateIds.push(myDetailsId);
+        if (myAccId) candidateIds.push(myAccId);
+      }
+      const uniqueCandidateIds = [...new Set(candidateIds.filter((x) => x != null && !isNaN(x) && x !== 0))];
+
+      let foundUid = decodeStegoPayload(imgData, uniqueCandidateIds);
+      if (!foundUid && (sw !== 512 || sh !== 512)) {
+        canvas.width = 512;
+        canvas.height = 512;
+        ctx.clearRect(0, 0, 512, 512);
+        let sx = 0;
+        let sy = 0;
+        const side = Math.min(sw, sh);
+        if (sw > sh) {
+          sx = Math.round((sw - sh) / 2);
+        } else if (sh > sw) {
+          sy = Math.round((sh - sw) / 2);
+        }
+        ctx.drawImage(img, sx, sy, side, side, 0, 0, 512, 512);
+        const fallbackData = ctx.getImageData(0, 0, 512, 512);
+        if (fallbackData) {
+          foundUid = decodeStegoPayload(fallbackData, uniqueCandidateIds);
+        }
+      }
+      if (foundUid) {
+        recordSafeAvatarUrl(photoUrl, foundUid);
+        galleryStegoMap.set(photoUrl, foundUid);
+        const clean = cleanAvatarUrl(photoUrl);
+        if (clean) galleryStegoMap.set(clean, foundUid);
+        galleryStegoMap = new Map(galleryStegoMap);
+        getAssetUrl(getSafeAvatarMediaUrl(foundUid)).catch(() => null);
+      }
+    } catch {}
+  }
+
+  $: if (targetEntityId && items.length > 0) {
+    for (const item of items) {
+      if (item?.url && !galleryStegoMap.has(item.url) && !inspectedUrls.has(item.url)) {
+        inspectSlideStego(item.url, targetEntityId);
+      }
+    }
+  }
+
+  function getSlideMedia(slideUrl, index = currentIndex, _stegoMap = galleryStegoMap) {
+    if (!slideUrl) return { src: "", type: "image", isVideo: false };
+    const cleanUrl = cleanAvatarUrl(slideUrl);
+    let safeUid = _stegoMap.get(slideUrl) || (cleanUrl ? _stegoMap.get(cleanUrl) : null);
+
+    if (!safeUid && typeof slideUrl === "string") {
+      safeUid = (cleanUrl ? $safeAvatarMapStore.get(cleanUrl) : null) || $safeAvatarMapStore.get(slideUrl);
+    }
+
+    if (!safeUid && index === 0 && activeProfileUid) {
+      safeUid = activeProfileUid;
+    }
+
+    if (safeUid) {
+      _stegoMap.set(slideUrl, safeUid);
+      if (cleanUrl) _stegoMap.set(cleanUrl, safeUid);
+      return { src: getSafeAvatarMediaUrl(safeUid), type: "video", isVideo: true };
+    }
+    if (slideUrl.includes("/api/avatars/")) {
+      return { src: slideUrl, type: "video", isVideo: true };
+    }
+    return { src: slideUrl, type: "image", isVideo: false };
+  }
   let totalCount = items.length;
   let currentIndex = 0;
   let isLoadingHistory = false;
@@ -359,7 +521,7 @@
   }
 
   async function loadMorePhotos(fromOffset) {
-    if (!userId || isLoadingHistory || historyEndReached) return;
+    if (!userId || Number(userId) <= 0 || isLoadingHistory || historyEndReached) return;
     isLoadingHistory = true;
     try {
       const res = await $API.fetchUserPhotos(userId, fromOffset, 50);
@@ -373,17 +535,38 @@
       }
       const next = [...items];
       let added = 0;
+      let replacedInitial = false;
       for (const entry of fetchedItems) {
         if (!entry?.url) continue;
-        const existingIdx = next.findIndex(x => x.url === entry.url);
+        const existingIdx = next.findIndex(x => x.url === entry.url || (entry.photoId && x.photoId === entry.photoId));
         if (existingIdx === -1) {
-          next.push({
-            url: entry.url,
-            photoId: entry.photoId || parsePhotoIdFromUrl(entry.url) || null,
-          });
-          added++;
-        } else if (!next[existingIdx].photoId && entry.photoId) {
-          next[existingIdx] = { ...next[existingIdx], photoId: entry.photoId };
+          if (fromOffset === 0 && !replacedInitial && next.length === 1) {
+            replacedInitial = true;
+            next[0] = {
+              url: entry.url,
+              photoId: entry.photoId || parsePhotoIdFromUrl(entry.url) || next[0].photoId || null,
+            };
+            if (activeProfileUid) {
+              galleryStegoMap.set(entry.url, activeProfileUid);
+              galleryStegoMap.set(entry.url.split("&uniq=")[0], activeProfileUid);
+              galleryStegoMap = new Map(galleryStegoMap);
+            }
+          } else {
+            next.push({
+              url: entry.url,
+              photoId: entry.photoId || parsePhotoIdFromUrl(entry.url) || null,
+            });
+            added++;
+          }
+        } else {
+          if (!next[existingIdx].photoId && entry.photoId) {
+            next[existingIdx] = { ...next[existingIdx], photoId: entry.photoId };
+          }
+          if (existingIdx === 0 && activeProfileUid) {
+            galleryStegoMap.set(entry.url, activeProfileUid);
+            galleryStegoMap.set(entry.url.split("&uniq=")[0], activeProfileUid);
+            galleryStegoMap = new Map(galleryStegoMap);
+          }
         }
       }
       items = next;
@@ -406,7 +589,7 @@
     try {
       if (typeof onUpload === "function") {
         const res = await onUpload();
-        const newUrl = res?.baseRawUrl || res?.baseUrl || res?.avatar || res?.baseRawIconUrl || res?.baseIconUrl || res?.iconUrl;
+        const newUrl = res?.baseRawUrl || res?.baseUrl || res?.baseRawIconUrl || res?.baseIconUrl || res?.iconUrl;
         const newPid = res?.photoId || parsePhotoIdFromUrl(newUrl) || null;
         if (newUrl) {
           items = [{ url: newUrl, photoId: newPid }, ...items.filter(x => x.url !== newUrl)];
@@ -438,7 +621,7 @@
       const nextItems = items.filter((_, i) => i !== removingIdx);
       totalCount = Math.max(0, totalCount - 1);
       if (nextItems.length === 0) {
-        const fallbackUrl = updatedContact?.baseRawUrl || updatedContact?.baseUrl || updatedContact?.avatar;
+        const fallbackUrl = updatedContact?.baseRawUrl || updatedContact?.baseUrl;
         if (fallbackUrl && fallbackUrl !== targetUrl) {
           items = [{ url: fallbackUrl, photoId: updatedContact?.photoId || parsePhotoIdFromUrl(fallbackUrl) }];
           currentIndex = 0;
@@ -824,7 +1007,12 @@
           class="ag-icon-btn"
           title="Сменить аватарку"
           disabled={isUploading}
-          on:click|stopPropagation={() => openSafeAvatarPicker({ onUploadStandard: handleUploadClick, onApplySuccess: () => requestClose() })}
+          on:click|stopPropagation={() => openSafeAvatarPicker({
+            targetId: targetEntityId,
+            isChat: Boolean(targetEntityId && targetEntityId !== Number($currentUserDetails?.id || $currentUser)),
+            onUploadStandard: handleUploadClick,
+            onApplySuccess: () => requestClose()
+          })}
         >
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
             <line x1="12" y1="5" x2="12" y2="19" />
@@ -912,43 +1100,65 @@
       on:pointercancel={handlePointerUp}
     >
       {#if prevUrl && (slideOffset > 0 || isSlideAnimating) && heroPhase === "idle"}
+        {@const prevMedia = getSlideMedia(prevUrl, currentIndex - 1, galleryStegoMap)}
         <div
           class="ag-image-wrapper"
           style="transform: translate3d(calc(-50% + {slideOffset - (stageEl?.clientWidth || windowWidth)}px), -50%, 0) scale(1); border-radius: 0px;"
         >
-          <MediaCanvas
-            src={prevUrl}
-            type={isSafeMediaUrl(prevUrl) ? "video" : "image"}
-            size={modalMediaSize}
-            alwaysVisible={true}
-            class="ag-media"
-          />
-        </div>
-      {/if}
-
-      {#if currentUrl}
-        <div
-          class="ag-image-wrapper"
-          style={mainTransformStyle}
-        >
-          {#if isSafeMediaUrl(currentUrl)}
-            {#if fallbackUrl && currentIndex === 0}
-              <img
-                src={fallbackUrl}
-                class="ag-fallback-underlay"
-                alt=""
+          {#if prevMedia.isVideo}
+            <img
+              src={prevUrl}
+              class="ag-fallback-underlay"
+              alt=""
+            />
+            {#key prevMedia.src}
+              <MediaCanvas
+                src={prevMedia.src}
+                type="video"
+                poster={prevUrl}
+                size={modalMediaSize}
+                alwaysVisible={true}
+                class="ag-media"
               />
-            {/if}
+            {/key}
+          {:else}
             <MediaCanvas
-              src={currentUrl}
-              type="video"
+              src={prevMedia.src}
+              type="image"
               size={modalMediaSize}
               alwaysVisible={true}
               class="ag-media"
             />
+          {/if}
+        </div>
+      {/if}
+
+      {#if currentUrl}
+        {@const currentMedia = getSlideMedia(currentUrl, currentIndex, galleryStegoMap)}
+        <div
+          class="ag-image-wrapper"
+          style={mainTransformStyle}
+        >
+          {#if currentMedia.isVideo}
+            <img
+              src={currentUrl}
+              class="ag-fallback-underlay"
+              alt=""
+            />
+            {#key currentMedia.src}
+              <MediaCanvas
+                src={currentMedia.src}
+                type="video"
+                poster={currentUrl}
+                size={modalMediaSize}
+                highRes={true}
+                alwaysVisible={true}
+                class="ag-media"
+              />
+            {/key}
           {:else}
             <MediaCanvas
-              src={currentUrl}
+              src={currentMedia.src}
               type="image"
               size={modalMediaSize}
               alwaysVisible={true}
@@ -961,17 +1171,36 @@
       {/if}
 
       {#if nextUrl && (slideOffset < 0 || isSlideAnimating) && heroPhase === "idle"}
+        {@const nextMedia = getSlideMedia(nextUrl, currentIndex + 1, galleryStegoMap)}
         <div
           class="ag-image-wrapper"
           style="transform: translate3d(calc(-50% + {slideOffset + (stageEl?.clientWidth || windowWidth)}px), -50%, 0) scale(1); border-radius: 0px;"
         >
-          <MediaCanvas
-            src={nextUrl}
-            type={isSafeMediaUrl(nextUrl) ? "video" : "image"}
-            size={modalMediaSize}
-            alwaysVisible={true}
-            class="ag-media"
-          />
+          {#if nextMedia.isVideo}
+            <img
+              src={nextUrl}
+              class="ag-fallback-underlay"
+              alt=""
+            />
+            {#key nextMedia.src}
+              <MediaCanvas
+                src={nextMedia.src}
+                type="video"
+                poster={nextUrl}
+                size={modalMediaSize}
+                alwaysVisible={true}
+                class="ag-media"
+              />
+            {/key}
+          {:else}
+            <MediaCanvas
+              src={nextMedia.src}
+              type="image"
+              size={modalMediaSize}
+              alwaysVisible={true}
+              class="ag-media"
+            />
+          {/if}
         </div>
       {/if}
     </div>
@@ -1012,7 +1241,7 @@
     align-items: center;
     padding: calc(12px + var(--safe-top, 0px)) 18px 12px;
     color: #ffffff;
-    z-index: 20;
+    z-index: var(--z-header, 20);
     transition: opacity 180ms ease-out;
   }
 
@@ -1073,7 +1302,7 @@
     display: flex;
     gap: 4px;
     padding: 0 18px 8px;
-    z-index: 20;
+    z-index: var(--z-header, 20);
     transition: opacity 180ms ease-out;
   }
 
@@ -1132,6 +1361,8 @@
   }
 
   :global(.ag-media) {
+    position: relative !important;
+    z-index: 1 !important;
     width: 100% !important;
     height: 100% !important;
     aspect-ratio: 1 / 1 !important;
@@ -1179,7 +1410,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    z-index: 30;
+    z-index: var(--z-modal-control, 30);
     transition: background 0.15s, opacity 0.18s;
     flex-shrink: 0;
   }
