@@ -1,14 +1,17 @@
 <script>
   import { onMount, onDestroy, createEventDispatcher } from "svelte";
   import { MediaPool } from "$lib/services/MediaPool";
+  import { getAssetUrl } from "$lib/utils/images";
 
   export let src = "";
   export let type = "auto";
   export let size = 48;
+  export let poster = null;
   export let targetEntityId = null;
   export let alt = "";
   export let style = "";
   export let alwaysVisible = false;
+  export let highRes = false;
   let className = "";
   export { className as class };
 
@@ -19,6 +22,8 @@
   let observer = null;
   let currentKey = null;
   let isReady = false;
+  let isPosterDrawn = false;
+  let hasFrameDrawn = false;
   let isVisible = true;
 
   function drawCover(source) {
@@ -31,8 +36,8 @@
     if (side <= 0) return;
 
     if (sw === sh) {
-      ctx.clearRect(0, 0, side, side);
       ctx.drawImage(source, 0, 0, side, side);
+      hasFrameDrawn = true;
       return;
     }
 
@@ -49,15 +54,32 @@
       sy = (sh - sHeight) / 2;
     }
 
-    ctx.clearRect(0, 0, canvasEl.width, canvasEl.height);
     ctx.drawImage(source, sx, sy, sWidth, sHeight, 0, 0, side, side);
+    hasFrameDrawn = true;
+  }
+
+  async function loadAndDrawPoster(url) {
+    if (!url || isReady || typeof Image === "undefined") return;
+    try {
+      const assetUrl = (await getAssetUrl(url).catch(() => null)) || url;
+      const img = new Image();
+      img.crossOrigin = "anonymous";
+      img.onload = () => {
+        if (isReady || !canvasEl) return;
+        isPosterDrawn = true;
+        drawCover(img);
+      };
+      img.src = assetUrl;
+    } catch {}
   }
 
   const consumer = {
+    size,
+    highRes: Boolean(highRes || size > 128),
     onReady(entry) {
       isReady = true;
       dispatch("ready", entry);
-      const readySource = entry.masterCanvas || entry.source;
+      const readySource = (entry?.isBuffered && entry?.frames?.length > 0) ? entry.frames[entry.frameIndex] : (entry?.masterCanvas || entry?.source);
       if (readySource) {
         drawCover(readySource);
       }
@@ -73,9 +95,13 @@
       }
     },
     drawStatic(imageSource) {
+      if (!isReady) isReady = true;
       drawCover(imageSource);
     }
   };
+
+  $: consumer.size = size;
+  $: consumer.highRes = Boolean(highRes || size > 128);
 
   function handleContextLost(e) {
     e.preventDefault();
@@ -90,7 +116,7 @@
     }
     if (currentKey) {
       const item = MediaPool.getEntry(currentKey);
-      const frameSource = item?.masterCanvas || item?.source;
+      const frameSource = (item?.isBuffered && item?.frames?.length > 0) ? item.frames[item.frameIndex] : (item?.masterCanvas || item?.source);
       if (frameSource) {
         drawCover(frameSource);
       }
@@ -101,15 +127,26 @@
     if (!canvasEl) return;
     const dpr = typeof window !== "undefined" ? window.devicePixelRatio || 1 : 1;
     const pixelSize = Math.max(1, Math.round(size * dpr));
-    if (canvasEl.width !== pixelSize || canvasEl.height !== pixelSize) {
-      canvasEl.width = pixelSize;
-      canvasEl.height = pixelSize;
-    }
     if (!ctx) {
       ctx = canvasEl.getContext("2d");
       if (ctx) {
         ctx.imageSmoothingEnabled = true;
         ctx.imageSmoothingQuality = "medium";
+      }
+    }
+    if (canvasEl.width !== pixelSize || canvasEl.height !== pixelSize) {
+      canvasEl.width = pixelSize;
+      canvasEl.height = pixelSize;
+      if (ctx) {
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = "medium";
+      }
+      if (currentKey) {
+        const item = MediaPool.getEntry(currentKey);
+        const frameSource = (item?.isBuffered && item?.frames?.length > 0) ? item.frames[item.frameIndex] : (item?.masterCanvas || item?.source);
+        if (frameSource) {
+          drawCover(frameSource);
+        }
       }
     }
   }
@@ -119,6 +156,8 @@
       MediaPool.release(currentKey, consumer);
       currentKey = null;
       isReady = false;
+      isPosterDrawn = false;
+      hasFrameDrawn = false;
     }
   }
 
@@ -129,25 +168,32 @@
     }
 
     updateCanvasSize();
+    if (poster && !isReady) {
+      loadAndDrawPoster(poster);
+    }
     const newKey = MediaPool.getKey(src);
     if (newKey === currentKey) return;
 
     detachMedia();
     currentKey = newKey;
 
-    const entry = MediaPool.acquire(newKey, { src, type, targetEntityId }, consumer);
+    const entry = MediaPool.acquire(newKey, { src, type, targetEntityId, highRes: Boolean(highRes || size > 128) }, consumer);
     if (isVisible) {
       MediaPool.setVisible(newKey, consumer, true);
     }
-    const readySource = entry.masterCanvas || entry.source;
+    const readySource = (entry?.isBuffered && entry?.frames?.length > 0) ? entry.frames[entry.frameIndex] : (entry?.masterCanvas || entry?.source);
     if (entry.status === "ready" && readySource) {
       isReady = true;
+      isPosterDrawn = false;
       drawCover(readySource);
       dispatch("ready", entry);
     }
   }
 
   $: size, updateCanvasSize();
+  $: if (poster && !isReady) {
+    loadAndDrawPoster(poster);
+  }
   $: src, type, targetEntityId, canvasEl && attachMedia();
 
   onMount(() => {
@@ -167,7 +213,7 @@
           }
           if (isVisible) {
             const item = MediaPool.getEntry(currentKey);
-            const frameSource = item?.masterCanvas || item?.source;
+            const frameSource = (item?.isBuffered && item?.frames?.length > 0) ? item.frames[item.frameIndex] : (item?.masterCanvas || item?.source);
             if (frameSource) {
               drawCover(frameSource);
             }
@@ -205,7 +251,16 @@
   class="media-canvas-wrapper {className}"
   style="width: {size ? `${size}px` : '100%'}; height: {size ? `${size}px` : '100%'}; aspect-ratio: 1 / 1; {style}"
 >
-  {#if !isReady}
+  {#if poster && !hasFrameDrawn}
+    <img
+      src={poster}
+      class="media-poster-underlay"
+      alt=""
+      loading="eager"
+      decoding="async"
+    />
+  {/if}
+  {#if !isReady && !poster && !isPosterDrawn}
     <div class="media-shimmer-placeholder"></div>
   {/if}
   <canvas
@@ -213,7 +268,7 @@
     width={size}
     height={size}
     class="media-canvas"
-    class:loaded={isReady}
+    class:loaded={isReady || isPosterDrawn || hasFrameDrawn}
     style="aspect-ratio: 1 / 1;"
     aria-label={alt}
   ></canvas>
@@ -235,7 +290,20 @@
     max-height: 100%;
   }
 
+  .media-poster-underlay {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    aspect-ratio: 1 / 1;
+    border-radius: inherit;
+    object-fit: cover;
+    z-index: 0;
+  }
+
   .media-canvas {
+    position: relative;
+    z-index: 1;
     width: 100%;
     height: 100%;
     aspect-ratio: 1 / 1;

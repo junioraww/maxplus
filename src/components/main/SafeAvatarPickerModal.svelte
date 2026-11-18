@@ -2,9 +2,11 @@
   import { onMount } from "svelte";
   import { fade, slide } from "svelte/transition";
   import { convertFileSrc } from "@tauri-apps/api/core";
-  import API, { currentUser, currentUserDetails } from "$lib/stores/api";
+  import API, { currentUser, currentUserDetails, currentRealChats } from "$lib/stores/api";
   import { getUplinkUrl, getSafeAvatarMediaUrl, getSafeAvatarPreviewUrl } from "$lib/services/uplink";
   import { installSafeAvatar } from "$lib/services/AvatarInstallService";
+  import { safeAvatarMapStore, invalidateStegoScan } from "$lib/services/AvatarSyncManager";
+  import { clearSafeAvatarImageCache } from "$lib/utils/images";
   import { registerBackHandler } from "$lib/utils/backButton";
 
   export let onClose = () => {};
@@ -13,6 +15,8 @@
   export let onSelectAvatar = null;
   export let initialTab = "standard";
   export let initialUid = "";
+  export let targetId = null;
+  export let isChat = false;
 
   let activeTab = initialTab;
   let avatars = [];
@@ -97,8 +101,25 @@
           });
         }
       } else {
-        await $API.uploadProfilePhoto();
+        const effectiveTargetId = Number(targetId != null ? targetId : ($currentUserDetails?.id || $currentUser || 0));
+        const myUserId = Number($currentUserDetails?.id || $currentUser || 0);
+        if (effectiveTargetId !== 0 && effectiveTargetId !== myUserId) {
+          await $API.uploadChatPhoto(effectiveTargetId);
+        } else {
+          await $API.uploadProfilePhoto();
+        }
       }
+      const finalTargetId = Number(targetId != null ? targetId : ($currentUserDetails?.id || $currentUser || 0));
+      if (finalTargetId) {
+        safeAvatarMapStore.update((map) => {
+          const next = new Map(map);
+          next.delete(finalTargetId);
+          return next;
+        });
+        invalidateStegoScan(finalTargetId);
+      }
+      clearSafeAvatarImageCache();
+      currentRealChats.update((ids) => [...(ids || [])]);
       onApplySuccess();
       onClose();
     } catch (e) {
@@ -125,10 +146,12 @@
     applyStatus = "Инициализация...";
 
     try {
-      const targetId = Number($currentUser || $currentUserDetails?.id || 0);
-      await installSafeAvatar(uid, targetId, (status) => {
+      const effectiveTargetId = Number(targetId != null ? targetId : ($currentUserDetails?.id || $currentUser || 0));
+      const myUserId = Number($currentUserDetails?.id || $currentUser || 0);
+      const effectiveIsChat = isChat || (effectiveTargetId !== 0 && effectiveTargetId !== myUserId);
+      await installSafeAvatar(uid, effectiveTargetId, (status) => {
         applyStatus = status;
-      });
+      }, effectiveIsChat);
       onApplySuccess();
       onClose();
     } catch (e) {

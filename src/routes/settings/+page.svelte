@@ -30,10 +30,10 @@ import { goto } from "$app/navigation";
   let selfAvatarBusy = false;
   let selfAvatarWrapEl;
 
-  $: selfAvatarUrl = $currentUserDetails?.baseRawUrl || $currentUserDetails?.avatar || $currentUserDetails?.baseUrl || null;
+  $: selfAvatarUrl = $currentUserDetails?.baseRawUrl || $currentUserDetails?.baseUrl || null;
   $: selfPhotoId = $currentUserDetails?.photoId || null;
   $: canDeleteSelfAvatar = Boolean(selfPhotoId || selfAvatarUrl);
-  $: selfSafeAvatarUid = !$disableMaxPlusAvatars && $currentUser && $safeAvatarMapStore.has(Number($currentUser)) ? $safeAvatarMapStore.get(Number($currentUser)) : null;
+  $: selfSafeAvatarUid = !$disableMaxPlusAvatars ? ($safeAvatarMapStore.get(Number($currentUserDetails?.id)) || $safeAvatarMapStore.get(String($currentUserDetails?.id)) || ($currentUser ? ($safeAvatarMapStore.get(Number($currentUser)) || $safeAvatarMapStore.get(String($currentUser))) : null) || null) : null;
 
   function openSelfAvatar(e) {
     const highResSafeUrl = selfSafeAvatarUid ? getSafeAvatarMediaUrl(selfSafeAvatarUid) : null;
@@ -42,9 +42,11 @@ import { goto } from "$app/navigation";
       const targetEl = selfAvatarWrapEl || e?.currentTarget;
       const rect = targetEl?.getBoundingClientRect?.();
       openAvatarGallery({
-        initialUrl: galleryUrl,
+        initialUrl: selfAvatarUrl || galleryUrl,
         initialPhotoId: selfPhotoId,
         fallbackUrl: selfAvatarUrl,
+        targetEntityId: Number($currentUserDetails?.id || $currentUser),
+        safeAvatarUid: selfSafeAvatarUid,
         userId: contact?.id ?? $currentUser,
         isOwnProfile: true,
         canUpload: true,

@@ -32,7 +32,7 @@ export const updateContact = (contact) => {
 export const syncContacts = async (contacts, requireInfo) => {
   if (!sessionGet("connected") || !sessionGet("sync")) return;
   contacts.forEach((raw) => {
-    updateContact(normalizeContact(raw));
+    updateContact(raw);
     requireInfo.delete(+raw.id);
   });
 
@@ -49,7 +49,7 @@ export const syncContacts = async (contacts, requireInfo) => {
 
       if (response?.contacts) {
         response.contacts.forEach(raw => {
-          updateContact(normalizeContact(raw));
+          updateContact(raw);
         });
       }
     } catch {}
@@ -139,7 +139,7 @@ const requestAndCacheContact = async contactId => {
 
         if (response?.contacts) {
           for (const raw of response.contacts) {
-            updateContact(normalizeContact(raw));
+            updateContact(raw);
           }
         }
       } catch {
@@ -185,11 +185,3 @@ export const getContactAsync = async contactId => {
   return getContactStore(id);
 };
 
-const normalizeContact = (contact) => {
-  const { baseRawUrl, baseUrl, ...rest } = contact;
-
-  return {
-    ...rest,
-    avatar: baseRawUrl || baseUrl,
-  };
-};

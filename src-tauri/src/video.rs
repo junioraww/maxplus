@@ -3,7 +3,7 @@ use reqwest::header::{
     IF_RANGE, LAST_MODIFIED, RANGE,
 };
 use std::collections::HashMap;
-use std::io::{Cursor, Read, Seek, SeekFrom};
+use std::io::{Cursor, Read};
 use std::sync::{Arc, LazyLock, OnceLock, RwLock};
 use std::thread;
 use std::time::Duration;
@@ -375,10 +375,16 @@ fn handle_request(request: tiny_http::Request, client: &reqwest::blocking::Clien
         }
     }
 
+    let referer = if url.contains("maxplus.dev") {
+        "https://maxplus.dev/"
+    } else {
+        "https://max.ru/"
+    };
+
     let mut rb = client
         .get(&url)
         .header("User-Agent", rumax::constants::Constants::USER_AGENT)
-        .header("Referer", "https://max.ru/");
+        .header("Referer", referer);
 
     let mut is_range_offset = false;
     for h in request.headers() {

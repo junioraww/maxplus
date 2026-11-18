@@ -517,15 +517,15 @@
     )
   );
   $: canUploadAvatar = isOwnProfile || canEditChatPhoto;
-  $: ownPhotoId = $currentUserDetails?.photoId || $contact?.photoId || null;
+  $: ownPhotoId = isOwnProfile ? ($currentUserDetails?.photoId || null) : ($contact?.photoId || null);
   $: canDeleteOwnAvatar = Boolean(isOwnProfile && (ownPhotoId || avatar));
 
   let isUploadingAvatar = false;
   let isDeletingAvatar = false;
   let avatarWrapEl;
 
-  $: targetProfileEntityId = Number(chat?.id ?? (userId || $contact?.id || (isOwnProfile ? $currentUser : 0)));
-  $: profileSafeAvatarUid = !$disableMaxPlusAvatars && targetProfileEntityId ? ($safeAvatarMapStore.get(Number(targetProfileEntityId)) || $safeAvatarMapStore.get(String(targetProfileEntityId)) || null) : null;
+  $: targetProfileEntityId = Number((chat?.id && chat.id !== 0 ? chat.id : null) ?? (userId || $contact?.id || (isOwnProfile ? ($currentUserDetails?.id || $currentUser) : 0)));
+  $: profileSafeAvatarUid = !$disableMaxPlusAvatars && targetProfileEntityId ? ($safeAvatarMapStore.get(Number(targetProfileEntityId)) || $safeAvatarMapStore.get(Math.abs(Number(targetProfileEntityId))) || $safeAvatarMapStore.get(String(targetProfileEntityId)) || (isOwnProfile ? ($safeAvatarMapStore.get(Number($currentUserDetails?.id)) || $safeAvatarMapStore.get(Number($currentUser))) : null) || null) : null;
   $: profileStoryPreview = targetProfileEntityId ? getStoryPreviewForUser(targetProfileEntityId) : null;
   $: hasProfileStories = Boolean(profileStoryPreview && (profileStoryPreview.totalCount || 0) > 0);
 
@@ -539,9 +539,9 @@
         initialUrl: avatar || galleryUrl,
         initialPhotoId: ownPhotoId,
         fallbackUrl: avatar,
-        targetEntityId: targetProfileEntityId,
+        targetEntityId: (targetProfileEntityId && targetProfileEntityId !== 0 ? targetProfileEntityId : (isOwnProfile ? Number($currentUserDetails?.id || $currentUser) : (userId || $contact?.id || null))),
         safeAvatarUid: profileSafeAvatarUid,
-        userId: !chat || chat.type === "DIALOG" ? ($contact?.id ?? userId) : null,
+        userId: isOwnProfile ? Number($currentUserDetails?.id || $currentUser) : (!chat || chat.type === "DIALOG" ? ($contact?.id ?? userId) : null),
         isOwnProfile,
         canUpload: canUploadAvatar,
         originEl: targetEl,
@@ -1444,6 +1444,8 @@
               chat={chat}
               title={title}
               contactId={chat?.type === "DIALOG" ? ($contact?.id ?? userId) : undefined}
+              isSelf={isOwnProfile}
+              userId={isOwnProfile ? Number($currentUserDetails?.id || $currentUser) : userId}
               size={96}
               allowStories={true}
             />
