@@ -72,6 +72,18 @@
   $: isConnecting = phase === CALL_PHASE.CONNECTING;
 
   import { platform } from '@tauri-apps/plugin-os';
+  import { mediaPipeline } from '$lib/services/MediaPipelineHost';
+
+  let pipelineStream = mediaPipeline.getProcessedVideoStream();
+
+  onMount(() => {
+    const unsub = mediaPipeline.addTrackChangeListener?.(() => {
+      pipelineStream = mediaPipeline.getProcessedVideoStream();
+    });
+    return () => {
+      if (unsub) unsub();
+    };
+  });
 
   let isLinux = false;
   try {
@@ -87,12 +99,13 @@
       remoteStream.getVideoTracks &&
       remoteStream.getVideoTracks().some(t => t.readyState === 'live' && t.enabled)) || isLinux)
   );
-  $: hasLocalVideo = Boolean((videoOn || screenOn || cameraLoading) && (localCameraStream || localScreenStream || cameraLoading));
-  $: localEffectiveStream = screenOn ? localScreenStream : localCameraStream;
+  $: effectiveCameraStream = pipelineStream || localCameraStream;
+  $: hasLocalVideo = Boolean((videoOn || screenOn || cameraLoading) && (effectiveCameraStream || localScreenStream || cameraLoading));
+  $: localEffectiveStream = screenOn ? localScreenStream : effectiveCameraStream;
   $: isGroupCall = Boolean(isGroup || ($activeCall.participants && $activeCall.participants.length > 1));
   $: showVideo = (hasLocalVideo || hasRemoteVideo) && isActive;
   $: mainVideoActive = isActive && (!isSwapped ? (hasRemoteVideo || (screenOn && localScreenStream)) : hasLocalVideo);
-  $: showPip = !isGroupCall && isActive && (hasRemoteVideo ? hasLocalVideo : (screenOn ? (videoOn && Boolean(localCameraStream)) : hasLocalVideo));
+  $: showPip = !isGroupCall && isActive && (hasRemoteVideo ? hasLocalVideo : (screenOn ? (videoOn && Boolean(effectiveCameraStream)) : hasLocalVideo));
   $: isSecure = mode === CALL_MODE.SECURE && secureStatus === 'active' && isActive;
   $: canEncrypt = !isGroupCall && isActive && elapsed > 0;
 
@@ -544,7 +557,7 @@
       >
         {#if !isSwapped}
           {#if !hasRemoteVideo && screenOn}
-            {#if videoOn && localCameraStream}
+            {#if videoOn && effectiveCameraStream}
               <video
                 class="pip-video"
                 class:mirror={cameraFacing !== 'environment'}
@@ -553,7 +566,7 @@
                 webkit-playsinline
                 muted
                 poster="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg'/>"
-                use:srcObject={localCameraStream}
+                use:srcObject={effectiveCameraStream}
               ></video>
             {:else if videoOn && cameraLoading}
               <div class="pip-fallback">

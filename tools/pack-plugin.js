@@ -1,5 +1,5 @@
-import { readFileSync, writeFileSync, existsSync, statSync } from "node:fs";
-import { join, dirname, basename } from "node:path";
+import { readFileSync, writeFileSync, existsSync, statSync, readdirSync } from "node:fs";
+import { join, dirname, basename, relative } from "node:path";
 
 const pluginDir = process.argv[2];
 if (!pluginDir) {
@@ -36,6 +36,13 @@ if (!existsSync(join(pluginDir, manifest.entry))) {
 const { default: JSZip } = await import("jszip");
 const zip = new JSZip();
 
+const IGNORED_NAMES = new Set([
+  "node_modules",
+  ".git",
+  ".DS_Store",
+  "Thumbs.db",
+]);
+
 function addFile(relPath) {
   const fullPath = join(pluginDir, relPath);
   if (!existsSync(fullPath)) {
@@ -51,20 +58,23 @@ function addFile(relPath) {
   zip.file(relPath, content, { date: stat.mtime });
 }
 
-addFile("manifest.json");
-addFile(manifest.entry);
-
-for (const s of manifest.styles || []) {
-  addFile(typeof s === "string" ? s : s.path);
+function scanAndAdd(dir) {
+  const entries = readdirSync(dir, { withFileTypes: true });
+  for (const entry of entries) {
+    if (IGNORED_NAMES.has(entry.name) || entry.name.endsWith(".mxp") || entry.name.startsWith(".")) {
+      continue;
+    }
+    const full = join(dir, entry.name);
+    if (entry.isDirectory()) {
+      scanAndAdd(full);
+    } else if (entry.isFile()) {
+      const rel = relative(pluginDir, full);
+      addFile(rel);
+    }
+  }
 }
 
-for (const c of manifest.components || []) {
-  if (c.file) addFile(c.file);
-}
-
-if (manifest.icon && existsSync(join(pluginDir, manifest.icon))) {
-  addFile(manifest.icon);
-}
+scanAndAdd(pluginDir);
 
 const zipBuffer = await zip.generateAsync({
   type: "nodebuffer",

@@ -119,54 +119,70 @@ export function buildPluginContext(manifest, pluginId) {
   const styleHandles = [];
   const mountHandles = [];
   const eventBindings = [];
+  const granted = new Set(manifest.permissions || []);
+
+  const check = (perm, action) => {
+    if (!granted.has(perm)) {
+      throw new Error(`[plugin:${pluginId}] Permission denied: "${perm}" required for ${action || 'operation'}`);
+    }
+  };
 
   const ctx = {
     manifest,
     pluginId,
 
-    stores: {
-      session: Session,
-      currentUser,
-      currentUserDetails,
-      currentRealChats,
-      currentSessionCalls,
-      currentFolders,
-      currentPresence,
-      serverConfig,
-      panelConfig,
-      activeWebApps,
-      stickers: {
-        orderedSetIds,
-        favoriteSetIds,
-        stickerSets,
-        stickersById,
-        recentStickerIds,
-        stickersLoading,
-      },
-      composerSelection,
+    get stores() {
+      check('stores:read', 'ctx.stores');
+      return {
+        session: Session,
+        currentUser,
+        currentUserDetails,
+        currentRealChats,
+        currentSessionCalls,
+        currentFolders,
+        currentPresence,
+        serverConfig,
+        panelConfig,
+        activeWebApps,
+        stickers: {
+          orderedSetIds,
+          favoriteSetIds,
+          stickerSets,
+          stickersById,
+          recentStickerIds,
+          stickersLoading,
+        },
+        composerSelection,
+      };
     },
 
     input: {
       getSelection() {
+        check('stores:read', 'ctx.input.getSelection()');
         return get(composerSelection);
       },
       replaceSelection(data) {
+        check('stores:write', 'ctx.input.replaceSelection()');
         pluginEmit('input:replace-selection', data);
       },
       insert(data) {
+        check('stores:write', 'ctx.input.insert()');
         pluginEmit('input:insert', data);
       },
     },
 
     get api() {
+      check('api:call', 'ctx.api');
       return get(API);
     },
 
     getStore(store) {
+      check('stores:read', 'ctx.getStore()');
       return get(store);
     },
 
     subscribe(store, cb) {
+      check('stores:read', 'ctx.subscribe()');
       return store.subscribe(cb);
     },
 
@@ -177,76 +193,126 @@ export function buildPluginContext(manifest, pluginId) {
     openMiniApp,
 
     mount(mountPoint, html, options = {}) {
+      check('ui:mount', 'ctx.mount()');
       const handle = registerMount(mountPoint, { html, pluginId, options });
       mountHandles.push(handle);
       return handle;
     },
 
     unmount(handle) {
+      check('ui:mount', 'ctx.unmount()');
       unregisterMount(handle);
       const idx = mountHandles.indexOf(handle);
       if (idx !== -1) mountHandles.splice(idx, 1);
     },
 
     injectCSS(css) {
+      check('ui:style', 'ctx.injectCSS()');
       const el = injectCSS(css, pluginId);
       styleHandles.push(el);
       return el;
     },
 
     removeCSS(handle) {
+      check('ui:style', 'ctx.removeCSS()');
       removeCSS(handle);
       const idx = styleHandles.indexOf(handle);
       if (idx !== -1) styleHandles.splice(idx, 1);
     },
 
     on(event, cb) {
+      check('events', 'ctx.on()');
       pluginOn(event, cb);
       eventBindings.push({ event, cb });
     },
 
     off(event, cb) {
+      check('events', 'ctx.off()');
       pluginOff(event, cb);
     },
 
     emit(event, data) {
+      check('events', 'ctx.emit()');
       pluginEmit(event, data);
     },
 
-    storage: makeStorage(pluginId),
+    get storage() {
+      check('storage', 'ctx.storage');
+      return makeStorage(pluginId);
+    },
 
     showNotification(message) {
       showAlert(message);
     },
 
-    crypto: CryptoPluginRegistry,
+    get crypto() {
+      check('crypto', 'ctx.crypto');
+      return CryptoPluginRegistry;
+    },
 
-    invoke,
+    invoke(...args) {
+      check('tauri', 'ctx.invoke()');
+      return invoke(...args);
+    },
 
     log: makeLog(pluginId),
 
-    media: {
-      registerVideoProcessor(processor) {
-        return mediaPipeline.installVideoPlugin({ id: pluginId, ...processor });
-      },
-      unregisterVideoProcessor() {
-        return mediaPipeline.removeVideoPlugin(pluginId);
-      },
-      registerAudioProcessor(processor) {
-        return mediaPipeline.installAudioPlugin({ id: pluginId, ...processor });
-      },
-      unregisterAudioProcessor() {
-        return mediaPipeline.removeAudioPlugin(pluginId);
-      },
-      listVideoProcessors() {
-        return mediaPipeline.listVideoPlugins();
-      },
-      listAudioProcessors() {
-        return mediaPipeline.listAudioPlugins();
-      },
+    get media() {
+      check('media', 'ctx.media');
+      return {
+        registerVideoProcessor(processor) {
+          return mediaPipeline.installVideoPlugin({ id: pluginId, ...processor });
+        },
+        unregisterVideoProcessor() {
+          return mediaPipeline.removeVideoPlugin(pluginId);
+        },
+        registerAudioProcessor(processor) {
+          return mediaPipeline.installAudioPlugin({ id: pluginId, ...processor });
+        },
+        unregisterAudioProcessor() {
+          return mediaPipeline.removeAudioPlugin(pluginId);
+        },
+        notifyAudioPipelineChange() {
+          return mediaPipeline.restartAudioPipeline?.();
+        },
+        listVideoProcessors() {
+          return mediaPipeline.listVideoPlugins();
+        },
+        listAudioProcessors() {
+          return mediaPipeline.listAudioPlugins();
+        },
+        registerMask(mask) {
+          return mediaPipeline.registerMask({ ...mask, pluginId });
+        },
+        unregisterMask(maskId) {
+          return mediaPipeline.unregisterMask(maskId);
+        },
+        registerBackground(bg) {
+          return mediaPipeline.registerBackground({ ...bg, pluginId });
+        },
+        unregisterBackground(bgId) {
+          return mediaPipeline.unregisterBackground(bgId);
+        },
+        registerVoiceFilter(vf) {
+          return mediaPipeline.registerVoiceFilter({ ...vf, pluginId });
+        },
+        unregisterVoiceFilter(vfId) {
+          return mediaPipeline.unregisterVoiceFilter(vfId);
+        },
+        getCustomEffects() {
+          return mediaPipeline.getCustomEffects();
+        },
+        setActiveVideoEffects(active) {
+          return mediaPipeline.setActiveVideoEffects(active);
+        },
+        hasActiveVideoEffects() {
+          return mediaPipeline.hasActiveVideoEffects();
+        },
+      };
     },
 
     fetchAsset(url, options) {
+      check('network', 'ctx.fetchAsset()');
       return fetchAsset(url, options);
     },
 
@@ -297,6 +363,12 @@ export function buildPluginContext(manifest, pluginId) {
       eventBindings.length = 0;
       mediaPipeline.removeVideoPlugin(pluginId).catch(() => {});
       mediaPipeline.removeAudioPlugin(pluginId).catch(() => {});
+      try {
+        const effects = mediaPipeline.getCustomEffects();
+        for (const m of effects.masks) if (m.pluginId === pluginId) mediaPipeline.unregisterMask(m.id);
+        for (const b of effects.backgrounds) if (b.pluginId === pluginId) mediaPipeline.unregisterBackground(b.id);
+        for (const v of effects.voiceFilters) if (v.pluginId === pluginId) mediaPipeline.unregisterVoiceFilter(v.id);
+      } catch {}
     },
   };
 

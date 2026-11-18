@@ -1,12 +1,30 @@
 <script>
-  import { enablePlugin, disablePlugin, uninstallPlugin } from "$lib/plugins/runtime";
+  import { APP_VERSION, enablePlugin, disablePlugin, uninstallPlugin } from "$lib/plugins/runtime";
+  import { satisfies } from "$lib/plugins/semver";
   import { PERMISSION_LABELS, CATEGORY_LABELS } from "$lib/plugins/manifest";
+  import { showAlert } from "$lib/utils/alert";
+  import { pluginSettingsStore } from "$lib/stores/plugins";
+  import { applyPluginUpdate } from "$lib/plugins/updater";
   import ConfirmModal from "$components/main/ConfirmModal.svelte";
 
   export let plugin;
 
   let expanded = false;
   let showConfirmDelete = false;
+  let updating = false;
+
+  $: isCompatible = satisfies(APP_VERSION, plugin.manifest?.minAppVersion, plugin.manifest?.maxAppVersion);
+  $: updateInfo = $pluginSettingsStore.availableUpdates.get(plugin.id);
+
+  function getIconContent(p) {
+    const iconFile = p.manifest?.icon;
+    if (!iconFile) return null;
+    const files = p.files;
+    if (!files) return null;
+    return files instanceof Map ? files.get(iconFile) : files[iconFile];
+  }
+
+  $: iconContent = getIconContent(plugin);
 
   function getAuthor(author) {
     if (!author) return '';
@@ -14,16 +32,12 @@
     return author.name || '';
   }
 
-  function getSourceCode(plugin) {
-    const entry = plugin.manifest?.entry;
-    if (!entry) return 'Исходный код недоступен';
-    const files = plugin.files;
-    if (!files) return 'Исходный код недоступен';
-    const code = files instanceof Map ? files.get(entry) : files[entry];
-    return code || 'Исходный код недоступен';
-  }
-
   function toggleEnabled() {
+    if (!isCompatible) {
+      const required = plugin.manifest?.minAppVersion ? `требуется Max+ ${plugin.manifest.minAppVersion}` : "несовместимо";
+      showAlert(`Неподдерживаемая версия: ${required} (у вас ${APP_VERSION})`);
+      return;
+    }
     if (plugin.enabled) {
       disablePlugin(plugin.id);
     } else {
@@ -39,32 +53,71 @@
   function toggleExpand() {
     expanded = !expanded;
   }
+
+  async function handleUpdateClick() {
+    if (!updateInfo || updating) return;
+    updating = true;
+    try {
+      await applyPluginUpdate(updateInfo);
+      showAlert(`Плагин "${plugin.manifest.name}" успешно обновлен до v${updateInfo.target_version}`);
+    } catch (err) {
+      showAlert(err?.message || "Ошибка обновления плагина");
+    } finally {
+      updating = false;
+    }
+  }
 </script>
 
 <div class="plugin-card">
   <div class="card-header">
-    <div class="header-info">
-      <div class="title-row">
-        <span class="plugin-name">{plugin.manifest.name}</span>
-        <span class="plugin-author">{getAuthor(plugin.manifest.author)}</span>
-      </div>
-      <div class="description">{plugin.manifest.description}</div>
-      <div class="badges">
-        {#if plugin.verificationStatus === 'verified'}
-          <span class="badge verified">✓ Проверен</span>
+    <div class="card-identity">
+      {#if iconContent}
+        {#if iconContent.trim().startsWith('<svg')}
+          <div class="plugin-card-icon-svg">{@html iconContent}</div>
         {:else}
-          <span class="badge unverified">⚠ Не проверен</span>
+          <img class="plugin-card-icon-img" src={iconContent} alt="" />
         {/if}
-        {#if plugin.manifest.category}
-          <span class="badge category">{CATEGORY_LABELS[plugin.manifest.category] || plugin.manifest.category}</span>
+      {:else}
+        <div class="plugin-card-icon-fallback">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+          </svg>
+        </div>
+      {/if}
+      <div class="header-info">
+        <div class="title-row">
+          <span class="plugin-name">{plugin.manifest.name}</span>
+          <span class="plugin-author">{getAuthor(plugin.manifest.author)}</span>
+        </div>
+        {#if !expanded}
+          <div class="description">{plugin.manifest.description}</div>
         {/if}
+        <div class="badges">
+          {#if !isCompatible}
+            <span class="badge incompatible" title="Требуется Max+ {plugin.manifest.minAppVersion || ''}">Неподдерживаемая версия</span>
+          {/if}
+          {#if plugin.verificationStatus === 'verified'}
+            <span class="badge verified">✓ Проверен</span>
+          {:else}
+            <span class="badge unverified">⚠ Не проверен</span>
+          {/if}
+          {#if plugin.manifest.category}
+            <span class="badge category">{CATEGORY_LABELS[plugin.manifest.category] || plugin.manifest.category}</span>
+          {/if}
+        </div>
       </div>
     </div>
     <div class="header-actions">
-      <label class="toggle">
-        <input type="checkbox" checked={plugin.enabled} on:change={toggleEnabled} />
-        <span class="slider"></span>
-      </label>
+      {#if !isCompatible}
+        <button class="incompatible-badge-btn" on:click={toggleEnabled}>
+          Недоступно
+        </button>
+      {:else}
+        <label class="toggle">
+          <input type="checkbox" checked={plugin.enabled} on:change={toggleEnabled} />
+          <span class="slider"></span>
+        </label>
+      {/if}
       <button class="expand-btn" class:expanded on:click={toggleExpand}>
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <polyline points="6 9 12 15 18 9"></polyline>
@@ -73,12 +126,33 @@
     </div>
   </div>
 
+  {#if updateInfo}
+    <div class="update-banner">
+      <div class="update-info">
+        <div class="update-title">Доступно обновление v{updateInfo.target_version}</div>
+        {#if updateInfo.changelog}
+          <div class="update-changelog">{updateInfo.changelog}</div>
+        {/if}
+      </div>
+      <button class="update-btn" disabled={updating} on:click={handleUpdateClick}>
+        {updating ? "Обновление..." : "Обновить"}
+      </button>
+    </div>
+  {/if}
+
   {#if expanded}
     <div class="card-details">
       <div class="detail-row">
         <span class="detail-label">Версия:</span>
         <span class="detail-value">{plugin.manifest.version}</span>
       </div>
+
+      {#if plugin.manifest.description}
+        <div class="detail-description-section">
+          <div class="detail-label">Описание:</div>
+          <div class="full-description">{plugin.manifest.description}</div>
+        </div>
+      {/if}
 
       {#if plugin.manifest.permissions && plugin.manifest.permissions.length > 0}
         <div class="permissions-section">
@@ -90,11 +164,6 @@
           </ul>
         </div>
       {/if}
-
-      <div class="source-section">
-        <div class="detail-label">Исходный код ({plugin.manifest.entry}):</div>
-        <pre class="source-code">{getSourceCode(plugin)}</pre>
-      </div>
     </div>
   {/if}
 
@@ -137,6 +206,56 @@
     justify-content: space-between;
     align-items: flex-start;
     gap: 12px;
+  }
+
+  .card-identity {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  .plugin-card-icon-svg {
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
+    background: var(--bg-surface-2);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 7px;
+    box-sizing: border-box;
+    flex-shrink: 0;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  }
+
+  .plugin-card-icon-svg :global(svg) {
+    width: 100%;
+    height: 100%;
+    display: block;
+  }
+
+  .plugin-card-icon-img {
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
+    object-fit: contain;
+    background: var(--bg-surface-2);
+    flex-shrink: 0;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  }
+
+  .plugin-card-icon-fallback {
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
+    background: var(--bg-surface-2);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--accent-primary);
+    flex-shrink: 0;
   }
 
   .header-info {
@@ -204,6 +323,23 @@
   .badge.category {
     background: var(--bg-surface-2);
     color: var(--text-secondary);
+  }
+
+  .badge.incompatible {
+    background: rgba(239, 68, 68, 0.15);
+    color: #ef4444;
+  }
+
+  .incompatible-badge-btn {
+    background: rgba(239, 68, 68, 0.15);
+    color: #ef4444;
+    border: 1px solid rgba(239, 68, 68, 0.3);
+    border-radius: 6px;
+    padding: 4px 8px;
+    font-size: 11px;
+    font-weight: 500;
+    cursor: pointer;
+    white-space: nowrap;
   }
 
   .header-actions {
@@ -299,7 +435,7 @@
     to { opacity: 1; }
   }
 
-  .detail-row, .permissions-section, .source-section {
+  .detail-row, .detail-description-section, .permissions-section {
     display: flex;
     flex-direction: column;
     gap: 4px;
@@ -315,25 +451,19 @@
     font-size: 14px;
   }
 
+  .full-description {
+    color: var(--text-secondary);
+    font-size: 14px;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+
   .permissions-list {
     margin: 0;
     padding-left: 20px;
     color: var(--text-primary);
     font-size: 14px;
-  }
-
-  .source-code {
-    background: var(--bg-app);
-    padding: 10px;
-    border-radius: 8px;
-    font-family: monospace;
-    font-size: 12px;
-    color: var(--text-secondary);
-    max-height: 200px;
-    overflow-y: auto;
-    white-space: pre-wrap;
-    word-break: break-all;
-    border: 1px solid var(--border-subtle);
   }
 
   .trash-btn {
@@ -361,5 +491,58 @@
 
   .trash-btn:active {
     opacity: 0.8;
+  }
+
+  .update-banner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    background: rgba(6, 182, 212, 0.1);
+    border: 1px solid rgba(6, 182, 212, 0.3);
+    border-radius: 8px;
+    padding: 8px 12px;
+    margin-top: 8px;
+  }
+
+  .update-info {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+  }
+
+  .update-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: #38bdf8;
+  }
+
+  .update-changelog {
+    font-size: 12px;
+    color: var(--text-muted, #a1a1aa);
+    line-height: 1.3;
+  }
+
+  .update-btn {
+    flex-shrink: 0;
+    background: #0284c7;
+    color: #ffffff;
+    border: none;
+    border-radius: 6px;
+    padding: 6px 12px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 150ms ease, opacity 150ms ease;
+  }
+
+  .update-btn:hover:not(:disabled) {
+    background: #0369a1;
+  }
+
+  .update-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
   }
 </style>

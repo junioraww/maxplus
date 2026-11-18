@@ -1,6 +1,7 @@
 import { Mp4Encoder, isWebCodecsMp4Available } from "$lib/utils/mp4Encoder";
 import { convertAudioBlobToOggOpus } from "$lib/utils/audioEncoder";
 import { generateWaveformFromAmplitudes } from "$lib/utils/waveform";
+import { mediaPipeline } from "$lib/services/MediaPipelineHost";
 
 export function formatElapsed(ms) {
   const totalSec = Math.floor(ms / 1000);
@@ -150,6 +151,9 @@ export class MediaRecorderSession {
 
   async start({ mode, videoPreviewEl, fallbackCanvasEl }) {
     if (this.isRecording) return;
+    this.isCancelled = false;
+    this._startSeq = (this._startSeq || 0) + 1;
+    const currentSeq = this._startSeq;
     this.recordMode = mode;
     this.recordedChunks = [];
     this.liveAmplitudes = [];
@@ -228,7 +232,33 @@ export class MediaRecorderSession {
       }
     }
 
+    if (this.isCancelled || currentSeq !== this._startSeq) {
+      if (this.mediaStream) {
+        this.mediaStream.getTracks().forEach(t => { try { t.stop(); } catch {} });
+        this.mediaStream = null;
+      }
+      this.stopTracks(videoPreviewEl);
+      return;
+    }
+
+    if (this.mediaStream && !this.isFallbackVideo) {
+      if (this.recordMode === 'video' && videoPreviewEl) {
+        videoPreviewEl.srcObject = this.mediaStream;
+        videoPreviewEl.play().catch(() => {});
+        mediaPipeline.setActiveVideoElement?.(videoPreviewEl);
+      }
+      mediaPipeline.setSourceTracks(
+        this.mediaStream.getVideoTracks()[0] || null,
+        this.mediaStream.getAudioTracks()[0] || null
+      );
+    }
+
     try {
+      if (this.isCancelled || currentSeq !== this._startSeq) {
+        this.stopTracks(videoPreviewEl);
+        return;
+      }
+
       this.opusRecordedBlob = null;
       this.opusRecorder = null;
       if (this.recordMode === 'voice' && typeof Recorder !== 'undefined' && Recorder.isRecordingSupported()) {
@@ -257,13 +287,16 @@ export class MediaRecorderSession {
           this.recordSquareCtx = this.recordSquareCanvas.getContext('2d', { alpha: false });
 
           const drawSquareLoop = () => {
-            if (videoPreviewEl && videoPreviewEl.videoWidth > 0 && videoPreviewEl.videoHeight > 0) {
-              const vw = videoPreviewEl.videoWidth;
-              const vh = videoPreviewEl.videoHeight;
+            const hasEffects = mediaPipeline.hasActiveVideoEffects?.();
+            const fxCanvas = hasEffects ? mediaPipeline.getProcessedCanvas?.() : null;
+            const src = (fxCanvas && fxCanvas.width > 0) ? fxCanvas : videoPreviewEl;
+            if (src && (src.videoWidth > 0 || src.width > 0)) {
+              const vw = src.videoWidth || src.width;
+              const vh = src.videoHeight || src.height;
               const size = Math.min(vw, vh);
               const sx = Math.floor((vw - size) / 2);
               const sy = Math.floor((vh - size) / 2);
-              this.recordSquareCtx.drawImage(videoPreviewEl, sx, sy, size, size, 0, 0, 480, 480);
+              this.recordSquareCtx.drawImage(src, sx, sy, size, size, 0, 0, 480, 480);
             } else if (fallbackCanvasEl) {
               this.recordSquareCtx.drawImage(fallbackCanvasEl, 0, 0, 480, 480);
             }
@@ -274,9 +307,10 @@ export class MediaRecorderSession {
           if (typeof this.recordSquareCanvas.captureStream === 'function') {
             try {
               this.recordSquareStream = this.recordSquareCanvas.captureStream(30);
-              const audioTracks = this.mediaStream.getAudioTracks();
-              if (audioTracks.length > 0) {
-                this.recordSquareStream.addTrack(audioTracks[0]);
+              const processedAudio = mediaPipeline.getProcessedAudioTrack();
+              const audioTrack = processedAudio || this.mediaStream.getAudioTracks()[0];
+              if (audioTrack) {
+                this.recordSquareStream.addTrack(audioTrack);
               }
             } catch {
               this.recordSquareStream = null;
@@ -287,8 +321,9 @@ export class MediaRecorderSession {
 
       if (!this.opusRecorder) {
         if (this.recordMode === 'video' && isWebCodecsMp4Available()) {
+          const processedVid = mediaPipeline.getProcessedVideoStream();
           this.mp4Encoder = new Mp4Encoder({ width: 480, height: 480, fps: 30 });
-          await this.mp4Encoder.start(this.mediaStream);
+          await this.mp4Encoder.start(processedVid || this.mediaStream);
         } else {
           let mimeType = '';
           if (this.recordMode === 'voice') {
@@ -307,9 +342,15 @@ export class MediaRecorderSession {
             }
           }
 
-          const streamToRecord = (this.recordMode === 'video' && !this.isFallbackVideo && this.recordSquareStream)
+          let streamToRecord = (this.recordMode === 'video' && !this.isFallbackVideo && this.recordSquareStream)
             ? this.recordSquareStream
             : this.mediaStream;
+          if (this.recordMode === 'voice') {
+            const processedVoice = mediaPipeline.getProcessedAudioTrack();
+            if (processedVoice) {
+              streamToRecord = new MediaStream([processedVoice]);
+            }
+          }
           this.mediaRecorder = new MediaRecorder(streamToRecord, mimeType ? { mimeType } : {});
           this.mediaRecorder.ondataavailable = (e) => {
             if (e.data && e.data.size > 0) {
@@ -374,25 +415,37 @@ export class MediaRecorderSession {
       this.fallbackInterval = null;
     }
     this.isFallbackVideo = false;
+    mediaPipeline.setActiveVideoElement?.(null);
+    mediaPipeline.clearSourceTracks();
     if (this.audioContext) {
       try { this.audioContext.close(); } catch {}
       this.audioContext = null;
     }
     if (this.mediaStream) {
-      this.mediaStream.getTracks().forEach((t) => t.stop());
+      this.mediaStream.getTracks().forEach((t) => {
+        try { t.stop(); } catch {}
+      });
       this.mediaStream = null;
     }
     if (videoPreviewEl) {
-      videoPreviewEl.srcObject = null;
+      if (videoPreviewEl.srcObject) {
+        try {
+          videoPreviewEl.srcObject.getTracks().forEach((t) => {
+            try { t.stop(); } catch {}
+          });
+        } catch {}
+        videoPreviewEl.srcObject = null;
+      }
     }
   }
 
   cancel(videoPreviewEl) {
-    if (!this.isRecording) return;
+    this._startSeq = (this._startSeq || 0) + 1;
+    this.isCancelled = true;
     this.isRecording = false;
     this.stopTracks(videoPreviewEl);
     if (this.mp4Encoder) {
-      this.mp4Encoder.abort();
+      try { this.mp4Encoder.abort(); } catch {}
       this.mp4Encoder = null;
     }
     if (this.opusRecorder) {
@@ -400,7 +453,7 @@ export class MediaRecorderSession {
       this.opusRecorder = null;
     }
     if (this.mediaRecorder && this.mediaRecorder.state !== 'inactive') {
-      this.mediaRecorder.stop();
+      try { this.mediaRecorder.stop(); } catch {}
     }
     this.opusRecordedBlob = null;
     this.recordedChunks = [];
@@ -543,6 +596,10 @@ export class MediaRecorderSession {
       if (newTrack) {
         this.mediaStream.addTrack(newTrack);
       }
+      mediaPipeline.setSourceTracks(
+        this.mediaStream.getVideoTracks()[0] || null,
+        this.mediaStream.getAudioTracks()[0] || null
+      );
       if (videoPreviewEl) {
         videoPreviewEl.srcObject = this.mediaStream;
         videoPreviewEl.play().catch(() => {});
