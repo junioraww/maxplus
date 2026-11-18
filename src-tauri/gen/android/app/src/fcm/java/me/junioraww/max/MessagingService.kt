@@ -59,6 +59,5 @@ class MessagingService : FirebaseMessagingService() {
                 .putString("fcm_token", token)
                 .apply()
         } catch (_: Throwable) {}
-        app.tauri.notification.NotificationPlugin.instance?.handleNewToken(token)
     }
 }

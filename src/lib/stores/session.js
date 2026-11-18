@@ -130,6 +130,14 @@ export function closeContactsModal() {
   data.update(current => ({ ...current, contactsModal: false }));
 }
 
+export function openContactAdd() {
+  data.update(current => ({ ...current, contactModal: true }));
+}
+
+export function closeContactAdd() {
+  data.update(current => ({ ...current, contactModal: false }));
+}
+
 export function openSafeAvatarPicker(config = {}) {
   data.update(current => ({ ...current, safeAvatarPicker: config }));
 }

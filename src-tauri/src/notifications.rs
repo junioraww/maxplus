@@ -1479,9 +1479,40 @@ pub fn is_standalone_mode() -> bool {
     true
 }
 
+#[cfg(target_os = "android")]
+#[tauri::command]
+pub fn get_push_token() -> Option<String> {
+    if let Some(vm) = GLOBAL_JVM.get() {
+        let res = vm.attach_current_thread(|env| -> Result<Option<String>, jni::errors::Error> {
+            let main_class = env.find_class(jni_str!("me/junioraww/max/MainActivity"))
+                .or_else(|_| env.find_class(jni_str!("org/meowkie/max/MainActivity")))?;
+            let token_jobj = env.call_static_method(
+                main_class,
+                jni_str!("getPushTokenStatic"),
+                jni_sig!("()Ljava/lang/String;"),
+                &[],
+            )?.l()?;
+            if token_jobj.is_null() {
+                return Ok(None);
+            }
+            let token_jstr: JString = env.cast_local::<JString>(token_jobj)?;
+            let token = token_jstr.try_to_string(env).ok();
+            Ok(token)
+        });
+        return res.unwrap_or(None);
+    }
+    None
+}
+
 #[cfg(not(target_os = "android"))]
 #[tauri::command]
 pub fn is_standalone_mode() -> bool {
     true
+}
+
+#[cfg(not(target_os = "android"))]
+#[tauri::command]
+pub fn get_push_token() -> Option<String> {
+    None
 }
 

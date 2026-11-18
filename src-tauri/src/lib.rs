@@ -117,7 +117,7 @@ pub fn run() {
         .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_os::init())
-        .plugin(tauri_plugin_notifications::init())
+        .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_biometry::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(CamouflageBootPlugin::default());
@@ -402,6 +402,7 @@ pub fn run() {
             notifications::show_ongoing_call_notification,
             notifications::cancel_ongoing_call_notification,
             notifications::is_standalone_mode,
+            notifications::get_push_token,
             notifications::check_pending_open_chat,
             notifications::check_pending_call_action,
             notifications::set_app_locked,

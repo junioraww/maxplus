@@ -25,6 +25,11 @@ class MainActivity : TauriActivity() {
     }
 
     @JvmStatic
+    fun getPushTokenStatic(): String? {
+      return PushTokenProvider.getPushToken(getApplicationContextStatic())
+    }
+
+    @JvmStatic
     fun getApplicationContextStatic(): Context? {
       return appContext ?: instance?.applicationContext
     }

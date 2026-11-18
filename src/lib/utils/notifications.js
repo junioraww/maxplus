@@ -1,13 +1,12 @@
 import { invoke } from "@tauri-apps/api/core";
 import {
-  registerForPushNotifications,
   isPermissionGranted,
   requestPermission,
   sendNotification as pluginSendNotification,
   createChannel,
   Importance,
   Visibility
-} from '@choochmeque/tauri-plugin-notifications-api';
+} from '@tauri-apps/plugin-notification';
 import { type } from '@tauri-apps/plugin-os';
 import { writable, get } from "svelte/store";
 
@@ -307,7 +306,7 @@ export async function setupPushNotifications() {
     }
 
     try {
-      const fcmToken = await registerForPushNotifications();
+      const fcmToken = await invoke('get_push_token');
 
       if (fcmToken) {
         await get(API).call(22, {

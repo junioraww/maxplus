@@ -25,7 +25,7 @@
 
   import { escapeHtml } from "$lib/utils/text";
   import { debounce } from "$lib/utils/debounce";
-  import Session, { openChat, openStartConversation, openContactsModal, openFolderEdit } from "$lib/stores/session";
+  import Session, { openChat, openStartConversation, openContactsModal, openFolderEdit, openContactAdd } from "$lib/stores/session";
   import ChatsListSearchScreen from "$components/main/ChatsListSearchScreen.svelte";
   import API, {
     currentSessionCalls,
@@ -34,6 +34,7 @@
     currentlySyncing,
     currentFolders,
     currentUser,
+    currentUserDetails,
   } from "$lib/stores/api";
   import {
     getChat,
@@ -406,6 +407,18 @@
     }
   }
 
+  function handleInviteLink() {
+    const nick = $currentUserDetails?.nick;
+    const link = nick ? `https://max.ru/${nick}` : ($currentUser ? `https://max.ru/u/${$currentUser}` : "https://max.ru");
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(link).then(() => {
+        showAlert("Ссылка на ваш профиль скопирована");
+      });
+    } else {
+      showAlert(link);
+    }
+  }
+
   onDestroy(() => {});
 </script>
 
@@ -583,7 +596,7 @@
                 on:longpress={handleChatLongPress}
                 on:toggle={handleChatToggle}
                 on:findContact={openContactAdd}
-                on:inviteLink={openContactAdd}
+                on:inviteLink={handleInviteLink}
                 on:loadMore={() => {
                   if ($API?.loadMoreChats) {
                     $API.loadMoreChats();
