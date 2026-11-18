@@ -138,3 +138,113 @@ function createPluginStore() {
 }
 
 export const pluginStore = createPluginStore();
+
+function createPluginSettingsStore() {
+  const { subscribe, set, update } = writable({
+    autoUpdate: true,
+    availableUpdates: new Map(),
+    checkingUpdates: false,
+    lastCheckedAt: null,
+    loaded: false,
+  });
+
+  async function persist(state) {
+    const data = {
+      autoUpdate: state.autoUpdate,
+      lastCheckedAt: state.lastCheckedAt,
+    };
+    try {
+      await invoke('common_store_save', {
+        store: 'plugin_settings',
+        data,
+      });
+    } catch {
+      try {
+        const meta = (await invoke('common_store_load', { store: 'plugin_meta' })) || {};
+        meta.settings = data;
+        await invoke('common_store_save', { store: 'plugin_meta', data: meta });
+      } catch {}
+    }
+  }
+
+  async function load() {
+    try {
+      let raw = null;
+      try {
+        raw = await invoke('common_store_load', { store: 'plugin_settings' });
+      } catch {
+        const meta = await invoke('common_store_load', { store: 'plugin_meta' }).catch(() => null);
+        raw = meta?.settings || null;
+      }
+      if (raw && typeof raw === 'object') {
+        update(s => ({
+          ...s,
+          autoUpdate: raw.autoUpdate !== false,
+          lastCheckedAt: raw.lastCheckedAt || null,
+          loaded: true,
+        }));
+        return;
+      }
+      update(s => ({ ...s, loaded: true }));
+    } catch {
+      update(s => ({ ...s, loaded: true }));
+    }
+  }
+
+  function setAutoUpdate(enabled) {
+    update(state => {
+      const next = { ...state, autoUpdate: Boolean(enabled) };
+      persist(next);
+      return next;
+    });
+  }
+
+  function setAvailableUpdates(updatesList) {
+    update(state => {
+      const map = new Map();
+      if (Array.isArray(updatesList)) {
+        for (const u of updatesList) {
+          if (u?.id) map.set(u.id, u);
+        }
+      } else if (updatesList instanceof Map) {
+        for (const [k, v] of updatesList.entries()) {
+          map.set(k, v);
+        }
+      }
+      return { ...state, availableUpdates: map };
+    });
+  }
+
+  function removeUpdate(pluginId) {
+    update(state => {
+      const map = new Map(state.availableUpdates);
+      map.delete(pluginId);
+      return { ...state, availableUpdates: map };
+    });
+  }
+
+  function setChecking(checking) {
+    update(state => ({ ...state, checkingUpdates: Boolean(checking) }));
+  }
+
+  function setLastCheckedAt(timestamp) {
+    update(state => {
+      const next = { ...state, lastCheckedAt: timestamp };
+      persist(next);
+      return next;
+    });
+  }
+
+  return {
+    subscribe,
+    load,
+    setAutoUpdate,
+    setAvailableUpdates,
+    removeUpdate,
+    setChecking,
+    setLastCheckedAt,
+  };
+}
+
+export const pluginSettingsStore = createPluginSettingsStore();
+

@@ -6,6 +6,7 @@
   import { page } from "$app/stores";
   import SettingsPageWrapper from "$components/settings/SettingsPageWrapper.svelte";
   import CreditsModal from "$components/main/CreditsModal.svelte";
+  import { unloadAllPlugins } from "$lib/plugins/runtime";
 
   let version = "...";
   let environment = "...";
@@ -30,8 +31,10 @@
       const data = await response.json();
       if (!data.tag_name) alert("Не удалось соединиться с GitHub!");
       else {
-        if (data.tag_name !== version) openUrl(data.html_url);
-        else alert("Обновлений нет!");
+        if (data.tag_name !== version) {
+          await unloadAllPlugins();
+          openUrl(data.html_url);
+        } else alert("Обновлений нет!");
       }
     } catch (e) {
       console.error(e);

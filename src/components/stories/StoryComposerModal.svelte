@@ -29,6 +29,8 @@
   import { getAvailableFonts } from "$lib/utils/fontDetector";
   import { showAlert } from "$lib/utils/alert";
   import { extractMediaSource } from "$lib/utils/mediaUtils";
+  import { mediaPipeline } from "$lib/services/MediaPipelineHost";
+  import { getMountStore } from "$lib/plugins/mount-registry";
   import {
     STORY_FILTERS,
     applyFilterToImageData,
@@ -37,6 +39,7 @@
 
   export let isOpen = false;
 
+  const pluginStoryActions = getMountStore("story:action");
   const dispatch = createEventDispatcher();
 
   let mode = "camera";
@@ -53,6 +56,9 @@
   let recordTimerId = null;
   let recordDurationSec = 0;
   const MAX_RECORD_SEC = 60;
+  let isVideoHold = false;
+  let holdTimeout = null;
+  let lastRecordEndTime = 0;
 
   let cropRect = { x: 0, y: 0, w: 1, h: 1 };
   let unregModalBack = null;
@@ -271,7 +277,27 @@
     startCamera();
   }
 
+  $: if (videoPreviewEl && cameraStream && videoPreviewEl.srcObject !== cameraStream) {
+    videoPreviewEl.srcObject = cameraStream;
+    videoPreviewEl.play().catch(() => {});
+    mediaPipeline.setActiveVideoElement?.(videoPreviewEl);
+  }
+
+  let unsubPipeline = null;
+  let effectsCanvasEl = null;
+  let isEffectsActive = false;
+
+  $: if (effectsCanvasEl && isEffectsActive) {
+    mediaPipeline.setOutputCanvas?.(effectsCanvasEl);
+  } else {
+    mediaPipeline.setOutputCanvas?.(null);
+  }
+
   onMount(async () => {
+    isEffectsActive = mediaPipeline.hasActiveVideoEffects?.() || false;
+    unsubPipeline = mediaPipeline.addEffectsChangeListener?.((active) => {
+      isEffectsActive = active;
+    });
     try {
       availableFonts = await getAvailableFonts();
       if (availableFonts.length > 0) {
@@ -294,6 +320,10 @@
   });
 
   onDestroy(() => {
+    if (unsubPipeline) {
+      unsubPipeline();
+      unsubPipeline = null;
+    }
     stopCamera();
     stopVideoRecording();
     stopPlaybackLoop();
@@ -414,10 +444,22 @@
     await loadMediaSource(attach || file);
   }
 
+  let cameraSeq = 0;
+
   async function startCamera() {
+    if (cameraStream && cameraStream.getVideoTracks().some((t) => t.readyState === "live")) {
+      if (videoPreviewEl && videoPreviewEl.srcObject !== cameraStream) {
+        videoPreviewEl.srcObject = cameraStream;
+        videoPreviewEl.play().catch(() => {});
+        mediaPipeline.setActiveVideoElement?.(videoPreviewEl);
+      }
+      return;
+    }
     stopCamera();
+    const currentSeq = ++cameraSeq;
+    let stream = null;
     try {
-      cameraStream = await navigator.mediaDevices.getUserMedia({
+      stream = await navigator.mediaDevices.getUserMedia({
         video: {
           facingMode: { ideal: facingMode },
           width: { ideal: 1280 },
@@ -425,12 +467,9 @@
         },
         audio: true
       });
-      if (videoPreviewEl) {
-        videoPreviewEl.srcObject = cameraStream;
-      }
     } catch (err) {
       try {
-        cameraStream = await navigator.mediaDevices.getUserMedia({
+        stream = await navigator.mediaDevices.getUserMedia({
           video: {
             facingMode: { ideal: facingMode },
             width: { ideal: 1280 },
@@ -438,22 +477,46 @@
           },
           audio: false
         });
-        if (videoPreviewEl) {
-          videoPreviewEl.srcObject = cameraStream;
-        }
       } catch (_) {}
     }
+    if (currentSeq !== cameraSeq || !stream) {
+      if (stream) stream.getTracks().forEach((track) => track.stop());
+      return;
+    }
+    cameraStream = stream;
+    if (videoPreviewEl) {
+      videoPreviewEl.srcObject = cameraStream;
+      videoPreviewEl.play().catch(() => {});
+      mediaPipeline.setActiveVideoElement?.(videoPreviewEl);
+    }
+    mediaPipeline.setSourceTracks(
+      cameraStream.getVideoTracks()[0] || null,
+      cameraStream.getAudioTracks()[0] || null
+    );
   }
 
   let cameraFreezeSnapshotUrl = "";
   let isProcessingRecord = false;
 
   function stopCamera() {
+    cameraSeq++;
+    mediaPipeline.setActiveVideoElement?.(null);
+    mediaPipeline.setOutputCanvas?.(null);
+    mediaPipeline.clearSourceTracks();
     if (cameraStream) {
-      cameraStream.getTracks().forEach((track) => track.stop());
+      cameraStream.getTracks().forEach((track) => {
+        try { track.stop(); } catch {}
+      });
       cameraStream = null;
     }
     if (videoPreviewEl) {
+      if (videoPreviewEl.srcObject) {
+        try {
+          videoPreviewEl.srcObject.getTracks().forEach((track) => {
+            try { track.stop(); } catch {}
+          });
+        } catch {}
+      }
       videoPreviewEl.srcObject = null;
     }
   }
@@ -474,10 +537,12 @@
   }
 
   async function handleCapturePhoto() {
-    if (!videoPreviewEl) return;
+    if (isVideoHold || isRecording || (performance.now() - lastRecordEndTime < 450)) return;
+    const sourceEl = (isEffectsActive && effectsCanvasEl) ? effectsCanvasEl : videoPreviewEl;
+    if (!sourceEl) return;
     const canvas = document.createElement("canvas");
-    canvas.width = videoPreviewEl.videoWidth || 1080;
-    canvas.height = videoPreviewEl.videoHeight || 1920;
+    canvas.width = sourceEl.videoWidth || sourceEl.width || 1080;
+    canvas.height = sourceEl.videoHeight || sourceEl.height || 1920;
     const ctx = canvas.getContext("2d");
 
     if (selectedFilter !== "none") {
@@ -490,7 +555,7 @@
       ctx.scale(-1, 1);
     }
 
-    ctx.drawImage(videoPreviewEl, 0, 0, canvas.width, canvas.height);
+    ctx.drawImage(sourceEl, 0, 0, canvas.width, canvas.height);
 
     canvas.toBlob((blob) => {
       if (!blob) return;
@@ -510,6 +575,26 @@
     }, "image/jpeg", 0.95);
   }
 
+  function handleShutterPointerDown() {
+    isVideoHold = false;
+    if (holdTimeout) clearTimeout(holdTimeout);
+    holdTimeout = setTimeout(() => {
+      isVideoHold = true;
+      startVideoRecording();
+    }, 250);
+  }
+
+  function handleShutterPointerUp() {
+    if (holdTimeout) {
+      clearTimeout(holdTimeout);
+      holdTimeout = null;
+    }
+    if (isVideoHold || isRecording) {
+      lastRecordEndTime = performance.now();
+      stopVideoRecording();
+    }
+  }
+
   async function startVideoRecording() {
     if (isRecording || !cameraStream) return;
     isRecording = true;
@@ -525,6 +610,24 @@
       }
     }, 250);
 
+    const effectiveStream = new MediaStream();
+    if (isEffectsActive && effectsCanvasEl && typeof effectsCanvasEl.captureStream === 'function') {
+      try {
+        const fxStream = effectsCanvasEl.captureStream(30);
+        fxStream.getVideoTracks().forEach((t) => effectiveStream.addTrack(t));
+      } catch {
+        cameraStream.getVideoTracks().forEach((t) => effectiveStream.addTrack(t));
+      }
+    } else {
+      cameraStream.getVideoTracks().forEach((t) => effectiveStream.addTrack(t));
+    }
+    const processedAudio = mediaPipeline.getProcessedAudioTrack();
+    if (processedAudio) {
+      effectiveStream.addTrack(processedAudio);
+    } else {
+      cameraStream.getAudioTracks().forEach((t) => effectiveStream.addTrack(t));
+    }
+
     if (isWebCodecsMp4Available()) {
       try {
         mp4Encoder = new Mp4Encoder({
@@ -533,7 +636,7 @@
           fps: 30,
           mirror: facingMode === "user"
         });
-        await mp4Encoder.start(cameraStream);
+        await mp4Encoder.start(effectiveStream);
         return;
       } catch (err) {
         mp4Encoder = null;
@@ -549,7 +652,7 @@
       if (!MediaRecorder.isTypeSupported(mimeType)) mimeType = "video/webm";
     }
     try {
-      mediaRecorder = new MediaRecorder(cameraStream, mimeType ? { mimeType } : {});
+      mediaRecorder = new MediaRecorder(effectiveStream, mimeType ? { mimeType } : {});
       mediaRecorder.ondataavailable = (e) => {
         if (e.data && e.data.size > 0) recordedChunks.push(e.data);
       };
@@ -1622,8 +1725,14 @@
             class="camera-stream-video"
             class:mirror={facingMode === "user"}
             on:playing={() => (cameraFreezeSnapshotUrl = "")}
-            style="filter: {selectedFilter !== 'none' ? FILTERS.find(x => x.id === selectedFilter)?.css : 'none'};"
+            style="opacity: {isEffectsActive ? 0 : 1}; pointer-events: {isEffectsActive ? 'none' : 'auto'}; filter: {selectedFilter !== 'none' ? FILTERS.find(x => x.id === selectedFilter)?.css : 'none'};"
           ></video>
+          <canvas
+            bind:this={effectsCanvasEl}
+            class="camera-stream-video camera-effects-canvas"
+            class:mirror={facingMode === "user"}
+            style="opacity: {isEffectsActive ? 1 : 0}; pointer-events: none;"
+          ></canvas>
 
           {#if cameraFreezeSnapshotUrl}
             <img
@@ -1668,8 +1777,9 @@
               class="camera-shutter-btn"
               class:recording={isRecording}
               on:click={handleCapturePhoto}
-              on:pointerdown={startVideoRecording}
-              on:pointerup={stopVideoRecording}
+              on:pointerdown={handleShutterPointerDown}
+              on:pointerup={handleShutterPointerUp}
+              on:pointercancel={handleShutterPointerUp}
               title="Нажмите для фото, удерживайте для видео"
               aria-label="Сделать снимок или записать видео"
             >
@@ -1687,15 +1797,23 @@
               <div class="shutter-inner-dot"></div>
             </button>
 
-            <button
-              type="button"
-              class="camera-switch-btn"
-              on:click={toggleCamera}
-              title="Сменить камеру"
-              aria-label="Сменить камеру"
-            >
-              <img src="/icons/flip-camera.svg" alt="" width="22" height="22" />
-            </button>
+            <div class="camera-floating-side-actions">
+              {#each $pluginStoryActions as item (item.id)}
+                <div class="plugin-story-action-wrapper" data-plugin-mount={item.pluginId || item.id}>
+                  {@html item.html}
+                </div>
+              {/each}
+
+              <button
+                type="button"
+                class="camera-switch-btn"
+                on:click={toggleCamera}
+                title="Сменить камеру"
+                aria-label="Сменить камеру"
+              >
+                <img src="/icons/flip-camera.svg" alt="" width="22" height="22" />
+              </button>
+            </div>
           </div>
         </div>
       {:else}
@@ -2117,6 +2235,16 @@
     transform: scaleX(-1);
   }
 
+  .camera-effects-canvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    pointer-events: none;
+    z-index: 1;
+  }
+
   .camera-record-badge {
     position: absolute;
     top: calc(16px + var(--safe-area-top, var(--safe-top, 0px)));
@@ -2157,13 +2285,27 @@
     right: 0;
     display: flex;
     align-items: center;
-    justify-content: space-around;
+    justify-content: space-between;
     padding: 0 32px;
     z-index: var(--z-header, 4);
+    pointer-events: none;
+  }
+
+  .gallery-picker-btn {
+    pointer-events: auto;
+  }
+
+  .camera-floating-side-actions {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    pointer-events: auto;
   }
 
   .camera-shutter-btn {
-    position: relative;
+    position: absolute;
+    left: 50%;
+    translate: -50% 0;
     width: 76px;
     height: 76px;
     border-radius: 50%;
@@ -2174,6 +2316,7 @@
     justify-content: center;
     cursor: pointer;
     transition: transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1);
+    pointer-events: auto;
   }
   .camera-shutter-btn:active {
     transform: scale(0.92);
@@ -2249,6 +2392,12 @@
   .camera-switch-btn:hover {
     background: rgba(0, 0, 0, 0.85);
     transform: scale(1.08);
+  }
+
+  .plugin-story-action-wrapper {
+    display: flex;
+    align-items: center;
+    justify-content: center;
   }
 
   .story-preview-wrapper {

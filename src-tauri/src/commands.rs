@@ -533,8 +533,32 @@ pub fn parse_mxp(bytes: Vec<u8>) -> Result<Value, String> {
             continue;
         }
         let name = entry.name().to_string();
-        let mut content = String::new();
-        entry.read_to_string(&mut content).unwrap_or(0);
+        let mut raw_bytes = Vec::new();
+        entry.read_to_end(&mut raw_bytes).unwrap_or(0);
+        let content = if name.ends_with(".png")
+            || name.ends_with(".jpg")
+            || name.ends_with(".jpeg")
+            || name.ends_with(".webp")
+            || name.ends_with(".gif")
+            || name.ends_with(".ico")
+        {
+            use base64::Engine;
+            let mime = if name.ends_with(".png") {
+                "image/png"
+            } else if name.ends_with(".jpg") || name.ends_with(".jpeg") {
+                "image/jpeg"
+            } else if name.ends_with(".webp") {
+                "image/webp"
+            } else if name.ends_with(".gif") {
+                "image/gif"
+            } else {
+                "image/x-icon"
+            };
+            let b64 = base64::engine::general_purpose::STANDARD.encode(&raw_bytes);
+            format!("data:{mime};base64,{b64}")
+        } else {
+            String::from_utf8(raw_bytes).unwrap_or_default()
+        };
         files.insert(name, content);
     }
 

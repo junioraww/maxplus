@@ -164,19 +164,29 @@
 
 <style>
   .composer-header {
-    height: calc(52px + var(--safe-area-top, var(--safe-top, 0px)));
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: calc(56px + var(--safe-area-top, var(--safe-top, 0px)));
     padding: var(--safe-area-top, var(--safe-top, 0px)) 12px 0 12px;
     display: flex;
     align-items: center;
     justify-content: space-between;
-    background: linear-gradient(180deg, rgba(0, 0, 0, 0.85) 0%, rgba(0, 0, 0, 0) 100%);
-    z-index: var(--z-header, 4);
-    flex-shrink: 0;
+    background: linear-gradient(180deg, rgba(0, 0, 0, 0.65) 0%, rgba(0, 0, 0, 0) 100%);
+    z-index: 20;
+    pointer-events: none;
     box-sizing: border-box;
   }
 
   .header-icon-btn.close-btn {
     margin-right: 12px;
+    background: rgba(0, 0, 0, 0.45);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.4);
+    pointer-events: auto;
   }
 
   .header-tools-divider {
@@ -191,8 +201,10 @@
     width: 34px;
     height: 34px;
     border-radius: 50%;
-    background: rgba(255, 255, 255, 0.12);
-    border: none;
+    background: rgba(255, 255, 255, 0.16);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    border: 1px solid rgba(255, 255, 255, 0.12);
     color: #ffffff;
     display: flex;
     align-items: center;
@@ -200,6 +212,7 @@
     cursor: pointer;
     transition: background 0.18s, transform 0.18s;
     flex-shrink: 0;
+    pointer-events: auto;
   }
   .header-icon-btn:hover:not(:disabled) {
     background: rgba(255, 255, 255, 0.22);
@@ -223,6 +236,7 @@
     -webkit-overflow-scrolling: touch;
     max-width: calc(100vw - 64px);
     padding: 2px 0;
+    pointer-events: auto;
   }
   .header-action-group::-webkit-scrollbar {
     display: none;
@@ -234,5 +248,6 @@
 
   .file-input-label {
     cursor: pointer;
+    pointer-events: auto;
   }
 </style>

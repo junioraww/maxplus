@@ -1,11 +1,19 @@
 <script>
   import { pluginImportModal, closePluginImportModal } from "$lib/stores/plugins";
-  import { installPlugin } from "$lib/plugins/runtime";
+  import { APP_VERSION, installPlugin } from "$lib/plugins/runtime";
+  import { satisfies } from "$lib/plugins/semver";
   import { PERMISSION_LABELS, CATEGORY_LABELS } from "$lib/plugins/manifest";
   import { showAlert } from "$lib/utils/alert";
 
   let isInstalling = false;
-  let showCode = false;
+
+  $: isCompatible = satisfies(
+    APP_VERSION,
+    $pluginImportModal?.manifest?.minAppVersion,
+    $pluginImportModal?.manifest?.maxAppVersion
+  );
+
+  $: iconContent = $pluginImportModal?.iconContent || null;
 
   function getAuthor(author) {
     if (!author) return "";
@@ -14,7 +22,7 @@
   }
 
   async function handleInstall() {
-    if (isInstalling) return;
+    if (isInstalling || !isCompatible) return;
     isInstalling = true;
     try {
       await installPlugin($pluginImportModal.arrayBuffer);
@@ -40,16 +48,37 @@
       </div>
 
       <div class="modal-content">
-        <div class="plugin-info">
-          <div class="title-row">
-            <span class="plugin-name">{$pluginImportModal.manifest.name}</span>
-            <span class="plugin-author">{getAuthor($pluginImportModal.manifest.author)}</span>
-          </div>
-          {#if $pluginImportModal.manifest.category}
-            <span class="badge category">{CATEGORY_LABELS[$pluginImportModal.manifest.category] || $pluginImportModal.manifest.category}</span>
+        <div class="plugin-info-header">
+          {#if iconContent}
+            {#if iconContent.trim().startsWith('<svg')}
+              <div class="plugin-modal-icon-svg">{@html iconContent}</div>
+            {:else}
+              <img class="plugin-modal-icon-img" src={iconContent} alt="" />
+            {/if}
+          {:else}
+            <div class="plugin-modal-icon-fallback">
+              <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+              </svg>
+            </div>
           {/if}
-          <div class="description">{$pluginImportModal.manifest.description}</div>
+          <div class="plugin-info">
+            {#if getAuthor($pluginImportModal.manifest.author)}
+              <span class="plugin-author">{getAuthor($pluginImportModal.manifest.author)}</span>
+            {/if}
+            <span class="plugin-name">{$pluginImportModal.manifest.name}</span>
+            {#if $pluginImportModal.manifest.category}
+              <span class="badge category">{CATEGORY_LABELS[$pluginImportModal.manifest.category] || $pluginImportModal.manifest.category}</span>
+            {/if}
+            <div class="description">{$pluginImportModal.manifest.description}</div>
+          </div>
         </div>
+
+        {#if !isCompatible}
+          <div class="status-banner incompatible">
+            ⚠ Несовместимая версия: требуется Max+ {$pluginImportModal.manifest.minAppVersion || ''} (у вас установлена {APP_VERSION})
+          </div>
+        {/if}
 
         {#if $pluginImportModal.verificationStatus === 'verified'}
           <div class="status-banner verified">
@@ -75,24 +104,16 @@
             </ul>
           </div>
         {/if}
-
-        {#if $pluginImportModal.entryCode}
-          <div class="source-section">
-            <div class="source-header" on:click={() => showCode = !showCode}>
-              <span class="section-title">Исходный код ({$pluginImportModal.manifest.entry || 'main.js'})</span>
-              <span class="code-toggle">{showCode ? 'Скрыть' : 'Показать'}</span>
-            </div>
-            {#if showCode}
-              <pre class="source-code">{$pluginImportModal.entryCode}</pre>
-            {/if}
-          </div>
-        {/if}
       </div>
 
       <div class="modal-actions">
         <button class="btn cancel" on:click={handleCancel} disabled={isInstalling}>Отмена</button>
-        <button class="btn install" on:click={handleInstall} disabled={isInstalling}>
-          {isInstalling ? 'Установка...' : 'Установить'}
+        <button class="btn install" on:click={handleInstall} disabled={isInstalling || !isCompatible}>
+          {#if !isCompatible}
+            Не поддерживается
+          {:else}
+            {isInstalling ? 'Установка...' : 'Установить'}
+          {/if}
         </button>
       </div>
     </div>
@@ -154,6 +175,53 @@
     overflow-y: auto;
   }
 
+  .plugin-info-header {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    text-align: center;
+  }
+
+  .plugin-modal-icon-svg {
+    width: 64px;
+    height: 64px;
+    border-radius: 16px;
+    background: var(--bg-surface-2);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 10px;
+    box-sizing: border-box;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  }
+
+  .plugin-modal-icon-svg :global(svg) {
+    width: 100%;
+    height: 100%;
+    display: block;
+  }
+
+  .plugin-modal-icon-img {
+    width: 64px;
+    height: 64px;
+    border-radius: 16px;
+    object-fit: contain;
+    background: var(--bg-surface-2);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  }
+
+  .plugin-modal-icon-fallback {
+    width: 64px;
+    height: 64px;
+    border-radius: 16px;
+    background: var(--bg-surface-2);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--accent-primary);
+  }
+
   .plugin-info {
     display: flex;
     flex-direction: column;
@@ -162,22 +230,19 @@
     text-align: center;
   }
 
-  .title-row {
-    display: flex;
-    align-items: baseline;
-    gap: 8px;
-    justify-content: center;
+  .plugin-author {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-muted);
   }
 
   .plugin-name {
     font-size: 18px;
     font-weight: 600;
     color: var(--text-primary);
-  }
-
-  .plugin-author {
-    font-size: 14px;
-    color: var(--text-muted);
+    word-break: break-word;
+    max-width: 100%;
+    line-height: 1.3;
   }
 
   .badge {
@@ -225,6 +290,12 @@
     border: 1px solid rgba(231, 76, 60, 0.3);
   }
 
+  .status-banner.incompatible {
+    background: rgba(239, 68, 68, 0.15);
+    color: #ef4444;
+    border: 1px solid rgba(239, 68, 68, 0.3);
+  }
+
   .permissions-section {
     background: var(--bg-surface-2);
     padding: 16px;
@@ -246,44 +317,6 @@
     font-size: 14px;
   }
 
-  .source-section {
-    background: var(--bg-surface-2);
-    padding: 14px;
-    border-radius: 12px;
-    border: 1px solid var(--border-subtle);
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-  }
-
-  .source-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    cursor: pointer;
-    user-select: none;
-  }
-
-  .code-toggle {
-    font-size: 12px;
-    color: var(--accent-primary);
-    font-weight: 500;
-  }
-
-  .source-code {
-    background: var(--bg-app);
-    padding: 10px;
-    border-radius: 8px;
-    font-family: monospace;
-    font-size: 12px;
-    color: var(--text-secondary);
-    max-height: 180px;
-    overflow-y: auto;
-    white-space: pre-wrap;
-    word-break: break-all;
-    border: 1px solid var(--border-subtle);
-    margin: 0;
-  }
 
   .modal-actions {
     display: flex;

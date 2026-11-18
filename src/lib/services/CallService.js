@@ -2874,7 +2874,7 @@ class MaxCallSession {
     }
     this.#participantStreams.clear();
     this.#signalQueue = Promise.resolve();
-    try { mediaPipeline.teardown(); } catch {}
+    try { mediaPipeline.clearSourceTracks(); } catch {}
     try { this.#voiceChannel?.close(); } catch {}
     try { this.#sfuCommandChannel?.close(); } catch {}
     try { this.#sfuNotificationChannel?.close(); } catch {}

@@ -1309,11 +1309,11 @@
     lockDrag = 0;
     isLocked = false;
     isRecording = true;
+    await tick();
     await session.start({ mode: recordMode, videoPreviewEl, fallbackCanvasEl });
   }
 
   function cancelRecording() {
-    if (!isRecording) return;
     isRecording = false;
     isLocked = false;
     session.cancel(videoPreviewEl);
@@ -1773,6 +1773,7 @@
   {#if isRecording && recordMode === 'video'}
     <VideoRecorderPreview
       isFallbackVideo={session.isFallbackVideo}
+      mediaStream={session.mediaStream}
       bind:videoPreviewEl
       bind:fallbackCanvasEl
       on:flipCamera={() => session.flipCamera(videoPreviewEl)}

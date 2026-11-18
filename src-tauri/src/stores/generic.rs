@@ -12,6 +12,8 @@ fn common_store_path(app: &AppHandle, store: &str) -> Result<PathBuf, String> {
         "dictionary" => Ok(app_dir.join("data").join("dictionary")),
         "credits_cache" => Ok(app_dir.join("data").join("common").join("credits_cache")),
         "plugin_meta" => Ok(app_dir.join("data").join("common").join("plugin_meta")),
+        "plugin_settings" => Ok(app_dir.join("data").join("common").join("plugin_settings")),
+        "app_version_tracker" => Ok(app_dir.join("data").join("common").join("app_version_tracker")),
         "stories_cache" => Ok(app_dir.join("data").join("common").join("stories_cache")),
         "camouflage" => Ok(app_dir.join("data").join("common").join("camouflage")),
         "safe_avatar_map" => Ok(app_dir.join("data").join("common").join("safe_avatar_map")),

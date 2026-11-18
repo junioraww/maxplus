@@ -42,6 +42,8 @@ const KNOWN_MOUNT_POINTS = new Set([
   'call:action',
   'call:panel',
   'call:video-overlay',
+  'story:action',
+  'video-note:action',
   'settings:section',
   'settings:page',
   'sidebar:section',
@@ -107,6 +109,10 @@ export function validateManifest(manifest, files) {
     if (c.mountPoint && !KNOWN_MOUNT_POINTS.has(c.mountPoint)) {
       throw new PluginLoadError('UNKNOWN_MOUNT_POINT', `Unknown mount point: "${c.mountPoint}"`);
     }
+  }
+
+  if (manifest.updateUrl && (typeof manifest.updateUrl !== 'string' || !/^https?:\/\//i.test(manifest.updateUrl))) {
+    throw new PluginLoadError('INVALID_MANIFEST', 'Plugin updateUrl must be a valid HTTP/HTTPS URL');
   }
 
   for (const [path, content] of files.entries()) {
