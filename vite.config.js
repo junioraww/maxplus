@@ -2,11 +2,38 @@ import { defineConfig } from "vite";
 import { sveltekit } from "@sveltejs/kit/vite";
 import path from "path";
 
-// @ts-expect-error process is a nodejs global
 const host = process.env.TAURI_DEV_HOST;
 
-export default defineConfig(async () => ({
-  plugins: [sveltekit()],
+async function ensureDecoyAssets() {
+  try {
+    const fs = await import("node:fs");
+    const decoysJson = path.resolve("./src/lib/camouflage/decoys.json");
+    if (!fs.existsSync(decoysJson)) {
+      try {
+        const cp = await import("node:child_process");
+        cp.execSync("python3 tools/generate_decoy_icons.py", { stdio: "inherit" });
+      } catch {}
+      if (!fs.existsSync(decoysJson)) {
+        const fallback = {
+          icons: [{ index: 1, bg: "#181A20", fg: "#FFFFFF", accent: "#3B82F6", svg: "", png: "", svgContent: "<svg></svg>" }],
+          categories: {
+            calculator: [{ aliasIndex: 1, iconIndex: 1, label: "Калькулятор" }],
+            notes: [{ aliasIndex: 11, iconIndex: 1, label: "Заметки" }],
+            todo: [{ aliasIndex: 21, iconIndex: 1, label: "Задачи" }],
+            converter: [{ aliasIndex: 31, iconIndex: 1, label: "Конвертер" }]
+          }
+        };
+        fs.mkdirSync(path.dirname(decoysJson), { recursive: true });
+        fs.writeFileSync(decoysJson, JSON.stringify(fallback, null, 2));
+      }
+    }
+  } catch {}
+}
+
+export default defineConfig(async () => {
+  await ensureDecoyAssets();
+  return {
+    plugins: [sveltekit()],
   resolve: {
     alias: {
       $components: path.resolve("./src/components"),
@@ -65,4 +92,5 @@ export default defineConfig(async () => ({
       ignored: ["**/src-tauri/**"],
     },
   },
-}));
+};
+});

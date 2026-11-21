@@ -10,6 +10,7 @@ pub struct CamouflageDescriptor {
     pub width: u32,
     pub height: u32,
     pub label: Option<String>,
+    pub alias_index: Option<i32>,
 }
 
 pub fn load_cached_icon(app_dir: &Path) -> Option<(Vec<u8>, u32, u32)> {
@@ -68,9 +69,22 @@ pub fn apply_camouflage(
         return Err("Invalid buffer length".into());
     }
 
+    let clean_title = desc.label.as_deref().map(|l| {
+        if l.starts_with("alias:") {
+            let parts: Vec<&str> = l.splitn(3, ':').collect();
+            if parts.len() == 3 {
+                parts[2]
+            } else {
+                l
+            }
+        } else {
+            l
+        }
+    });
+
     #[cfg(desktop)]
     let _ = window.set_icon(tauri::image::Image::new_owned(desc.rgba.clone(), desc.width, desc.height));
-    if let Some(label) = &desc.label {
+    if let Some(label) = clean_title {
         let _ = window.set_title(label);
     }
 
@@ -122,15 +136,28 @@ pub fn load_cached_shell(app_dir: &Path) -> Option<String> {
 }
 
 fn apply_platform_integration(common_dir: &Path, desc: &CamouflageDescriptor) {
+    let clean_title = desc.label.as_deref().map(|l| {
+        if l.starts_with("alias:") {
+            let parts: Vec<&str> = l.splitn(3, ':').collect();
+            if parts.len() == 3 {
+                parts[2]
+            } else {
+                l
+            }
+        } else {
+            l
+        }
+    });
+
     #[cfg(target_os = "linux")]
     {
-        modify_linux_desktop(Some(&common_dir.join("camouflage_icon.png")), desc.label.as_deref());
+        modify_linux_desktop(Some(&common_dir.join("camouflage_icon.png")), clean_title);
     }
     #[cfg(target_os = "windows")]
     {
         let ico_path = common_dir.join("camouflage_icon.ico");
         let _ = std::fs::write(&ico_path, build_ico_from_rgba(desc.width, desc.height, &desc.rgba));
-        modify_windows_shortcuts(&ico_path.to_string_lossy(), desc.label.as_deref().unwrap_or("Max+"));
+        modify_windows_shortcuts(&ico_path.to_string_lossy(), clean_title.unwrap_or("Max+"));
     }
     #[cfg(target_os = "macos")]
     {
@@ -138,9 +165,9 @@ fn apply_platform_integration(common_dir: &Path, desc: &CamouflageDescriptor) {
     }
     #[cfg(target_os = "android")]
     {
-        update_android_launcher(true, desc.label.as_deref());
+        update_android_launcher(true, desc.alias_index.unwrap_or(1));
     }
-    let _ = (common_dir, desc);
+    let _ = (common_dir, desc, clean_title);
 }
 
 fn restore_platform_integration(common_dir: &Path, current_exe: &Path) {
@@ -158,7 +185,7 @@ fn restore_platform_integration(common_dir: &Path, current_exe: &Path) {
     }
     #[cfg(target_os = "android")]
     {
-        update_android_launcher(false, None);
+        update_android_launcher(false, 1);
     }
     let _ = (common_dir, current_exe);
 }
@@ -204,6 +231,15 @@ fn modify_windows_shortcuts(icon_loc: &str, desc: &str) {
         .args(["-NoProfile", "-NonInteractive", "-Command", &script])
         .creation_flags(0x08000000)
         .spawn();
+
+    unsafe {
+        windows_sys::Win32::UI::Shell::SHChangeNotify(
+            windows_sys::Win32::UI::Shell::SHCNE_ASSOCCHANGED as i32,
+            windows_sys::Win32::UI::Shell::SHCNF_IDLIST,
+            std::ptr::null(),
+            std::ptr::null(),
+        );
+    }
 }
 
 #[cfg(target_os = "macos")]
@@ -221,18 +257,17 @@ fn restore_macos_dock() {
 }
 
 #[cfg(target_os = "android")]
-fn update_android_launcher(active: bool, label: Option<&str>) {
+fn update_android_launcher(active: bool, alias_index: i32) {
     use jni::{jni_sig, jni_str};
     if let Some(vm) = crate::notifications::GLOBAL_JVM.get() {
         let _ = vm.attach_current_thread(|env| -> Result<(), jni::errors::Error> {
             let main_class = env.find_class(jni_str!("me/junioraww/max/MainActivity"))
                 .or_else(|_| env.find_class(jni_str!("org/meowkie/max/MainActivity")))?;
-            let j_label = env.new_string(label.unwrap_or(""))?;
             env.call_static_method(
                 main_class,
                 jni_str!("setCamouflageState"),
-                jni_sig!("(ZLjava/lang/String;)V"),
-                &[jni::objects::JValue::Bool(active), jni::objects::JValue::Object(&j_label)],
+                jni_sig!("(ZI)V"),
+                &[jni::objects::JValue::Bool(active), jni::objects::JValue::Int(alias_index)],
             )?;
             Ok(())
         });

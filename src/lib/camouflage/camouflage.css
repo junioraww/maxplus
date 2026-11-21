@@ -14,6 +14,10 @@
   user-select: none;
   -webkit-user-select: none;
   box-sizing: border-box;
+  padding-top: max(var(--safe-top, 0px), env(safe-area-inset-top, 0px));
+  padding-bottom: max(var(--safe-bottom, 0px), env(safe-area-inset-bottom, 0px));
+  padding-left: max(var(--safe-left, 0px), env(safe-area-inset-left, 0px));
+  padding-right: max(var(--safe-right, 0px), env(safe-area-inset-right, 0px));
 }
 
 .camo-root.preview-mode {
@@ -65,8 +69,8 @@
 
 .floating-preview-close {
   position: fixed;
-  top: max(16px, env(safe-area-inset-top));
-  right: 16px;
+  top: calc(16px + max(var(--safe-top, 0px), env(safe-area-inset-top, 0px)));
+  right: calc(16px + max(var(--safe-right, 0px), env(safe-area-inset-right, 0px)));
   width: 40px;
   height: 40px;
   border-radius: 50%;
@@ -92,7 +96,7 @@
   display: flex;
   flex-direction: column;
   justify-content: flex-end;
-  padding: 16px;
+  padding: 12px 16px;
   box-sizing: border-box;
   max-width: 420px;
   width: 100%;
@@ -164,13 +168,13 @@
   grid-template-rows: repeat(5, minmax(0, 1fr));
   gap: var(--camo-gap, 10px);
   width: 100%;
-  height: min(60vh, 440px);
+  height: min(54vh, 400px);
   flex-shrink: 0;
 }
 
 .calc-grid.has-sci {
   grid-template-rows: repeat(6, minmax(0, 1fr));
-  height: min(68vh, 500px);
+  height: min(60vh, 450px);
 }
 
 .btn {
@@ -221,7 +225,7 @@
   min-height: 0;
   display: flex;
   flex-direction: column;
-  padding: 20px 16px;
+  padding: 14px 16px;
   max-width: 520px;
   width: 100%;
   margin: 0 auto;

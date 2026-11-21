@@ -80,7 +80,7 @@
             android:targetActivity=".MainActivity"
             android:icon="@mipmap/ic_decoy_1"
             android:roundIcon="@mipmap/ic_decoy_1"
-            android:label="Калькулятор"
+            android:label="@string/decoy_label_1"
             android:enabled="false"
             android:exported="true">
             <intent-filter>
@@ -88,8 +88,554 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity-alias>
-        
-        <receiver
+
+        <activity-alias
+            android:name=".MainActivityDecoy2"
+            android:targetActivity=".MainActivity"
+            android:icon="@mipmap/ic_decoy_2"
+            android:roundIcon="@mipmap/ic_decoy_2"
+            android:label="@string/decoy_label_2"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name=".MainActivityDecoy3"
+            android:targetActivity=".MainActivity"
+            android:icon="@mipmap/ic_decoy_3"
+            android:roundIcon="@mipmap/ic_decoy_3"
+            android:label="@string/decoy_label_3"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name=".MainActivityDecoy4"
+            android:targetActivity=".MainActivity"
+            android:icon="@mipmap/ic_decoy_4"
+            android:roundIcon="@mipmap/ic_decoy_4"
+            android:label="@string/decoy_label_4"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name=".MainActivityDecoy5"
+            android:targetActivity=".MainActivity"
+            android:icon="@mipmap/ic_decoy_5"
+            android:roundIcon="@mipmap/ic_decoy_5"
+            android:label="@string/decoy_label_5"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name=".MainActivityDecoy6"
+            android:targetActivity=".MainActivity"
+            android:icon="@mipmap/ic_decoy_6"
+            android:roundIcon="@mipmap/ic_decoy_6"
+            android:label="@string/decoy_label_6"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name=".MainActivityDecoy7"
+            android:targetActivity=".MainActivity"
+            android:icon="@mipmap/ic_decoy_7"
+            android:roundIcon="@mipmap/ic_decoy_7"
+            android:label="@string/decoy_label_7"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name=".MainActivityDecoy8"
+            android:targetActivity=".MainActivity"
+            android:icon="@mipmap/ic_decoy_8"
+            android:roundIcon="@mipmap/ic_decoy_8"
+            android:label="@string/decoy_label_8"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name=".MainActivityDecoy9"
+            android:targetActivity=".MainActivity"
+            android:icon="@mipmap/ic_decoy_9"
+            android:roundIcon="@mipmap/ic_decoy_9"
+            android:label="@string/decoy_label_9"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name=".MainActivityDecoy10"
+            android:targetActivity=".MainActivity"
+            android:icon="@mipmap/ic_decoy_10"
+            android:roundIcon="@mipmap/ic_decoy_10"
+            android:label="@string/decoy_label_10"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name=".MainActivityDecoy11"
+            android:targetActivity=".MainActivity"
+            android:icon="@mipmap/ic_decoy_1"
+            android:roundIcon="@mipmap/ic_decoy_1"
+            android:label="@string/decoy_label_11"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name=".MainActivityDecoy12"
+            android:targetActivity=".MainActivity"
+            android:icon="@mipmap/ic_decoy_2"
+            android:roundIcon="@mipmap/ic_decoy_2"
+            android:label="@string/decoy_label_12"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name=".MainActivityDecoy13"
+            android:targetActivity=".MainActivity"
+            android:icon="@mipmap/ic_decoy_3"
+            android:roundIcon="@mipmap/ic_decoy_3"
+            android:label="@string/decoy_label_13"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name=".MainActivityDecoy14"
+            android:targetActivity=".MainActivity"
+            android:icon="@mipmap/ic_decoy_4"
+            android:roundIcon="@mipmap/ic_decoy_4"
+            android:label="@string/decoy_label_14"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name=".MainActivityDecoy15"
+            android:targetActivity=".MainActivity"
+            android:icon="@mipmap/ic_decoy_5"
+            android:roundIcon="@mipmap/ic_decoy_5"
+            android:label="@string/decoy_label_15"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name=".MainActivityDecoy16"
+            android:targetActivity=".MainActivity"
+            android:icon="@mipmap/ic_decoy_6"
+            android:roundIcon="@mipmap/ic_decoy_6"
+            android:label="@string/decoy_label_16"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name=".MainActivityDecoy17"
+            android:targetActivity=".MainActivity"
+            android:icon="@mipmap/ic_decoy_7"
+            android:roundIcon="@mipmap/ic_decoy_7"
+            android:label="@string/decoy_label_17"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name=".MainActivityDecoy18"
+            android:targetActivity=".MainActivity"
+            android:icon="@mipmap/ic_decoy_8"
+            android:roundIcon="@mipmap/ic_decoy_8"
+            android:label="@string/decoy_label_18"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name=".MainActivityDecoy19"
+            android:targetActivity=".MainActivity"
+            android:icon="@mipmap/ic_decoy_9"
+            android:roundIcon="@mipmap/ic_decoy_9"
+            android:label="@string/decoy_label_19"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name=".MainActivityDecoy20"
+            android:targetActivity=".MainActivity"
+            android:icon="@mipmap/ic_decoy_10"
+            android:roundIcon="@mipmap/ic_decoy_10"
+            android:label="@string/decoy_label_20"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name=".MainActivityDecoy21"
+            android:targetActivity=".MainActivity"
+            android:icon="@mipmap/ic_decoy_1"
+            android:roundIcon="@mipmap/ic_decoy_1"
+            android:label="@string/decoy_label_21"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name=".MainActivityDecoy22"
+            android:targetActivity=".MainActivity"
+            android:icon="@mipmap/ic_decoy_2"
+            android:roundIcon="@mipmap/ic_decoy_2"
+            android:label="@string/decoy_label_22"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name=".MainActivityDecoy23"
+            android:targetActivity=".MainActivity"
+            android:icon="@mipmap/ic_decoy_3"
+            android:roundIcon="@mipmap/ic_decoy_3"
+            android:label="@string/decoy_label_23"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name=".MainActivityDecoy24"
+            android:targetActivity=".MainActivity"
+            android:icon="@mipmap/ic_decoy_4"
+            android:roundIcon="@mipmap/ic_decoy_4"
+            android:label="@string/decoy_label_24"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name=".MainActivityDecoy25"
+            android:targetActivity=".MainActivity"
+            android:icon="@mipmap/ic_decoy_5"
+            android:roundIcon="@mipmap/ic_decoy_5"
+            android:label="@string/decoy_label_25"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name=".MainActivityDecoy26"
+            android:targetActivity=".MainActivity"
+            android:icon="@mipmap/ic_decoy_6"
+            android:roundIcon="@mipmap/ic_decoy_6"
+            android:label="@string/decoy_label_26"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name=".MainActivityDecoy27"
+            android:targetActivity=".MainActivity"
+            android:icon="@mipmap/ic_decoy_7"
+            android:roundIcon="@mipmap/ic_decoy_7"
+            android:label="@string/decoy_label_27"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name=".MainActivityDecoy28"
+            android:targetActivity=".MainActivity"
+            android:icon="@mipmap/ic_decoy_8"
+            android:roundIcon="@mipmap/ic_decoy_8"
+            android:label="@string/decoy_label_28"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name=".MainActivityDecoy29"
+            android:targetActivity=".MainActivity"
+            android:icon="@mipmap/ic_decoy_9"
+            android:roundIcon="@mipmap/ic_decoy_9"
+            android:label="@string/decoy_label_29"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name=".MainActivityDecoy30"
+            android:targetActivity=".MainActivity"
+            android:icon="@mipmap/ic_decoy_10"
+            android:roundIcon="@mipmap/ic_decoy_10"
+            android:label="@string/decoy_label_30"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name=".MainActivityDecoy31"
+            android:targetActivity=".MainActivity"
+            android:icon="@mipmap/ic_decoy_1"
+            android:roundIcon="@mipmap/ic_decoy_1"
+            android:label="@string/decoy_label_31"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name=".MainActivityDecoy32"
+            android:targetActivity=".MainActivity"
+            android:icon="@mipmap/ic_decoy_2"
+            android:roundIcon="@mipmap/ic_decoy_2"
+            android:label="@string/decoy_label_32"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name=".MainActivityDecoy33"
+            android:targetActivity=".MainActivity"
+            android:icon="@mipmap/ic_decoy_3"
+            android:roundIcon="@mipmap/ic_decoy_3"
+            android:label="@string/decoy_label_33"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name=".MainActivityDecoy34"
+            android:targetActivity=".MainActivity"
+            android:icon="@mipmap/ic_decoy_4"
+            android:roundIcon="@mipmap/ic_decoy_4"
+            android:label="@string/decoy_label_34"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name=".MainActivityDecoy35"
+            android:targetActivity=".MainActivity"
+            android:icon="@mipmap/ic_decoy_5"
+            android:roundIcon="@mipmap/ic_decoy_5"
+            android:label="@string/decoy_label_35"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name=".MainActivityDecoy36"
+            android:targetActivity=".MainActivity"
+            android:icon="@mipmap/ic_decoy_6"
+            android:roundIcon="@mipmap/ic_decoy_6"
+            android:label="@string/decoy_label_36"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name=".MainActivityDecoy37"
+            android:targetActivity=".MainActivity"
+            android:icon="@mipmap/ic_decoy_7"
+            android:roundIcon="@mipmap/ic_decoy_7"
+            android:label="@string/decoy_label_37"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name=".MainActivityDecoy38"
+            android:targetActivity=".MainActivity"
+            android:icon="@mipmap/ic_decoy_8"
+            android:roundIcon="@mipmap/ic_decoy_8"
+            android:label="@string/decoy_label_38"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name=".MainActivityDecoy39"
+            android:targetActivity=".MainActivity"
+            android:icon="@mipmap/ic_decoy_9"
+            android:roundIcon="@mipmap/ic_decoy_9"
+            android:label="@string/decoy_label_39"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name=".MainActivityDecoy40"
+            android:targetActivity=".MainActivity"
+            android:icon="@mipmap/ic_decoy_10"
+            android:roundIcon="@mipmap/ic_decoy_10"
+            android:label="@string/decoy_label_40"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+                <receiver
           android:name=".ReplyReceiver"
           android:exported="false">
           <intent-filter>

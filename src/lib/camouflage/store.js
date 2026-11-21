@@ -4,12 +4,14 @@ import { hashString, generateProceduralTheme, renderIconToRgba } from "./engine"
 import { getCurrentAccount, decryptHardware } from "$lib/stores/accounts";
 import { retrieveHardwareKey } from "$lib/services/hardwareSecurity";
 import { openLockScreen } from "$lib/stores/lockScreen";
+import decoysData from "./decoys.json";
 
 const DEFAULT_SETTINGS = {
   enabled: false,
   appType: "calculator",
   pin: "0000",
   seed: 133742,
+  aliasIndex: 1,
   appLabel: "Калькулятор",
   autoLock: true
 };
@@ -47,16 +49,39 @@ function getHardwareSeed() {
   return hashString(metrics);
 }
 
+export function pickDecoyVariant(appType, seed = Date.now()) {
+  if (decoysData?.categories?.[appType]?.length) {
+    const items = decoysData.categories[appType];
+    const index = Math.abs(seed) % items.length;
+    const chosen = items[index];
+    const iconObj = decoysData.icons?.find(ic => ic.index === chosen.iconIndex) || decoysData.icons?.[0];
+    return {
+      aliasIndex: chosen.aliasIndex,
+      appLabel: chosen.label,
+      iconIndex: chosen.iconIndex,
+      iconSvg: iconObj?.svgContent || null
+    };
+  }
+  return null;
+}
+
 export function generateNewSeed() {
   const base = getHardwareSeed();
   return (base ^ hashString(String(Date.now()))) >>> 0;
 }
 
-export async function syncCamouflageWindowIcon(theme, label) {
+export async function syncCamouflageWindowIcon(theme, label, aliasIndex) {
   if (typeof window === "undefined" || !theme?.iconSvg) return;
   try {
     const { rgba, pngBase64, width, height } = await renderIconToRgba(theme.iconSvg, 128);
-    await invoke("set_camouflage_icon", { rgba, pngBase64, width, height, label });
+    await invoke("set_camouflage_icon", {
+      rgba,
+      pngBase64,
+      width,
+      height,
+      label: label || null,
+      aliasIndex: Number(aliasIndex) || 1
+    });
   } catch {}
 }
 
@@ -94,7 +119,7 @@ export async function loadCamouflageSettings() {
       }
       if (merged.enabled) {
         isCamouflageLocked.set(true);
-        syncCamouflageWindowIcon(theme, merged.appLabel).catch(() => {});
+        syncCamouflageWindowIcon(theme, merged.appLabel, merged.aliasIndex).catch(() => {});
       }
       return merged;
     }
@@ -106,12 +131,22 @@ export async function saveCamouflageSettings(newSettings) {
   const current = get(camouflageSettings);
   const updated = { ...current, ...newSettings };
   const theme = generateProceduralTheme(updated.seed);
+
+  const variant = pickDecoyVariant(updated.appType, updated.seed);
+  if (variant) {
+    updated.appLabel = variant.appLabel;
+    updated.aliasIndex = variant.aliasIndex;
+    if (variant.iconSvg) {
+      theme.iconSvg = variant.iconSvg;
+    }
+  }
+
   updated.proceduralTheme = theme;
   camouflageSettings.set(updated);
   activeProceduralTheme.set(theme);
   await invoke("common_store_save", { store: "camouflage", data: updated }).catch(() => {});
   if (updated.enabled) {
-    await syncCamouflageWindowIcon(theme, updated.appLabel);
+    await syncCamouflageWindowIcon(theme, updated.appLabel, updated.aliasIndex);
   } else if (current.enabled && !updated.enabled) {
     await restoreCamouflageWindowIcon();
   }
@@ -121,7 +156,7 @@ export function lockCamouflage() {
   const s = get(camouflageSettings);
   if (s.enabled) {
     isCamouflageLocked.set(true);
-    syncCamouflageWindowIcon(get(activeProceduralTheme), s.appLabel).catch(() => {});
+    syncCamouflageWindowIcon(get(activeProceduralTheme), s.appLabel, s.aliasIndex).catch(() => {});
   }
 }
 

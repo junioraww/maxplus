@@ -1,5 +1,5 @@
 <script>
-  import { onDestroy, onMount, createEventDispatcher } from "svelte";
+  import { onDestroy, onMount, createEventDispatcher, tick } from "svelte";
   import { get } from "svelte/store";
   import { invoke } from "@tauri-apps/api/core";
   import { listen } from "@tauri-apps/api/event";
@@ -241,11 +241,12 @@
     authenticatingHardware = false;
     isBiometryActive = false;
     const totalFiles = await getDatabaseFilesCount(currentAccount.id).catch(() => 0);
-    migrationTotal = totalFiles;
+    migrationTotal = Math.max(totalFiles, 1);
     migrationCurrent = 0;
     migrationPercent = 0;
     migrationPhase = "encrypt";
     migrating = true;
+    await tick();
 
     try {
       const preview = await buildPreviewData();
@@ -254,7 +255,7 @@
       await setHardwareEncryption(currentAccount.id, rawKey, true, preview);
       migrationCurrent = migrationTotal;
       migrationPercent = 100;
-      await new Promise(r => setTimeout(r, 400));
+      await new Promise(r => setTimeout(r, 700));
       isSettingUpHardware = false;
       migrating = false;
       goBack();
@@ -295,18 +296,19 @@
     authenticatingHardware = false;
     isBiometryActive = false;
     const totalFiles = await getDatabaseFilesCount(currentAccount.id).catch(() => 0);
-    migrationTotal = totalFiles;
+    migrationTotal = Math.max(totalFiles, 1);
     migrationCurrent = 0;
     migrationPercent = 0;
     migrationPhase = "decrypt";
     migrating = true;
+    await tick();
 
     try {
       await setHardwareEncryption(currentAccount.id, key, false, null);
       await deleteHardwareKey(currentAccount.id);
       migrationCurrent = migrationTotal;
       migrationPercent = 100;
-      await new Promise(r => setTimeout(r, 400));
+      await new Promise(r => setTimeout(r, 700));
       isDisablingHardware = false;
       migrating = false;
       goBack();
@@ -463,19 +465,21 @@
           repeat = null;
 
           const target = account || await getCurrentAccount();
+          currentAccount = target;
           const totalFiles = await getDatabaseFilesCount(target.id).catch(() => 0);
-          migrationTotal = totalFiles;
+          migrationTotal = Math.max(totalFiles, 1);
           migrationCurrent = 0;
           migrationPercent = 0;
           migrationPhase = "encrypt";
           migrating = true;
+          await tick();
 
           try {
             const preview = await buildPreviewData();
             await setEncryption(target.id, str, true, preview);
             migrationCurrent = migrationTotal;
             migrationPercent = 100;
-            await new Promise(r => setTimeout(r, 400));
+            await new Promise(r => setTimeout(r, 700));
             goBack();
           } catch (e) {
             migrating = false;
@@ -485,18 +489,20 @@
       }
     } else if (mode === "disable") {
       const target = account || await getCurrentAccount();
+      currentAccount = target;
       const totalFiles = await getDatabaseFilesCount(target.id).catch(() => 0);
-      migrationTotal = totalFiles;
+      migrationTotal = Math.max(totalFiles, 1);
       migrationCurrent = 0;
       migrationPercent = 0;
       migrationPhase = "decrypt";
       migrating = true;
+      await tick();
 
       try {
         await setEncryption(target.id, str, false, null);
         migrationCurrent = migrationTotal;
         migrationPercent = 100;
-        await new Promise(r => setTimeout(r, 400));
+        await new Promise(r => setTimeout(r, 700));
         goBack();
       } catch {
         migrating = false;
@@ -563,7 +569,11 @@
         {migrationPhase === "encrypt" ? "Шифрование данных" : "Расшифровка данных"}
       </h2>
       <p class="migration-subtitle">
-        {migrationCurrent} из {migrationTotal} файлов ({migrationPercent}%)
+        {#if migrationTotal > 1}
+          {migrationCurrent} из {migrationTotal} файлов ({migrationPercent}%)
+        {:else}
+          {migrationPhase === "encrypt" ? "Шифрование базы данных..." : "Расшифровка базы данных..."}
+        {/if}
       </p>
       <div class="progress-track">
         <div class="progress-bar" style="width: {migrationPercent}%"></div>
@@ -924,6 +934,6 @@
     height: 100%;
     background: #6366f1;
     border-radius: 999px;
-    transition: width 0.15s ease-out;
+    transition: width 0.3s ease-out;
   }
 </style>
