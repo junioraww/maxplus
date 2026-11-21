@@ -1,4 +1,5 @@
 <script>
+  import { onMount, onDestroy } from "svelte";
   import { fade } from "svelte/transition";
   import { goto } from "$app/navigation";
   import Session, {
@@ -12,8 +13,27 @@
     stopTraceAndExport,
   } from "$lib/services/trace";
   import { safeAvatarDebugStore } from "$lib/services/AvatarSyncManager";
+  import { registerBackHandler } from "$lib/utils/backButton";
+  import ProxySettingsPage from "../../../routes/settings/proxy/+page.svelte";
 
   let visualMarker = sessionGet("visualMarker");
+  let isProxyOpen = false;
+  let unregisterBack = null;
+
+  onMount(() => {
+    unregisterBack = registerBackHandler(() => {
+      if (isProxyOpen) {
+        isProxyOpen = false;
+      } else {
+        sessionSet("devSettings", false);
+      }
+      return true;
+    });
+  });
+
+  onDestroy(() => {
+    if (unregisterBack) unregisterBack();
+  });
 
   const swapVisualMarker = () => {
     visualMarker = !visualMarker;
@@ -70,6 +90,16 @@
     <div class="group">
       <div
         on:click={() => {
+          isProxyOpen = true;
+        }}
+        class="button"
+      >
+        <a>Прокси и сеть</a>
+      </div>
+    </div>
+    <div class="group">
+      <div
+        on:click={() => {
           sessionSet("devSettings", false);
           openSettingsPage("logs");
         }}
@@ -90,6 +120,12 @@
       </div>
     </div>
   </div>
+
+  {#if isProxyOpen}
+    <div class="proxy-modal-overlay">
+      <ProxySettingsPage isTab={false} onClose={() => (isProxyOpen = false)} />
+    </div>
+  {/if}
 </div>
 
 <style>
@@ -153,5 +189,14 @@
     cursor: pointer;
     align-items: center;
     justify-content: center;
+  }
+
+  .proxy-modal-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    background: #17181c;
+    display: flex;
+    flex-direction: column;
   }
 </style>

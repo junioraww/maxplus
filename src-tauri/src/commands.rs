@@ -227,6 +227,12 @@ pub async fn init(
         state.client.set_token(t).await;
     }
 
+    if let Ok(settings) = crate::proxy_manager::fetch_proxy_config().await {
+        if settings.vpn_bypass_enabled {
+            let _ = crate::vpn_bypass::apply_physical_network_route();
+        }
+    }
+
     let r = state
         .client
         .connect(identity, true)
@@ -409,18 +415,12 @@ pub async fn get_system_trace_info(app: AppHandle) -> Result<Value, String> {
         .map(|a| a.ip().to_string())
         .unwrap_or_else(|_| "127.0.0.1".to_string());
 
-    let public_ip = match reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(3))
-        .build()
-    {
-        Ok(client) => match client.get("https://api.ipify.org?format=json").send().await {
-            Ok(resp) => resp
-                .json::<Value>()
-                .await
-                .ok()
-                .and_then(|v| v["ip"].as_str().map(|s| s.to_string())),
-            Err(_) => None,
-        },
+    let public_ip = match rumax::shared_http_client().get("https://api.ipify.org?format=json").send().await {
+        Ok(resp) => resp
+            .json::<Value>()
+            .await
+            .ok()
+            .and_then(|v| v["ip"].as_str().map(|s| s.to_string())),
         Err(_) => None,
     };
 
@@ -511,6 +511,76 @@ pub async fn ext_api_request(
     };
 
     Ok(ExtApiResponse { status, ok, data })
+}
+
+#[derive(serde::Serialize)]
+pub struct ProxyHttpResponse {
+    pub status: u16,
+    pub ok: bool,
+    pub status_text: String,
+    pub headers: HashMap<String, String>,
+    pub body_base64: String,
+}
+
+#[tauri::command]
+pub async fn proxy_http_request(
+    url: String,
+    method: Option<String>,
+    headers: Option<HashMap<String, String>>,
+    body: Option<Vec<u8>>,
+) -> Result<ProxyHttpResponse, String> {
+    let client = rumax::shared_http_client();
+    let method_str = method.unwrap_or_else(|| "GET".to_string()).to_uppercase();
+    let req_method = match method_str.as_str() {
+        "GET" => reqwest::Method::GET,
+        "POST" => reqwest::Method::POST,
+        "PUT" => reqwest::Method::PUT,
+        "DELETE" => reqwest::Method::DELETE,
+        "PATCH" => reqwest::Method::PATCH,
+        "HEAD" => reqwest::Method::HEAD,
+        _ => reqwest::Method::GET,
+    };
+
+    let mut req = client.request(req_method, &url);
+    if let Some(hdrs) = headers {
+        for (k, v) in hdrs {
+            if let (Ok(name), Ok(val)) = (
+                reqwest::header::HeaderName::from_bytes(k.as_bytes()),
+                reqwest::header::HeaderValue::from_str(&v)
+                    .or_else(|_| reqwest::header::HeaderValue::from_bytes(v.as_bytes())),
+            ) {
+                req = req.header(name, val);
+            }
+        }
+    }
+
+    if let Some(b) = body {
+        req = req.body(b);
+    }
+
+    let res = req.send().await.map_err(|e| e.to_string())?;
+    let status = res.status().as_u16();
+    let ok = res.status().is_success();
+    let status_text = res.status().canonical_reason().unwrap_or("").to_string();
+
+    let mut resp_headers = HashMap::new();
+    for (k, v) in res.headers() {
+        if let Ok(v_str) = v.to_str() {
+            resp_headers.insert(k.as_str().to_string(), v_str.to_string());
+        }
+    }
+
+    let bytes = res.bytes().await.map_err(|e| e.to_string())?;
+    use base64::Engine;
+    let body_base64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
+
+    Ok(ProxyHttpResponse {
+        status,
+        ok,
+        status_text,
+        headers: resp_headers,
+        body_base64,
+    })
 }
 
 #[tauri::command]
@@ -728,9 +798,9 @@ pub fn get_system_insets() -> SystemInsets {
                     jni::jni_sig!("()[I"),
                     &[],
                 )?.l()?;
-                let int_arr = jni::objects::JIntArray::from(arr_obj);
+                let int_arr = env.cast_local::<jni::objects::JIntArray>(arr_obj)?;
                 let mut buf = [0i32; 4];
-                env.get_int_array_region(&int_arr, 0, &mut buf)?;
+                int_arr.get_region(env, 0, &mut buf)?;
                 Ok(SystemInsets {
                     top: buf[0],
                     bottom: buf[1],
