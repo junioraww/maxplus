@@ -15,7 +15,7 @@
   import { activeCall, patchCallState, resetCallState, CALL_PHASE, CALL_MODE, openCallSheet } from '$lib/stores/calls';
   import { CallService } from '$lib/services/CallService';
   import Avatar from '$components/main/Avatar.svelte';
-  import Session, { openChat } from '$lib/stores/session';
+  import Session, { openChat, openProfileModal } from '$lib/stores/session';
   import { showAlert } from '$lib/utils/alert';
 
   let contactsMap = {};
@@ -412,6 +412,24 @@
 
   function handleGlobalClick() {
     if (activeMenuCallId !== null) activeMenuCallId = null;
+  }
+
+  function handleOpenChat(chatId, peerId) {
+    activeMenuCallId = null;
+    if (chatId) {
+      openChat(chatId);
+    } else if (peerId) {
+      openProfileModal({ userId: peerId });
+    }
+  }
+
+  function handleCallAction(call) {
+    if (!call) return;
+    if (call.peerId) {
+      promptStartCall(call.peerId, call.name, call.avatar, call.isVideo ? 'video' : 'audio');
+    } else if (call.chatId) {
+      handleOpenChat(call.chatId, null);
+    }
   }
 </script>
 

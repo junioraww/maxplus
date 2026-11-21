@@ -2,7 +2,7 @@
   import { createEventDispatcher } from "svelte";
   import Avatar from "$components/main/Avatar.svelte";
   import Signature from "$components/main/Signature.svelte";
-  import Session from "$lib/stores/session";
+  import Session, { openProfile } from "$lib/stores/session";
   import { currentUser } from "$lib/stores/api";
   import { getChatSettings } from "$lib/stores/messages";
   import { getContact } from "$lib/stores/contacts";
@@ -58,11 +58,11 @@
   function handleProfileClick() {
     if (!chat) return;
     if (chat.id === 0) {
-      $Session.profile = { userId: $currentUser, chatId: 0 };
+      openProfile({ userId: $currentUser, chatId: 0 });
     } else if (chat.type === "DIALOG") {
-      $Session.profile = { userId: avatarUserId, chatId: chat.id };
+      openProfile({ userId: avatarUserId, chatId: chat.id });
     } else {
-      $Session.profile = { chatId: chat.id };
+      openProfile({ chatId: chat.id });
     }
   }
 

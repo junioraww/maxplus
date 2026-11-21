@@ -10,6 +10,8 @@
   import { registerBackHandler } from "$lib/utils/backButton";
 
   export let onClose = () => {};
+  export let close = null;
+  export let setBackHandler = null;
   export let onApplySuccess = () => {};
   export let onUploadStandard = null;
   export let onSelectAvatar = null;
@@ -17,6 +19,22 @@
   export let initialUid = "";
   export let targetId = null;
   export let isChat = false;
+
+  function handleClose() {
+    if (onClose) onClose();
+    if (close) close();
+  }
+
+  $: if (setBackHandler) {
+    setBackHandler(() => {
+      if (selectedAvatar) {
+        selectedAvatar = null;
+        return false;
+      }
+      handleClose();
+      return false;
+    });
+  }
 
   let activeTab = initialTab;
   let avatars = [];
@@ -31,15 +49,6 @@
   let selectedAvatar = null;
   let previewLoading = false;
   let directPreviewData = null;
-
-  const unregisterBack = registerBackHandler(() => {
-    if (selectedAvatar) {
-      selectedAvatar = null;
-      return false;
-    }
-    onClose();
-    return false;
-  });
 
   let searchTimeout = null;
   $: {
@@ -72,13 +81,27 @@
     }
   }
 
+  let unregisterBack = null;
   onMount(() => {
+    if (!setBackHandler) {
+      unregisterBack = registerBackHandler(() => {
+        if (selectedAvatar) {
+          selectedAvatar = null;
+          return false;
+        }
+        handleClose();
+        return false;
+      });
+    }
     if (initialUid) {
       checkDirectPreview(initialUid);
     }
     fetchCatalog();
     return () => {
-      unregisterBack();
+      if (typeof unregisterBack === "function") {
+        unregisterBack();
+        unregisterBack = null;
+      }
       if (searchTimeout) clearTimeout(searchTimeout);
     };
   });
@@ -192,7 +215,7 @@
   }
 </script>
 
-<div class="avatar-modal-backdrop" transition:fade={{ duration: 160 }} on:click={onClose}>
+<div class="avatar-modal-backdrop" on:click={handleClose}>
   <div class="avatar-modal-sheet" on:click|stopPropagation>
     <div class="sheet-drag-handle"></div>
 
@@ -201,7 +224,7 @@
         <h2 class="modal-title">Аватарка профиля</h2>
         <span class="modal-subtitle">Установка фото или анимированной аватарки</span>
       </div>
-      <button type="button" class="close-btn" on:click={onClose} aria-label="Закрыть">
+      <button type="button" class="close-btn" on:click={handleClose} aria-label="Закрыть">
         <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2.2" fill="none">
           <line x1="18" y1="6" x2="6" y2="18" />
           <line x1="6" y1="6" x2="18" y2="18" />
@@ -499,44 +522,26 @@
 
 <style>
   .avatar-modal-backdrop {
-    position: fixed;
-    inset: 0;
-    z-index: var(--z-picker, 110);
-    background: rgba(0, 0, 0, 0.82);
+    width: 100%;
+    max-width: min(94vw, 560px);
     display: flex;
-    align-items: flex-end;
+    align-items: center;
     justify-content: center;
-    touch-action: pan-y;
-  }
-
-  @media (min-width: 640px) {
-    .avatar-modal-backdrop {
-      align-items: center;
-      padding: 20px;
-    }
+    box-sizing: border-box;
   }
 
   .avatar-modal-sheet {
     width: 100%;
-    max-width: 560px;
-    max-height: 88dvh;
+    max-height: min(85dvh, 700px);
     background: rgba(22, 22, 28, 0.96);
     border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 24px 24px 0 0;
-    box-shadow: 0 -8px 40px rgba(0, 0, 0, 0.6);
+    border-radius: 24px;
+    box-shadow: 0 16px 50px rgba(0, 0, 0, 0.7);
     display: flex;
     flex-direction: column;
     overflow: hidden;
     position: relative;
     padding-bottom: max(16px, calc(16px + var(--safe-bottom, 0px)));
-  }
-
-  @media (min-width: 640px) {
-    .avatar-modal-sheet {
-      border-radius: 24px;
-      max-height: 80dvh;
-      box-shadow: 0 16px 50px rgba(0, 0, 0, 0.7);
-    }
   }
 
   .sheet-drag-handle {

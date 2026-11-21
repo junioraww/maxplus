@@ -1,74 +1,53 @@
 <script>
   import { goto } from "$app/navigation";
   import { onMount, createEventDispatcher } from "svelte";
-  import { swipeToClose } from "$components/ChatWindow/swipeToClose";
   import { registerBackHandler } from "$lib/utils/backButton";
 
   export let title = "";
   export let from = "/?card=settings";
   export let isTab = false;
   export let canSwipe = () => true;
+  $: void canSwipe;
   export let onBeforeClose = null;
   export let onClose = null;
 
   const dispatch = createEventDispatcher();
 
-  let currentDragX = 0;
-  let isSwiping = false;
-  let isClosingBySwipe = false;
   let isClosing = false;
-  let isOpening = true;
 
   function finishClose() {
     dispatch("close");
     if (onClose) {
       onClose();
-    } else if (from) {
-      goto(from);
+    } else if (!isTab && from) {
+      if (typeof window !== "undefined" && window.location.pathname.startsWith("/settings")) {
+        goto(from);
+      }
     }
   }
 
   export async function close() {
-    if (isClosing || isClosingBySwipe) return;
+    if (isClosing) return;
     if (onBeforeClose) {
       await onBeforeClose();
     }
     isClosing = true;
-    setTimeout(() => {
-      finishClose();
-    }, 260);
-  }
-
-  function handleSwipeClose() {
-    if (onBeforeClose) {
-      onBeforeClose();
-    }
     finishClose();
   }
 
-  function handleAnimationEnd() {
-    isOpening = false;
-  }
-
   onMount(() => {
-    const timer = setTimeout(() => {
-      isOpening = false;
-    }, 280);
-
     let unregisterBack = null;
-    if (!isTab) {
+    if (!isTab && !onClose && typeof window !== "undefined" && window.location.pathname.startsWith("/settings")) {
       unregisterBack = registerBackHandler(() => {
         close();
+        return true;
       });
     }
 
     return () => {
-      clearTimeout(timer);
       if (unregisterBack) unregisterBack();
     };
   });
-
-  $: swipeStyle = isSwiping && currentDragX > 0 ? `transform: translate3d(${currentDragX}px, 0, 0);` : "";
 </script>
 
 {#if isTab}
@@ -76,23 +55,7 @@
     <slot {close} />
   </div>
 {:else}
-  <div
-    class="settings-page-wrapper"
-    class:opening={isOpening}
-    class:swiping={isSwiping}
-    class:closing={isClosing || isClosingBySwipe}
-    style={swipeStyle}
-    on:animationend={handleAnimationEnd}
-    use:swipeToClose={{
-      canSwipe: () => !isClosing && !isClosingBySwipe && canSwipe(),
-      onClose: handleSwipeClose,
-      onStateChange: (state) => {
-        currentDragX = state.currentDragX;
-        isSwiping = state.isSwipingChat;
-        isClosingBySwipe = state.isClosingBySwipe;
-      },
-    }}
-  >
+  <div class="settings-page-wrapper">
     <div class="settings-topbar">
       <button class="settings-back-btn" on:click={close} aria-label="Назад">
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
@@ -144,28 +107,6 @@
     overflow: hidden;
     background-color: var(--bg-app);
     color: var(--text-primary);
-    will-change: transform;
-    transform: translate3d(0, 0, 0);
-    box-shadow: -4px 0 25px rgba(0, 0, 0, 0.45);
-  }
-
-  .settings-page-wrapper.opening {
-    animation: slideInRight 0.26s cubic-bezier(0.25, 1, 0.5, 1) forwards;
-  }
-
-  .settings-page-wrapper.swiping {
-    transition: none !important;
-    animation: none !important;
-  }
-
-  .settings-page-wrapper.closing {
-    transform: translate3d(100%, 0, 0) !important;
-    transition: transform 0.26s cubic-bezier(0.32, 0.72, 0, 1) !important;
-    animation: none !important;
-  }
-
-  .settings-page-wrapper:not(.opening):not(.swiping):not(.closing) {
-    transition: transform 0.24s cubic-bezier(0.32, 0.72, 0, 1);
   }
 
   .settings-topbar {
@@ -177,7 +118,7 @@
     background: var(--bg-topbar);
     border-bottom: 1px solid var(--border-subtle);
     flex-shrink: 0;
-    z-index: 10;
+    z-index: var(--z-header, 4);
   }
 
   .settings-back-btn {
@@ -230,15 +171,6 @@
     -webkit-overflow-scrolling: touch;
     display: flex;
     flex-direction: column;
-    padding-bottom: var(--safe-bottom, 0px);
-  }
-
-  @keyframes slideInRight {
-    from {
-      transform: translate3d(100%, 0, 0);
-    }
-    to {
-      transform: translate3d(0, 0, 0);
-    }
+    padding-bottom: max(16px, calc(16px + var(--safe-bottom, 0px)));
   }
 </style>

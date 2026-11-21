@@ -1,8 +1,8 @@
 <script>
-  import { set as sessionSet } from "$lib/stores/session";
+  import { openDevSettings } from "$lib/stores/session";
 
   const open = () => {
-    sessionSet("devSettings", true);
+    openDevSettings();
   };
 </script>
 
@@ -23,13 +23,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    border-radius: 100px 0 0 100px;
+    border-radius: 20px 0 0 20px;
     cursor: pointer;
-    transition: padding 0.1s;
-    font-size: 16px;
-  }
-
-  .open-dev:hover {
-    padding-right: 5px;
   }
 </style>

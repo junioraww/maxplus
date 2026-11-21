@@ -6,6 +6,8 @@
   import { normalizePhone } from "$lib/utils/text";
 
   export let initialPhone = "+";
+  export let close = null;
+  export let setBackHandler = null;
 
   const dispatch = createEventDispatcher();
 
@@ -70,7 +72,7 @@
   }
 </script>
 
-<BottomSheet title="Новый контакт" maxHeight="85vh" on:close={() => dispatch("close")}>
+<BottomSheet title="Новый контакт" maxHeight="85vh" {close} {setBackHandler} on:close={() => { dispatch("close"); if (close) close(); }}>
   <div class="sheet-content">
     <div class="avatar-preview">
       <div class="avatar-circle">

@@ -772,7 +772,7 @@
     width: 100vw;
     height: 100vh;
     background: #000000;
-    z-index: var(--z-modal, 7);
+    z-index: var(--z-viewer, 100);
     overflow: hidden;
     scrollbar-width: none;
     -ms-overflow-style: none;

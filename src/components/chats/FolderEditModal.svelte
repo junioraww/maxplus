@@ -9,11 +9,13 @@
   import Avatar from "$components/main/Avatar.svelte";
   import Signature from "$components/main/Signature.svelte";
   import { showAlert } from "$lib/utils/alert";
-  import { showConfirm, closeFolderEdit } from "$lib/stores/session";
+  import { showConfirm } from "$lib/stores/session";
   import { registerBackHandler } from "$lib/utils/backButton";
 
   export let folder = null;
   export let allChats = [];
+  export let close = null;
+  export let setBackHandler = null;
 
   const dispatch = createEventDispatcher();
 
@@ -40,21 +42,40 @@
     { id: 10, label: "Боты", desc: "Чат-боты", icon: "/icons/bot.svg" },
   ];
 
-  const unregisterBack = registerBackHandler(() => {
-    if (searchQuery) {
-      searchQuery = "";
-      return false;
-    }
-    if (view === "picker") {
-      view = "main";
-      return false;
-    }
-    dismissFolderEditor();
-    return true;
-  });
+  let unregisterBack = null;
+
+  $: if (setBackHandler) {
+    setBackHandler(() => {
+      if (searchQuery) {
+        searchQuery = "";
+        return false;
+      }
+      if (view === "picker") {
+        view = "main";
+        return false;
+      }
+      dismissFolderEditor();
+      return true;
+    });
+  }
+
+  if (typeof window !== "undefined" && !setBackHandler) {
+    unregisterBack = registerBackHandler(() => {
+      if (searchQuery) {
+        searchQuery = "";
+        return false;
+      }
+      if (view === "picker") {
+        view = "main";
+        return false;
+      }
+      dismissFolderEditor();
+      return true;
+    });
+  }
 
   onDestroy(() => {
-    unregisterBack();
+    if (unregisterBack) unregisterBack();
   });
 
   function handleKeyDown(e) {
@@ -217,7 +238,7 @@
 
   function dismissFolderEditor() {
     dispatch("close");
-    closeFolderEdit();
+    if (close) close();
   }
 
   function resolveDialogPartnerId(chat) {

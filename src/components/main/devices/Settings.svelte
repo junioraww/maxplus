@@ -2,7 +2,10 @@
   import { save } from "@tauri-apps/plugin-dialog";
   import { invoke } from "@tauri-apps/api/core";
   import { fade } from "svelte/transition";
-  import { onMount, onDestroy } from "svelte";
+  import { onMount, onDestroy, createEventDispatcher } from "svelte";
+
+  export let onClose = null;
+  const dispatch = createEventDispatcher();
 
   import { set as sessionSet } from "$lib/stores/session";
   import { generateDevice } from "$lib/utils/device";
@@ -203,7 +206,8 @@
   });
 
   function close() {
-    sessionSet("devicesPage", false);
+    if (onClose) onClose();
+    dispatch("close");
   }
 </script>
 

@@ -3,6 +3,8 @@
   import { flip } from "svelte/animate";
   import { quintOut } from "svelte/easing";
   import { getMountStore } from "$lib/plugins/mount-registry";
+  import { openDropout } from "$lib/services/layerManager";
+  import FolderTabContextMenu from "$components/chats/FolderTabContextMenu.svelte";
 
   export let folders = [];
   export let activeFolder = null;
@@ -70,11 +72,6 @@
     updateIndicator();
   });
 
-  let contextMenuFolder = null;
-  let contextMenuPos = { x: 0, y: 0 };
-  let isContextMenuOpen = false;
-  let menuOpenedAt = 0;
-
   function openContextMenu(folder, targetOrRect) {
     clearTimeout(longPressTimer);
     longPressTimer = null;
@@ -87,26 +84,26 @@
       rect = el?.getBoundingClientRect?.() || null;
     }
     const fallback = rect || { left: 16, bottom: 44, width: 60 };
-    contextMenuFolder = folder;
-    contextMenuPos = {
-      x: fallback.left + fallback.width / 2,
-      y: fallback.bottom + 6,
-    };
-    menuOpenedAt = Date.now();
-    isContextMenuOpen = true;
+    const x = fallback.left + fallback.width / 2;
+    const y = fallback.bottom + 6;
+
+    openDropout(
+      FolderTabContextMenu,
+      {
+        folder,
+        onAction: (action) => handleMenuAction(action, folder),
+      },
+      {
+        coords: {
+          x: Math.max(12, Math.min(x - 85, (typeof window !== "undefined" ? window.innerWidth : 360) - 185)),
+          y,
+        },
+      }
+    );
   }
 
-  function closeContextMenu(e) {
-    if (Date.now() - menuOpenedAt < 250) return;
-    if (e && e.stopPropagation) e.stopPropagation();
-    isContextMenuOpen = false;
-    contextMenuFolder = null;
-  }
-
-  function handleMenuAction(action) {
-    if (!contextMenuFolder) return;
-    const folder = contextMenuFolder;
-    closeContextMenu();
+  function handleMenuAction(action, folder) {
+    if (!folder) return;
     if (action === "edit") {
       dispatch("editFolder", folder);
     } else if (action === "read") {
@@ -117,7 +114,7 @@
   }
 
   function selectFolder(folder) {
-    if (isEditing || isLongPress || tabsMouseHasMoved || isContextMenuOpen) return;
+    if (isEditing || isLongPress || tabsMouseHasMoved) return;
     activeFolder = folder;
     dispatch("folderChange", folder);
   }
@@ -321,35 +318,6 @@
   {/if}
 </div>
 
-{#if isContextMenuOpen && contextMenuFolder}
-  <div
-    class="folder-context-backdrop"
-    on:pointerdown|stopPropagation|preventDefault={closeContextMenu}
-    on:click|stopPropagation={closeContextMenu}
-  ></div>
-  <div
-    class="folder-context-menu"
-    style="top: {contextMenuPos.y}px; left: {Math.max(12, Math.min(contextMenuPos.x - 85, (typeof window !== 'undefined' ? window.innerWidth : 360) - 185))}px;"
-  >
-    {#if contextMenuFolder.id !== 0 && contextMenuFolder.id !== "all.chat.folder"}
-      <button class="folder-menu-item" on:click={() => handleMenuAction("edit")}>
-        <img src="/icons/edit.svg" width="18" height="18" alt="" />
-        <span>Изменить</span>
-      </button>
-    {/if}
-    <button class="folder-menu-item" on:click={() => handleMenuAction("read")}>
-      <img src="/icons/status-read.svg" width="18" height="18" alt="" />
-      <span>Прочитать все</span>
-    </button>
-    {#if contextMenuFolder.id !== 0 && contextMenuFolder.id !== "all.chat.folder"}
-      <button class="folder-menu-item danger" on:click={() => handleMenuAction("delete")}>
-        <img src="/icons/trash.svg" width="18" height="18" alt="" />
-        <span>Удалить</span>
-      </button>
-    {/if}
-  </div>
-{/if}
-
 <style>
   .tabs-container {
     display: flex;
@@ -530,68 +498,4 @@
     flex-shrink: 0;
   }
 
-  .folder-context-backdrop {
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    z-index: var(--z-dropdown-backdrop, 50);
-    background: rgba(0, 0, 0, 0.45);
-    backdrop-filter: blur(2px);
-    -webkit-backdrop-filter: blur(2px);
-  }
-
-  .folder-context-menu {
-    position: fixed;
-    z-index: var(--z-dropdown, 60);
-    min-width: 170px;
-    background: var(--bg-surface-elevated, #232429);
-    border-radius: 12px;
-    padding: 6px 0;
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
-    border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
-    display: flex;
-    flex-direction: column;
-    animation: menu-appear 0.15s ease-out;
-  }
-
-  @keyframes menu-appear {
-    from {
-      opacity: 0;
-      transform: scale(0.95);
-    }
-    to {
-      opacity: 1;
-      transform: scale(1);
-    }
-  }
-
-  .folder-menu-item {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    width: 100%;
-    padding: 10px 16px;
-    border: none;
-    background: transparent;
-    color: var(--text-primary, #ffffff);
-    font-size: 14px;
-    font-weight: 500;
-    cursor: pointer;
-    text-align: left;
-    transition: background-color 0.15s ease;
-  }
-
-  .folder-menu-item:hover {
-    background: rgba(255, 255, 255, 0.08);
-  }
-
-  .folder-menu-item.danger {
-    color: var(--danger, #ff4d4f);
-  }
-
-  .folder-menu-item img {
-    flex-shrink: 0;
-  }
 </style>

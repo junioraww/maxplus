@@ -27,6 +27,8 @@
   export let onDelete = null;
   export let onDownloaded = null;
   export let onError = null;
+  export let close = null;
+  export let setBackHandler = null;
 
   const dispatch = createEventDispatcher();
 
@@ -263,10 +265,21 @@
   let lastTapY = 0;
   let animFrameId = null;
 
-  const unregisterBack = registerBackHandler(() => {
-    requestClose();
-    return false;
-  });
+  let unregisterBack = null;
+
+  $: if (setBackHandler) {
+    setBackHandler(() => {
+      requestClose();
+      return false;
+    });
+  }
+
+  if (typeof window !== "undefined" && !setBackHandler) {
+    unregisterBack = registerBackHandler(() => {
+      requestClose();
+      return false;
+    });
+  }
 
   function getOriginCoreEl() {
     if (!originEl) return null;
@@ -367,7 +380,10 @@
     }
     stopAnim();
     stopSlideAnim();
-    unregisterBack();
+    if (typeof unregisterBack === "function") {
+      unregisterBack();
+      unregisterBack = null;
+    }
   });
 
   function getActiveOriginRect() {
@@ -480,6 +496,7 @@
             core.style.opacity = "";
           }
           dispatch("close");
+          if (close) close();
         }, 280);
       });
     } else {
@@ -490,6 +507,7 @@
       heroStyle = `transform: translate3d(calc(-50% + ${x}px), calc(-50% + ${y}px), 0) scale(${scale}); opacity: 0; border-radius: 0px; transition: opacity 210ms ease-out;`;
       setTimeout(() => {
         dispatch("close");
+        if (close) close();
       }, 215);
     }
   }

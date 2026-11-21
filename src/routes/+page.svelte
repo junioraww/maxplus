@@ -20,7 +20,7 @@
   import { panelSlider } from "$lib/utils/panelSlider";
 
   import * as Caching from "$lib/utils/caching";
-  import Session, { openChat, closeSettingsPage } from "$lib/stores/session";
+  import Session, { openChat } from "$lib/stores/session";
   import { currentUser } from "$lib/stores/api";
   import { getCurrentAccount, getAccounts, setCurrentAccount } from "$lib/stores/accounts";
   import { openLockScreen } from "$lib/stores/lockScreen";
@@ -37,34 +37,7 @@
     notifications: Notifications,
   };
 
-  const SETTINGS_LOADERS = {
-    profile: () => import("./settings/profile/+page.svelte"),
-    notifications: () => Promise.resolve({ default: Notifications }),
-    folders: () => import("./settings/folders/+page.svelte"),
-    privacy: () => import("./settings/privacy/+page.svelte"),
-    lock: () => import("./settings/lock/+page.svelte"),
-    two_factor: () => import("./settings/two_factor/+page.svelte"),
-    dictionary: () => import("./settings/e2e/dictionary/+page.svelte"),
-    logs: () => Promise.resolve({ default: Logs }),
-    about: () => import("./settings/about/+page.svelte"),
-    sessions: () => import("./settings/sessions/+page.svelte"),
-    plugins: () => import("./settings/plugins/+page.svelte"),
-    advanced: () => import("./settings/advanced/+page.svelte"),
-    proxy: () => import("./settings/proxy/+page.svelte"),
-  };
 
-  let activeSettingsComponent = null;
-
-  $: {
-    const pageKey = $Session.settingsPage;
-    if (pageKey && SETTINGS_LOADERS[pageKey]) {
-      SETTINGS_LOADERS[pageKey]().then((mod) => {
-        activeSettingsComponent = mod.default;
-      });
-    } else {
-      activeSettingsComponent = null;
-    }
-  }
 
   $: pages = ($panelConfig.items || [])
     .filter((id) => CATALOG[id] && COMPONENT_MAP[id])
@@ -304,14 +277,13 @@
 <div
   class="container"
   class:has-chat={$Session.openedChats.length > 0}
-  class:has-overlay={!!$Session.settingsPage}
 >
   <div
     class="panels-slider"
     use:panelSlider={{
       getPagesCount: () => pages.length,
       getActive: () => active,
-      canDrag: () => pages.length > 1 && $Session.openedChats.length === 0 && !$Session.settingsPage,
+      canDrag: () => pages.length > 1 && $Session.openedChats.length === 0,
       ignoreSelector: ".no-panel-drag, [data-no-panel-drag]",
       onPrepare: () => ensureNeighborCardsMounted(active),
       onDragStart: handleDragStart,
@@ -346,15 +318,6 @@
   {#each $Session.openedChats as chatId (chatId)}
     <ChatWindow {chatId}/>
   {/each}
-
-  {#if $Session.settingsPage && activeSettingsComponent}
-    <div class="settings-page-overlay">
-      <svelte:component
-        this={activeSettingsComponent}
-        onClose={closeSettingsPage}
-      />
-    </div>
-  {/if}
 </div>
 
 <Panel on:open={openCard} {pages} {active} />
@@ -370,8 +333,7 @@
     overflow: hidden;
   }
 
-  .container.has-chat,
-  .container.has-overlay {
+  .container.has-chat {
     z-index: var(--z-chat, 3);
   }
 
@@ -403,13 +365,4 @@
     transition: transform 0.28s cubic-bezier(0.25, 1, 0.5, 1);
   }
 
-  .settings-page-overlay {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    z-index: var(--z-chat, 3);
-    overflow: hidden;
-  }
 </style>

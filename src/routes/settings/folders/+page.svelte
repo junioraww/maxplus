@@ -10,19 +10,12 @@
   export let onClose = null;
   export let isTab = false;
 
-  let isOpening = true;
-  let isClosing = false;
   let activeMenuFolderId = null;
   let activeMenuFolder = null;
   let menuPosition = { top: 0, right: 16 };
   let creatingFolder = false;
   let draggingFolderIndex = null;
   let unregisterBack = null;
-
-  let touchStartX = 0;
-  let touchStartY = 0;
-  let swipeTranslateX = 0;
-  let isSwiping = false;
 
   const RECOMMENDED_PRESETS = [
     {
@@ -70,11 +63,7 @@
 
   function handleBack(e) {
     if (e && e.stopPropagation) e.stopPropagation();
-    if (isClosing) return;
-    isClosing = true;
-    setTimeout(() => {
-      finishClose();
-    }, 200);
+    finishClose();
   }
 
   function handleKeyDown(e) {
@@ -89,23 +78,18 @@
   }
 
   onMount(() => {
-    const timer = setTimeout(() => {
-      isOpening = false;
-    }, 260);
-
     if (!isTab) {
       unregisterBack = registerBackHandler(() => {
         if (activeMenuFolderId) {
           closeMenu();
           return false;
         }
-        handleBack();
+        finishClose();
         return true;
       });
     }
 
     return () => {
-      clearTimeout(timer);
       if (unregisterBack) unregisterBack();
     };
   });
@@ -113,43 +97,6 @@
   onDestroy(() => {
     if (unregisterBack) unregisterBack();
   });
-
-  function onTouchStart(e) {
-    if (e.touches.length !== 1) return;
-    touchStartX = e.touches[0].clientX;
-    touchStartY = e.touches[0].clientY;
-    swipeTranslateX = 0;
-    isSwiping = false;
-  }
-
-  function onTouchMove(e) {
-    if (e.touches.length !== 1) return;
-    const currentX = e.touches[0].clientX;
-    const currentY = e.touches[0].clientY;
-    const dx = currentX - touchStartX;
-    const dy = currentY - touchStartY;
-
-    if (!isSwiping) {
-      if (dx > 12 && dx > Math.abs(dy) * 1.5 && touchStartX < 70) {
-        isSwiping = true;
-      }
-    }
-
-    if (isSwiping && dx > 0) {
-      swipeTranslateX = dx;
-    }
-  }
-
-  function onTouchEnd() {
-    if (isSwiping) {
-      if (swipeTranslateX > 90) {
-        handleBack();
-      } else {
-        swipeTranslateX = 0;
-      }
-      isSwiping = false;
-    }
-  }
 
   function openCreateFolder() {
     openFolderEdit({ isNew: true });
@@ -270,15 +217,7 @@
 
 <svelte:window on:keydown={handleKeyDown} on:click={handleWindowClick} />
 
-<div
-  class="folders-screen"
-  class:screen-opening={isOpening}
-  class:screen-closing={isClosing}
-  on:touchstart={onTouchStart}
-  on:touchmove={onTouchMove}
-  on:touchend={onTouchEnd}
-  style={swipeTranslateX > 0 ? `transform: translate3d(${swipeTranslateX}px, 0, 0); transition: none;` : ""}
->
+<div class="folders-screen">
   <header class="toolbar">
     <button type="button" class="icon-btn" on:click={handleBack} aria-label="Назад">
       <img src="/icons/arrow.svg" alt="" class="back-arrow" />
@@ -447,37 +386,6 @@
     background-color: var(--bg-app, #17181c);
     color: var(--text-primary, #ffffff);
     z-index: var(--z-panel, 2);
-    will-change: transform, opacity;
-  }
-
-  .folders-screen.screen-opening {
-    animation: pushInScreen 0.26s cubic-bezier(0.1, 0.9, 0.2, 1) forwards;
-  }
-
-  .folders-screen.screen-closing {
-    animation: popOutScreen 0.22s cubic-bezier(0.4, 0, 1, 1) forwards;
-  }
-
-  @keyframes pushInScreen {
-    from {
-      opacity: 0;
-      transform: translate3d(30px, 0, 0);
-    }
-    to {
-      opacity: 1;
-      transform: translate3d(0, 0, 0);
-    }
-  }
-
-  @keyframes popOutScreen {
-    from {
-      opacity: 1;
-      transform: translate3d(0, 0, 0);
-    }
-    to {
-      opacity: 0;
-      transform: translate3d(30px, 0, 0);
-    }
   }
 
   .toolbar {

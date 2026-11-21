@@ -8,7 +8,7 @@
     hideMyDeletedMessages,
   } from "$lib/stores/deletionSettings";
   import { disableMaxPlusAvatars } from "$lib/stores/avatarSettings";
-  import { set as sessionSet } from "$lib/stores/session";
+  import { set as sessionSet, openDevSettings } from "$lib/stores/session";
   import { callRecordSettings } from "$lib/services/callRecorder";
   import { getCurrentAccount, setAccountMeta } from "$lib/stores/accounts";
   import API from "$lib/stores/api";
@@ -319,7 +319,7 @@
     <div class="settings-card">
       <div
         class="link-row"
-        on:click={() => sessionSet("devSettings", true)}
+        on:click={openDevSettings}
       >
         <div class="toggle-info">
           <span class="toggle-title">Настройки отладки</span>

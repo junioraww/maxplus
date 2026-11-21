@@ -31,6 +31,7 @@
   import Session, {
     openChat,
     closeChat,
+    openProfile,
     get as sessionGet,
   } from "$lib/stores/session";
   import { handleReaction } from "$components/ChatWindow/actions";
@@ -1462,9 +1463,9 @@
   function openSettings() {
     const targetChatId = chat?.id ?? chatId;
     if (chat?.type === "DIALOG" || (!chat && avatarUserId)) {
-      $Session.profile = { chatId: targetChatId, userId: avatarUserId, view: "settings" };
+      openProfile({ chatId: targetChatId, userId: avatarUserId, view: "settings" });
     } else if (targetChatId) {
-      $Session.profile = { chatId: targetChatId, view: "settings" };
+      openProfile({ chatId: targetChatId, view: "settings" });
     }
   }
 
