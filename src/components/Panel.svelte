@@ -427,7 +427,7 @@
   .option-wrapper.dragging {
     opacity: 0.5;
     transform: scale(1.08);
-    z-index: 100;
+    z-index: var(--z-dropdown, 6);
   }
 
   @keyframes shake {

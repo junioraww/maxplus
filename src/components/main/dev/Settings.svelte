@@ -194,7 +194,7 @@
   .proxy-modal-overlay {
     position: fixed;
     inset: 0;
-    z-index: 1000;
+    z-index: var(--z-modal, 7);
     background: #17181c;
     display: flex;
     flex-direction: column;

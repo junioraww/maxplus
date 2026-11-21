@@ -25,7 +25,7 @@
 
   import { escapeHtml } from "$lib/utils/text";
   import { debounce } from "$lib/utils/debounce";
-  import Session, { openChat, openStartConversation, openContactsModal, openFolderEdit, openContactAdd } from "$lib/stores/session";
+  import Session, { openChat, openStartConversation, openContactsModal, openFolderEdit, openContactAdd, showConfirm } from "$lib/stores/session";
   import ChatsListSearchScreen from "$components/main/ChatsListSearchScreen.svelte";
   import API, {
     currentSessionCalls,
@@ -163,8 +163,72 @@
     clearSelection();
   }
 
-  function pinSelected() {
+  async function pinSelected() {
+    if (!selectedChats.size) {
+      clearSelection();
+      return;
+    }
+    const currentFolder = localFolders[activeFolderIndex] || localFolders[0];
+    if (!currentFolder) {
+      clearSelection();
+      return;
+    }
+    const currentFavs = Array.from(currentFolder.favorites || []).map(Number);
+    const selectedIds = Array.from(selectedChats).map(Number);
+
+    const allPinned = selectedIds.every((id) => currentFavs.includes(id));
+    let nextFavs;
+    if (allPinned) {
+      nextFavs = currentFavs.filter((id) => !selectedIds.includes(id));
+    } else {
+      nextFavs = [...currentFavs];
+      for (const id of selectedIds) {
+        if (!nextFavs.includes(id)) {
+          nextFavs.push(id);
+        }
+      }
+    }
+
+    const updatedFolder = {
+      ...currentFolder,
+      favorites: nextFavs,
+    };
+
+    localFolders[activeFolderIndex] = updatedFolder;
+    localFolders = [...localFolders];
+
+    try {
+      if ($API?.updateFolder) {
+        await $API.updateFolder(updatedFolder);
+      }
+    } catch (err) {
+      console.error(err);
+    }
     clearSelection();
+  }
+
+  async function removeFolderInteractive(folderId) {
+    const f = localFolders.find((x) => String(x.id) === String(folderId));
+    if (!f || f.id === 0 || f.id === "all.chat.folder") return;
+    const ok = await showConfirm({
+      title: "Удалить папку?",
+      message: `Удалить папку «${f.title}»? Чаты останутся на месте.`,
+      confirmText: "Удалить",
+      isDangerous: true,
+    });
+    if (!ok) return;
+    try {
+      if ($API?.deleteFolders) {
+        await $API.deleteFolders([folderId]);
+      }
+    } catch (e) {
+      console.error(e);
+    }
+    localFolders = localFolders.filter((x) => String(x.id) !== String(folderId));
+    if (activeFolder && String(activeFolder.id) === String(folderId)) {
+      activeFolder = localFolders[0] || null;
+      activeFolderIndex = 0;
+    }
   }
 
   function addToFolder() {
@@ -273,15 +337,20 @@
       const filtered = chats.filter((chat) =>
         chatMatchesFolder(chat, folder, $currentUser, contactIdSet)
       );
+      const folderFavs = (folder.favorites || []).map(Number);
       filtered.sort((a, b) => {
-        const pinA = a.favIndex || (a.pinned ? 1 : 0);
-        const pinB = b.favIndex || (b.pinned ? 1 : 0);
+        const pinA = folderFavs.includes(Number(a.id)) ? 2 : (a.favIndex || (a.pinned ? 1 : 0));
+        const pinB = folderFavs.includes(Number(b.id)) ? 2 : (b.favIndex || (b.pinned ? 1 : 0));
         if (pinA !== pinB) return pinB - pinA;
         const timeA = a.lastMessage?.time || a.lastEventTime || 0;
         const timeB = b.lastMessage?.time || b.lastEventTime || 0;
         return timeB - timeA;
       });
-      result.set(folder.id, filtered);
+      const decorated = filtered.map((c) => ({
+        ...c,
+        isPinned: folderFavs.includes(Number(c.id)) || Boolean(c.favIndex || c.pinned),
+      }));
+      result.set(folder.id, decorated);
     }
     return result;
   })();
@@ -387,10 +456,11 @@
 
   function onFolderTabClick(event) {
     const folder = event.detail;
-    const index = localFolders.findIndex((f) => f.id === folder.id);
+    if (!folder) return;
+    const index = localFolders.findIndex((f) => String(f.id) === String(folder.id));
     if (index !== -1 && index !== activeFolderIndex) {
       activeFolderIndex = index;
-      activeFolder = folder;
+      activeFolder = localFolders[index];
       folderDragOffset = 0;
       isFolderDragging = false;
       isFolderSnapping = true;
@@ -547,7 +617,7 @@
       on:deleteFolder={(e) => {
         const folder = e.detail;
         if (!folder || folder.id === 0 || folder.id === "all.chat.folder") return;
-        deleteFolder(folder.id);
+        removeFolderInteractive(folder.id);
       }}
       on:addFolder={() => {
         openFolderEdit({ isNew: true });

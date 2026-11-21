@@ -1352,8 +1352,13 @@ export default class MobileApi extends BaseAPI {
     return [];
   }
 
+  async createFolder(folder) {
+    const generatedId = folder?.id || (typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `f_${Date.now()}_${Math.random().toString(36).slice(2)}`);
+    return await this.updateFolder({ ...folder, id: generatedId });
+  }
+
   async updateFolder(folder) {
-    const stringId = String(folder.id);
+    const stringId = String(folder?.id || (typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `f_${Date.now()}_${Math.random().toString(36).slice(2)}`));
     const normalized = {
       ...folder,
       id: stringId,
