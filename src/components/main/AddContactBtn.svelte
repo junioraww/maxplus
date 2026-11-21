@@ -1,16 +1,17 @@
 <script>
-  import Session from "$lib/stores/session";
+  import { openContactAdd } from "$lib/stores/session";
 
   const addContact = () => {
-    $Session.contactModal = true;
+    openContactAdd();
   };
 </script>
 
 <div
   class="add-contact top-btn animated-panel"
-  role="switch"
-  class:visible={$Session.contactModal}
+  role="button"
+  tabindex="0"
   on:click={addContact}
+  on:keydown={(e) => e.key === "Enter" && addContact()}
 >
   <svg width="20" height="20" viewBox="0 0 20 20">
     <rect x="9" y="4" width="2" height="12" fill="white" />

@@ -4,7 +4,7 @@
   import { currentUser } from "$lib/stores/api";
   import { getContact } from "$lib/stores/contacts";
   import { getAttachText, getSystemText } from "$lib/utils/attachs";
-  import Session, { openChat, get as sessionGet } from "$lib/stores/session";
+  import Session, { openChat, openProfile, get as sessionGet } from "$lib/stores/session";
   import { getChat } from "$lib/stores/messages";
   import { isChatMuted } from "$lib/utils/notifications";
   import { getMountStore } from "$lib/plugins/mount-registry";
@@ -194,6 +194,7 @@
     if (selectionMode) {
       dispatch("toggle", chat);
     } else {
+      dispatch("open", chat);
       openChat(chat.id);
     }
   }
@@ -220,11 +221,11 @@
         return;
       }
       if (chat.id === 0) {
-        $Session.profile = { userId: $currentUser, chatId: 0 };
+        openProfile({ userId: $currentUser, chatId: 0 });
       } else if (chat.type === "DIALOG") {
-        $Session.profile = { userId: peerId, chatId: chat.id };
+        openProfile({ userId: peerId, chatId: chat.id });
       } else {
-        $Session.profile = { chatId: chat.id };
+        openProfile({ chatId: chat.id });
       }
     }}
   >

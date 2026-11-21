@@ -16,14 +16,6 @@
   import { add as addLog } from '$lib/stores/logs';
   import { showAlert } from '$lib/utils/alert';
   import Alerts from '$components/main/Alerts.svelte';
-  import ProfileModal from "$components/ProfileModal.svelte";
-  import AvatarGalleryModal from "$components/main/AvatarGalleryModal.svelte";
-  import SafeAvatarPickerModal from "$components/main/SafeAvatarPickerModal.svelte";
-  import ContactsModal from "$components/main/ContactsModal.svelte";
-  import QRScannerModal from "$components/main/QRScannerModal.svelte";
-  import DevSettings from "$components/main/dev/Settings.svelte";
-  import ContactAddBottomSheet from "$components/main/ContactAddBottomSheet.svelte";
-  import DevicesSettings from "$components/main/devices/Settings.svelte";
   import GlobalMediaPlayer from "$components/media/GlobalMediaPlayer.svelte";
   import MediaPlaylistModal from "$components/media/MediaPlaylistModal.svelte";
   import VideoCropModal from "$components/media/VideoCropModal.svelte";
@@ -32,24 +24,14 @@
   import StoryComposerModal from "$components/stories/StoryComposerModal.svelte";
   import { isStoryComposerOpen, closeStoryComposer, activeStoryViewer } from "$lib/stores/stories";
   import { videoCropState, closeVideoCropModal } from "$lib/stores/videoCrop";
-  import { activeCall, CALL_PHASE, callSheetModal } from '$lib/stores/calls';
+  import { activeCall, CALL_PHASE } from '$lib/stores/calls';
   import CallScreen from '$components/calls/CallScreen.svelte';
   import FloatingCallBadge from '$components/calls/FloatingCallBadge.svelte';
-  import CallsSheetHost from '$components/calls/CallsSheetHost.svelte';
-  import FolderEditModal from '$components/chats/FolderEditModal.svelte';
-  import ConfirmModal from '$components/main/ConfirmModal.svelte';
-  import StartConversationScreen from "$components/main/StartConversationScreen.svelte";
+  import AppPortalHost from '$components/portal/AppPortalHost.svelte';
+  import { hasActiveLayers } from '$lib/services/layerManager';
   import { MediaPool } from "$lib/services/MediaPool";
 
-  import Session, {
-    closeAvatarGallery,
-    closeStartConversation,
-    closeContactsModal,
-    closeSafeAvatarPicker,
-    closeQrScanner,
-    closeFolderEdit,
-    closeConfirmModal
-  } from "$lib/stores/session";
+  import Session from "$lib/stores/session";
   import { initDeepLink } from "$lib/utils/deepLink";
   import { initProxyConfig } from "$lib/utils/proxyConfig";
   import { handleBackButton, registerBackHandler } from "$lib/utils/backButton";
@@ -248,16 +230,7 @@
   if (browser) window.alert = showAlert;
 
   $: isAnyModalActive = Boolean(
-    $Session?.profile ||
-    $Session?.avatarGallery ||
-    $Session?.contactModal ||
-    $Session?.contactsModal ||
-    $Session?.startConversationModal ||
-    $Session?.safeAvatarPicker ||
-    $Session?.qrScanner ||
-    $Session?.folderEdit ||
-    $Session?.confirmModal ||
-    Boolean($callSheetModal) ||
+    $hasActiveLayers ||
     $isStoryComposerOpen ||
     Boolean($activeStoryViewer) ||
     $videoCropState?.isOpen ||
@@ -265,10 +238,10 @@
   );
 
   $: shouldPauseMedia = Boolean(
+    $hasActiveLayers ||
     $lockScreenState ||
     $videoCropState?.isOpen ||
-    $isStoryComposerOpen ||
-    Boolean($callSheetModal)
+    $isStoryComposerOpen
   );
 
   $: if (browser) {
@@ -284,67 +257,6 @@
   }
 </script>
 
-{#if $Session.startConversationModal}
-  <StartConversationScreen on:close={() => closeStartConversation()} />
-{/if}
-
-{#if $Session.devSettings}
-  <DevSettings />
-{/if}
-
-{#if $Session.devicesPage}
-  <DevicesSettings />
-{/if}
-
-{#if $Session.profile}
-  <ProfileModal on:close={() => ($Session.profile = null)} />
-{/if}
-
-{#if $Session.contactModal}
-  <ContactAddBottomSheet on:close={() => ($Session.contactModal = false)} />
-{/if}
-
-{#if $Session.avatarGallery}
-  <AvatarGalleryModal
-    {...$Session.avatarGallery}
-    on:close={() => closeAvatarGallery()}
-  />
-{/if}
-
-{#if $Session.contactsModal}
-  <ContactsModal on:close={() => closeContactsModal()} />
-{/if}
-
-{#if $Session.safeAvatarPicker}
-  <SafeAvatarPickerModal
-    {...$Session.safeAvatarPicker}
-    onClose={() => closeSafeAvatarPicker()}
-  />
-{/if}
-
-{#if $Session.qrScanner}
-  <QRScannerModal
-    {...$Session.qrScanner}
-    onClose={() => closeQrScanner()}
-  />
-{/if}
-
-{#if $Session.folderEdit}
-  <FolderEditModal
-    folder={$Session.folderEdit.folder}
-    on:close={() => closeFolderEdit()}
-  />
-{/if}
-
-{#if $Session.confirmModal}
-  <ConfirmModal
-    {...$Session.confirmModal}
-    on:close={() => closeConfirmModal()}
-  />
-{/if}
-
-<CallsSheetHost />
-
 {#if isAuthRoute}
   <div class="auth-underlay" class:dark-underlay={$activeThemeId === "dark"}></div>
 {/if}
@@ -356,6 +268,8 @@
     </main>
   {/key}
 {/if}
+
+<AppPortalHost />
 
 {#if $activeCall.phase !== CALL_PHASE.IDLE}
   {#if !$activeCall.minimized}

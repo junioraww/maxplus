@@ -1,5 +1,5 @@
 <script>
-  import { createEventDispatcher, onDestroy } from "svelte";
+  import { createEventDispatcher, onMount, onDestroy } from "svelte";
   import { registerBackHandler } from "$lib/utils/backButton";
 
   export let title = "Подтверждение";
@@ -9,40 +9,67 @@
   export let isDangerous = true;
   export let onConfirm = null;
   export let onCancel = null;
+  export let close = null;
+  export let setBackHandler = null;
 
   const dispatch = createEventDispatcher();
   let isClosing = false;
+  let unregisterBack = null;
+
+  $: if (setBackHandler) {
+    setBackHandler(() => {
+      handleCancel();
+      return false;
+    });
+  }
+
+  onMount(() => {
+    if (!setBackHandler) {
+      unregisterBack = registerBackHandler(() => {
+        handleCancel();
+        return false;
+      });
+    }
+  });
+
+  onDestroy(() => {
+    if (unregisterBack) unregisterBack();
+  });
 
   function handleCancel() {
     if (isClosing) return;
     isClosing = true;
-    setTimeout(() => {
-      if (onCancel) onCancel();
-      dispatch("cancel");
-      dispatch("close");
-    }, 180);
+    if (onCancel) onCancel();
+    dispatch("cancel");
+    dispatch("close");
+    if (close) {
+      close(false);
+    } else {
+      setTimeout(() => {
+        isClosing = false;
+      }, 180);
+    }
   }
 
   function handleConfirm() {
     if (isClosing) return;
     isClosing = true;
-    setTimeout(() => {
-      if (onConfirm) onConfirm();
-      dispatch("confirm");
-      dispatch("close");
-    }, 180);
+    if (onConfirm) onConfirm();
+    dispatch("confirm");
+    dispatch("close");
+    if (close) {
+      close(true);
+    } else {
+      setTimeout(() => {
+        isClosing = false;
+      }, 180);
+    }
   }
-
-  const unregisterBack = registerBackHandler(() => {
-    handleCancel();
-    return false;
-  });
-
-  onDestroy(() => unregisterBack());
 </script>
 
 <div
   class="modal-backdrop"
+  class:is-portal-child={Boolean(setBackHandler || close)}
   class:modal-closing={isClosing}
   on:click={handleCancel}
   role="presentation"
@@ -68,10 +95,15 @@
 
 <style>
   .modal-backdrop {
-    position: fixed; inset: 0; background: rgba(0, 0, 0, 0.68);
+    position: fixed; inset: 0; background: transparent;
     z-index: var(--z-modal, 7); display: flex; justify-content: center; align-items: center;
     padding: 20px; box-sizing: border-box;
-    animation: modalFadeIn 0.18s cubic-bezier(0.2, 0.9, 0.3, 1) forwards;
+  }
+  .modal-backdrop.is-portal-child {
+    position: relative; inset: auto; z-index: auto; padding: 0;
+  }
+  .modal-backdrop.is-portal-child .modal-card {
+    animation: none;
   }
   .modal-backdrop.modal-closing {
     animation: modalFadeOut 0.18s cubic-bezier(0.4, 0, 1, 1) forwards;

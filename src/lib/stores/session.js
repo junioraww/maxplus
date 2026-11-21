@@ -2,22 +2,11 @@ import { writable, get as getStoreValue, readable } from "svelte/store";
 import API from "$lib/stores/api";
 import { saveChats, getChat } from "$lib/stores/messages";
 import { showAlert } from "$lib/utils/alert";
+import { openScreen, openDrawer, openSheet, openDialog, openViewer, dismissLayer } from "$lib/services/layerManager";
 
 const data = writable({
   activeChat: null,
   openedChats: [],
-  profile: null,
-  avatarGallery: null,
-  contactsModal: false,
-  safeAvatarPicker: null,
-  qrScanner: null,
-  folderEdit: null,
-  confirmModal: null,
-  contactModal: false,
-  loginModal: false,
-  devSettings: false,
-  devicesPage: false,
-  settingsPage: null,
   loaded: false,
 });
 
@@ -43,7 +32,6 @@ export const now = readable(Date.now(), (setVal) => {
 export async function openChat(chatId) {
   const currentData = getStoreValue(data) || {};
   const openedChats = Array.isArray(currentData.openedChats) ? currentData.openedChats : [];
-  const profile = currentData.profile;
 
   if (openedChats.findIndex(id => String(id) === String(chatId)) === -1) {
     const chatEntry = getChat(chatId);
@@ -63,13 +51,7 @@ export async function openChat(chatId) {
 
     data.update(s => ({
       ...s,
-      profile: null,
       openedChats: [ ...openedChats, chatId ]
-    }));
-  } else if (profile) {
-    data.update(s => ({
-      ...s,
-      profile: null
     }));
   }
 }
@@ -90,98 +72,265 @@ export function closeAllChats() {
   }));
 }
 
-export function openSettingsPage(pageId) {
-  data.update(current => {
-    if (current.settingsPage === pageId) {
-      return current;
+const SETTINGS_LOADERS = {
+  profile: () => import("../../routes/settings/profile/+page.svelte"),
+  notifications: () => import("../../routes/settings/notifications/+page.svelte"),
+  folders: () => import("../../routes/settings/folders/+page.svelte"),
+  privacy: () => import("../../routes/settings/privacy/+page.svelte"),
+  lock: () => import("../../routes/settings/lock/+page.svelte"),
+  two_factor: () => import("../../routes/settings/two_factor/+page.svelte"),
+  dictionary: () => import("../../routes/settings/e2e/dictionary/+page.svelte"),
+  logs: () => import("../../routes/settings/logs/+page.svelte"),
+  about: () => import("../../routes/settings/about/+page.svelte"),
+  sessions: () => import("../../routes/settings/sessions/+page.svelte"),
+  plugins: () => import("../../routes/settings/plugins/+page.svelte"),
+  advanced: () => import("../../routes/settings/advanced/+page.svelte"),
+  proxy: () => import("../../routes/settings/proxy/+page.svelte"),
+};
+
+let activeSettingsLayerId = null;
+
+export async function openSettingsPage(pageId) {
+  if (!SETTINGS_LOADERS[pageId]) return null;
+  const mod = await SETTINGS_LOADERS[pageId]();
+  const component = mod.default || mod;
+  let layerId = null;
+  const res = openScreen(
+    component,
+    {
+      isTab: false,
+      from: "/?card=settings",
+      onClose: () => {
+        if (layerId) dismissLayer(layerId);
+      },
+      close: () => {
+        if (layerId) dismissLayer(layerId);
+      }
+    },
+    {
+      onClose: () => {
+        activeSettingsLayerId = null;
+      }
     }
-    return {
-      ...current,
-      settingsPage: pageId
-    };
-  });
+  );
+  layerId = res.id;
+  activeSettingsLayerId = res.id;
+  return res;
 }
 
 export function closeSettingsPage() {
-  data.update(current => ({ ...current, settingsPage: null }));
+  if (activeSettingsLayerId) {
+    const id = activeSettingsLayerId;
+    activeSettingsLayerId = null;
+    dismissLayer(id);
+  }
 }
 
-export function openAvatarGallery(config) {
-  data.update(current => ({ ...current, avatarGallery: config }));
+let activeProfileLayerId = null;
+
+export async function openProfile(config = {}) {
+  const mod = await import("$components/ProfileModal.svelte");
+  if (activeProfileLayerId) {
+    dismissLayer(activeProfileLayerId);
+    activeProfileLayerId = null;
+  }
+  const res = openDrawer(mod.default || mod, config, {
+    onClose: () => {
+      activeProfileLayerId = null;
+    }
+  });
+  activeProfileLayerId = res.id;
+  return res;
+}
+
+export const openProfileModal = openProfile;
+
+export function closeProfile() {
+  if (activeProfileLayerId) {
+    const id = activeProfileLayerId;
+    activeProfileLayerId = null;
+    dismissLayer(id);
+  }
+}
+
+export const closeProfileModal = closeProfile;
+
+let devSettingsLayerId = null;
+export async function openDevSettings() {
+  const mod = await import("$components/main/dev/Settings.svelte");
+  const res = openScreen(mod.default || mod, {}, {
+    transparent: true,
+    noAnimation: true,
+    closeDelay: 150,
+    onClose: () => {
+      devSettingsLayerId = null;
+    }
+  });
+  devSettingsLayerId = res.id;
+  return res;
+}
+
+export function closeDevSettings() {
+  if (devSettingsLayerId) {
+    const id = devSettingsLayerId;
+    devSettingsLayerId = null;
+    dismissLayer(id);
+  }
+}
+
+let devicesLayerId = null;
+export async function openDevicesSettings() {
+  const mod = await import("$components/main/devices/Settings.svelte");
+  const res = openScreen(mod.default || mod, {}, {
+    transparent: true,
+    noAnimation: true,
+    closeDelay: 150,
+    onClose: () => {
+      devicesLayerId = null;
+    }
+  });
+  devicesLayerId = res.id;
+  return res;
+}
+
+export function closeDevicesSettings() {
+  if (devicesLayerId) {
+    const id = devicesLayerId;
+    devicesLayerId = null;
+    dismissLayer(id);
+  }
+}
+
+let activeAvatarGalleryLayerId = null;
+
+export async function openAvatarGallery(config = {}) {
+  const mod = await import("$components/main/AvatarGalleryModal.svelte");
+  if (activeAvatarGalleryLayerId) {
+    dismissLayer(activeAvatarGalleryLayerId);
+    activeAvatarGalleryLayerId = null;
+  }
+  const res = openViewer(mod.default || mod, config, {
+    onClose: () => {
+      activeAvatarGalleryLayerId = null;
+    }
+  });
+  activeAvatarGalleryLayerId = res.id;
+  return res;
 }
 
 export function closeAvatarGallery() {
-  data.update(current => ({ ...current, avatarGallery: null }));
+  if (activeAvatarGalleryLayerId) {
+    const id = activeAvatarGalleryLayerId;
+    activeAvatarGalleryLayerId = null;
+    dismissLayer(id);
+  }
 }
 
-export function openStartConversation() {
-  data.update(current => ({ ...current, startConversationModal: true }));
+export async function openStartConversation() {
+  const mod = await import("$components/main/StartConversationScreen.svelte");
+  return openScreen(mod.default || mod);
 }
 
-export function closeStartConversation() {
-  data.update(current => ({ ...current, startConversationModal: false }));
-}
-
-export function openContactsModal() {
-  data.update(current => ({ ...current, contactsModal: true }));
+let contactsLayerId = null;
+export async function openContactsModal() {
+  const mod = await import("$components/main/ContactsModal.svelte");
+  const res = openSheet(mod.default || mod, {}, {
+    dim: true,
+    dimOpacity: 0.65,
+    canSwipe: true,
+    closeDelay: 200,
+    onClose: () => {
+      contactsLayerId = null;
+    }
+  });
+  contactsLayerId = res.id;
+  return res;
 }
 
 export function closeContactsModal() {
-  data.update(current => ({ ...current, contactsModal: false }));
+  if (contactsLayerId) {
+    const id = contactsLayerId;
+    contactsLayerId = null;
+    dismissLayer(id);
+  }
 }
 
-export function openContactAdd() {
-  data.update(current => ({ ...current, contactModal: true }));
+let contactModalLayerId = null;
+export async function openContactAdd() {
+  const mod = await import("$components/main/ContactAddBottomSheet.svelte");
+  const res = openSheet(mod.default || mod, {}, {
+    onClose: () => {
+      contactModalLayerId = null;
+    }
+  });
+  contactModalLayerId = res.id;
+  return res;
 }
 
 export function closeContactAdd() {
-  data.update(current => ({ ...current, contactModal: false }));
+  if (contactModalLayerId) {
+    const id = contactModalLayerId;
+    contactModalLayerId = null;
+    dismissLayer(id);
+  }
 }
 
-export function openSafeAvatarPicker(config = {}) {
-  data.update(current => ({ ...current, safeAvatarPicker: config }));
+let safeAvatarPickerLayerId = null;
+export async function openSafeAvatarPicker(config = {}) {
+  const mod = await import("$components/main/SafeAvatarPickerModal.svelte");
+  const res = openDialog(mod.default || mod, config, {
+    dim: true,
+    dimOpacity: 0.65,
+    closeDelay: 200,
+    onClose: () => {
+      safeAvatarPickerLayerId = null;
+    }
+  });
+  safeAvatarPickerLayerId = res.id;
+  return res;
 }
 
 export function closeSafeAvatarPicker() {
-  data.update(current => ({ ...current, safeAvatarPicker: null }));
+  if (safeAvatarPickerLayerId) {
+    const id = safeAvatarPickerLayerId;
+    safeAvatarPickerLayerId = null;
+    dismissLayer(id);
+  }
 }
 
-export function openQrScanner(config = {}) {
-  data.update(current => ({ ...current, qrScanner: config }));
+let qrScannerLayerId = null;
+export async function openQrScanner(config = {}) {
+  const mod = await import("$components/main/QRScannerModal.svelte");
+  const res = openDialog(mod.default || mod, config, {
+    dim: false,
+    closeDelay: 200,
+    onClose: () => {
+      qrScannerLayerId = null;
+    }
+  });
+  qrScannerLayerId = res.id;
+  return res;
 }
 
 export function closeQrScanner() {
-  data.update(current => ({ ...current, qrScanner: null }));
+  if (qrScannerLayerId) {
+    const id = qrScannerLayerId;
+    qrScannerLayerId = null;
+    dismissLayer(id);
+  }
 }
 
-export function openFolderEdit(folder = { isNew: true }) {
-  data.update(current => ({ ...current, folderEdit: { folder } }));
+export async function openFolderEdit(folder = { isNew: true }) {
+  const mod = await import("$components/chats/FolderEditModal.svelte");
+  return openScreen(mod.default || mod, { folder });
 }
 
-export function closeFolderEdit() {
-  data.update(current => ({ ...current, folderEdit: null }));
+export async function openConfirmModal(config) {
+  const mod = await import("$components/main/ConfirmModal.svelte");
+  return openDialog(mod.default || mod, config);
 }
 
-export function openConfirmModal(config) {
-  data.update(current => ({ ...current, confirmModal: config }));
-}
-
-export function closeConfirmModal() {
-  data.update(current => ({ ...current, confirmModal: null }));
-}
-
-export function showConfirm(options) {
-  return new Promise((resolve) => {
-    openConfirmModal({
-      ...options,
-      onConfirm: () => {
-        closeConfirmModal();
-        resolve(true);
-      },
-      onCancel: () => {
-        closeConfirmModal();
-        resolve(false);
-      }
-    });
-  });
+export async function showConfirm(options) {
+  const mod = await import("$components/main/ConfirmModal.svelte");
+  return openDialog(mod.default || mod, options);
 }

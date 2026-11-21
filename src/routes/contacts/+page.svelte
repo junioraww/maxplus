@@ -1,8 +1,8 @@
 <script>
   import { writable, derived } from "svelte/store";
   import API, { currentRealContacts, currentUser, currentUserDetails } from "$lib/stores/api";
-  import { getContact } from "$lib/stores/contacts";
-  import { openChat, showConfirm } from "$lib/stores/session";
+  import { getContact, getContactDisplayName } from "$lib/stores/contacts";
+  import { openChat, showConfirm, openContactAdd } from "$lib/stores/session";
   import Session from "$lib/stores/session";
   import Search from "$components/main/Search.svelte";
   import Signature from "$components/main/Signature.svelte";
@@ -37,13 +37,14 @@
         c &&
         c.id !== $currentUser &&
         c.status !== "REMOVED" &&
-        (!filter || c.names?.[0]?.name?.toLowerCase().includes(filter.toLowerCase()))
+        (!filter || getContactDisplayName(c).toLowerCase().includes(filter.toLowerCase()))
     )
     .sort((a, b) =>
-      (a.names?.[0]?.name || "").localeCompare(b.names?.[0]?.name || "", "ru")
+      getContactDisplayName(a).localeCompare(getContactDisplayName(b), "ru")
     )
     .reduce((acc, c) => {
-      const letter = (c.names?.[0]?.name || "#").charAt(0).toUpperCase();
+      const name = getContactDisplayName(c);
+      const letter = (name || "#").charAt(0).toUpperCase();
       (acc[letter] ??= []).push(c);
       return acc;
     }, {});
@@ -57,7 +58,7 @@
     event.stopPropagation();
     const ok = await showConfirm({
       title: "Удалить контакт?",
-      message: `Удалить ${contact.names?.[0]?.name || "пользователя"} из контактов?`,
+      message: `Удалить ${getContactDisplayName(contact) || "пользователя"} из контактов?`,
       confirmText: "Удалить",
       isDangerous: true,
     });
@@ -87,7 +88,7 @@
         <h3>Контакты</h3>
         <button
           class="add-contact-btn"
-          on:click={() => ($Session.contactModal = true)}
+          on:click={openContactAdd}
           aria-label="Добавить контакт"
         >
           <img src="/icons/plus.svg" alt="" width="20" height="20" />
@@ -111,7 +112,7 @@
           <span>Пригласить друзей</span>
         </div>
 
-        <div class="quick-row" on:click={() => ($Session.contactModal = true)}>
+        <div class="quick-row" on:click={openContactAdd}>
           <div class="quick-icon add-icon">
             <img src="/icons/user-plus.svg" alt="" width="18" height="18" />
           </div>
@@ -127,7 +128,7 @@
           <div class="contact-item" on:click={() => openDirect(contact)}>
             <Avatar contactId={contact.id} size={44} />
             <div class="contact-info">
-              <div class="contact-name">{contact.names?.[0]?.name || "Без имени"}</div>
+              <div class="contact-name">{getContactDisplayName(contact) || "Без имени"}</div>
               <div class="contact-status"><Signature contactId={contact.id} /></div>
             </div>
             <button

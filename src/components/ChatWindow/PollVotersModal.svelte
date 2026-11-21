@@ -2,7 +2,7 @@
   import { createEventDispatcher, onMount } from "svelte";
   import { fade, scale } from "svelte/transition";
   import API from "$lib/stores/api";
-  import Session from "$lib/stores/session";
+  import Session, { openProfile as openSessionProfile } from "$lib/stores/session";
   import SeenByItem from "./SeenByItem.svelte";
 
   export let chatId = null;
@@ -27,7 +27,7 @@
 
   function openProfile(userId) {
     if (!userId) return;
-    $Session.profile = { userId: Number(userId) };
+    openSessionProfile({ userId: Number(userId) });
     close();
   }
 

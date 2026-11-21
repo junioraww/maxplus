@@ -16,6 +16,8 @@ export const CALL_MODE = Object.freeze({
 
 let inMemoryStubs = false;
 
+import { openSheet, dismissLayer } from "$lib/services/layerManager";
+
 export const callUseStubs = writable(inMemoryStubs);
 
 export function setCallUseStubs(enabled) {
@@ -24,14 +26,32 @@ export function setCallUseStubs(enabled) {
   patchCallState({ useStubs: inMemoryStubs });
 }
 
-export const callSheetModal = writable(null);
+let activeCallSheetLayerId = null;
 
-export function openCallSheet(type, data = {}) {
-  callSheetModal.set({ type, ...data });
+export async function openCallSheet(type, data = {}) {
+  const mod = await import("$components/calls/CallsSheetHost.svelte");
+  if (activeCallSheetLayerId) {
+    dismissLayer(activeCallSheetLayerId);
+    activeCallSheetLayerId = null;
+  }
+  const res = openSheet(mod.default || mod, { type, ...data }, {
+    dim: true,
+    dimOpacity: 0.65,
+    canSwipe: true,
+    onClose: () => {
+      activeCallSheetLayerId = null;
+    }
+  });
+  activeCallSheetLayerId = res.id;
+  return res;
 }
 
 export function closeCallSheet() {
-  callSheetModal.set(null);
+  if (activeCallSheetLayerId) {
+    const id = activeCallSheetLayerId;
+    activeCallSheetLayerId = null;
+    dismissLayer(id);
+  }
 }
 
 const INITIAL_STATE = {

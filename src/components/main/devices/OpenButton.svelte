@@ -1,13 +1,13 @@
 <script>
-  import { set as sessionSet } from "$lib/stores/session";
+  import { openDevicesSettings } from "$lib/stores/session";
 
   const open = () => {
-    sessionSet("devicesPage", true);
+    openDevicesSettings();
   };
 </script>
 
 <div on:click={open} class="open-dev">
-  <img src="/icons/phone.svg"/>
+  <img src="/icons/phone.svg" alt="" />
 </div>
 
 <style>
@@ -26,9 +26,5 @@
     border-radius: 30px 0 0 30px;
     cursor: pointer;
     transition: padding 0.1s;
-  }
-
-  .open-dev:hover {
-    padding-right: 5px;
   }
 </style>

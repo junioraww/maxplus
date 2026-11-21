@@ -9,7 +9,7 @@
   import { goto } from "$app/navigation";
   import { page } from "$app/stores";
   import API, { currentUser, currentUserDetails } from "$lib/stores/api";
-  import { set as sessionSet } from "$lib/stores/session";
+  import { set as sessionSet, openDevicesSettings } from "$lib/stores/session";
   import {
     getAccounts,
     getAccount,
@@ -87,7 +87,6 @@
           currentUser.set(fullAcc.id);
         }
       }
-      sessionSet("settingsPage", null);
       goto("/");
       return;
     }
@@ -99,7 +98,6 @@
   }
 
   async function select(selected) {
-    sessionSet("settingsPage", null);
     sessionSet("openedChats", []);
     clearCachingUtils();
     resetImageCaches(selected.id);
@@ -501,7 +499,7 @@
 
 <OpenDevSettingsButton />
 
-<div on:click={() => sessionSet("devicesPage", true)} class="open-devices">
+<div on:click={openDevicesSettings} class="open-devices">
   <a>Настройки устройства</a>
 </div>
 

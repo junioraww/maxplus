@@ -5,7 +5,7 @@
   import { get } from "svelte/store";
   import { invoke } from "@tauri-apps/api/core";
   import API, { currentRealContacts, currentUser, currentUserDetails } from "$lib/stores/api";
-  import { getCachedContacts, getContact } from "$lib/stores/contacts";
+  import { getCachedContacts, getContact, getContactDisplayName } from "$lib/stores/contacts";
   import { openChat, openSafeAvatarPicker } from "$lib/stores/session";
   import { openCallSheet } from "$lib/stores/calls";
   import { installSafeAvatar } from "$lib/services/AvatarInstallService";
@@ -13,6 +13,9 @@
   import Signature from "$components/main/Signature.svelte";
   import { showAlert } from "$lib/utils/alert";
   import { registerBackHandler } from "$lib/utils/backButton";
+
+  export let close = null;
+  export let setBackHandler = null;
 
   const dispatch = createEventDispatcher();
 
@@ -31,8 +34,64 @@
   let selectedContactIds = [];
   let createdChannel = null;
   let isSubmitting = false;
+  let unregisterBack = null;
+
+  function handleClose() {
+    dispatch("close");
+    if (close) close();
+  }
+
+  $: if (setBackHandler) {
+    setBackHandler(() => {
+      if (isSearching) {
+        isSearching = false;
+        searchQuery = "";
+        return false;
+      }
+      if (view === "group_profile") {
+        view = "group_members";
+        return false;
+      }
+      if (view === "group_members" || view === "channel_profile") {
+        view = "main";
+        searchQuery = "";
+        return false;
+      }
+      if (view === "channel_subscribers") {
+        view = "channel_profile";
+        return false;
+      }
+      handleClose();
+      return true;
+    });
+  }
 
   onMount(async () => {
+    if (!setBackHandler) {
+      unregisterBack = registerBackHandler(() => {
+        if (isSearching) {
+          isSearching = false;
+          searchQuery = "";
+          return false;
+        }
+        if (view === "group_profile") {
+          view = "group_members";
+          return false;
+        }
+        if (view === "group_members" || view === "channel_profile") {
+          view = "main";
+          searchQuery = "";
+          return false;
+        }
+        if (view === "channel_subscribers") {
+          view = "channel_profile";
+          return false;
+        }
+        handleClose();
+        return true;
+      });
+    }
+
     try {
       const cached = await getCachedContacts();
       if (Array.isArray(cached) && cached.length > 0) {
@@ -47,39 +106,13 @@
     }
   });
 
-  const unregisterBack = registerBackHandler(() => {
-    if (isSearching) {
-      isSearching = false;
-      searchQuery = "";
-      return false;
-    }
-    if (view === "group_profile") {
-      view = "group_members";
-      return false;
-    }
-    if (view === "group_members" || view === "channel_profile") {
-      view = "main";
-      searchQuery = "";
-      return false;
-    }
-    if (view === "channel_subscribers") {
-      view = "channel_profile";
-      return false;
-    }
-    dispatch("close");
-    return true;
-  });
-
   onDestroy(() => {
-    unregisterBack();
+    if (unregisterBack) unregisterBack();
   });
 
   function getName(c) {
     if (!c) return "Без имени";
-    if (c.names?.[0]?.firstName) {
-      return `${c.names[0].firstName} ${c.names[0].lastName || ""}`.trim();
-    }
-    return c.names?.[0]?.name || c.name || c.phone || "Без имени";
+    return getContactDisplayName(c) || c.phone || "Без имени";
   }
 
   $: realIds = $currentRealContacts || [];
@@ -128,7 +161,7 @@
     } else if (view === "channel_subscribers") {
       view = "channel_profile";
     } else {
-      dispatch("close");
+      handleClose();
     }
   }
 
@@ -150,7 +183,7 @@
   function handleOpenDirect(contact) {
     const dialogId = Number(BigInt($currentUser) ^ BigInt(contact.id));
     openChat(dialogId);
-    dispatch("close");
+    handleClose();
   }
 
   function handleCreateCall() {
@@ -198,7 +231,7 @@
         }
         showAlert("Группа создана");
         openChat(chat.id);
-        dispatch("close");
+        handleClose();
       } else {
         showAlert("Не удалось создать группу");
       }
@@ -249,13 +282,13 @@
     }
     showAlert("Канал создан");
     openChat(createdChannel.id);
-    dispatch("close");
+    handleClose();
   }
 </script>
 
 <svelte:window on:keydown={handleKeyDown} />
 
-<div class="start-conv-screen" transition:fly={{ x: 30, duration: 200, easing: cubicOut }}>
+<div class="start-conv-screen">
   {#if view === "main"}
     <div class="toolbar" in:fade={{ duration: 150 }}>
       {#if isSearching}

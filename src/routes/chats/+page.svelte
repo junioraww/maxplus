@@ -26,7 +26,9 @@
   import { escapeHtml } from "$lib/utils/text";
   import { debounce } from "$lib/utils/debounce";
   import Session, { openChat, openStartConversation, openContactsModal, openFolderEdit, openContactAdd, showConfirm } from "$lib/stores/session";
+  import { openScreen } from "$lib/services/layerManager";
   import ChatsListSearchScreen from "$components/main/ChatsListSearchScreen.svelte";
+  import StartConversationScreen from "$components/main/StartConversationScreen.svelte";
   import API, {
     currentSessionCalls,
     currentRealChats,
@@ -118,10 +120,12 @@
 
   $: isSelectionMode = selectedChats.size > 0;
 
-  let isSearchOpen = false;
-
   function openSearch() {
-    isSearchOpen = true;
+    openScreen(ChatsListSearchScreen);
+  }
+
+  function handleNewChat() {
+    openScreen(StartConversationScreen);
   }
 
   function handleChatLongPress(event) {
@@ -578,7 +582,7 @@
             <button class="action-circle-btn" on:click={openSearch} title="Поиск">
               <img src="/icons/search.svg" alt="" width="20" height="20" />
             </button>
-            <button class="action-circle-btn plus-btn" on:click={openStartConversation} title="Новый чат">
+            <button class="action-circle-btn plus-btn" on:click={handleNewChat} title="Новый чат">
               <img src="/icons/plus.svg" alt="" width="20" height="20" />
             </button>
           </div>
@@ -587,50 +591,44 @@
     {/if}
   </div>
 
-  {#if !isSearchOpen}
-    <StoriesTray
-      bind:this={storiesTrayEl}
-      bind:isExpanded={isStoriesExpanded}
-      on:compose={() => openStoryComposer()}
-    />
-    <FolderTabs
-      folders={localFolders}
-      bind:activeFolder
-      unreadCounts={folderUnreadMap}
-      on:folderChange={onFolderTabClick}
-      on:reorder={handleReorderFolders}
-      on:editFolder={(e) => {
-        openFolderEdit(e.detail);
-      }}
-      on:readFolder={async (e) => {
-        const folder = e.detail;
-        if (!folder) return;
-        const chatsInFolder = chatsByFolderId.get(folder.id) || [];
-        for (const c of chatsInFolder) {
-          if (c?.id) {
-            try {
-              await $API?.markAsRead?.(c.id);
-            } catch {}
-          }
+  <StoriesTray
+    bind:this={storiesTrayEl}
+    bind:isExpanded={isStoriesExpanded}
+    on:compose={() => openStoryComposer()}
+  />
+  <FolderTabs
+    folders={localFolders}
+    bind:activeFolder
+    unreadCounts={folderUnreadMap}
+    on:folderChange={onFolderTabClick}
+    on:reorder={handleReorderFolders}
+    on:editFolder={(e) => {
+      openFolderEdit(e.detail);
+    }}
+    on:readFolder={async (e) => {
+      const folder = e.detail;
+      if (!folder) return;
+      const chatsInFolder = chatsByFolderId.get(folder.id) || [];
+      for (const c of chatsInFolder) {
+        if (c?.id) {
+          try {
+            await $API?.markAsRead?.(c.id);
+          } catch {}
         }
-      }}
-      on:deleteFolder={(e) => {
-        const folder = e.detail;
-        if (!folder || folder.id === 0 || folder.id === "all.chat.folder") return;
-        removeFolderInteractive(folder.id);
-      }}
-      on:addFolder={() => {
-        openFolderEdit({ isNew: true });
-      }}
-    />
-  {/if}
+      }
+    }}
+    on:deleteFolder={(e) => {
+      const folder = e.detail;
+      if (!folder || folder.id === 0 || folder.id === "all.chat.folder") return;
+      removeFolderInteractive(folder.id);
+    }}
+    on:addFolder={() => {
+      openFolderEdit({ isNew: true });
+    }}
+  />
 
   {#if $activeMedia}
     <MediaPlaybackHeader isChatHeader={false} />
-  {/if}
-
-  {#if isSearchOpen}
-    <ChatsListSearchScreen on:close={() => (isSearchOpen = false)} />
   {/if}
 
   <div

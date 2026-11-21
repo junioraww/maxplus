@@ -1,33 +1,49 @@
 <script>
-  import { createEventDispatcher, onDestroy } from "svelte";
+  import { createEventDispatcher, onMount, onDestroy } from "svelte";
   import { registerBackHandler } from "$lib/utils/backButton";
 
   export let title = "";
   export let maxHeight = "85vh";
   export let showClose = true;
   export let showHandle = true;
+  export let setBackHandler = null;
+  export let close = null;
 
   const dispatch = createEventDispatcher();
   let isClosing = false;
+  let unregisterBack = null;
+
+  $: if (setBackHandler) {
+    setBackHandler(() => {
+      handleClose();
+      return false;
+    });
+  }
+
+  onMount(() => {
+    if (!setBackHandler) {
+      unregisterBack = registerBackHandler(() => {
+        handleClose();
+        return false;
+      });
+    }
+  });
 
   function handleClose() {
     if (isClosing) return;
     isClosing = true;
-    setTimeout(() => {
-      dispatch("close");
-    }, 200);
+    dispatch("close");
+    if (close) close();
   }
 
-  const unregisterBack = registerBackHandler(() => {
-    handleClose();
-    return false;
+  onDestroy(() => {
+    if (unregisterBack) unregisterBack();
   });
-
-  onDestroy(() => unregisterBack());
 </script>
 
 <div
   class="bottom-sheet-backdrop"
+  class:is-portal-child={Boolean(setBackHandler || close)}
   class:sheet-closing={isClosing}
   on:click={handleClose}
   role="presentation"
@@ -65,16 +81,23 @@
   .bottom-sheet-backdrop {
     position: fixed;
     inset: 0;
-    background: rgba(0, 0, 0, 0.65);
+    background: transparent;
     z-index: var(--z-modal, 7);
     display: flex;
     justify-content: center;
     align-items: flex-end;
-    animation: sheetFadeIn 0.22s cubic-bezier(0.2, 0, 0, 1) forwards;
   }
 
-  .bottom-sheet-backdrop.sheet-closing {
-    animation: sheetFadeOut 0.20s cubic-bezier(0.4, 0, 1, 1) forwards;
+  .bottom-sheet-backdrop.is-portal-child {
+    position: relative;
+    inset: auto;
+    width: 100%;
+    z-index: auto;
+  }
+
+  .bottom-sheet-backdrop.is-portal-child .bottom-sheet-panel {
+    animation: none;
+    box-shadow: none;
   }
 
   .bottom-sheet-panel {

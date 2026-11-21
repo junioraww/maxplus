@@ -3,7 +3,7 @@
   import { fade } from "svelte/transition";
   import API, { currentRealChats, currentRealContacts, currentUser } from "$lib/stores/api";
   import { getChat } from "$lib/stores/messages";
-  import { getContact, updateContact } from "$lib/stores/contacts";
+  import { getContact, updateContact, getContactDisplayName } from "$lib/stores/contacts";
   import { openChat } from "$lib/stores/session";
   import Session from "$lib/stores/session";
   import ChatItem from "$components/chats/ChatItem.svelte";
@@ -12,6 +12,9 @@
   import { debounce } from "$lib/utils/debounce";
   import { invoke } from "$lib/utils/invoke";
   import { registerBackHandler } from "$lib/utils/backButton";
+
+  export let setBackHandler = null;
+  export let close = null;
 
   const dispatch = createEventDispatcher();
 
@@ -22,20 +25,53 @@
   let isCheckingPhone = false;
   let searchPublic = [];
   let searchMsg = [];
+  let unregisterBack = null;
 
-  const unregisterBack = registerBackHandler(() => {
-    dispatch("close");
-    return false;
-  });
+  function handleClose() {
+    if (close) {
+      close();
+    } else {
+      dispatch("close");
+    }
+  }
 
-  onDestroy(() => unregisterBack());
+  $: if (setBackHandler) {
+    setBackHandler(() => {
+      if (searchQuery) {
+        searchQuery = "";
+        return false;
+      }
+      handleClose();
+      return true;
+    });
+  }
 
   onMount(() => {
+    if (!setBackHandler) {
+      unregisterBack = registerBackHandler(() => {
+        if (searchQuery) {
+          searchQuery = "";
+          return false;
+        }
+        handleClose();
+        return false;
+      });
+    }
     setTimeout(() => searchInputEl?.focus(), 60);
   });
 
+  onDestroy(() => {
+    if (unregisterBack) unregisterBack();
+  });
+
   function handleKeyDown(e) {
-    if (e.key === "Escape") dispatch("close");
+    if (e.key === "Escape") {
+      if (searchQuery) {
+        searchQuery = "";
+      } else {
+        handleClose();
+      }
+    }
   }
 
   $: localMatchedChats = ($currentRealChats || [])
@@ -138,20 +174,20 @@
   function openDirectChat(user) {
     const dialogId = Number(BigInt($currentUser) ^ BigInt(user.id));
     openChat(dialogId);
-    dispatch("close");
+    handleClose();
   }
 
   function openFoundChat(id) {
     openChat(id);
-    dispatch("close");
+    handleClose();
   }
 </script>
 
 <svelte:window on:keydown={handleKeyDown} />
 
-<div class="search-screen" transition:fade={{ duration: 140 }}>
+<div class="search-screen">
   <div class="search-topbar">
-    <button class="back-btn" on:click={() => dispatch("close")} aria-label="Назад">
+    <button class="back-btn" on:click={handleClose} aria-label="Назад">
       <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2">
         <line x1="19" y1="12" x2="5" y2="12" />
         <polyline points="12 19 5 12 12 5" />
@@ -181,7 +217,7 @@
         {#each allLocalContacts as contact (contact.id)}
           <div class="local-contact-item" on:click={() => openDirectChat(contact)}>
             <Avatar contactId={contact.id} size={44} />
-            <div class="local-contact-name">{contact.names?.[0]?.name || "Без имени"}</div>
+            <div class="local-contact-name">{getContactDisplayName(contact) || "Без имени"}</div>
           </div>
         {/each}
       {/if}
@@ -191,7 +227,7 @@
         <div class="phone-result-card">
           <Avatar contactId={phoneUser.id} size={48} />
           <div class="phone-result-info">
-            <div class="phone-result-name">{phoneUser.names?.[0]?.name || "Пользователь"}</div>
+            <div class="phone-result-name">{getContactDisplayName(phoneUser) || "Пользователь"}</div>
             <div class="phone-result-sub">{phoneUser.phone ? `+${phoneUser.phone}` : "В сети Max"}</div>
           </div>
           <div class="phone-result-actions">
@@ -206,7 +242,7 @@
           {#each localMatchedContacts as contact (contact.id)}
             <div class="local-contact-item" on:click={() => openDirectChat(contact)}>
               <Avatar contactId={contact.id} size={44} />
-              <div class="local-contact-name">{contact.names?.[0]?.name || "Без имени"}</div>
+              <div class="local-contact-name">{getContactDisplayName(contact) || "Без имени"}</div>
             </div>
           {/each}
         {/if}

@@ -172,6 +172,7 @@
     padding: 0;
     transition: transform 0.15s;
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.4);
+    z-index: var(--z-floating, 5);
   }
 
   .add-badge-btn:hover {

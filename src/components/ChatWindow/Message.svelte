@@ -5,7 +5,7 @@
   import API, { currentUser, currentUserDetails } from "$lib/stores/api";
   import { getChat } from "$lib/stores/messages";
   import { getContact } from "$lib/utils/caching";
-  import Session, { openChat } from "$lib/stores/session";
+  import Session, { openChat, openProfile } from "$lib/stores/session";
   import {
     getAttachText, getSystemText
   } from "$lib/utils/attachs";
@@ -316,7 +316,7 @@
         on:touchend|stopPropagation
         on:click|stopPropagation={() => {
           if (msg.sender) {
-            $Session.profile = { userId: Number(msg.sender) };
+            openProfile({ userId: Number(msg.sender) });
           }
         }}
       >

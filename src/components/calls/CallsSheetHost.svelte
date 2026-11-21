@@ -1,12 +1,16 @@
 <script>
   import BottomSheet from "$components/main/BottomSheet.svelte";
   import Avatar from "$components/main/Avatar.svelte";
-  import { callSheetModal, closeCallSheet, CALL_MODE } from "$lib/stores/calls";
+  import { closeCallSheet, CALL_MODE } from "$lib/stores/calls";
   import { CallService } from "$lib/services/CallService";
   import { currentRealContacts } from "$lib/stores/api";
   import { getCachedContacts } from "$lib/stores/contacts";
   import { showAlert } from "$lib/utils/alert";
-  import { closeStartConversation } from "$lib/stores/session";
+
+  export let type = "";
+  export let link = "";
+  export let close = null;
+  export let setBackHandler = null;
 
   let createdRoomLink = "";
   let creatingRoom = false;
@@ -20,7 +24,18 @@
   let contactSearchQuery = "";
   let availableContacts = [];
 
-  $: if ($callSheetModal?.type === "create") {
+  $: activeType = type || "";
+  $: activeLink = link || "";
+
+  function handleClose() {
+    if (close) {
+      close();
+    } else {
+      closeCallSheet();
+    }
+  }
+
+  $: if (activeType === "create") {
     if (!createdRoomLink && !creatingRoom) initCreateRoom();
   } else {
     createdRoomLink = "";
@@ -28,13 +43,13 @@
     linkCopied = false;
   }
 
-  $: if ($callSheetModal?.type === "join") {
-    joinLinkInput = $callSheetModal.link || "";
+  $: if (activeType === "join") {
+    joinLinkInput = activeLink || "";
     joinWithVideo = false;
     joinSecureMode = false;
   }
 
-  $: if ($callSheetModal?.type === "new_call") {
+  $: if (activeType === "new_call") {
     contactSearchQuery = "";
     loadContacts();
   }
@@ -47,7 +62,7 @@
       createdRoomLink = res.link;
     } catch (e) {
       showAlert("Ошибка создания звонка: " + (e?.message || e));
-      closeCallSheet();
+      handleClose();
     } finally {
       creatingRoom = false;
     }
@@ -65,20 +80,19 @@
   }
 
   async function startCreatedConference(video) {
-    const link = createdRoomLink;
+    const linkToJoin = createdRoomLink;
     const mode = createSecureMode ? CALL_MODE.SECURE : CALL_MODE.PLAIN;
-    closeCallSheet();
-    closeStartConversation();
-    if (link) await CallService.joinConferenceByLink(link, video, mode);
+    handleClose();
+    if (linkToJoin) await CallService.joinConferenceByLink(linkToJoin, video, mode);
   }
 
   async function submitJoinByLink() {
     if (!joinLinkInput.trim()) return;
-    const link = joinLinkInput.trim();
+    const targetLink = joinLinkInput.trim();
     const video = joinWithVideo;
     const mode = joinSecureMode ? CALL_MODE.SECURE : CALL_MODE.PLAIN;
-    closeCallSheet();
-    await CallService.joinConferenceByLink(link, video, mode);
+    handleClose();
+    await CallService.joinConferenceByLink(targetLink, video, mode);
   }
 
   function isEligibleContact(c) {
@@ -93,7 +107,7 @@
   }
 
   function selectContactForCall(c) {
-    closeCallSheet();
+    handleClose();
     const name = `${c.names?.[0]?.firstName || ''} ${c.names?.[0]?.lastName || ''}`.trim() || c.name || "Собеседник";
     CallService.placeAudioCall(c.id, name, c.baseUrl || c.baseRawUrl);
   }
@@ -110,9 +124,9 @@
   });
 </script>
 
-{#if $callSheetModal}
-  {#if $callSheetModal.type === "create"}
-    <BottomSheet title="Ссылка на видеовстречу" on:close={closeCallSheet}>
+{#if activeType}
+  {#if activeType === "create"}
+    <BottomSheet title="Ссылка на видеовстречу" {close} {setBackHandler} on:close={handleClose}>
       <p class="sheet-desc">Отправьте эту ссылку участникам, чтобы они могли присоединиться</p>
 
       {#if creatingRoom}
@@ -140,8 +154,8 @@
         </div>
       {/if}
     </BottomSheet>
-  {:else if $callSheetModal.type === "join"}
-    <BottomSheet title="Присоединиться к звонку" on:close={closeCallSheet}>
+  {:else if activeType === "join"}
+    <BottomSheet title="Присоединиться к звонку" {close} {setBackHandler} on:close={handleClose}>
       <p class="sheet-desc">Вставьте полученную ссылку или идентификатор конференции</p>
 
       <input type="text" placeholder="https://max.ru/joincall/..." bind:value={joinLinkInput} class="field mb" />
@@ -160,8 +174,8 @@
         Присоединиться
       </button>
     </BottomSheet>
-  {:else if $callSheetModal.type === "new_call"}
-    <BottomSheet title="Новый звонок" maxHeight="85vh" on:close={closeCallSheet}>
+  {:else if activeType === "new_call"}
+    <BottomSheet title="Новый звонок" maxHeight="85vh" {close} {setBackHandler} on:close={handleClose}>
       <div class="search-box">
         <img src="/icons/search.svg" alt="" width="18" height="18" />
         <input type="text" placeholder="Поиск по контактам..." bind:value={contactSearchQuery} class="search-input" />
@@ -196,10 +210,14 @@
   .btn-group { margin-top: 16px; }
   .mb { margin-bottom: 12px; }
   .field {
-    flex: 1 1 auto; min-width: 0; width: 0; box-sizing: border-box;
+    width: 100%; min-width: 0; box-sizing: border-box;
     background: var(--bg-app, #17181c); border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 12px; padding: 11px 14px; color: #fff; font-size: 14px; outline: none;
+    border-radius: 14px; padding: 12px 14px; color: #fff; font-size: 15px; outline: none;
     user-select: text; -webkit-user-select: text;
+  }
+  .row .field {
+    flex: 1 1 auto;
+    width: auto;
   }
   .btn {
     height: 44px; border: none; border-radius: 22px; font-size: 14px; font-weight: 600;

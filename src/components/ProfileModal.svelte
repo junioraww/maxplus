@@ -17,6 +17,7 @@
   import GroupJoinRequestsModal from "$components/chats/GroupJoinRequestsModal.svelte";
 
   import { getContact } from "$lib/utils/caching";
+  import { getContactDisplayName } from "$lib/stores/contacts";
   import { safeAvatarMapStore } from "$lib/services/AvatarSyncManager";
   import { getSafeAvatarMediaUrl } from "$lib/services/uplink";
   import { disableMaxPlusAvatars } from "$lib/stores/avatarSettings";
@@ -67,13 +68,30 @@
     }
   });
 
+  let propChatId = null;
+  let propUserId = null;
+  export { propChatId as chatId, propUserId as userId };
+  export let view = null;
+  export let history = [];
+  export let close = null;
+  export let onClose = null;
+  export let setBackHandler = null;
+
+  const dispatch = createEventDispatcher();
+
   let fetchedChat = null;
   let fetchingChatId = null;
+  let currentNavChatId = null;
+  let currentNavUserId = null;
+  let profileHistory = Array.isArray(history) ? [...history] : [];
+
+  $: if (propChatId != null) currentNavChatId = propChatId;
+  $: if (propUserId != null) currentNavUserId = propUserId;
 
   $: chatId = (() => {
-    const cid = $Session.profile?.chatId;
+    const cid = currentNavChatId ?? propChatId;
     if (cid != null) return cid;
-    const uid = $Session.profile?.userId;
+    const uid = currentNavUserId ?? propUserId;
     if (uid != null && $currentUser != null) {
       try {
         const xorId = Number(BigInt(uid) ^ BigInt($currentUser));
@@ -100,13 +118,13 @@
   $: chat = (chatStore && $chatStore) || fetchedChat;
 
   $: userId = (() => {
-    const uid = $Session.profile?.userId;
+    const uid = currentNavUserId ?? propUserId;
     if (uid != null) return uid;
     if (chat?.type === "DIALOG" && chat?.participants) {
       const other = Object.keys(chat.participants).find(id => String(id) !== String($currentUser));
       if (other) return Number(other);
     }
-    const cid = chatId ?? $Session.profile?.chatId;
+    const cid = chatId ?? propChatId ?? currentNavChatId;
     if (cid && $currentUser && (chat?.type === "DIALOG" || (!chat && !isChannel && Number(cid) > 0))) {
       try {
         return Number(BigInt(cid) ^ BigInt($currentUser));
@@ -166,20 +184,14 @@
     !isDeletedOrBlocked
   );
 
-  let activeTab = "info";
-  let previousProfile = null;
-  let didInitialSelect = false;
+  let activeTab = view === "settings" ? "settings" : "info";
+  let didInitialSelect = Boolean(view);
 
-  $: if ($Session.profile !== previousProfile) {
-    previousProfile = $Session.profile;
-    didInitialSelect = false;
-  }
-
-  $: if (!didInitialSelect && previousProfile) {
-    if ($Session.profile?.view === "settings" && hasSettings) {
+  $: if (view && !didInitialSelect) {
+    if (view === "settings" && hasSettings) {
       activeTab = "settings";
       didInitialSelect = true;
-    } else if ($Session.profile?.view !== "settings") {
+    } else if (view !== "settings") {
       activeTab = "info";
       didInitialSelect = true;
     }
@@ -251,20 +263,22 @@
     }
   }
 
+  let pagerRaf = null;
+
   function handlePagerScroll() {
-    if (!swipeContainer) return;
-    const width = swipeContainer.clientWidth;
-    if (width === 0) return;
+    if (!swipeContainer || isProgrammaticScroll) return;
+    if (pagerRaf) return;
 
-    if (!isProgrammaticScroll) {
-      indicatorProgress = swipeContainer.scrollLeft / width;
-    }
-
-    if (isProgrammaticScroll) return;
-
-    if (scrollRafId) cancelAnimationFrame(scrollRafId);
-    scrollRafId = requestAnimationFrame(() => {
-      const rawIndex = swipeContainer.scrollLeft / width;
+    pagerRaf = requestAnimationFrame(() => {
+      pagerRaf = null;
+      if (!swipeContainer || isProgrammaticScroll) return;
+      const width = swipeContainer.clientWidth;
+      if (width === 0) return;
+      const nextProgress = swipeContainer.scrollLeft / width;
+      if (Math.abs(nextProgress - indicatorProgress) > 0.005) {
+        indicatorProgress = nextProgress;
+      }
+      const rawIndex = nextProgress;
       const newIndex = Math.round(rawIndex);
       if (Math.abs(rawIndex - newIndex) < 0.15 && newIndex !== activeTabIndex && availableTabs[newIndex]) {
         activeTab = availableTabs[newIndex];
@@ -329,7 +343,14 @@
     if (mouseHasMoved) {
       e.preventDefault();
       swipeContainer.scrollLeft = mouseStartScrollLeft - dx;
-      indicatorProgress = swipeContainer.scrollLeft / swipeContainer.clientWidth;
+      if (!pagerRaf) {
+        pagerRaf = requestAnimationFrame(() => {
+          pagerRaf = null;
+          if (swipeContainer) {
+            indicatorProgress = swipeContainer.scrollLeft / swipeContainer.clientWidth;
+          }
+        });
+      }
     }
   }
 
@@ -500,7 +521,12 @@
     }
   }
 
-  $: title = $contact?.names?.[0]?.firstName || chat?.title || ($contact ? "Пользователь" : "");
+  let cachedTitle = "";
+  $: {
+    const fresh = ($contact && getContactDisplayName($contact)) || chat?.title || ($contact ? "Пользователь" : "");
+    if (fresh) cachedTitle = fresh;
+  }
+  $: title = cachedTitle || ($contact && getContactDisplayName($contact)) || chat?.title || ($contact ? "Пользователь" : "");
   $: avatar = chat?.baseRawUrl || chat?.baseUrl || chat?.baseRawIconUrl || chat?.baseIconUrl || chat?.iconUrl || $contact?.baseRawUrl || $contact?.baseUrl || null;
   $: chatLink = chat?.link;
 
@@ -686,7 +712,11 @@
     if (action === "invite")   return refreshInvite();
   }
 
-  const closeModal = () => $Session.profile = null;
+  function closeModal() {
+    dispatch("close");
+    if (close) close();
+    if (onClose) onClose();
+  }
   const closeChat = () => chat?.id != null && _closeChat(chat.id);
 
   function handleWindowClick(e) {
@@ -1226,26 +1256,34 @@
   }
 
   function selectMember(memberId) {
-    Session.update(entry => ({
-      ...entry,
-      profile: { history: [
-        ...(entry.profile.history || []),
-        { chatId, userId }
-      ], userId: memberId }
-    }));
+    profileHistory = [
+      ...profileHistory,
+      { chatId, userId, view: activeTab }
+    ];
+    currentNavUserId = memberId;
+    currentNavChatId = null;
+    activeTab = "info";
   }
 
   function goBack() {
-    if ($Session.profile?.history?.length) {
-      const length = $Session.profile.history.length;
-      const last = $Session.profile.history[length - 1];
-      $Session.profile = {
-        history: $Session.profile.history.slice(0, length - 1),
-        ...last
-      };
+    if (profileHistory.length > 0) {
+      const prev = profileHistory.pop();
+      currentNavChatId = prev.chatId;
+      currentNavUserId = prev.userId;
+      if (prev.view) activeTab = prev.view;
     } else {
       closeModal();
     }
+  }
+
+  $: if (setBackHandler) {
+    setBackHandler(() => {
+      if (profileHistory.length > 0) {
+        goBack();
+        return false;
+      }
+      return true;
+    });
   }
 </script>
 
@@ -1254,15 +1292,7 @@
   on:resize={handleResize}
 />
 
-<div
-  class="tg-profile-backdrop"
-  transition:fade={{ duration: 250 }}
-  on:click|self={closeModal}
->
-  <div
-    class="tg-profile-panel"
-    transition:fly={{ x: 380, duration: 280, opacity: 1, easing: cubicOut }}
-  >
+<div class="tg-profile-panel">
     <div class="tg-topbar">
       <button class="tg-icon-btn" on:click={goBack} aria-label="Назад">
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
@@ -2506,7 +2536,6 @@
       </div>
     {/if}
   </div>
-</div>
 
 {#if showDeleteConfirm}
   <ConfirmModal
@@ -2599,26 +2628,16 @@
 {/if}
 
 <style>
-  .tg-profile-backdrop {
-    position: fixed;
-    inset: 0;
-    background: rgba(0, 0, 0, 0.65);
-    z-index: var(--z-modal, 7);
-    display: flex;
-    justify-content: flex-end;
-  }
-
   .tg-profile-panel {
     position: relative;
     width: 100%;
-    max-width: 420px;
     height: 100%;
     background: #212121;
     border-left: 1px solid rgba(255, 255, 255, 0.08);
     display: flex;
     flex-direction: column;
-    box-shadow: -10px 0 30px rgba(0, 0, 0, 0.5);
     box-sizing: border-box;
+    overflow: hidden;
   }
 
   .tg-topbar {

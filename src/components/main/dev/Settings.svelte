@@ -1,10 +1,9 @@
 <script>
-  import { onMount, onDestroy } from "svelte";
+  import { onMount, onDestroy, createEventDispatcher } from "svelte";
   import { fade } from "svelte/transition";
   import { goto } from "$app/navigation";
   import Session, {
     get as sessionGet,
-    set as sessionSet,
     openSettingsPage,
   } from "$lib/stores/session";
   import {
@@ -16,6 +15,14 @@
   import { registerBackHandler } from "$lib/utils/backButton";
   import ProxySettingsPage from "../../../routes/settings/proxy/+page.svelte";
 
+  export let onClose = null;
+  const dispatch = createEventDispatcher();
+
+  function handleClose() {
+    if (onClose) onClose();
+    dispatch("close");
+  }
+
   let visualMarker = sessionGet("visualMarker");
   let isProxyOpen = false;
   let unregisterBack = null;
@@ -24,9 +31,9 @@
     unregisterBack = registerBackHandler(() => {
       if (isProxyOpen) {
         isProxyOpen = false;
-      } else {
-        sessionSet("devSettings", false);
+        return false;
       }
+      handleClose();
       return true;
     });
   });
@@ -49,7 +56,7 @@
 </script>
 
 <div in:fade={{ duration: 100 }} out:fade={{ duration: 100 }} class="main">
-  <div on:click={() => sessionSet("devSettings", false)} class="close">
+  <div on:click={handleClose} class="close">
     Закрыть
   </div>
 
@@ -60,10 +67,10 @@
       <div
         on:click={async () => {
           if ($isTracing) {
-            sessionSet("devSettings", false);
+            handleClose();
             await stopTraceAndExport();
           } else {
-            sessionSet("devSettings", false);
+            handleClose();
             await startTrace();
           }
         }}
@@ -100,7 +107,7 @@
     <div class="group">
       <div
         on:click={() => {
-          sessionSet("devSettings", false);
+          handleClose();
           openSettingsPage("logs");
         }}
         class="button"
@@ -111,7 +118,7 @@
     <div class="group">
       <div
         on:click={() => {
-          sessionSet("devSettings", false);
+          handleClose();
           goto("/");
         }}
         class="button"

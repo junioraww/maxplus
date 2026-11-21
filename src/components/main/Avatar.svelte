@@ -224,24 +224,24 @@
         {getInitials(effectiveTitle)}
       </div>
     {/if}
-
-    {#if isOnline && !selectionMode}
-      <span class="online-badge"></span>
-    {/if}
-
-    {#if $safeAvatarDebugStore}
-      <span
-        class="stego-debug-dot"
-        class:stego-active={Boolean(safeAvatarUid && !safeVideoFailed)}
-        class:stego-missing={Boolean(safeAvatarUid && safeVideoFailed)}
-        title={safeAvatarUid ? `Max+ Avatar: ID=${safeAvatarUid}, Target=${targetEntityId}` : `Static Avatar: Target=${targetEntityId}`}
-      >
-        {#if safeAvatarUid}
-          <span class="stego-debug-text">{safeAvatarUid.slice(0, 4)}</span>
-        {/if}
-      </span>
-    {/if}
   </div>
+
+  {#if isOnline && !selectionMode}
+    <span class="online-badge"></span>
+  {/if}
+
+  {#if $safeAvatarDebugStore}
+    <span
+      class="stego-debug-dot"
+      class:stego-active={Boolean(safeAvatarUid && !safeVideoFailed)}
+      class:stego-missing={Boolean(safeAvatarUid && safeVideoFailed)}
+      title={safeAvatarUid ? `Max+ Avatar: ID=${safeAvatarUid}, Target=${targetEntityId}` : `Static Avatar: Target=${targetEntityId}`}
+    >
+      {#if safeAvatarUid}
+        <span class="stego-debug-text">{safeAvatarUid.slice(0, 4)}</span>
+      {/if}
+    </span>
+  {/if}
 </div>
 
 <style>
@@ -329,8 +329,8 @@
 
   .online-badge {
     position: absolute;
-    bottom: 0;
-    right: 0;
+    bottom: -1px;
+    right: -1px;
     width: 26%;
     height: 26%;
     min-width: 9px;
@@ -340,9 +340,14 @@
     border-radius: 50%;
     background: #22c55e;
     border: 2px solid var(--bg-surface, var(--bg-app, #18181b));
-    z-index: var(--z-header, 4);
+    z-index: var(--z-floating, 5);
     box-sizing: border-box;
     pointer-events: none;
+  }
+
+  .avatar-wrapper.has-story .online-badge {
+    bottom: 3px;
+    right: 3px;
   }
 
   .stego-debug-dot {
