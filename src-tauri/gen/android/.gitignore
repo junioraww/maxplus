@@ -44,3 +44,6 @@ key.properties
 !/app/src/main/res/xml/**
 !/app/src/main/res/raw/
 !/app/src/main/res/raw/**
+
+/app/src/main/res/**/ic_decoy_*
+/app/src/main/res/**/decoy_*

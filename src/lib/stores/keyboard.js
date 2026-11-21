@@ -33,6 +33,13 @@ export function initKeyboardTracker() {
         localStorage.setItem(STORAGE_KEY, String(height));
       } catch {}
       document.documentElement.style.setProperty("--keyboard-height", `${height}px`);
+      if (isOpen) {
+        document.documentElement.style.setProperty("--keyboard-inset", `${height}px`);
+      } else {
+        document.documentElement.style.setProperty("--keyboard-inset", "0px");
+      }
+    } else if (!isOpen) {
+      document.documentElement.style.setProperty("--keyboard-inset", "0px");
     }
   });
 

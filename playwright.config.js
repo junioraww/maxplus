@@ -7,7 +7,7 @@ export default defineConfig({
   reporter: "list",
   timeout: 30000,
   webServer: {
-    command: "bun x svelte-kit sync && bun run dev --port 5173",
+    command: "python3 tools/generate_decoy_icons.py && bun x svelte-kit sync && bun run dev --port 5173",
     port: 5173,
     reuseExistingServer: true,
   },

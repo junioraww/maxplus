@@ -5,7 +5,7 @@
   import SettingsPageWrapper from "$components/settings/SettingsPageWrapper.svelte";
   import SettingsDropout from "$components/settings/SettingsDropout.svelte";
   import { getCurrentAccount, getDatabaseFilesCount } from "$lib/stores/accounts";
-  import { checkHardwareBiometry, formatBiometryName } from "$lib/services/hardwareSecurity";
+  import { checkHardwareBiometry } from "$lib/services/hardwareSecurity";
   import { openLockScreen } from "$lib/stores/lockScreen";
   import { showAlert } from "$lib/utils/alert";
   import {
@@ -101,10 +101,9 @@
   }
 
   async function selectAppType(typeId) {
-    const found = allAppTypes.find(t => t.id === typeId);
     await saveCamouflageSettings({
       appType: typeId,
-      appLabel: found ? found.label : "Калькулятор"
+      seed: generateNewSeed()
     });
   }
 
@@ -115,7 +114,7 @@
   }
 
   function openPinModal() {
-    newPin = $camouflageSettings.pin || "";
+    newPin = "";
     pinError = "";
     showPinModal = true;
   }
@@ -298,7 +297,7 @@
                 class="action-solid-btn"
                 on:click={() => goto("/auth/lock?mode=create&type=hardware")}
               >
-                Включить биометрию ({formatBiometryName(biometryStatus.biometryType)})
+                Включить биометрию
               </button>
               <button
                 type="button"
@@ -686,7 +685,7 @@
     background: var(--bg-surface, #1e2025);
     border-top: 1px solid rgba(255, 255, 255, 0.08);
     border-radius: 20px 20px 0 0;
-    padding: 12px 20px calc(20px + var(--safe-bottom, 0px));
+    padding: 12px 20px calc(20px + max(var(--safe-bottom, 0px), var(--keyboard-inset, 0px)));
     width: 100%;
     max-width: 480px;
     display: flex;
@@ -694,6 +693,7 @@
     gap: 14px;
     box-sizing: border-box;
     box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.5);
+    transition: padding-bottom 0.15s ease-out;
   }
 
   .bottom-sheet-handle {

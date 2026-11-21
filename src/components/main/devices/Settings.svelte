@@ -2,12 +2,13 @@
   import { save } from "@tauri-apps/plugin-dialog";
   import { invoke } from "@tauri-apps/api/core";
   import { fade } from "svelte/transition";
-  import { onMount } from "svelte";
+  import { onMount, onDestroy } from "svelte";
 
   import { set as sessionSet } from "$lib/stores/session";
   import { generateDevice } from "$lib/utils/device";
   import { getCurrentAccount, setAccountMeta } from "$lib/stores/accounts";
   import { activeThemeId } from "$lib/stores/theme";
+  import { registerBackHandler } from "$lib/utils/backButton";
   import API from "$lib/stores/api";
 
   let glow = false;
@@ -16,8 +17,13 @@
   let telemetryMode = "fake";
   let isExporting = false;
   let isImporting = false;
+  let unregisterBack = null;
 
   onMount(async () => {
+    unregisterBack = registerBackHandler(() => {
+      close();
+      return true;
+    });
     glow = true;
     const acc = await getCurrentAccount().catch(() => null);
     if (acc?.id) {
@@ -191,6 +197,10 @@
     await saveDevice(device);
     update(device, true);
   }
+
+  onDestroy(() => {
+    if (unregisterBack) unregisterBack();
+  });
 
   function close() {
     sessionSet("devicesPage", false);
