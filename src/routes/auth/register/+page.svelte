@@ -596,7 +596,7 @@
     position: relative;
     z-index: 10;
     background-color: var(--auth-bg);
-    padding: 12px 16px calc(16px + env(safe-area-inset-bottom, 0px));
+    padding: 12px 16px calc(16px + var(--safe-bottom, env(safe-area-inset-bottom, 0px)));
     display: flex;
     flex-direction: column;
     align-items: center;

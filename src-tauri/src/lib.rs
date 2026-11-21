@@ -199,6 +199,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::generate_device,
+            commands::get_system_insets,
             commands::ext_api_request,
             commands::get_system_trace_info,
             commands::get_video_secret,

@@ -193,7 +193,7 @@
   }
 
   .bottom-section {
-    padding: 16px 16px calc(16px + env(safe-area-inset-bottom, 0px));
+    padding: 16px 16px calc(16px + var(--safe-bottom, env(safe-area-inset-bottom, 0px)));
     display: flex;
     flex-direction: column;
     align-items: center;

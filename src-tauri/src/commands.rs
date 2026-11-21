@@ -705,3 +705,43 @@ pub async fn save_camouflage_shell(
 ) -> Result<(), String> {
     crate::camouflage::save_camouflage_shell(&app, html)
 }
+
+#[derive(serde::Serialize, serde::Deserialize, Default, Clone, Debug)]
+pub struct SystemInsets {
+    pub top: i32,
+    pub bottom: i32,
+    pub left: i32,
+    pub right: i32,
+}
+
+#[tauri::command]
+pub fn get_system_insets() -> SystemInsets {
+    #[cfg(target_os = "android")]
+    {
+        if let Some(vm) = crate::notifications::GLOBAL_JVM.get() {
+            let res = vm.attach_current_thread(|env| -> Result<SystemInsets, jni::errors::Error> {
+                let main_class = env.find_class(jni::jni_str!("me/junioraww/max/MainActivity"))
+                    .or_else(|_| env.find_class(jni::jni_str!("org/meowkie/max/MainActivity")))?;
+                let arr_obj = env.call_static_method(
+                    main_class,
+                    jni::jni_str!("getInsetsStatic"),
+                    jni::jni_sig!("()[I"),
+                    &[],
+                )?.l()?;
+                let int_arr = jni::objects::JIntArray::from(arr_obj);
+                let mut buf = [0i32; 4];
+                env.get_int_array_region(&int_arr, 0, &mut buf)?;
+                Ok(SystemInsets {
+                    top: buf[0],
+                    bottom: buf[1],
+                    left: buf[2],
+                    right: buf[3],
+                })
+            });
+            if let Ok(insets) = res {
+                return insets;
+            }
+        }
+    }
+    SystemInsets::default()
+}

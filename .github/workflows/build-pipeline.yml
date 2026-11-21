@@ -10,6 +10,10 @@ on:
         description: "Branch of rumax to use"
         required: false
         default: "main"
+      biometry_branch:
+        description: "Branch of tauri-plugin-biometry to use"
+        required: false
+        default: "main"
 
 jobs:
   browser-tests:
@@ -131,8 +135,10 @@ jobs:
       - name: Patch Cargo.toml for CI
         run: |
           RUMAX_BRANCH="${{ github.event.inputs.rumax_branch || 'main' }}"
+          BIOMETRY_BRANCH="${{ github.event.inputs.biometry_branch || 'main' }}"
           sed -i "s|path = \"../../rumax\"|git = \"https://github.com/junioraww/rumax.git\", branch = \"$RUMAX_BRANCH\"|g" src-tauri/Cargo.toml
-          grep rumax src-tauri/Cargo.toml
+          sed -i "s|path = \"../../tauri-plugin-biometry\"|git = \"https://github.com/junioraww/tauri-plugin-biometry.git\", branch = \"$BIOMETRY_BRANCH\"|g" src-tauri/Cargo.toml
+          grep -E "rumax|tauri-plugin-biometry" src-tauri/Cargo.toml
 
       - run: bun install --frozen-lockfile
 
@@ -203,8 +209,10 @@ jobs:
       - name: Patch Cargo.toml for CI
         run: |
           RUMAX_BRANCH="${{ github.event.inputs.rumax_branch || 'main' }}"
+          BIOMETRY_BRANCH="${{ github.event.inputs.biometry_branch || 'main' }}"
           sed -i "s|path = \"../../rumax\"|git = \"https://github.com/junioraww/rumax.git\", branch = \"$RUMAX_BRANCH\"|g" src-tauri/Cargo.toml
-          grep rumax src-tauri/Cargo.toml
+          sed -i "s|path = \"../../tauri-plugin-biometry\"|git = \"https://github.com/junioraww/tauri-plugin-biometry.git\", branch = \"$BIOMETRY_BRANCH\"|g" src-tauri/Cargo.toml
+          grep -E "rumax|tauri-plugin-biometry" src-tauri/Cargo.toml
 
       - run: bun install --frozen-lockfile
 
@@ -284,9 +292,11 @@ jobs:
       - name: Patch Cargo.toml for CI
         run: |
           $branch = "${{ github.event.inputs.rumax_branch || 'main' }}"
+          $biometry_branch = "${{ github.event.inputs.biometry_branch || 'main' }}"
           (Get-Content src-tauri/Cargo.toml) -replace 'path = "\.\./\.\./rumax"', "git = `"https://github.com/junioraww/rumax.git`", branch = `"$branch`"" | Set-Content src-tauri/Cargo.toml
+          (Get-Content src-tauri/Cargo.toml) -replace 'path = "\.\./\.\./tauri-plugin-biometry"', "git = `"https://github.com/junioraww/tauri-plugin-biometry.git`", branch = `"$biometry_branch`"" | Set-Content src-tauri/Cargo.toml
           (Get-Content src-tauri/Cargo.toml) | Where-Object { $_ -notmatch 'libwebrtc' } | Set-Content src-tauri/Cargo.toml
-          Select-String -Path src-tauri/Cargo.toml -Pattern "rumax"
+          Select-String -Path src-tauri/Cargo.toml -Pattern "rumax|tauri-plugin-biometry"
 
       - run: bun install --frozen-lockfile
 
@@ -335,9 +345,11 @@ jobs:
       - name: Patch Cargo.toml for CI
         run: |
           RUMAX_BRANCH="${{ github.event.inputs.rumax_branch || 'main' }}"
+          BIOMETRY_BRANCH="${{ github.event.inputs.biometry_branch || 'main' }}"
           sed -i '' "s|path = \"../../rumax\"|git = \"https://github.com/junioraww/rumax.git\", branch = \"$RUMAX_BRANCH\"|g" src-tauri/Cargo.toml
+          sed -i '' "s|path = \"../../tauri-plugin-biometry\"|git = \"https://github.com/junioraww/tauri-plugin-biometry.git\", branch = \"$BIOMETRY_BRANCH\"|g" src-tauri/Cargo.toml
           sed -i '' '/libwebrtc/d' src-tauri/Cargo.toml
-          grep rumax src-tauri/Cargo.toml
+          grep -E "rumax|tauri-plugin-biometry" src-tauri/Cargo.toml
 
       - run: bun install --frozen-lockfile
 
@@ -423,6 +435,15 @@ jobs:
 
       - run: bun install --frozen-lockfile
 
+      - name: Patch Cargo.toml for CI
+        run: |
+          RUMAX_BRANCH="${{ github.event.inputs.rumax_branch || 'main' }}"
+          BIOMETRY_BRANCH="${{ github.event.inputs.biometry_branch || 'main' }}"
+          sed -i "s|path = \"../../rumax\"|git = \"https://github.com/junioraww/rumax.git\", branch = \"$RUMAX_BRANCH\"|g" src-tauri/Cargo.toml
+          sed -i "s|path = \"../../tauri-plugin-biometry\"|git = \"https://github.com/junioraww/tauri-plugin-biometry.git\", branch = \"$BIOMETRY_BRANCH\"|g" src-tauri/Cargo.toml
+          sed -i '/libwebrtc/d' src-tauri/Cargo.toml
+          grep -E "rumax|tauri-plugin-biometry" src-tauri/Cargo.toml
+
       - name: Init Tauri Android
         run: |
           bunx tauri android init
@@ -443,13 +464,6 @@ jobs:
           rm -f src-tauri/gen/android/app/src/main/res/values/ic_launcher_background.xml
           rm -rf src-tauri/gen/android/buildSrc/src/main/java/org/meowkie 2>/dev/null || true
           rm -rf src-tauri/gen/android/app/src/main/java/org/meowkie 2>/dev/null || true
-
-      - name: Patch Cargo.toml for CI
-        run: |
-          RUMAX_BRANCH="${{ github.event.inputs.rumax_branch || 'main' }}"
-          sed -i "s|path = \"../../rumax\"|git = \"https://github.com/junioraww/rumax.git\", branch = \"$RUMAX_BRANCH\"|g" src-tauri/Cargo.toml
-          sed -i '/libwebrtc/d' src-tauri/Cargo.toml
-          grep rumax src-tauri/Cargo.toml
 
       - name: Decode Android keystore
         env:
@@ -548,9 +562,11 @@ jobs:
       - name: Patch Cargo.toml for CI
         run: |
           RUMAX_BRANCH="${{ github.event.inputs.rumax_branch || 'main' }}"
+          BIOMETRY_BRANCH="${{ github.event.inputs.biometry_branch || 'main' }}"
           sed -i '' "s|path = \"../../rumax\"|git = \"https://github.com/junioraww/rumax.git\", branch = \"$RUMAX_BRANCH\"|g" src-tauri/Cargo.toml
+          sed -i '' "s|path = \"../../tauri-plugin-biometry\"|git = \"https://github.com/junioraww/tauri-plugin-biometry.git\", branch = \"$BIOMETRY_BRANCH\"|g" src-tauri/Cargo.toml
           sed -i '' '/libwebrtc/d' src-tauri/Cargo.toml
-          grep rumax src-tauri/Cargo.toml
+          grep -E "rumax|tauri-plugin-biometry" src-tauri/Cargo.toml
 
       - name: Prepare Tauri iOS
         run: bun tauri ios init --ci
