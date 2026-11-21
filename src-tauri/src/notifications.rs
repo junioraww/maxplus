@@ -249,7 +249,7 @@ pub async fn ensure_avatar_cached(
         return Some(file_path.to_string_lossy().to_string());
     }
 
-    if let Ok(resp) = reqwest::get(url).await {
+    if let Ok(resp) = rumax::shared_http_client().get(url).send().await {
         if resp.status().is_success() {
             if let Ok(bytes) = resp.bytes().await {
                 let to_write = if let Some(ref k) = key {
@@ -403,10 +403,19 @@ pub fn resolve_contact_info_internal(
                 let url_clone = url.clone();
                 let target_file = cached_file.clone();
                 let downloaded = std::thread::spawn(move || {
-                    let client = reqwest::blocking::Client::builder()
-                        .timeout(Duration::from_secs(4))
-                        .build()
-                        .ok()?;
+                    let mut builder = reqwest::blocking::Client::builder()
+                        .timeout(Duration::from_secs(4));
+                    if let Some(proxy_cfg) = rumax::get_global_proxy_config() {
+                        if let Some(url_str) = proxy_cfg.to_connection_uri() {
+                            if let Ok(mut proxy) = reqwest::Proxy::all(&url_str) {
+                                if !proxy_cfg.proxy_maxplus_site {
+                                    proxy = proxy.no_proxy(reqwest::NoProxy::from_string("maxplus.dev,*.maxplus.dev,localhost,127.0.0.1"));
+                                }
+                                builder = builder.proxy(proxy);
+                            }
+                        }
+                    }
+                    let client = builder.build().ok()?;
                     let resp = client.get(&url_clone).send().ok()?;
                     if resp.status().is_success() {
                         let bytes = resp.bytes().ok()?;

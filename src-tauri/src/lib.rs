@@ -1,4 +1,6 @@
 pub mod camouflage;
+pub mod proxy_manager;
+pub mod vpn_bypass;
 mod proxy_auth;
 mod commands;
 mod crypto;
@@ -162,6 +164,7 @@ pub fn run() {
             notifications::set_app_handle(handle.clone());
             webapp_proxy::set_app_handle(handle.clone());
             video::set_app_handle(handle.clone());
+            proxy_manager::load_initial_settings(&handle);
 
             tauri::async_runtime::spawn(async move {
                 while let Ok(msg) = event_stream.recv().await {
@@ -424,7 +427,18 @@ pub fn run() {
             crypto::commands::decrypt_media_file,
             crypto::commands::cache_encrypted_media,
             crypto::commands::register_media_cache,
+            proxy_manager::fetch_proxy_config,
+            proxy_manager::update_proxy_config,
+            proxy_manager::ping_proxy_endpoint,
+            proxy_manager::query_vpn_condition,
+            proxy_manager::switch_vpn_bypass,
+            proxy_manager::get_proxy_settings,
+            proxy_manager::set_proxy_settings,
+            proxy_manager::test_proxy_connection,
+            proxy_manager::check_vpn_status,
+            proxy_manager::set_vpn_bypass,
             commands::exit_app,
+            commands::proxy_http_request,
             commands::parse_mxp,
             commands::begin_call,
             commands::set_camouflage_icon,

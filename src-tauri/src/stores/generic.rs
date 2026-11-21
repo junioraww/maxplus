@@ -20,6 +20,7 @@ fn common_store_path(app: &AppHandle, store: &str) -> Result<PathBuf, String> {
         "avatar_debug" => Ok(app_dir.join("data").join("common").join("avatar_debug")),
         "avatar_settings" => Ok(app_dir.join("data").join("common").join("avatar_settings")),
         "maxplus_custom_uplink" => Ok(app_dir.join("data").join("common").join("maxplus_custom_uplink")),
+        "proxy_settings" => Ok(app_dir.join("data").join("common").join("proxy_settings")),
         _ => Err(format!("Unknown common store: {store}")),
     }
 }

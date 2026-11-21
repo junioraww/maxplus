@@ -14,6 +14,9 @@
   import AuroraBackground from "$components/main/auth/AuroraBackground.svelte";
   import MaxLogo from "$components/main/auth/MaxLogo.svelte";
   import CountryPickerModal from "$components/main/auth/CountryPickerModal.svelte";
+  import ProxySettingsPage from "../../../routes/settings/proxy/+page.svelte";
+
+  let isProxyOpen = false;
 
   let country = {
     name: "Россия",
@@ -189,6 +192,16 @@
     <button
       type="button"
       class="icon-button"
+      on:click={() => (isProxyOpen = true)}
+      aria-label="Настройки прокси"
+      title="Настройки прокси"
+    >
+      <img src="icons/proxy.svg" alt="Прокси" class="nav-icon" />
+    </button>
+
+    <button
+      type="button"
+      class="icon-button"
       on:click={handleToggleTheme}
       aria-label="Сменить тему"
     >
@@ -266,6 +279,12 @@
       on:close={() => (isPickerOpen = false)}
     />
   {/if}
+
+  {#if isProxyOpen}
+    <div class="proxy-modal-overlay">
+      <ProxySettingsPage isTab={false} onClose={() => (isProxyOpen = false)} />
+    </div>
+  {/if}
 </div>
 
 <style>
@@ -337,6 +356,17 @@
 
   .icon-button:active {
     background-color: rgba(127, 127, 127, 0.12);
+  }
+
+  .nav-icon {
+    width: 20px;
+    height: 20px;
+    filter: brightness(0);
+    display: block;
+  }
+
+  .auth-screen.dark-theme .nav-icon {
+    filter: none;
   }
 
   .logo-center {
@@ -513,5 +543,14 @@
   .disclaimer-text .highlight {
     color: var(--auth-text);
     font-weight: 500;
+  }
+
+  .proxy-modal-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    background: #17181c;
+    display: flex;
+    flex-direction: column;
   }
 </style>

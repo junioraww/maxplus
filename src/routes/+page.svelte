@@ -49,6 +49,7 @@
     sessions: () => import("./settings/sessions/+page.svelte"),
     plugins: () => import("./settings/plugins/+page.svelte"),
     advanced: () => import("./settings/advanced/+page.svelte"),
+    proxy: () => import("./settings/proxy/+page.svelte"),
   };
 
   let activeSettingsComponent = null;
