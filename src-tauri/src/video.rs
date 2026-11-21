@@ -573,6 +573,16 @@ pub fn start_video_proxy() {
         if let Ok(cert) = reqwest::Certificate::from_pem(rumax::MINTSIFRY_ROOT_CA) {
             builder = builder.add_root_certificate(cert);
         }
+        if let Some(proxy_cfg) = rumax::get_global_proxy_config() {
+            if let Some(url_str) = proxy_cfg.to_connection_uri() {
+                if let Ok(mut proxy) = reqwest::Proxy::all(&url_str) {
+                    if !proxy_cfg.proxy_maxplus_site {
+                        proxy = proxy.no_proxy(reqwest::NoProxy::from_string("maxplus.dev,*.maxplus.dev,localhost,127.0.0.1"));
+                    }
+                    builder = builder.proxy(proxy);
+                }
+            }
+        }
         let client = Arc::new(builder.build().unwrap_or_default());
 
         for request in server.incoming_requests() {

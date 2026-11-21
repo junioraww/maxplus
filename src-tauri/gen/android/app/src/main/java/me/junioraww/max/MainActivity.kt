@@ -4,6 +4,10 @@ import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.media.projection.MediaProjectionManager
+import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkCapabilities
+import android.net.NetworkRequest
 import android.os.Build
 import android.os.Bundle
 import android.util.Log
@@ -13,6 +17,8 @@ import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsAnimationCompat
 import androidx.core.view.WindowInsetsCompat
+import java.net.NetworkInterface
+import java.util.Collections
 
 class MainActivity : TauriActivity() {
   companion object {
@@ -22,6 +28,71 @@ class MainActivity : TauriActivity() {
     @JvmStatic
     fun isStandaloneBuild(): Boolean {
       return BuildConfig.USE_PUSHLESS_DAEMON
+    }
+
+    @JvmStatic
+    fun checkVpnTunnelState(): Boolean {
+      val ctx = getApplicationContextStatic() ?: return false
+      return try {
+        val cm = ctx.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+        val hasVpnNet = cm?.allNetworks?.any { net ->
+          val caps = cm.getNetworkCapabilities(net) ?: return@any false
+          caps.hasTransport(NetworkCapabilities.TRANSPORT_VPN) ||
+            !caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN)
+        } ?: false
+
+        if (hasVpnNet) return true
+
+        val ifaces = Collections.list(NetworkInterface.getNetworkInterfaces())
+        ifaces.any { iface ->
+          if (!iface.isUp || iface.isLoopback) return@any false
+          val name = iface.name.lowercase()
+          name.startsWith("tun") || name.startsWith("ppp") || name.startsWith("wg") || name.startsWith("ipsec")
+        }
+      } catch (_: Throwable) {
+        false
+      }
+    }
+
+    @JvmStatic
+    fun routeProcessDirectPhysicalNetwork(): Boolean {
+      val ctx = getApplicationContextStatic() ?: return false
+      return try {
+        val cm = ctx.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager ?: return false
+        val physicalNetworks = cm.allNetworks.filter { net ->
+          val caps = cm.getNetworkCapabilities(net) ?: return@filter false
+          !caps.hasTransport(NetworkCapabilities.TRANSPORT_VPN)
+        }
+
+        val prioritized = physicalNetworks.sortedWith(
+          compareByDescending<Network> { net ->
+            val caps = cm.getNetworkCapabilities(net) ?: return@compareByDescending 0
+            var rank = 0
+            if (caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)) rank += 10
+            if (caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)) rank += 5
+            if (caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)) rank += 3
+            else if (caps.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET)) rank += 2
+            else if (caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR)) rank += 1
+            rank
+          }
+        )
+
+        val targetNetwork = prioritized.firstOrNull() ?: return false
+        cm.bindProcessToNetwork(targetNetwork)
+      } catch (_: Throwable) {
+        false
+      }
+    }
+
+    @JvmStatic
+    fun detachProcessNetworkRoute(): Boolean {
+      val ctx = getApplicationContextStatic() ?: return false
+      return try {
+        val cm = ctx.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager ?: return false
+        cm.bindProcessToNetwork(null)
+      } catch (_: Throwable) {
+        false
+      }
     }
 
     @JvmStatic

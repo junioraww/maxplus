@@ -21,6 +21,7 @@ import { goto } from "$app/navigation";
   import { safeAvatarMapStore } from "$lib/services/AvatarSyncManager";
   import { getSafeAvatarMediaUrl } from "$lib/services/uplink";
   import { disableMaxPlusAvatars } from "$lib/stores/avatarSettings";
+  import { proxyConfig, loadProxyConfig } from "$lib/stores/proxySettings";
 
   let platform;
 
@@ -110,6 +111,10 @@ import { goto } from "$app/navigation";
     contact = user;
   }
 
+  $: proxySummary = ($proxyConfig?.proxy_type && $proxyConfig.proxy_type !== "none" && $proxyConfig.host?.trim())
+    ? ($proxyConfig.proxy_type === "socks5" ? "SOCKS5" : "HTTP")
+    : "Отключен";
+
   $: buttons = [
     [
       {
@@ -156,6 +161,12 @@ import { goto } from "$app/navigation";
       },
     ],
     [
+      {
+        icon: "proxy.svg",
+        text: "Прокси и сеть",
+        value: proxySummary,
+        action: () => openSettingsPage("proxy"),
+      },
       {
         icon: "phone.svg",
         text: "Плагины",
@@ -225,6 +236,7 @@ import { goto } from "$app/navigation";
 
   onMount(async () => {
     platform = await getPlatform();
+    loadProxyConfig();
   });
 </script>
 
@@ -262,6 +274,9 @@ import { goto } from "$app/navigation";
           <div on:click={btn.action} class="button">
             <img src={"icons/" + btn.icon} class="icon" />
             <a>{btn.text}</a>
+            {#if btn.value}
+              <span class="btn-value">{btn.value}</span>
+            {/if}
             {#if btn.isToggle}
               <div class="toggle-track" class:active={btn.toggleValue}>
                 <div class="toggle-thumb" class:active={btn.toggleValue}></div>
@@ -406,8 +421,20 @@ import { goto } from "$app/navigation";
     letter-spacing: 0.5px;
   }
 
+  .buttons .group .button .btn-value {
+    margin-left: auto;
+    font-size: 13px;
+    color: #8e8e93;
+    font-weight: 500;
+  }
+
+  .buttons .group .button .btn-value + svg {
+    margin-left: 8px;
+  }
+
   .buttons .group .button svg {
     margin-left: auto;
+    flex-shrink: 0;
   }
 
   .scanner-icon {

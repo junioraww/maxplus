@@ -28,6 +28,7 @@ import { handlePushUpdate } from "$lib/stores/stickers";
 import { ensureReactionsLoaded } from "$lib/stores/reactions";
 import { preloadComplaintReasons } from "$lib/stores/complaints";
 import { handleTranscriptionPush } from "$lib/stores/transcription";
+import { vpnStatus } from "$lib/stores/proxySettings";
 import {
   addAccount,
   getAccounts,
@@ -506,6 +507,9 @@ export default class MobileApi extends BaseAPI {
 
         if (!isError) {
           sessionSet("connected", true);
+          if (response?.isVpn) {
+            vpnStatus.update(s => ({ ...s, is_vpn: true, server_detected: true }));
+          }
           if (forceSync) {
             await this.sync();
           }
