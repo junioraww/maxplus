@@ -24,6 +24,8 @@ class MainActivity : TauriActivity() {
   companion object {
     @Volatile var instance: MainActivity? = null
     @Volatile var appContext: Context? = null
+    @Volatile var currentCamouflageActive: Boolean = false
+    @Volatile var currentCamouflageAliasIndex: Int = 1
 
     @JvmStatic
     fun isStandaloneBuild(): Boolean {
@@ -136,18 +138,57 @@ class MainActivity : TauriActivity() {
     }
 
     @JvmStatic
-    fun setCamouflageState(active: Boolean, label: String) {
+    fun updateTaskDescription(act: Activity, active: Boolean, aliasIndex: Int) {
+      try {
+        val pm = act.packageManager
+        val targetComponent = if (active) {
+          val safeIndex = if (aliasIndex in 1..40) aliasIndex else 1
+          val targetAliasName = if (safeIndex == 1) "me.junioraww.max.MainActivityCalculator" else "me.junioraww.max.MainActivityDecoy$safeIndex"
+          android.content.ComponentName(act, targetAliasName)
+        } else {
+          android.content.ComponentName(act, "me.junioraww.max.MainActivity")
+        }
+        val info = pm.getActivityInfo(targetComponent, 0)
+        val label = info.loadLabel(pm).toString()
+        val iconRes = info.icon
+        val taskDesc = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+          android.app.ActivityManager.TaskDescription.Builder()
+            .setLabel(label)
+            .setIcon(iconRes)
+            .build()
+        } else {
+          @Suppress("DEPRECATION")
+          android.app.ActivityManager.TaskDescription(label, iconRes)
+        }
+        act.setTaskDescription(taskDesc)
+      } catch (_: Throwable) {}
+    }
+
+    @JvmStatic
+    fun setCamouflageState(active: Boolean, aliasIndex: Int) {
       val ctx = getApplicationContextStatic() ?: return
       try {
         val pm = ctx.packageManager
         val defaultComponent = android.content.ComponentName(ctx, "me.junioraww.max.MainActivity")
-        val camoComponent = android.content.ComponentName(ctx, "me.junioraww.max.MainActivityCalculator")
+        val allDecoys = (1..40).map { if (it == 1) "me.junioraww.max.MainActivityCalculator" else "me.junioraww.max.MainActivityDecoy$it" }
         if (active) {
+          val safeIndex = if (aliasIndex in 1..40) aliasIndex else 1
+          val targetAliasName = if (safeIndex == 1) "me.junioraww.max.MainActivityCalculator" else "me.junioraww.max.MainActivityDecoy$safeIndex"
+          val targetComponent = android.content.ComponentName(ctx, targetAliasName)
           pm.setComponentEnabledSetting(
-            camoComponent,
+            targetComponent,
             android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_ENABLED,
             android.content.pm.PackageManager.DONT_KILL_APP
           )
+          for (decoy in allDecoys) {
+            if (decoy != targetAliasName) {
+              pm.setComponentEnabledSetting(
+                android.content.ComponentName(ctx, decoy),
+                android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
+                android.content.pm.PackageManager.DONT_KILL_APP
+              )
+            }
+          }
           pm.setComponentEnabledSetting(
             defaultComponent,
             android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
@@ -159,11 +200,20 @@ class MainActivity : TauriActivity() {
             android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_ENABLED,
             android.content.pm.PackageManager.DONT_KILL_APP
           )
-          pm.setComponentEnabledSetting(
-            camoComponent,
-            android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
-            android.content.pm.PackageManager.DONT_KILL_APP
-          )
+          for (decoy in allDecoys) {
+            pm.setComponentEnabledSetting(
+              android.content.ComponentName(ctx, decoy),
+              android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
+              android.content.pm.PackageManager.DONT_KILL_APP
+            )
+          }
+        }
+        currentCamouflageActive = active
+        currentCamouflageAliasIndex = aliasIndex
+        instance?.let { act ->
+          act.runOnUiThread {
+            updateTaskDescription(act, active, aliasIndex)
+          }
         }
       } catch (e: Throwable) {
         Log.e("MaxPlus", "setCamouflageState error", e)
@@ -494,6 +544,7 @@ class MainActivity : TauriActivity() {
     super.onResume()
     AppState.setAppInForeground(true)
     applyInsetsToWebView()
+    updateTaskDescription(this, currentCamouflageActive, currentCamouflageAliasIndex)
   }
 
   override fun onPause() {

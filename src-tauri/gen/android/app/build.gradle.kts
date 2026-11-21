@@ -135,6 +135,19 @@ configurations.all {
     }
 }
 
+tasks.register<Exec>("generateDecoyIcons") {
+    val script = rootProject.file("../../../tools/generate_decoy_icons.py")
+    if (script.exists()) {
+        commandLine("python3", script.absolutePath)
+    } else {
+        commandLine("echo", "decoy generator not found")
+    }
+}
+
+tasks.named("preBuild") {
+    dependsOn("generateDecoyIcons")
+}
+
 apply(from = "tauri.build.gradle.kts")
 
 if (file("google-services.json").exists()) {

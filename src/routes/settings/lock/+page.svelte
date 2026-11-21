@@ -101,10 +101,9 @@
   }
 
   async function selectAppType(typeId) {
-    const found = allAppTypes.find(t => t.id === typeId);
     await saveCamouflageSettings({
       appType: typeId,
-      appLabel: found ? found.label : "Калькулятор"
+      seed: generateNewSeed()
     });
   }
 

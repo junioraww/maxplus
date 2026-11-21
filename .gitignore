@@ -18,3 +18,7 @@ playwright-report
 /plugins
 **/__pycache__
 /decoy_icons
+/static/decoy
+/src/lib/camouflage/decoys.json
+**/res/**/ic_decoy_*
+**/res/**/decoy_*

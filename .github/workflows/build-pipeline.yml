@@ -35,6 +35,8 @@ jobs:
 
       - run: bun install --frozen-lockfile
 
+      - run: python3 tools/generate_decoy_icons.py
+
       - run: bun x svelte-kit sync
 
       - run: bun x playwright install --with-deps firefox
@@ -67,6 +69,8 @@ jobs:
           key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
 
       - run: bun install --frozen-lockfile
+
+      - run: python3 tools/generate_decoy_icons.py
 
       - run: bun x svelte-kit sync
 
@@ -464,6 +468,7 @@ jobs:
           rm -f src-tauri/gen/android/app/src/main/res/values/ic_launcher_background.xml
           rm -rf src-tauri/gen/android/buildSrc/src/main/java/org/meowkie 2>/dev/null || true
           rm -rf src-tauri/gen/android/app/src/main/java/org/meowkie 2>/dev/null || true
+          python3 tools/generate_decoy_icons.py
 
       - name: Decode Android keystore
         env:

@@ -390,7 +390,7 @@
             <line x1="3" y1="6" x2="21" y2="6"></line>
             <line x1="3" y1="18" x2="21" y2="18"></line>
           </svg>
-          <span class="toolbar-title">{theme?.lang === "en" ? "Calculator" : "Калькулятор"}</span>
+          <span class="toolbar-title">{$camouflageSettings.appLabel}</span>
           <div class="toolbar-actions">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <circle cx="12" cy="12" r="10"></circle>
@@ -449,7 +449,7 @@
         {#if theme?.headerStyle === "compact-nav"}
           <div class="compact-nav-bar">
             <span class="nav-sub">{theme?.notesBreadcrumb || "Notes"}</span>
-            <span class="nav-heading">{theme?.notesTitle || "Заметки"}</span>
+            <span class="nav-heading">{$camouflageSettings.appLabel}</span>
             <button type="button" class="icon-circle-btn small" on:click={() => (isAddingNote = !isAddingNote)}>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
                 <line x1="12" y1="5" x2="12" y2="19"></line>
@@ -472,13 +472,13 @@
             <button type="button" class="mini-add-btn" on:click={() => (isAddingNote = !isAddingNote)}>+</button>
           </div>
           <div class="sub-header-row">
-            <span class="sub-heading-text">{theme?.notesTitle || "Заметки"}</span>
+            <span class="sub-heading-text">{$camouflageSettings.appLabel}</span>
             <span class="sub-badge-count">{filteredNotes.length}</span>
           </div>
         {:else if theme?.headerStyle === "split-breadcrumb"}
           <div class="breadcrumb-chip">{theme?.notesBreadcrumb || "Personal Vault"}</div>
           <div class="section-header-row">
-            <h1>{theme?.notesTitle || "Заметки"}</h1>
+            <h1>{$camouflageSettings.appLabel}</h1>
             <button type="button" class="icon-circle-btn" on:click={() => (isAddingNote = !isAddingNote)}>
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
                 <line x1="12" y1="5" x2="12" y2="19"></line>
@@ -488,7 +488,7 @@
           </div>
         {:else}
           <div class="section-header-row">
-            <h1>{theme?.notesTitle || "Заметки"}</h1>
+            <h1>{$camouflageSettings.appLabel}</h1>
             <button type="button" class="icon-circle-btn" on:click={() => (isAddingNote = !isAddingNote)}>
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
                 <line x1="12" y1="5" x2="12" y2="19"></line>
@@ -562,18 +562,18 @@
         {#if theme?.headerStyle === "compact-nav"}
           <div class="compact-nav-bar">
             <span class="nav-sub">{theme?.todoBreadcrumb || "Daily Focus"}</span>
-            <span class="nav-heading">{theme?.todoTitle || "Задачи"}</span>
+            <span class="nav-heading">{$camouflageSettings.appLabel}</span>
             <span class="badge-count">{todos.filter((t) => t.done).length}/{todos.length}</span>
           </div>
         {:else if theme?.headerStyle === "split-breadcrumb"}
           <div class="breadcrumb-chip">{theme?.todoBreadcrumb || "Productivity"}</div>
           <div class="section-header-row">
-            <h1>{theme?.todoTitle || "Задачи"}</h1>
+            <h1>{$camouflageSettings.appLabel}</h1>
             <span class="badge-count">{todos.filter((t) => t.done).length} / {todos.length} {theme?.todoProgressLabel || "выполнено"}</span>
           </div>
         {:else}
           <div class="section-header-row">
-            <h1>{theme?.todoTitle || "Задачи"}</h1>
+            <h1>{$camouflageSettings.appLabel}</h1>
             <span class="badge-count">{todos.filter((t) => t.done).length} из {todos.length}</span>
           </div>
         {/if}
@@ -639,14 +639,14 @@
         {#if theme?.headerStyle === "compact-nav"}
           <div class="compact-nav-bar">
             <span class="nav-sub">{theme?.convBreadcrumb || "Exchange"}</span>
-            <span class="nav-heading">{theme?.convTitle || "Конвертер"}</span>
+            <span class="nav-heading">{$camouflageSettings.appLabel}</span>
             <div class="spacer-nav"></div>
           </div>
         {:else if theme?.headerStyle === "split-breadcrumb"}
           <div class="breadcrumb-chip">{theme?.convBreadcrumb || "Finance & Units"}</div>
-          <h1>{theme?.convTitle || "Конвертер"}</h1>
+          <h1>{$camouflageSettings.appLabel}</h1>
         {:else}
-          <h1>{theme?.convTitle || "Конвертер"}</h1>
+          <h1>{$camouflageSettings.appLabel}</h1>
         {/if}
 
         <div class="camo-tabs">

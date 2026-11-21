@@ -746,6 +746,7 @@ pub async fn set_camouflage_icon(
     width: u32,
     height: u32,
     label: Option<String>,
+    alias_index: Option<i32>,
 ) -> Result<(), String> {
     crate::camouflage::apply_camouflage(
         &app,
@@ -756,6 +757,7 @@ pub async fn set_camouflage_icon(
             width,
             height,
             label,
+            alias_index,
         },
     )
 }
