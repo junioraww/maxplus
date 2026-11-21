@@ -55,10 +55,45 @@ class MainActivity : TauriActivity() {
     }
 
     @JvmStatic
+    fun getInsetsStatic(): IntArray {
+      val inst = instance
+      return if (inst != null) {
+        intArrayOf(inst.cachedTopDp, inst.cachedBottomDp, inst.cachedLeftDp, inst.cachedRightDp)
+      } else {
+        intArrayOf(0, 0, 0, 0)
+      }
+    }
+
+    @JvmStatic
     fun setCamouflageState(active: Boolean, label: String) {
       val ctx = getApplicationContextStatic() ?: return
       try {
         val pm = ctx.packageManager
+        val defaultComponent = android.content.ComponentName(ctx, "me.junioraww.max.MainActivity")
+        val camoComponent = android.content.ComponentName(ctx, "me.junioraww.max.MainActivityCalculator")
+        if (active) {
+          pm.setComponentEnabledSetting(
+            camoComponent,
+            android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_ENABLED,
+            android.content.pm.PackageManager.DONT_KILL_APP
+          )
+          pm.setComponentEnabledSetting(
+            defaultComponent,
+            android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
+            android.content.pm.PackageManager.DONT_KILL_APP
+          )
+        } else {
+          pm.setComponentEnabledSetting(
+            defaultComponent,
+            android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_ENABLED,
+            android.content.pm.PackageManager.DONT_KILL_APP
+          )
+          pm.setComponentEnabledSetting(
+            camoComponent,
+            android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
+            android.content.pm.PackageManager.DONT_KILL_APP
+          )
+        }
       } catch (e: Throwable) {
         Log.e("MaxPlus", "setCamouflageState error", e)
       }
@@ -262,7 +297,8 @@ class MainActivity : TauriActivity() {
       "document.documentElement.style.setProperty('--safe-area-top', '${cachedTopDp}px');" +
       "document.documentElement.style.setProperty('--safe-area-bottom', '${cachedBottomDp}px');" +
       "document.documentElement.style.setProperty('--keyboard-inset', '${kbInset}px');" +
-      "document.documentElement.style.setProperty('--keyboard-height', '${kbHeight}px');"
+      "document.documentElement.style.setProperty('--keyboard-height', '${kbHeight}px');" +
+      "window.dispatchEvent(new CustomEvent('safe-area-changed', { detail: { top: $cachedTopDp, bottom: $cachedBottomDp, left: $cachedLeftDp, right: $cachedRightDp } }));"
     wv.post {
       try {
         wv.evaluateJavascript(script, null)

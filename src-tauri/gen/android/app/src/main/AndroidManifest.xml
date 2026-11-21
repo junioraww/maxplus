@@ -75,6 +75,20 @@
             <!-- DEEP LINK PLUGIN. AUTO-GENERATED. DO NOT REMOVE. -->
         </activity>
         
+        <activity-alias
+            android:name=".MainActivityCalculator"
+            android:targetActivity=".MainActivity"
+            android:icon="@mipmap/ic_decoy_1"
+            android:roundIcon="@mipmap/ic_decoy_1"
+            android:label="Калькулятор"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+        
         <receiver
           android:name=".ReplyReceiver"
           android:exported="false">

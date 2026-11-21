@@ -76,6 +76,15 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
+      - name: Patch Cargo.toml for CI
+        run: |
+          sed -i 's|path = "../../rumax"|git = "https://github.com/junioraww/rumax.git", branch = "dev"|g' src-tauri/Cargo.toml
+          sed -i 's|path = "../../tauri-plugin-biometry"|git = "https://github.com/junioraww/tauri-plugin-biometry.git", branch = "main"|g' src-tauri/Cargo.toml
+          sed -i '/libwebrtc/d' src-tauri/Cargo.toml
+
+          echo "Cargo.toml updated:"
+          grep -E "rumax|tauri-plugin-biometry" src-tauri/Cargo.toml
+
       - name: Init Tauri Android
         run: |
           bunx tauri android init
@@ -96,14 +105,6 @@ jobs:
           rm -f src-tauri/gen/android/app/src/main/res/values/ic_launcher_background.xml
           rm -rf src-tauri/gen/android/buildSrc/src/main/java/org/meowkie 2>/dev/null || true
           rm -rf src-tauri/gen/android/app/src/main/java/org/meowkie 2>/dev/null || true
-
-      - name: Patch Cargo.toml for CI
-        run: |
-          sed -i 's|path = "../../rumax"|git = "https://github.com/junioraww/rumax.git", branch = "dev"|g' src-tauri/Cargo.toml
-          sed -i '/libwebrtc/d' src-tauri/Cargo.toml
-
-          echo "Cargo.toml updated:"
-          grep rumax src-tauri/Cargo.toml
 
       - name: Decode Android keystore
         run: |

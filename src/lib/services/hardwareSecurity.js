@@ -42,13 +42,13 @@ export function formatBiometryName(type) {
     case BiometryType.FaceID:
       return "Face ID";
     case BiometryType.TouchID:
-      return "Отпечаток пальца / Touch ID";
+      return "Отпечаток пальца / графический ключ";
     case BiometryType.Iris:
       return "Сканер радужки";
     case BiometryType.Auto:
-      return "Биометрия";
+      return "Биометрия / графический ключ";
     default:
-      return "Биометрия / PIN";
+      return "Биометрия / графический ключ";
   }
 }
 

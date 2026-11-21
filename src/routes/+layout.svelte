@@ -97,6 +97,7 @@
   let unlistenBackButton = null;
   let unlistenCallAction = null;
   let handleKeydown = null;
+  let handleSafeAreaChanged = null;
 
   setContext("onBack", onBack);
 
@@ -136,7 +137,32 @@
       } catch (error) {
         console.warn("Native safe-area insets are unavailable", error);
       }
+    } else if (system === "android") {
+      try {
+        const insets = await invoke("get_system_insets");
+        if (insets && (insets.top > 0 || insets.bottom > 0)) {
+          document.documentElement.style.setProperty("--safe-top", `${insets.top}px`);
+          document.documentElement.style.setProperty("--safe-bottom", `${insets.bottom}px`);
+          document.documentElement.style.setProperty("--safe-area-top", `${insets.top}px`);
+          document.documentElement.style.setProperty("--safe-area-bottom", `${insets.bottom}px`);
+        }
+      } catch (error) {
+        console.warn("Android safe-area insets are unavailable", error);
+      }
     }
+
+    handleSafeAreaChanged = (e) => {
+      const { top, bottom } = e.detail || {};
+      if (typeof top === "number") {
+        document.documentElement.style.setProperty("--safe-top", `${top}px`);
+        document.documentElement.style.setProperty("--safe-area-top", `${top}px`);
+      }
+      if (typeof bottom === "number") {
+        document.documentElement.style.setProperty("--safe-bottom", `${bottom}px`);
+        document.documentElement.style.setProperty("--safe-area-bottom", `${bottom}px`);
+      }
+    };
+    window.addEventListener("safe-area-changed", handleSafeAreaChanged);
 
     if (system === "android" || system === "ios") {
       try {
@@ -206,6 +232,7 @@
   onDestroy(() => {
     if (cleanupAutoLock) cleanupAutoLock();
     if (handleKeydown) window.removeEventListener("keydown", handleKeydown);
+    if (handleSafeAreaChanged) window.removeEventListener("safe-area-changed", handleSafeAreaChanged);
     if (unlistenBackButton) unlistenBackButton();
     if (unlistenCallAction) unlistenCallAction();
     if (cleanupDeepLink) cleanupDeepLink();

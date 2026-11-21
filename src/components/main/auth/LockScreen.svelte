@@ -62,6 +62,7 @@
   let isSettingUpHardware = false;
   let isDisablingHardware = false;
   let lastBiometryTime = 0;
+  let isBiometryActive = false;
 
   async function buildPreviewData() {
     try {
@@ -127,24 +128,25 @@
   let unlockTimer = null;
 
   function scheduleHardwareUnlock() {
-    if (hardwareUnlockScheduled || authenticatingHardware || migrating || isSettingUpHardware || isDisablingHardware) return;
+    if (hardwareUnlockScheduled || authenticatingHardware || migrating || isSettingUpHardware || isDisablingHardware || isBiometryActive) return;
     if (mode !== "decrypt") return;
     if (typeof document !== "undefined" && document.visibilityState === "hidden") {
       return;
     }
-    if (Date.now() - lastBiometryTime < 2000) return;
+    if (Date.now() - lastBiometryTime < 2500) return;
 
     hardwareUnlockScheduled = true;
     if (unlockTimer) clearTimeout(unlockTimer);
     unlockTimer = setTimeout(() => {
       hardwareUnlockScheduled = false;
-      if (typeof document !== "undefined" && document.visibilityState === "visible" && mode === "decrypt" && isHardwareLocked) {
+      if (typeof document !== "undefined" && document.visibilityState === "visible" && mode === "decrypt" && isHardwareLocked && !isBiometryActive) {
         unlockWithHardware();
       }
-    }, 200);
+    }, 250);
   }
 
   function handleVisibilityOrFocus() {
+    if (isBiometryActive || authenticatingHardware) return;
     if (typeof document !== "undefined" && document.visibilityState === "visible" && mode === "decrypt" && isHardwareLocked) {
       scheduleHardwareUnlock();
     }
@@ -208,32 +210,36 @@
   }
 
   async function setupHardwareLock() {
-    if (isSettingUpHardware || authenticatingHardware || migrating) return;
+    if (isSettingUpHardware || authenticatingHardware || migrating || isBiometryActive) return;
     isSettingUpHardware = true;
     authenticatingHardware = true;
-    text = "Подтвердите биометрию...";
+    isBiometryActive = true;
+    text = "Подтвердите блокировку...";
 
     if (!currentAccount) currentAccount = account || await getCurrentAccount();
     if (!currentAccount) {
       authenticatingHardware = false;
       isSettingUpHardware = false;
+      isBiometryActive = false;
       text = "Аккаунт не найден";
       return;
     }
 
     try {
       lastBiometryTime = Date.now();
-      await authenticateHardware("Подтвердите биометрию для защиты аккаунта");
+      await authenticateHardware("Подтвердите личность для защиты аккаунта");
       lastBiometryTime = Date.now();
     } catch {
       authenticatingHardware = false;
       isSettingUpHardware = false;
+      isBiometryActive = false;
       lastBiometryTime = Date.now();
-      text = "Биометрия отменена или не распознана";
+      text = "Подтверждение отменено или не распознано";
       return;
     }
 
     authenticatingHardware = false;
+    isBiometryActive = false;
     const totalFiles = await getDatabaseFilesCount(currentAccount.id).catch(() => 0);
     migrationTotal = totalFiles;
     migrationCurrent = 0;
@@ -260,7 +266,7 @@
   }
 
   async function disableHardwareLock() {
-    if (isDisablingHardware || authenticatingHardware || migrating) return;
+    if (isDisablingHardware || authenticatingHardware || migrating || isBiometryActive) return;
     isDisablingHardware = true;
     if (!currentAccount) currentAccount = account || await getCurrentAccount();
     if (!currentAccount) {
@@ -269,7 +275,8 @@
     }
 
     authenticatingHardware = true;
-    text = "Подтвердите биометрию...";
+    isBiometryActive = true;
+    text = "Подтвердите личность...";
 
     let key;
     try {
@@ -279,12 +286,14 @@
     } catch {
       authenticatingHardware = false;
       isDisablingHardware = false;
+      isBiometryActive = false;
       lastBiometryTime = Date.now();
-      text = "Биометрия отменена или не распознана";
+      text = "Подтверждение отменено или не распознано";
       return;
     }
 
     authenticatingHardware = false;
+    isBiometryActive = false;
     const totalFiles = await getDatabaseFilesCount(currentAccount.id).catch(() => 0);
     migrationTotal = totalFiles;
     migrationCurrent = 0;
@@ -309,13 +318,14 @@
   }
 
   async function unlockWithHardware() {
-    if (authenticatingHardware || migrating || isSettingUpHardware || isDisablingHardware) return;
+    if (authenticatingHardware || migrating || isSettingUpHardware || isDisablingHardware || isBiometryActive) return;
     if (!currentAccount) currentAccount = account || await getCurrentAccount();
     if (!currentAccount) return;
 
+    isBiometryActive = true;
     authenticatingHardware = true;
     lastBiometryTime = Date.now();
-    text = "Ожидание биометрии...";
+    text = "Ожидание подтверждения...";
 
     let key;
     try {
@@ -323,12 +333,14 @@
       lastBiometryTime = Date.now();
     } catch {
       authenticatingHardware = false;
+      isBiometryActive = false;
       lastBiometryTime = Date.now();
-      text = "Биометрия не подтверждена";
+      text = "Подтверждение отменено или не распознано";
       return;
     }
 
     authenticatingHardware = false;
+    isBiometryActive = false;
     lastBiometryTime = Date.now();
 
     try {
@@ -561,8 +573,8 @@
     <div class="hardware-card">
       <div class="hardware-icon">
         <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M12 11c0 3.517-1.009 6.799-2.753 9.571m-3.44-2.04A12.003 12.003 0 0 1 3 11c0-4.97 4.03-9 9-9s9 4.03 9 9a11.96 11.96 0 0 1-1.5 5.73m-3.8-3.93A5.996 5.996 0 0 0 12 8c-2.485 0-4.5 2.015-4.5 4.5 0 1.948.928 3.68 2.37 4.784"/>
-          <path d="M12 14a2 2 0 1 0 0-4 2 2 0 0 0 0 4z"/>
+          <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+          <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
         </svg>
       </div>
       <h2>
@@ -573,7 +585,7 @@
         }
       </h2>
       <p class="hardware-subtitle">
-        {text || (authenticatingHardware ? "Ожидание подтверждения..." : (mode === "create" ? "Подтвердите биометрию для защиты аккаунта" : "Используйте сканер отпечатка пальца или лица"))}
+        {text || (authenticatingHardware ? "Ожидание подтверждения..." : (mode === "create" ? "Подтвердите блокировку для защиты аккаунта" : "Используйте отпечаток пальца или графический ключ"))}
       </p>
       {#if !authenticatingHardware && !migrating}
         <button
