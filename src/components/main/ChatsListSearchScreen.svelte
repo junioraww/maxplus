@@ -267,24 +267,26 @@
 
 <style>
   .search-screen {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
+    position: fixed;
+    inset: 0;
+    width: 100vw;
+    height: 100vh;
     background: #16171b;
-    z-index: var(--z-floating, 5);
+    z-index: var(--z-modal, 7);
     display: flex;
     flex-direction: column;
+    overflow: hidden;
   }
 
   .search-topbar {
     display: flex;
     align-items: center;
     gap: 10px;
-    padding: 10px 14px;
+    padding: calc(10px + var(--safe-top, 0px)) 14px 10px;
     background: #1c1d22;
     border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    flex-shrink: 0;
+    box-sizing: border-box;
   }
 
   .back-btn {
@@ -346,7 +348,8 @@
     flex: 1;
     overflow-y: auto;
     overflow-x: hidden;
-    padding-bottom: 20px;
+    padding-bottom: max(20px, calc(16px + var(--safe-bottom, 0px)));
+    -webkit-overflow-scrolling: touch;
   }
 
   .section-header {

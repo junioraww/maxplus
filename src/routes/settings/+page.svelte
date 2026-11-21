@@ -128,6 +128,11 @@ import { goto } from "$app/navigation";
         action: () => openSettingsPage("notifications"),
       },
       {
+        icon: "folder.svg",
+        text: "Папки с чатами",
+        action: () => openSettingsPage("folders"),
+      },
+      {
         icon: "shield.svg",
         text: "Конфиденциальность",
         action: () => openSettingsPage("privacy"),

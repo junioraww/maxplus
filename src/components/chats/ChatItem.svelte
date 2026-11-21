@@ -45,7 +45,7 @@
 
   $: muted = isChatMuted(currentChat);
   $: isBot = $contact?.options?.includes("BOT") || chat?.options?.BOT === true || chat?.options?.IS_BOT === true;
-  $: isPinned = Boolean(currentChat?.favIndex || currentChat?.pinned || chat?.favIndex || chat?.pinned);
+  $: isPinned = Boolean(currentChat?.favIndex || currentChat?.pinned || chat?.favIndex || chat?.pinned || chat?.isPinned);
 
   $: title =
     (currentChat?.id === 0 || chat?.id === 0)
@@ -202,6 +202,7 @@
 <div
   class="chat-item"
   class:selected={isSelected}
+  class:pinned={isPinned}
   on:mousedown={handleMouseDown}
   on:mousemove={handleMouseMove}
   on:mouseup={handleMouseUp}
@@ -322,6 +323,10 @@
 
   .chat-item:hover {
     background-color: rgba(255, 255, 255, 0.03);
+  }
+
+  .chat-item.pinned {
+    background-color: var(--bg-pinned-chat, rgba(255, 255, 255, 0.02));
   }
 
   .chat-item.selected {

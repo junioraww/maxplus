@@ -114,7 +114,9 @@
         {/if}
       </div>
     </div>
+  </div>
 
+  <svelte:fragment slot="footer">
     <div class="action-footer">
       <button
         class="save-btn"
@@ -125,7 +127,7 @@
         {isSaving ? "Сохранение..." : "Сохранить"}
       </button>
     </div>
-  </div>
+  </svelte:fragment>
 </BottomSheet>
 
 <style>

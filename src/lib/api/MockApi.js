@@ -240,6 +240,53 @@ export default class MockApi extends BaseAPI {
     return this.folders;
   }
 
+  async createFolder(folder) {
+    const id = folder?.id || (typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `f_${Date.now()}_${Math.random().toString(36).slice(2)}`);
+    return await this.updateFolder({ ...folder, id });
+  }
+
+  async updateFolder(folder) {
+    const id = String(folder?.id || (typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `f_${Date.now()}_${Math.random().toString(36).slice(2)}`));
+    const normalized = {
+      ...folder,
+      id,
+      filters: (folder?.filters || []).map(Number),
+      include: (folder?.include || []).map(Number),
+      options: (folder?.options || []).map(Number),
+      favorites: (folder?.favorites || []).map(Number),
+    };
+    const list = this.folders || [];
+    const idx = list.findIndex(f => String(f.id) === id);
+    if (idx !== -1) {
+      list[idx] = { ...list[idx], ...normalized };
+    } else {
+      list.push(normalized);
+    }
+    this.folders = [...list];
+    currentFolders.set(this.folders);
+    return { folder: normalized };
+  }
+
+  async deleteFolders(folderIds) {
+    const ids = (folderIds || []).map(String);
+    this.folders = (this.folders || []).filter(f => !ids.includes(String(f.id)));
+    currentFolders.set(this.folders);
+    return { success: true };
+  }
+
+  async reorderFolders(foldersOrder) {
+    if (Array.isArray(foldersOrder)) {
+      const orderMap = new Map(foldersOrder.map((id, index) => [String(id), index]));
+      this.folders.sort((a, b) => {
+        const ai = orderMap.has(String(a.id)) ? orderMap.get(String(a.id)) : 999999;
+        const bi = orderMap.has(String(b.id)) ? orderMap.get(String(b.id)) : 999999;
+        return ai - bi;
+      });
+      currentFolders.set([...this.folders]);
+    }
+    return { success: true };
+  }
+
   ensureEarlierMessages(chatId, from_time, backward) {
     if (!this.messages[chatId]) {
       this.generateMockMessages(chatId, 60);

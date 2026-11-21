@@ -73,20 +73,32 @@
   let contextMenuFolder = null;
   let contextMenuPos = { x: 0, y: 0 };
   let isContextMenuOpen = false;
+  let menuOpenedAt = 0;
 
-  function openContextMenu(folder, e) {
-    if (e.stopPropagation) e.stopPropagation();
-    const target = e.currentTarget || e.target;
-    const rect = target?.getBoundingClientRect?.() || { left: 16, bottom: 40, width: 60 };
+  function openContextMenu(folder, targetOrRect) {
+    clearTimeout(longPressTimer);
+    longPressTimer = null;
+    let rect = null;
+    if (targetOrRect && typeof targetOrRect.left === "number") {
+      rect = targetOrRect;
+    } else if (targetOrRect) {
+      if (targetOrRect.stopPropagation) targetOrRect.stopPropagation();
+      const el = targetOrRect.currentTarget || targetOrRect.target?.closest(".tab-wrapper") || targetOrRect.target;
+      rect = el?.getBoundingClientRect?.() || null;
+    }
+    const fallback = rect || { left: 16, bottom: 44, width: 60 };
     contextMenuFolder = folder;
     contextMenuPos = {
-      x: rect.left + rect.width / 2,
-      y: rect.bottom + 4,
+      x: fallback.left + fallback.width / 2,
+      y: fallback.bottom + 6,
     };
+    menuOpenedAt = Date.now();
     isContextMenuOpen = true;
   }
 
-  function closeContextMenu() {
+  function closeContextMenu(e) {
+    if (Date.now() - menuOpenedAt < 250) return;
+    if (e && e.stopPropagation) e.stopPropagation();
     isContextMenuOpen = false;
     contextMenuFolder = null;
   }
@@ -115,11 +127,16 @@
       draggingIndex = index;
       return;
     }
+    if (e.button != null && e.button !== 0) {
+      return;
+    }
     const touch = e.touches ? e.touches[0] : e;
     touchStartX = touch.clientX;
     touchStartY = touch.clientY;
     isLongPress = false;
     clearTimeout(longPressTimer);
+    const targetEl = e.currentTarget || e.target?.closest(".tab-wrapper") || e.target;
+    const rect = targetEl?.getBoundingClientRect?.() || { left: 16, bottom: 44, width: 60 };
     longPressTimer = setTimeout(() => {
       isLongPress = true;
       if (typeof navigator !== "undefined" && navigator.vibrate) {
@@ -127,14 +144,14 @@
           navigator.vibrate(40);
         } catch {}
       }
-      openContextMenu(folder, e);
-    }, 450);
+      openContextMenu(folder, rect);
+    }, 400);
   }
 
   function handleTabTouchMove(e) {
     if (!longPressTimer && !isLongPress) return;
     const touch = e.touches ? e.touches[0] : e;
-    if (Math.abs(touch.clientX - touchStartX) > 8 || Math.abs(touch.clientY - touchStartY) > 8) {
+    if (Math.abs(touch.clientX - touchStartX) > 18 || Math.abs(touch.clientY - touchStartY) > 18) {
       clearTimeout(longPressTimer);
       longPressTimer = null;
     }
@@ -146,7 +163,7 @@
     if (isLongPress) {
       setTimeout(() => {
         isLongPress = false;
-      }, 300);
+      }, 350);
     }
     draggingIndex = null;
   }
@@ -161,7 +178,7 @@
     const onTabsMouseMove = (ev) => {
       if (!isTabsMouseDragging || !tabsEl) return;
       const dx = ev.clientX - tabsMouseStartX;
-      if (Math.abs(dx) > 4) {
+      if (Math.abs(dx) > 10) {
         tabsMouseHasMoved = true;
       }
       tabsEl.scrollLeft = tabsMouseStartScrollLeft - dx;
@@ -248,11 +265,11 @@
         on:mousedown={(e) => handleTabTouchStart(index, folder, e)}
         on:touchstart|passive={(e) => handleTabTouchStart(index, folder, e)}
         on:touchmove|passive={handleTabTouchMove}
-        on:contextmenu|preventDefault={(e) => openContextMenu(folder, e)}
+        on:contextmenu|preventDefault|stopPropagation={(e) => openContextMenu(folder, e)}
       >
         <button
           class="tab"
-          class:active={activeFolder === folder && !isEditing}
+          class:active={String(activeFolder?.id) === String(folder?.id) && !isEditing}
           on:click={() => selectFolder(folder)}
         >
           <span class="tab-title">{folder.title}</span>
@@ -305,10 +322,14 @@
 </div>
 
 {#if isContextMenuOpen && contextMenuFolder}
-  <div class="folder-context-backdrop" on:click={closeContextMenu}></div>
+  <div
+    class="folder-context-backdrop"
+    on:pointerdown|stopPropagation|preventDefault={closeContextMenu}
+    on:click|stopPropagation={closeContextMenu}
+  ></div>
   <div
     class="folder-context-menu"
-    style="top: {contextMenuPos.y}px; left: {Math.max(12, Math.min(contextMenuPos.x - 80, window.innerWidth - 180))}px;"
+    style="top: {contextMenuPos.y}px; left: {Math.max(12, Math.min(contextMenuPos.x - 85, (typeof window !== 'undefined' ? window.innerWidth : 360) - 185))}px;"
   >
     {#if contextMenuFolder.id !== 0 && contextMenuFolder.id !== "all.chat.folder"}
       <button class="folder-menu-item" on:click={() => handleMenuAction("edit")}>
@@ -336,12 +357,13 @@
     height: 40px;
     align-items: center;
     position: relative;
-    z-index: 10;
+    z-index: var(--z-header, 4);
     user-select: none;
     -webkit-user-select: none;
     box-sizing: border-box;
     background: transparent;
     flex-shrink: 0;
+    margin-bottom: 4px;
   }
 
   .tabs {
@@ -371,11 +393,14 @@
     margin-right: 2px;
     touch-action: pan-x;
     flex-shrink: 0;
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
   }
 
   .tab-wrapper.dragging {
     opacity: 0.5;
-    z-index: 100;
+    z-index: var(--z-dropdown, 6);
     pointer-events: none;
   }
 
@@ -511,7 +536,7 @@
     left: 0;
     right: 0;
     bottom: 0;
-    z-index: var(--z-dropdown-backdrop, 5);
+    z-index: var(--z-dropdown-backdrop, 50);
     background: rgba(0, 0, 0, 0.45);
     backdrop-filter: blur(2px);
     -webkit-backdrop-filter: blur(2px);
@@ -519,7 +544,7 @@
 
   .folder-context-menu {
     position: fixed;
-    z-index: var(--z-dropdown, 6);
+    z-index: var(--z-dropdown, 60);
     min-width: 170px;
     background: var(--bg-surface-elevated, #232429);
     border-radius: 12px;

@@ -40,6 +40,7 @@
   const SETTINGS_LOADERS = {
     profile: () => import("./settings/profile/+page.svelte"),
     notifications: () => Promise.resolve({ default: Notifications }),
+    folders: () => import("./settings/folders/+page.svelte"),
     privacy: () => import("./settings/privacy/+page.svelte"),
     lock: () => import("./settings/lock/+page.svelte"),
     two_factor: () => import("./settings/two_factor/+page.svelte"),
