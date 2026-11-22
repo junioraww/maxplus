@@ -132,6 +132,8 @@
   let suggestionTimer = null;
 
   let previousChatId = null;
+  let initialDraftLoadedChatId = null;
+
   $: if (chat?.id !== previousChatId) {
     if (previousChatId != null && !editingMessage) {
       const trimmed = newMessage?.trim();
@@ -142,6 +144,7 @@
       }
     }
     previousChatId = chat?.id;
+    initialDraftLoadedChatId = chat?.id;
     if (!editingMessage && chat?.id != null) {
       const draft = getChatDraft(chat.id);
       if (draft) {
@@ -155,16 +158,18 @@
     }
   }
 
-  $: if (!editingMessage && !newMessage && chat?.id != null && $chatDrafts) {
+  $: if (!editingMessage && chat?.id != null && $chatDrafts && initialDraftLoadedChatId !== chat.id) {
     const draft = getChatDraft(chat.id);
-    if (draft && draft !== newMessage) {
+    if (draft && !newMessage) {
       newMessage = draft;
       previousMessageText = draft;
       tick().then(() => autoResize());
     }
+    initialDraftLoadedChatId = chat.id;
   }
 
   function handleComposerInput() {
+    initialDraftLoadedChatId = chat?.id;
     composerFormat.onTextChanged(previousMessageText, newMessage);
     previousMessageText = newMessage;
     formatRevision++;
@@ -2166,7 +2171,7 @@
     max-width: 100%;
     min-width: 0;
     box-sizing: border-box;
-    transition: padding-bottom 0.15s ease;
+    transition: padding-bottom 0.25s cubic-bezier(0.1, 0.9, 0.2, 1);
   }
 
   .input-controls.keyboard-open {

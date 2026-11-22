@@ -30,7 +30,11 @@
   let selectedSetId = null;
   let contentScrollEl;
   let emojiScrollEl;
+  let emojiTabsBarEl;
   let selectedEmojiCat = "smileys";
+  let isManualScrollingEmoji = false;
+  let manualEmojiScrollTimer = null;
+  let emojiScrollRaf = null;
 
   let showCatalogModal = false;
   let showPackModal = false;
@@ -90,6 +94,8 @@
     if (unregPeek) unregPeek();
     if (unregPack) unregPack();
     if (unregCatalog) unregCatalog();
+    if (manualEmojiScrollTimer) clearTimeout(manualEmojiScrollTimer);
+    if (emojiScrollRaf) cancelAnimationFrame(emojiScrollRaf);
   });
 
   const pluginTabs = getMountStore("sticker-panel:tab");
@@ -351,13 +357,65 @@
     dispatch("insertEmoji", { emoji });
   }
 
+  function syncActiveEmojiTab(catId) {
+    if (!emojiTabsBarEl) return;
+    const activeBtn = emojiTabsBarEl.querySelector(`[data-tab-cat="${catId}"]`);
+    if (activeBtn) {
+      activeBtn.scrollIntoView({ behavior: "smooth", inline: "nearest", block: "nearest" });
+    }
+  }
+
   function scrollToEmojiCategory(catId) {
     selectedEmojiCat = catId;
+    isManualScrollingEmoji = true;
+    if (manualEmojiScrollTimer) clearTimeout(manualEmojiScrollTimer);
+    manualEmojiScrollTimer = setTimeout(() => {
+      isManualScrollingEmoji = false;
+    }, 450);
+
+    syncActiveEmojiTab(catId);
+
     if (!emojiScrollEl) return;
     const target = emojiScrollEl.querySelector(`[data-emoji-cat="${catId}"]`);
     if (target) {
       target.scrollIntoView({ behavior: "smooth", block: "start" });
     }
+  }
+
+  function handleEmojiScroll() {
+    if (isManualScrollingEmoji || !emojiScrollEl) return;
+    if (emojiScrollRaf) cancelAnimationFrame(emojiScrollRaf);
+    emojiScrollRaf = requestAnimationFrame(() => {
+      if (!emojiScrollEl) return;
+      const containerRect = emojiScrollEl.getBoundingClientRect();
+      const blocks = emojiScrollEl.querySelectorAll("[data-emoji-cat]");
+      if (!blocks.length) return;
+
+      if (emojiScrollEl.scrollHeight - emojiScrollEl.scrollTop - emojiScrollEl.clientHeight < 24) {
+        const lastCat = blocks[blocks.length - 1].getAttribute("data-emoji-cat");
+        if (lastCat && selectedEmojiCat !== lastCat) {
+          selectedEmojiCat = lastCat;
+          syncActiveEmojiTab(lastCat);
+        }
+        return;
+      }
+
+      let activeCat = blocks[0].getAttribute("data-emoji-cat");
+      for (let i = 0; i < blocks.length; i++) {
+        const block = blocks[i];
+        const rect = block.getBoundingClientRect();
+        if (rect.top - containerRect.top <= 60) {
+          activeCat = block.getAttribute("data-emoji-cat");
+        } else {
+          break;
+        }
+      }
+
+      if (activeCat && selectedEmojiCat !== activeCat) {
+        selectedEmojiCat = activeCat;
+        syncActiveEmojiTab(activeCat);
+      }
+    });
   }
 
   async function scrollToSection(secId) {
@@ -478,12 +536,13 @@
 
   {#if activeTab === "emoji"}
     <div class="emoji-view">
-      <div class="emoji-tabs-bar">
+      <div class="emoji-tabs-bar" bind:this={emojiTabsBarEl}>
         <div class="emoji-tabs-inner">
           {#each emojiCategories as cat (cat.id)}
             <button
               type="button"
               class="emoji-tab-item"
+              data-tab-cat={cat.id}
               class:selected={selectedEmojiCat === cat.id}
               on:click={() => scrollToEmojiCategory(cat.id)}
               title={cat.name}
@@ -494,7 +553,7 @@
         </div>
       </div>
 
-      <div class="emoji-scroll-area" bind:this={emojiScrollEl}>
+      <div class="emoji-scroll-area" bind:this={emojiScrollEl} on:scroll={handleEmojiScroll}>
         <div class="emoji-content-inner">
           {#each emojiCategories as cat (cat.id)}
             <div class="category-block" data-emoji-cat={cat.id}>
