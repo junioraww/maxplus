@@ -116,8 +116,8 @@
     align-items: center;
     justify-content: space-between;
     gap: 12px;
-    background: #1b1c21;
-    border: 1px solid rgba(255, 255, 255, 0.06);
+    background: #202026;
+    border: 1px solid rgba(255, 255, 255, 0.08);
     border-radius: 12px;
     padding: 12px 14px;
     cursor: pointer;
@@ -126,8 +126,8 @@
   }
 
   .dropout-header:hover {
-    background: #202127;
-    border-color: rgba(255, 255, 255, 0.12);
+    background: #292933;
+    border-color: rgba(255, 255, 255, 0.14);
   }
 
   .text-col {
@@ -181,7 +181,7 @@
   .backdrop {
     position: fixed;
     inset: 0;
-    z-index: 45;
+    z-index: var(--z-dropdown-backdrop);
   }
 
   .dropdown-menu {
@@ -196,7 +196,7 @@
     border-radius: 12px;
     padding: 6px;
     box-shadow: 0 10px 28px rgba(0, 0, 0, 0.55);
-    z-index: 50;
+    z-index: var(--z-dropdown);
     display: flex;
     flex-direction: column;
     gap: 2px;

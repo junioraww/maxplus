@@ -2648,7 +2648,7 @@
     background: #212121;
     border-bottom: 1px solid rgba(255, 255, 255, 0.06);
     flex-shrink: 0;
-    z-index: 10;
+    z-index: var(--z-floating);
   }
 
   .tg-tabs {
@@ -2674,7 +2674,7 @@
     align-items: center;
     justify-content: center;
     position: relative;
-    z-index: 1;
+    z-index: var(--z-base);
   }
 
   .tg-tab:hover {
@@ -2695,7 +2695,7 @@
     border-radius: 2px 2px 0 0;
     pointer-events: none;
     will-change: transform;
-    z-index: 2;
+    z-index: var(--z-panel);
   }
 
   .tg-tab-indicator.animating {
@@ -2753,7 +2753,7 @@
     display: flex;
     flex-direction: column;
     gap: 2px;
-    z-index: 30;
+    z-index: var(--z-dropdown);
     border: 1px solid rgba(255, 255, 255, 0.08);
   }
 
@@ -3320,7 +3320,7 @@
     align-items: center;
     gap: 8px;
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
-    z-index: 50;
+    z-index: var(--z-toast);
     pointer-events: none;
   }
 
@@ -3481,7 +3481,7 @@
     position: absolute;
     right: 0;
     top: 100%;
-    z-index: 50;
+    z-index: var(--z-dropdown);
     min-width: 180px;
     margin-top: 4px;
   }

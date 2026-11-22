@@ -676,7 +676,7 @@
 
   .open-devices {
     position: absolute;
-    z-index: 100;
+    z-index: var(--z-floating);
     color: white;
     width: 200px;
     height: 40px;
@@ -699,7 +699,7 @@
 
   .context-menu {
     position: fixed;
-    z-index: var(--z-dropdown, 5);
+    z-index: var(--z-dropdown);
     min-width: 210px;
     display: flex;
     flex-direction: column;

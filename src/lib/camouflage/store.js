@@ -6,6 +6,35 @@ import { retrieveHardwareKey } from "$lib/services/hardwareSecurity";
 import { openLockScreen } from "$lib/stores/lockScreen";
 import decoysData from "./decoys.json";
 
+export function pickDecoyVariant(appType, seed = Date.now()) {
+  if (decoysData?.categories?.[appType]?.length) {
+    const items = decoysData.categories[appType];
+    const index = Math.abs(seed) % items.length;
+    const chosen = items[index];
+    const iconObj = decoysData.icons?.find(ic => ic.index === chosen.iconIndex) || decoysData.icons?.[0];
+    return {
+      aliasIndex: chosen.aliasIndex,
+      appLabel: chosen.label,
+      iconIndex: chosen.iconIndex,
+      iconSvg: iconObj?.svgContent || null
+    };
+  }
+  return null;
+}
+
+export function resolveProceduralTheme(settings) {
+  const seed = settings?.seed || 133742;
+  const appType = settings?.appType || "calculator";
+  const theme = (settings?.proceduralTheme && settings.proceduralTheme.seed === seed)
+    ? { ...settings.proceduralTheme }
+    : generateProceduralTheme(seed);
+  const variant = pickDecoyVariant(appType, seed);
+  if (variant?.iconSvg) {
+    theme.iconSvg = variant.iconSvg;
+  }
+  return theme;
+}
+
 const DEFAULT_SETTINGS = {
   enabled: false,
   appType: "calculator",
@@ -19,7 +48,7 @@ const DEFAULT_SETTINGS = {
 const preloaded = typeof window !== "undefined" && window.__CAMOUFLAGE_DATA__;
 const initialSettings = preloaded ? { ...DEFAULT_SETTINGS, ...preloaded } : DEFAULT_SETTINGS;
 const initialCamouflaged = typeof window !== "undefined" && (Boolean(window.__CAMOUFLAGE_BOOT__) || Boolean(initialSettings.enabled));
-const initialTheme = initialSettings.proceduralTheme || generateProceduralTheme(initialSettings.seed || 133742);
+const initialTheme = resolveProceduralTheme(initialSettings);
 
 export const camouflageSettings = writable(initialSettings);
 export const isCamouflageLocked = writable(initialCamouflaged);
@@ -49,34 +78,29 @@ function getHardwareSeed() {
   return hashString(metrics);
 }
 
-export function pickDecoyVariant(appType, seed = Date.now()) {
-  if (decoysData?.categories?.[appType]?.length) {
-    const items = decoysData.categories[appType];
-    const index = Math.abs(seed) % items.length;
-    const chosen = items[index];
-    const iconObj = decoysData.icons?.find(ic => ic.index === chosen.iconIndex) || decoysData.icons?.[0];
-    return {
-      aliasIndex: chosen.aliasIndex,
-      appLabel: chosen.label,
-      iconIndex: chosen.iconIndex,
-      iconSvg: iconObj?.svgContent || null
-    };
-  }
-  return null;
-}
-
 export function generateNewSeed() {
   const base = getHardwareSeed();
   return (base ^ hashString(String(Date.now()))) >>> 0;
 }
 
 export async function syncCamouflageWindowIcon(theme, label, aliasIndex) {
-  if (typeof window === "undefined" || !theme?.iconSvg) return;
+  if (typeof window === "undefined") return;
+  let iconData = null;
+  if (theme?.iconSvg) {
+    try {
+      iconData = await renderIconToRgba(theme.iconSvg, 128);
+    } catch {}
+  }
+  const width = iconData?.width || 2;
+  const height = iconData?.height || 2;
+  const rgba = (iconData?.rgba && iconData.rgba.length === width * height * 4)
+    ? iconData.rgba
+    : new Array(width * height * 4).fill(0);
+
   try {
-    const { rgba, pngBase64, width, height } = await renderIconToRgba(theme.iconSvg, 128);
     await invoke("set_camouflage_icon", {
       rgba,
-      pngBase64,
+      pngBase64: iconData?.pngBase64 || null,
       width,
       height,
       label: label || null,
@@ -110,7 +134,12 @@ export async function loadCamouflageSettings() {
     if (data && typeof data === "object") {
       const merged = { ...DEFAULT_SETTINGS, ...data };
       if (!merged.seed) merged.seed = 133742;
-      const theme = merged.proceduralTheme || generateProceduralTheme(merged.seed);
+      const variant = pickDecoyVariant(merged.appType, merged.seed);
+      if (variant) {
+        merged.appLabel = variant.appLabel;
+        merged.aliasIndex = variant.aliasIndex;
+      }
+      const theme = resolveProceduralTheme(merged);
       merged.proceduralTheme = theme;
       camouflageSettings.set(merged);
       activeProceduralTheme.set(theme);
@@ -130,16 +159,15 @@ export async function loadCamouflageSettings() {
 export async function saveCamouflageSettings(newSettings) {
   const current = get(camouflageSettings);
   const updated = { ...current, ...newSettings };
-  const theme = generateProceduralTheme(updated.seed);
-
+  if (newSettings.seed !== undefined && newSettings.seed !== current.seed) {
+    delete updated.proceduralTheme;
+  }
   const variant = pickDecoyVariant(updated.appType, updated.seed);
   if (variant) {
     updated.appLabel = variant.appLabel;
     updated.aliasIndex = variant.aliasIndex;
-    if (variant.iconSvg) {
-      theme.iconSvg = variant.iconSvg;
-    }
   }
+  const theme = resolveProceduralTheme(updated);
 
   updated.proceduralTheme = theme;
   camouflageSettings.set(updated);
@@ -164,7 +192,6 @@ export async function verifyAndUnlockCamouflage(enteredPin) {
   const s = get(camouflageSettings);
   const unlock = () => {
     isCamouflageLocked.set(false);
-    restoreCamouflageWindowIcon().catch(() => {});
     return { success: true };
   };
 

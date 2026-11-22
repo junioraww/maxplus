@@ -891,7 +891,7 @@
     display: flex;
     align-items: flex-end;
     justify-content: center;
-    z-index: var(--z-modal, 7);
+    z-index: var(--z-modal);
   }
 
   .modal-card {

@@ -213,87 +213,149 @@ def main():
                             except OSError:
                                 pass
 
-    rng = random.Random()
-    shuffled_palettes = rng.sample(PALETTES, len(PALETTES))
+    force_regenerate = ("--regenerate" in sys.argv) or ("--force" in sys.argv)
+    existing_manifest_path = None
+    for p in [os.path.join(lib_camo_dir, "decoys.json"), os.path.join(static_decoy_dir, "decoys.json")]:
+        if os.path.exists(p):
+            existing_manifest_path = p
+            break
 
     icons_meta = []
     color_entries = []
-
-    for idx in range(1, 11):
-        pal = shuffled_palettes[(idx - 1) % len(shuffled_palettes)]
-        rx = rng.choice(RADII)
-        bg = pal["bg"]
-        fg = pal["fg"]
-        accent = pal["accent"]
-
-        glyph_svg = generate_procedural_glyph(idx, fg, accent, rng)
-        svg_content = (
-            f'<svg width="108" height="108" viewBox="0 0 108 108" fill="none" xmlns="http://www.w3.org/2000/svg">\n'
-            f'  <rect width="108" height="108" rx="{rx}" fill="{bg}"/>\n'
-            f'  {glyph_svg}\n'
-            f'</svg>'
-        )
-
-        svg_filename = f"decoy_{idx}.svg"
-        svg_path = os.path.join(static_decoy_dir, svg_filename)
-        with open(svg_path, "w", encoding="utf-8") as f:
-            f.write(svg_content)
-
-        if os.path.exists(android_res_dir):
-            color_entries.append(f'    <color name="decoy_bg_{idx}">{bg}</color>')
-
-            fg_vector = (
-                '<?xml version="1.0" encoding="utf-8"?>\n'
-                '<vector xmlns:android="http://schemas.android.com/apk/res/android"\n'
-                '    android:width="108dp"\n'
-                '    android:height="108dp"\n'
-                '    android:viewportWidth="108"\n'
-                '    android:viewportHeight="108">\n'
-                f'{generate_vector_drawable_paths(idx, fg, accent)}\n'
-                '</vector>\n'
-            )
-            with open(os.path.join(drawable_dir, f"ic_decoy_fg_{idx}.xml"), "w", encoding="utf-8") as f:
-                f.write(fg_vector)
-
-            adaptive_xml = (
-                '<?xml version="1.0" encoding="utf-8"?>\n'
-                '<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">\n'
-                f'    <background android:drawable="@color/decoy_bg_{idx}" />\n'
-                f'    <foreground android:drawable="@drawable/ic_decoy_fg_{idx}" />\n'
-                '</adaptive-icon>\n'
-            )
-            with open(os.path.join(mipmap_v26_dir, f"ic_decoy_{idx}.xml"), "w", encoding="utf-8") as f:
-                f.write(adaptive_xml)
-            with open(os.path.join(mipmap_dir, f"ic_decoy_{idx}.xml"), "w", encoding="utf-8") as f:
-                f.write(adaptive_xml)
-
-        icons_meta.append({
-            "index": idx,
-            "bg": bg,
-            "fg": fg,
-            "accent": accent,
-            "svg": f"decoy/{svg_filename}",
-            "svgContent": svg_content
-        })
-
-    categories_list = ["calculator", "notes", "todo", "converter"]
     categories_meta = {}
-    alias_index = 1
     xml_strings = []
 
-    for cat in categories_list:
-        names = generate_tree_names(cat, 10, rng)
-        cat_items = []
-        for i, name in enumerate(names):
-            icon_idx = (i % 10) + 1
-            cat_items.append({
-                "aliasIndex": alias_index,
-                "iconIndex": icon_idx,
-                "label": name
+    if existing_manifest_path and not force_regenerate:
+        with open(existing_manifest_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        icons_meta = data.get("icons", [])
+        icons_meta.sort(key=lambda x: x.get("index", 0))
+        categories_meta = data.get("categories", {})
+
+        for ic in icons_meta:
+            idx = ic["index"]
+            bg = ic["bg"]
+            fg = ic["fg"]
+            accent = ic["accent"]
+            svg_content = ic["svgContent"]
+            svg_filename = f"decoy_{idx}.svg"
+            svg_path = os.path.join(static_decoy_dir, svg_filename)
+            with open(svg_path, "w", encoding="utf-8") as f:
+                f.write(svg_content)
+
+            if os.path.exists(android_res_dir):
+                color_entries.append(f'    <color name="decoy_bg_{idx}">{bg}</color>')
+                fg_vector = (
+                    '<?xml version="1.0" encoding="utf-8"?>\n'
+                    '<vector xmlns:android="http://schemas.android.com/apk/res/android"\n'
+                    '    android:width="108dp"\n'
+                    '    android:height="108dp"\n'
+                    '    android:viewportWidth="108"\n'
+                    '    android:viewportHeight="108">\n'
+                    f'{generate_vector_drawable_paths(idx, fg, accent)}\n'
+                    '</vector>\n'
+                )
+                with open(os.path.join(drawable_dir, f"ic_decoy_fg_{idx}.xml"), "w", encoding="utf-8") as f:
+                    f.write(fg_vector)
+
+                adaptive_xml = (
+                    '<?xml version="1.0" encoding="utf-8"?>\n'
+                    '<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">\n'
+                    f'    <background android:drawable="@color/decoy_bg_{idx}" />\n'
+                    f'    <foreground android:drawable="@drawable/ic_decoy_fg_{idx}" />\n'
+                    '</adaptive-icon>\n'
+                )
+                with open(os.path.join(mipmap_v26_dir, f"ic_decoy_{idx}.xml"), "w", encoding="utf-8") as f:
+                    f.write(adaptive_xml)
+                with open(os.path.join(mipmap_dir, f"ic_decoy_{idx}.xml"), "w", encoding="utf-8") as f:
+                    f.write(adaptive_xml)
+
+        all_items = []
+        for cat_items in categories_meta.values():
+            all_items.extend(cat_items)
+        all_items.sort(key=lambda x: x.get("aliasIndex", 0))
+        for item in all_items:
+            alias_idx = item["aliasIndex"]
+            clean_label = str(item["label"]).replace('&', '&amp;').replace("'", "\\'")
+            xml_strings.append(f'    <string name="decoy_label_{alias_idx}">{clean_label}</string>')
+    else:
+        rng = random.Random()
+        shuffled_palettes = rng.sample(PALETTES, len(PALETTES))
+
+        for idx in range(1, 11):
+            pal = shuffled_palettes[(idx - 1) % len(shuffled_palettes)]
+            rx = rng.choice(RADII)
+            bg = pal["bg"]
+            fg = pal["fg"]
+            accent = pal["accent"]
+
+            glyph_svg = generate_procedural_glyph(idx, fg, accent, rng)
+            svg_content = (
+                f'<svg width="108" height="108" viewBox="0 0 108 108" fill="none" xmlns="http://www.w3.org/2000/svg">\n'
+                f'  <rect width="108" height="108" rx="{rx}" fill="{bg}"/>\n'
+                f'  {glyph_svg}\n'
+                f'</svg>'
+            )
+
+            svg_filename = f"decoy_{idx}.svg"
+            svg_path = os.path.join(static_decoy_dir, svg_filename)
+            with open(svg_path, "w", encoding="utf-8") as f:
+                f.write(svg_content)
+
+            if os.path.exists(android_res_dir):
+                color_entries.append(f'    <color name="decoy_bg_{idx}">{bg}</color>')
+
+                fg_vector = (
+                    '<?xml version="1.0" encoding="utf-8"?>\n'
+                    '<vector xmlns:android="http://schemas.android.com/apk/res/android"\n'
+                    '    android:width="108dp"\n'
+                    '    android:height="108dp"\n'
+                    '    android:viewportWidth="108"\n'
+                    '    android:viewportHeight="108">\n'
+                    f'{generate_vector_drawable_paths(idx, fg, accent)}\n'
+                    '</vector>\n'
+                )
+                with open(os.path.join(drawable_dir, f"ic_decoy_fg_{idx}.xml"), "w", encoding="utf-8") as f:
+                    f.write(fg_vector)
+
+                adaptive_xml = (
+                    '<?xml version="1.0" encoding="utf-8"?>\n'
+                    '<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">\n'
+                    f'    <background android:drawable="@color/decoy_bg_{idx}" />\n'
+                    f'    <foreground android:drawable="@drawable/ic_decoy_fg_{idx}" />\n'
+                    '</adaptive-icon>\n'
+                )
+                with open(os.path.join(mipmap_v26_dir, f"ic_decoy_{idx}.xml"), "w", encoding="utf-8") as f:
+                    f.write(adaptive_xml)
+                with open(os.path.join(mipmap_dir, f"ic_decoy_{idx}.xml"), "w", encoding="utf-8") as f:
+                    f.write(adaptive_xml)
+
+            icons_meta.append({
+                "index": idx,
+                "bg": bg,
+                "fg": fg,
+                "accent": accent,
+                "svg": f"decoy/{svg_filename}",
+                "svgContent": svg_content
             })
-            xml_strings.append(f'    <string name="decoy_label_{alias_index}">{name}</string>')
-            alias_index += 1
-        categories_meta[cat] = cat_items
+
+        categories_list = ["calculator", "notes", "todo", "converter"]
+        alias_index = 1
+
+        for cat in categories_list:
+            names = generate_tree_names(cat, 10, rng)
+            cat_items = []
+            for i, name in enumerate(names):
+                icon_idx = (i % 10) + 1
+                cat_items.append({
+                    "aliasIndex": alias_index,
+                    "iconIndex": icon_idx,
+                    "label": name
+                })
+                clean_name = str(name).replace('&', '&amp;').replace("'", "\\'")
+                xml_strings.append(f'    <string name="decoy_label_{alias_index}">{clean_name}</string>')
+                alias_index += 1
+            categories_meta[cat] = cat_items
 
     if os.path.exists(values_dir):
         decoy_strings_path = os.path.join(values_dir, "decoy_strings.xml")

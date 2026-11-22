@@ -611,13 +611,13 @@
     left: 0;
     right: 0;
     bottom: 0;
-    z-index: 100;
+    z-index: var(--z-dropdown-backdrop);
     background: transparent;
   }
 
   .fixed-dropdown-menu {
     position: fixed;
-    z-index: 101;
+    z-index: var(--z-dropdown);
     min-width: 154px;
     background: var(--bg-surface-elevated, #2a2b33);
     border-radius: 12px;

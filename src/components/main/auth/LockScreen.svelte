@@ -197,10 +197,14 @@
     }
   }
 
-  function goBack() {
+  function goBack(success = false) {
     if (isOverlay) {
-      dispatch("close");
-      if (mode === "decrypt") {
+      if (success) {
+        dispatch("unlocked", currentAccount);
+      } else {
+        dispatch("close");
+      }
+      if (mode === "decrypt" && !success) {
         goto("/auth/select");
       }
     } else {
@@ -258,7 +262,7 @@
       await new Promise(r => setTimeout(r, 700));
       isSettingUpHardware = false;
       migrating = false;
-      goBack();
+      goBack(true);
     } catch (e) {
       migrating = false;
       isSettingUpHardware = false;
@@ -311,7 +315,7 @@
       await new Promise(r => setTimeout(r, 700));
       isDisablingHardware = false;
       migrating = false;
-      goBack();
+      goBack(true);
     } catch (e) {
       migrating = false;
       isDisablingHardware = false;
@@ -480,7 +484,7 @@
             migrationCurrent = migrationTotal;
             migrationPercent = 100;
             await new Promise(r => setTimeout(r, 700));
-            goBack();
+            goBack(true);
           } catch (e) {
             migrating = false;
             text = "Ошибка шифрования: " + e;
@@ -503,7 +507,7 @@
         migrationCurrent = migrationTotal;
         migrationPercent = 100;
         await new Promise(r => setTimeout(r, 700));
-        goBack();
+        goBack(true);
       } catch {
         migrating = false;
         text = "Неверный ключ!";
@@ -539,11 +543,11 @@
   {#if isOverlay}
     <div class="overlay-nav">
       {#if mode === "decrypt"}
-        <button type="button" class="nav-text-btn" on:click={goBack}>
+        <button type="button" class="nav-text-btn" on:click={() => goBack(false)}>
           Сменить аккаунт
         </button>
       {:else}
-        <button type="button" class="nav-text-btn" on:click={goBack}>
+        <button type="button" class="nav-text-btn" on:click={() => goBack(false)}>
           Отмена
         </button>
       {/if}
@@ -695,7 +699,7 @@
     left: 0;
     right: 0;
     bottom: 0;
-    z-index: var(--z-lock, 140);
+    z-index: var(--z-lock);
     background: #0e0e12;
     display: flex;
     flex-direction: column;
@@ -730,7 +734,7 @@
     position: absolute;
     top: calc(var(--safe-top, 0px) + 16px);
     right: calc(var(--safe-right, 0px) + 16px);
-    z-index: 10;
+    z-index: var(--z-floating);
   }
 
   .nav-text-btn {
@@ -806,7 +810,7 @@
     top: 0;
     width: 100%;
     height: 100%;
-    z-index: 5;
+    z-index: var(--z-floating);
     pointer-events: none;
     overflow: visible;
   }
@@ -841,7 +845,7 @@
     margin-top: -13px;
     border-radius: 50%;
     background: #555;
-    z-index: 1;
+    z-index: var(--z-base);
     pointer-events: none;
     transition: transform 0.15s, background 0.15s;
   }

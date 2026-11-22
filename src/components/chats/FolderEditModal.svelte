@@ -565,7 +565,7 @@
     background-color: var(--bg-app, #17181c);
     display: flex;
     flex-direction: column;
-    z-index: 2;
+    z-index: var(--z-panel);
     overflow: hidden;
   }
 
@@ -1001,7 +1001,7 @@
     border-top: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
     flex-shrink: 0;
     box-sizing: border-box;
-    z-index: 5;
+    z-index: var(--z-floating);
   }
 
   .main-action-btn {
