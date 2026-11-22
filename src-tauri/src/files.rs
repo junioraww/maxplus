@@ -414,6 +414,7 @@ pub async fn upload(
 }
 
 #[tauri::command]
+#[allow(unused_variables)]
 pub async fn pick(
     app: tauri::AppHandle,
     r#type: Option<String>,
@@ -505,6 +506,8 @@ pub async fn pick(
     {
         use tauri_plugin_dialog::{DialogExt};
         use serde_json::json;
+
+        let _ = &mime;
 
         let mut dialog = app.dialog().file();
 
