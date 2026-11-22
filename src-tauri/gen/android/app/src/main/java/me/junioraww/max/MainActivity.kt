@@ -402,22 +402,64 @@ class MainActivity : TauriActivity() {
     }
   }
 
+  private val keyboardPrefs by lazy {
+    getSharedPreferences("keyboard_prefs", Context.MODE_PRIVATE)
+  }
+
   private var currentWebView: android.webkit.WebView? = null
   private var cachedTopDp = 0
   private var cachedBottomDp = 0
   private var cachedLeftDp = 0
   private var cachedRightDp = 0
   private var lastDispatchedKeyboardOpen = false
+  private var lastDispatchedKeyboardHeightDp = 0
   private var lastKnownKeyboardHeightDp = 0
 
-  private fun dispatchKeyboardState(isOpen: Boolean, heightDp: Int) {
-    if (heightDp > 0) {
-      lastKnownKeyboardHeightDp = heightDp
+  private fun getEstimatedKeyboardHeightDp(): Int {
+    try {
+      val saved = keyboardPrefs.getInt("last_keyboard_height_dp", 0)
+      if (saved in 120..600) return saved
+    } catch (_: Throwable) {}
+
+    val displayMetrics = resources.displayMetrics
+    val screenHeightDp = if (displayMetrics.density > 0f) {
+      (displayMetrics.heightPixels / displayMetrics.density).toInt()
+    } else {
+      800
     }
-    if (lastDispatchedKeyboardOpen == isOpen && (heightDp == 0 || lastKnownKeyboardHeightDp == heightDp)) {
+    return (screenHeightDp / 3).coerceIn(260, 340)
+  }
+
+  private fun saveKeyboardHeightDp(heightDp: Int) {
+    if (heightDp in 120..600) {
+      try {
+        if (heightDp != keyboardPrefs.getInt("last_keyboard_height_dp", 0)) {
+          keyboardPrefs.edit().putInt("last_keyboard_height_dp", heightDp).apply()
+        }
+      } catch (_: Throwable) {}
+    }
+  }
+
+  private fun dispatchKeyboardState(isOpen: Boolean, heightDp: Int) {
+    val effectiveHeight = if (heightDp > 0) {
+      heightDp
+    } else if (isOpen) {
+      if (lastKnownKeyboardHeightDp > 0) lastKnownKeyboardHeightDp else getEstimatedKeyboardHeightDp()
+    } else {
+      0
+    }
+
+    if (effectiveHeight > 0) {
+      lastKnownKeyboardHeightDp = effectiveHeight
+      saveKeyboardHeightDp(effectiveHeight)
+    }
+
+    val targetDispatchedHeight = if (isOpen) lastKnownKeyboardHeightDp else 0
+    if (lastDispatchedKeyboardOpen == isOpen && lastDispatchedKeyboardHeightDp == targetDispatchedHeight) {
       return
     }
     lastDispatchedKeyboardOpen = isOpen
+    lastDispatchedKeyboardHeightDp = targetDispatchedHeight
 
     val wv = currentWebView ?: return
     val insetDp = if (isOpen) lastKnownKeyboardHeightDp else 0
@@ -435,8 +477,8 @@ class MainActivity : TauriActivity() {
 
   private fun applyInsetsToWebView() {
     val wv = currentWebView ?: return
-    val kbHeight = if (lastKnownKeyboardHeightDp > 0) lastKnownKeyboardHeightDp else 290
-    val kbInset = if (lastDispatchedKeyboardOpen) lastKnownKeyboardHeightDp else 0
+    val kbHeight = if (lastKnownKeyboardHeightDp > 0) lastKnownKeyboardHeightDp else getEstimatedKeyboardHeightDp()
+    val kbInset = if (lastDispatchedKeyboardOpen) (if (lastKnownKeyboardHeightDp > 0) lastKnownKeyboardHeightDp else kbHeight) else 0
     val script = "document.documentElement.style.setProperty('--safe-top', '${cachedTopDp}px');" +
       "document.documentElement.style.setProperty('--safe-bottom', '${cachedBottomDp}px');" +
       "document.documentElement.style.setProperty('--safe-left', '${cachedLeftDp}px');" +
@@ -479,13 +521,15 @@ class MainActivity : TauriActivity() {
         bounds: WindowInsetsAnimationCompat.BoundsCompat
       ): WindowInsetsAnimationCompat.BoundsCompat {
         if ((animation.typeMask and WindowInsetsCompat.Type.ime()) != 0) {
+          val rootInsets = ViewCompat.getRootWindowInsets(window.decorView)
+          val isImeVisible = rootInsets?.isVisible(WindowInsetsCompat.Type.ime()) ?: false
           val imeHeightPx = bounds.upperBound.bottom - bounds.lowerBound.bottom
           val density = resources.displayMetrics.density
-          if (density > 0f) {
-            val targetHeightDp = (imeHeightPx / density).toInt()
-            if (targetHeightDp > 0) {
-              dispatchKeyboardState(true, targetHeightDp)
-            }
+          val targetHeightDp = if (density > 0f) (imeHeightPx / density).toInt() else 0
+          if (isImeVisible) {
+            dispatchKeyboardState(true, targetHeightDp)
+          } else {
+            dispatchKeyboardState(false, 0)
           }
         }
         return super.onStart(animation, bounds)
@@ -506,7 +550,11 @@ class MainActivity : TauriActivity() {
           val imeHeightPx = rootInsets?.getInsets(WindowInsetsCompat.Type.ime())?.bottom ?: 0
           val density = resources.displayMetrics.density
           val heightDp = if (density > 0f) (imeHeightPx / density).toInt() else 0
-          dispatchKeyboardState(isImeVisible && heightDp > 0, heightDp)
+          if (isImeVisible) {
+            dispatchKeyboardState(true, heightDp)
+          } else {
+            dispatchKeyboardState(false, 0)
+          }
         }
       }
     }
@@ -527,9 +575,9 @@ class MainActivity : TauriActivity() {
         val imeInsets = windowInsets.getInsets(WindowInsetsCompat.Type.ime())
         val isImeVisible = windowInsets.isVisible(WindowInsetsCompat.Type.ime())
         val imeHeightDp = (imeInsets.bottom / density).toInt()
-        if (isImeVisible && imeHeightDp > 0) {
+        if (isImeVisible) {
           dispatchKeyboardState(true, imeHeightDp)
-        } else if (!isImeVisible) {
+        } else {
           dispatchKeyboardState(false, 0)
         }
       }
