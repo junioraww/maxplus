@@ -18,6 +18,7 @@
   import Reply from "$components/ChatWindow/input/Reply.svelte";
   import ForwardPreview from "$components/ChatWindow/input/ForwardPreview.svelte";
   import { forwardDraft, clearForwardDraft } from "$lib/stores/forwardDraft";
+  import { getChatDraft, setChatDraft, clearChatDraft, chatDrafts } from "$lib/stores/drafts";
   import BotCommandsMenu from "$components/ChatWindow/BotCommandsMenu.svelte";
   import API, { currentUser } from "$lib/stores/api";
   import { getChat } from "$lib/stores/messages";
@@ -130,6 +131,34 @@
   let stickerSuggestions = [];
   let suggestionTimer = null;
 
+  let previousChatId = null;
+  $: if (chat?.id !== previousChatId) {
+    if (previousChatId != null && !editingMessage && newMessage) {
+      setChatDraft(previousChatId, newMessage);
+    }
+    previousChatId = chat?.id;
+    if (!editingMessage && chat?.id != null) {
+      const draft = getChatDraft(chat.id);
+      if (draft) {
+        newMessage = draft;
+        previousMessageText = draft;
+        tick().then(() => autoResize());
+      } else {
+        newMessage = "";
+        previousMessageText = "";
+      }
+    }
+  }
+
+  $: if (!editingMessage && !newMessage && chat?.id != null && $chatDrafts) {
+    const draft = getChatDraft(chat.id);
+    if (draft && draft !== newMessage) {
+      newMessage = draft;
+      previousMessageText = draft;
+      tick().then(() => autoResize());
+    }
+  }
+
   function handleComposerInput() {
     composerFormat.onTextChanged(previousMessageText, newMessage);
     previousMessageText = newMessage;
@@ -137,6 +166,9 @@
     autoResize();
     updateSelectionState();
     tick().then(syncScroll);
+    if (!editingMessage && chat?.id != null) {
+      setChatDraft(chat.id, newMessage);
+    }
   }
 
   function updateSelectionState() {
@@ -787,6 +819,9 @@
     }
 
     newMessage = "";
+    if (chat?.id != null) {
+      clearChatDraft(chat.id);
+    }
     stickerSuggestions = [];
     await tick();
 
@@ -924,6 +959,9 @@
   }
 
   onDestroy(() => {
+    if (chat?.id != null && !editingMessage && newMessage) {
+      setChatDraft(chat.id, newMessage);
+    }
     if (unregisterStickerBack) {
       unregisterStickerBack();
       unregisterStickerBack = null;

@@ -5,6 +5,7 @@
   import { fade, fly } from "svelte/transition";
   import { panelConfig, CATALOG } from "$lib/stores/panel";
   import { getMountStore } from "$lib/plugins/mount-registry";
+  import { currentRealChats } from "$lib/stores/api";
 
   const pluginNavTop = getMountStore("nav:top");
   const pluginNavItems = getMountStore("nav:item");
@@ -26,6 +27,7 @@
   const REORDER_COOLDOWN = 180;
 
   $: currentDefault = $panelConfig.defaultItem;
+  $: unreadChatsCount = ($currentRealChats || []).filter((c) => (c?.newMessages || 0) > 0).length;
   $: availableCatalogItems = Object.values(CATALOG).filter(
     (item) => !pages.some((p) => p.id === item.id)
   );
@@ -250,6 +252,9 @@
 
           <div class="icon-box">
             <img src={"icons/" + page.icon + ".svg"} alt={page.name} />
+            {#if page.id === "chats" && unreadChatsCount > 0}
+              <span class="nav-badge font-title">{unreadChatsCount > 999 ? "999+" : unreadChatsCount}</span>
+            {/if}
           </div>
           <span class="label">{page.name}</span>
         </div>
@@ -590,10 +595,32 @@
   }
 
   .icon-box {
+    position: relative;
     display: flex;
     align-items: center;
     justify-content: center;
     height: 24px;
+  }
+
+  .nav-badge {
+    position: absolute;
+    top: -5px;
+    right: -8px;
+    background: #ef4444;
+    color: #ffffff;
+    font-size: 11px;
+    font-feature-settings: "tnum";
+    min-width: 17px;
+    height: 17px;
+    padding: 0 4px;
+    border-radius: 9px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    line-height: 1;
+    border: 2px solid var(--bg-panel, #1c1d1f);
+    z-index: 2;
   }
 
   .icon-box img {
@@ -617,11 +644,11 @@
   }
 
   .option.active .label {
-    color: #09f;
+    color: var(--accent-primary, #248bfe);
   }
 
   .option.active .icon-box img {
-    filter: invert(50%) sepia(100%) saturate(5000%) hue-rotate(200deg);
+    filter: invert(45%) sepia(98%) saturate(1450%) hue-rotate(195deg) brightness(101%) contrast(102%);
   }
 
   .modal-backdrop {

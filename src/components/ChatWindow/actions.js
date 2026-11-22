@@ -302,6 +302,33 @@ export async function handleReaction(chat, msg, emoji) {
     : {};
 
   msg.reactionInfo = updatedReactionInfo;
+
+  const chatCache = getChat(chat.id);
+  if (chatCache?.reactionUpdate) {
+    chatCache.reactionUpdate.set({
+      chatId: chat.id,
+      messageId: String(msg.id),
+      totalCount: newTotal,
+      counters: newCounters,
+      yourReaction: newYour,
+    });
+  }
+
+  let updatedChat = null;
+  chatCache.chatInfo.update((current) => {
+    if (!current) return current;
+    updatedChat = {
+      ...current,
+      hasReaction: false,
+      unreadReactions: 0,
+      lastReaction: null,
+    };
+    return updatedChat;
+  });
+  if (updatedChat) {
+    saveChats([updatedChat]).catch(() => {});
+  }
+
   return {
     ...msg,
     reactionInfo: updatedReactionInfo,

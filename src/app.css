@@ -1,10 +1,3 @@
-@font-face {
-  font-family: "Inter Medium";
-  src: url("/fonts/Inter_18pt-Medium.ttf") format("truetype");
-  font-weight: 500;
-  font-style: normal;
-}
-
 *, *::before, *::after {
   box-sizing: border-box;
 }
@@ -15,10 +8,13 @@ body {
   background-color: #17181c;
   color: #ffffff;
   overflow: hidden;
-  font-family: "Inter Medium", system-ui, -apple-system, sans-serif;
+  font-family: var(--font-family-base);
   box-sizing: border-box;
   width: 100%;
   height: 100%;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
 }
 
 body.auth-light-body {
@@ -90,6 +86,15 @@ img {
 }
 
 :root {
+  /* Typography */
+  --font-family-base: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, system-ui, sans-serif;
+  --font-family-title: "sans-serif-medium", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, system-ui, sans-serif;
+
+  --font-weight-normal: 400;
+  --font-weight-medium: 500;
+  --font-weight-title: 600;
+  --font-weight-bold: 700;
+
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
   --safe-left: env(safe-area-inset-left, 0px);
@@ -108,6 +113,8 @@ img {
   --bg-sheet: #1e1f24;
   --bg-panel: #1c1d1f;
   --bg-topbar: #212126;
+  --bg-pinned-chat: #202225;
+  --bg-pinned-chat-hover: #26282e;
 
   --accent-primary: #248bfe;
   --accent-primary-hover: #1b74d9;
@@ -164,6 +171,8 @@ img {
   --bg-sheet: #1e1f24;
   --bg-panel: #1c1d1f;
   --bg-topbar: #212126;
+  --bg-pinned-chat: #202225;
+  --bg-pinned-chat-hover: #26282e;
 
   --accent-primary: #248bfe;
   --accent-primary-hover: #1b74d9;
@@ -240,3 +249,16 @@ input[type="checkbox"]:disabled {
   opacity: 0.45;
   cursor: not-allowed;
 }
+
+/* Typography utilities */
+.font-title {
+  font-family: var(--font-family-title);
+  font-weight: var(--font-weight-title);
+}
+
+.font-medium {
+  font-family: var(--font-family-title);
+  font-weight: var(--font-weight-medium);
+}
+
+

@@ -72,6 +72,7 @@ export const getChat = chatId => {
   const receivedMessage = writable(null);
   const readReceipt = writable(null);
   const deletedMessages = writable(null);
+  const reactionUpdate = writable(null);
 
   const entry = {
     chatInfo,
@@ -81,6 +82,7 @@ export const getChat = chatId => {
     receivedMessage,
     readReceipt,
     deletedMessages,
+    reactionUpdate,
     updateMessages: async messages => {
       const account = await getCurrentAccount();
       return invoke("update_messages", { account: Number(account.id), chatId: Number(chatId), messages });
