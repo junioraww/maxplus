@@ -2,6 +2,15 @@ name: Build Max+ Windows
 
 on:
   workflow_dispatch:
+    inputs:
+      rumax_branch:
+        description: "Branch of rumax to use"
+        required: false
+        default: "dev"
+      biometry_branch:
+        description: "Branch of tauri-plugin-biometry to use"
+        required: false
+        default: "main"
 
 jobs:
   build:
@@ -11,7 +20,7 @@ jobs:
     timeout-minutes: 60
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - uses: oven-sh/setup-bun@v2
         with:
@@ -19,7 +28,7 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
 
-      - uses: actions/cache@v4
+      - uses: actions/cache@v5
         with:
           path: |
             ~/.bun/install/cache
@@ -32,12 +41,12 @@ jobs:
 
       - name: Patch Cargo.toml for CI
         run: |
-          sed -i 's|path = "../../rumax"|git = "https://github.com/junioraww/rumax.git", branch = "main"|g' src-tauri/Cargo.toml
-          sed -i 's|path = "../../tauri-plugin-biometry"|git = "https://github.com/junioraww/tauri-plugin-biometry.git", branch = "main"|g' src-tauri/Cargo.toml
-          sed -i '/libwebrtc/d' src-tauri/Cargo.toml
-
-          echo "Cargo.toml updated:"
-          grep -E "rumax|tauri-plugin-biometry" src-tauri/Cargo.toml
+          $branch = "${{ github.event.inputs.rumax_branch || 'dev' }}"
+          $biometry_branch = "${{ github.event.inputs.biometry_branch || 'main' }}"
+          (Get-Content src-tauri/Cargo.toml) -replace 'path = "\.\./\.\./rumax"', "git = `"https://github.com/junioraww/rumax.git`", branch = `"$branch`"" | Set-Content src-tauri/Cargo.toml
+          (Get-Content src-tauri/Cargo.toml) -replace 'path = "\.\./\.\./tauri-plugin-biometry"', "git = `"https://github.com/junioraww/tauri-plugin-biometry.git`", branch = `"$biometry_branch`"" | Set-Content src-tauri/Cargo.toml
+          (Get-Content src-tauri/Cargo.toml) | Where-Object { $_ -notmatch 'libwebrtc' } | Set-Content src-tauri/Cargo.toml
+          Select-String -Path src-tauri/Cargo.toml -Pattern "rumax|tauri-plugin-biometry"
 
       - run: bun install --frozen-lockfile
 
@@ -45,7 +54,7 @@ jobs:
 
       - run: bunx tauri build
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
             name: maxplus-windows
             path: |

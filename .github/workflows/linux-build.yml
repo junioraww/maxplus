@@ -2,6 +2,15 @@ name: Build Max+ Linux
 
 on:
   workflow_dispatch:
+    inputs:
+      rumax_branch:
+        description: "Branch of rumax to use"
+        required: false
+        default: "dev"
+      biometry_branch:
+        description: "Branch of tauri-plugin-biometry to use"
+        required: false
+        default: "main"
 
 jobs:
   build:
@@ -11,13 +20,13 @@ jobs:
     timeout-minutes: 30
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - uses: oven-sh/setup-bun@v2
 
       - uses: dtolnay/rust-toolchain@stable
 
-      - uses: actions/cache@v4
+      - uses: actions/cache@v5
         with:
           path: |
             ~/.bun/install/cache
@@ -60,8 +69,10 @@ jobs:
 
       - name: Patch Cargo.toml for CI
         run: |
-          sed -i 's|path = "../../rumax"|git = "https://github.com/junioraww/rumax.git", branch = "main"|g' src-tauri/Cargo.toml
-          sed -i 's|path = "../../tauri-plugin-biometry"|git = "https://github.com/junioraww/tauri-plugin-biometry.git", branch = "main"|g' src-tauri/Cargo.toml
+          RUMAX_BRANCH="${{ github.event.inputs.rumax_branch || 'dev' }}"
+          BIOMETRY_BRANCH="${{ github.event.inputs.biometry_branch || 'main' }}"
+          sed -i "s|path = \"../../rumax\"|git = \"https://github.com/junioraww/rumax.git\", branch = \"$RUMAX_BRANCH\"|g" src-tauri/Cargo.toml
+          sed -i "s|path = \"../../tauri-plugin-biometry\"|git = \"https://github.com/junioraww/tauri-plugin-biometry.git\", branch = \"$BIOMETRY_BRANCH\"|g" src-tauri/Cargo.toml
 
           echo "Cargo.toml updated:"
           grep -E "rumax|tauri-plugin-biometry" src-tauri/Cargo.toml
@@ -106,7 +117,7 @@ jobs:
           ARCH=x86_64 ./appimagetool --appimage-extract-and-run --no-check-permissions squashfs-root "$LITE_APPIMAGE"
           rm -rf squashfs-root appimagetool
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: maxplus-linux
           path: |
