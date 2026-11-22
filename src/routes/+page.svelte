@@ -14,7 +14,6 @@
   import Card from "$components/main/Card.svelte";
   import ChatWindow from "$components/ChatWindow.svelte";
   import WebAppManager from "$components/webapp/WebAppManager.svelte";
-  import PluginImportModal from "$components/plugins/PluginImportModal.svelte";
   import { panelConfig, CATALOG } from "$lib/stores/panel";
   import { setPanelNavigation } from "$lib/utils/backButton";
   import { panelSlider } from "$lib/utils/panelSlider";
@@ -322,7 +321,6 @@
 
 <Panel on:open={openCard} {pages} {active} />
 <WebAppManager />
-<PluginImportModal />
 {/if}
 
 <style>

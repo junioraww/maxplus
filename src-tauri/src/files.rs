@@ -417,6 +417,9 @@ pub async fn upload(
 pub async fn pick(
     app: tauri::AppHandle,
     r#type: Option<String>,
+    extensions: Option<Vec<String>>,
+    mime: Option<String>,
+    name: Option<String>,
 ) -> Result<serde_json::Value, String> {
     #[cfg(target_os = "android")]
     {
@@ -427,14 +430,22 @@ pub async fn pick(
         use tokio::fs;
         use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
+        let _ = &name;
+        let _ = &extensions;
+
         let api = app.android_fs_async();
 
-        let mime_filter: Vec<&str> = match r#type.as_deref() {
-            Some("PHOTO") => vec!["image/*"],
-            Some("VIDEO") => vec!["video/*"],
-            Some("AUDIO") => vec!["audio/*"],
-            Some("JSON") => vec!["application/json"],
-            _ => vec!["*/*"],
+        let custom_mime = mime.as_deref();
+        let mime_filter: Vec<&str> = if let Some(m) = custom_mime {
+            vec![m]
+        } else {
+            match r#type.as_deref() {
+                Some("PHOTO") => vec!["image/*"],
+                Some("VIDEO") => vec!["video/*"],
+                Some("AUDIO") => vec!["audio/*"],
+                Some("JSON") => vec!["application/json"],
+                _ => vec!["*/*"],
+            }
         };
 
         let files = api
@@ -495,15 +506,22 @@ pub async fn pick(
         use tauri_plugin_dialog::{DialogExt};
         use serde_json::json;
 
-        let dialog = app.dialog().file();
+        let mut dialog = app.dialog().file();
 
-        let dialog = match r#type.as_deref() {
-            Some("PHOTO") => dialog.add_filter("Изображения", &["png", "jpeg", "jpg", "gif", "webp", "bmp"]),
-            Some("VIDEO") => dialog.add_filter("Видео", &["mp4", "avi", "mov", "mkv", "webm", "3gp", "ts"]),
-            Some("AUDIO") => dialog.add_filter("Аудио", &["mp3", "ogg", "wav", "m4a", "aac", "flac", "opus", "wma"]),
-            Some("JSON") => dialog.add_filter("Конфиг", &["json"]),
-            _ => dialog,
-        };
+        if let Some(ref exts) = extensions {
+            let ext_slices: Vec<&str> = exts.iter().map(|s| s.as_str()).collect();
+            let label = name.as_deref().unwrap_or("Файлы");
+            dialog = dialog.add_filter(label, &ext_slices);
+        } else {
+            dialog = match r#type.as_deref() {
+                Some("PHOTO") => dialog.add_filter("Изображения", &["png", "jpeg", "jpg", "gif", "webp", "bmp"]),
+                Some("VIDEO") => dialog.add_filter("Видео", &["mp4", "avi", "mov", "mkv", "webm", "3gp", "ts"]),
+                Some("AUDIO") => dialog.add_filter("Аудио", &["mp3", "ogg", "wav", "m4a", "aac", "flac", "opus", "wma"]),
+                Some("JSON") => dialog.add_filter("Конфиг", &["json"]),
+                Some(other) => dialog.add_filter(name.as_deref().unwrap_or("Файлы"), &[other]),
+                None => dialog,
+            };
+        }
 
         let file = dialog.blocking_pick_file();
 
@@ -526,7 +544,21 @@ pub async fn pick(
 
 // TODO !!! currently unsafe, add wrappers
 #[tauri::command]
-pub async fn read_file(path: String) -> Result<Vec<u8>, String> {
+pub async fn read_file(app: tauri::AppHandle, path: String) -> Result<Vec<u8>, String> {
+    #[cfg(target_os = "android")]
+    if path.starts_with("content://") {
+        use tauri_plugin_android_fs::{AndroidFsExt, FsUri};
+        use tokio::io::AsyncReadExt;
+        let api = app.android_fs_async();
+        let uri = FsUri::from_uri(path);
+        let std_file = api.open_file_readable(&uri).await.map_err(|e| e.to_string())?;
+        let mut file = tokio::fs::File::from_std(std_file);
+        let mut buffer = Vec::new();
+        file.read_to_end(&mut buffer).await.map_err(|e| e.to_string())?;
+        return Ok(buffer);
+    }
+
+    let _ = &app;
     tokio::fs::read(path)
         .await
         .map_err(|e| e.to_string())

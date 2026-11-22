@@ -137,7 +137,7 @@
   function isInteractiveElement(target) {
     return Boolean(
       target.closest(
-        "input, textarea, select, button, a, [role='button'], .chips-scroll, .tg-seg-btn, .clickable, .tab-btn, .avatar-camera-badge"
+        "input, textarea, select, button, a, [role='button'], .chips-scroll, .tg-seg-btn, .clickable, .tab-btn, .avatar-camera-badge, .btn"
       )
     );
   }
@@ -232,16 +232,14 @@
   function onSheetPointerDown(e, layer) {
     if (layer.type !== "sheet" || layer.isClosing || layer.options?.canSwipe === false) return;
     if (e.pointerType === "mouse" && e.button !== 0) return;
+    if (isInteractiveElement(e.target)) return;
+
     const target = e.target;
-    const isHandle = target.closest(".bottom-sheet-handle, .drag-pill, .sheet-header, .bottom-sheet-header, .sheet-drag-handle");
-    const scrollParent = target.closest(".bottom-sheet-content, .scrollable, .sheet-content");
+    const isHandle = target.closest(".bottom-sheet-handle, .drag-pill, .sheet-header, .bottom-sheet-header, .sheet-drag-handle, .modal-header");
+    const scrollParent = target.closest(".bottom-sheet-content, .scrollable, .sheet-content, .modal-content");
     const isAtTop = !scrollParent || scrollParent.scrollTop <= 0;
 
     if (!isHandle && !isAtTop) return;
-
-    try {
-      e.currentTarget.setPointerCapture(e.pointerId);
-    } catch {}
 
     sheetStartY = e.clientY;
     sheetStartTime = Date.now();
@@ -258,6 +256,9 @@
     if (!isDraggingSheet) {
       if (dy > 6) {
         isDraggingSheet = true;
+        try {
+          e.currentTarget.setPointerCapture(e.pointerId);
+        } catch {}
       } else if (dy < -20) {
         activeSheetLayerId = null;
         return;

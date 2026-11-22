@@ -5,15 +5,29 @@
   import { PERMISSION_LABELS, CATEGORY_LABELS } from "$lib/plugins/manifest";
   import { showAlert } from "$lib/utils/alert";
 
+  export let data = null;
+  export let close = null;
+  export let onClose = null;
+  export let setBackHandler = null;
+
   let isInstalling = false;
+
+  $: modalData = data || $pluginImportModal;
 
   $: isCompatible = satisfies(
     APP_VERSION,
-    $pluginImportModal?.manifest?.minAppVersion,
-    $pluginImportModal?.manifest?.maxAppVersion
+    modalData?.manifest?.minAppVersion,
+    modalData?.manifest?.maxAppVersion
   );
 
-  $: iconContent = $pluginImportModal?.iconContent || null;
+  $: iconContent = modalData?.iconContent || null;
+
+  $: if (setBackHandler) {
+    setBackHandler(() => {
+      handleCancel();
+      return false;
+    });
+  }
 
   function getAuthor(author) {
     if (!author) return "";
@@ -22,11 +36,16 @@
   }
 
   async function handleInstall() {
-    if (isInstalling || !isCompatible) return;
+    if (isInstalling || !isCompatible || !modalData?.arrayBuffer) return;
     isInstalling = true;
     try {
-      await installPlugin($pluginImportModal.arrayBuffer);
+      await installPlugin(modalData.arrayBuffer);
       showAlert("Плагин установлен");
+      if (typeof close === "function") {
+        close(true);
+      } else if (typeof onClose === "function") {
+        onClose(true);
+      }
       closePluginImportModal();
     } catch (error) {
       showAlert(error.message);
@@ -36,12 +55,21 @@
   }
 
   function handleCancel() {
+    if (typeof close === "function") {
+      close(false);
+    } else if (typeof onClose === "function") {
+      onClose(false);
+    }
     closePluginImportModal();
   }
 </script>
 
-{#if $pluginImportModal}
-  <div class="modal-backdrop" on:click={handleCancel}>
+{#if modalData}
+  <div
+    class="modal-backdrop"
+    class:is-portal-child={Boolean(setBackHandler || close)}
+    on:click={handleCancel}
+  >
     <div class="modal-sheet" on:click|stopPropagation>
       <div class="modal-header">
         <h2>Установить плагин</h2>
@@ -63,28 +91,28 @@
             </div>
           {/if}
           <div class="plugin-info">
-            {#if getAuthor($pluginImportModal.manifest.author)}
-              <span class="plugin-author">{getAuthor($pluginImportModal.manifest.author)}</span>
+            {#if getAuthor(modalData.manifest.author)}
+              <span class="plugin-author">{getAuthor(modalData.manifest.author)}</span>
             {/if}
-            <span class="plugin-name">{$pluginImportModal.manifest.name}</span>
-            {#if $pluginImportModal.manifest.category}
-              <span class="badge category">{CATEGORY_LABELS[$pluginImportModal.manifest.category] || $pluginImportModal.manifest.category}</span>
+            <span class="plugin-name">{modalData.manifest.name}</span>
+            {#if modalData.manifest.category}
+              <span class="badge category">{CATEGORY_LABELS[modalData.manifest.category] || modalData.manifest.category}</span>
             {/if}
-            <div class="description">{$pluginImportModal.manifest.description}</div>
+            <div class="description">{modalData.manifest.description}</div>
           </div>
         </div>
 
         {#if !isCompatible}
           <div class="status-banner incompatible">
-            ⚠ Несовместимая версия: требуется Max+ {$pluginImportModal.manifest.minAppVersion || ''} (у вас установлена {APP_VERSION})
+            ⚠ Несовместимая версия: требуется Max+ {modalData.manifest.minAppVersion || ''} (у вас установлена {APP_VERSION})
           </div>
         {/if}
 
-        {#if $pluginImportModal.verificationStatus === 'verified'}
+        {#if modalData.verificationStatus === 'verified'}
           <div class="status-banner verified">
             ✓ Проверен командой Max+
           </div>
-        {:else if $pluginImportModal.verificationStatus === 'unverified_version'}
+        {:else if modalData.verificationStatus === 'unverified_version'}
           <div class="status-banner warning">
             ⚠ Эта версия не проверена
           </div>
@@ -94,11 +122,11 @@
           </div>
         {/if}
 
-        {#if $pluginImportModal.manifest.permissions && $pluginImportModal.manifest.permissions.length > 0}
+        {#if modalData.manifest.permissions && modalData.manifest.permissions.length > 0}
           <div class="permissions-section">
             <div class="section-title">Запрашиваемые разрешения:</div>
             <ul class="permissions-list">
-              {#each $pluginImportModal.manifest.permissions as perm}
+              {#each modalData.manifest.permissions as perm}
                 <li>{PERMISSION_LABELS[perm] || perm}</li>
               {/each}
             </ul>
@@ -136,12 +164,30 @@
     animation: fadeIn 150ms ease;
   }
 
+  .modal-backdrop.is-portal-child {
+    position: relative;
+    top: auto;
+    left: auto;
+    inset: auto;
+    width: 100%;
+    height: auto;
+    background: transparent;
+    z-index: auto;
+    animation: none;
+    display: block;
+  }
+
+  .modal-backdrop.is-portal-child .modal-sheet {
+    animation: none;
+    max-width: 100%;
+  }
+
   .modal-sheet {
     background: var(--bg-surface);
     width: 100%;
     max-width: 500px;
     border-radius: 20px 20px 0 0;
-    padding: 24px;
+    padding: 24px 24px calc(24px + var(--safe-bottom, env(safe-area-inset-bottom, 0px)));
     box-sizing: border-box;
     display: flex;
     flex-direction: column;

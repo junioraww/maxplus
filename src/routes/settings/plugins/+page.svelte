@@ -7,7 +7,7 @@
   import { APP_VERSION } from "$lib/plugins/runtime";
   import { satisfies } from "$lib/plugins/semver";
   import { CATEGORY_LABELS } from "$lib/plugins/manifest";
-  import { open } from "@tauri-apps/plugin-dialog";
+  import { pickFileBytes } from "$lib/utils/filePicker";
   import { invoke } from "@tauri-apps/api/core";
   import { showAlert } from "$lib/utils/alert";
 
@@ -117,25 +117,24 @@
 
   async function handleImport() {
     try {
-      const path = await open({
-        filters: [{ name: 'Max Plugin', extensions: ['mxp'] }]
+      const file = await pickFileBytes({
+        extensions: ['mxp'],
+        name: 'Плагины Max+ (*.mxp)',
+        mime: '*/*',
       });
+      if (!file) return;
 
-      if (path) {
-        const bytes = await invoke("read_file", { path });
-        const arrayBuffer = new Uint8Array(bytes).buffer;
+      const { arrayBuffer } = file;
+      const result = await invoke("parse_mxp", { bytes: Array.from(new Uint8Array(arrayBuffer)) });
+      const { manifest, files } = result;
+      const iconContent = manifest.icon ? (files[manifest.icon] || '') : '';
 
-        const result = await invoke("parse_mxp", { bytes: Array.from(new Uint8Array(arrayBuffer)) });
-        const { manifest, files } = result;
-        const iconContent = manifest.icon ? (files[manifest.icon] || '') : '';
-
-        showPluginImportModal({
-          arrayBuffer,
-          manifest,
-          verificationStatus: 'unverified_plugin',
-          iconContent,
-        });
-      }
+      showPluginImportModal({
+        arrayBuffer,
+        manifest,
+        verificationStatus: 'unverified_plugin',
+        iconContent,
+      });
     } catch (error) {
       console.error(error);
       showAlert("Ошибка импорта плагина");

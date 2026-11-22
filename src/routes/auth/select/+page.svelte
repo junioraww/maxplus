@@ -1,6 +1,7 @@
 <script>
   import { save } from "@tauri-apps/plugin-dialog";
   import { invoke } from "@tauri-apps/api/core";
+  import { pickFileText } from "$lib/utils/filePicker";
   import {
     onMount,
     onDestroy,
@@ -228,12 +229,14 @@
     closeNewMenu();
 
     try {
-      const select = await invoke("pick", { type: "JSON" }).catch(() => null);
-      if (!select?.uri) return;
+      const file = await pickFileText({
+        type: "JSON",
+        extensions: ["json"],
+        name: "Конфиг аккаунта (.json)",
+      });
+      if (!file) return;
 
-      const data = await invoke("read_file", { path: select.uri });
-      const text = new TextDecoder().decode(new Uint8Array(data));
-      await handleImportJson(text);
+      await handleImportJson(file.text);
     } catch (e) {
       console.error(e);
     } finally {
