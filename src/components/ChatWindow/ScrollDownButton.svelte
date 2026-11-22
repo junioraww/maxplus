@@ -40,7 +40,7 @@
     </button>
     {#if unreadBadgeCount > 0}
       <div class="scroll-down-badge" on:click={handleClick} role="button" tabindex="0" on:keydown={(e) => { if (e.key === 'Enter') handleClick(); }}>
-        {unreadBadgeCount > 99 ? "99+" : unreadBadgeCount}
+        {unreadBadgeCount > 999 ? "999+" : unreadBadgeCount}
       </div>
     {/if}
   </div>

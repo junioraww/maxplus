@@ -21,6 +21,15 @@ fn common_store_path(app: &AppHandle, store: &str) -> Result<PathBuf, String> {
         "avatar_settings" => Ok(app_dir.join("data").join("common").join("avatar_settings")),
         "maxplus_custom_uplink" => Ok(app_dir.join("data").join("common").join("maxplus_custom_uplink")),
         "proxy_settings" => Ok(app_dir.join("data").join("common").join("proxy_settings")),
+        "theme" => Ok(app_dir.join("data").join("common").join("theme")),
+        "chat_drafts" => {
+            let acc = load_accounts(app).get("current").and_then(|x| x.as_u64()).unwrap_or(0);
+            if acc > 0 {
+                Ok(Paths::new(app, acc).root.join("drafts"))
+            } else {
+                Ok(app_dir.join("data").join("common").join("chat_drafts"))
+            }
+        }
         _ => Err(format!("Unknown common store: {store}")),
     }
 }
@@ -32,7 +41,13 @@ pub async fn common_store_load(
 ) -> Result<Option<Value>, String> {
     tokio::task::spawn_blocking(move || {
         let path = common_store_path(&app, &store)?;
-        Ok(Storage::new(None).load(&path))
+        let key = if store == "chat_drafts" {
+            let acc = load_accounts(&app).get("current").and_then(|x| x.as_u64()).unwrap_or(0);
+            if acc > 0 { crypto_key(&app, acc) } else { None }
+        } else {
+            None
+        };
+        Ok(Storage::new(key).load(&path))
     })
     .await
     .map_err(|e| e.to_string())?
@@ -46,7 +61,13 @@ pub async fn common_store_save(
 ) -> Result<(), String> {
     tokio::task::spawn_blocking(move || {
         let path = common_store_path(&app, &store)?;
-        Storage::new(None).save(&path, &data)
+        let key = if store == "chat_drafts" {
+            let acc = load_accounts(&app).get("current").and_then(|x| x.as_u64()).unwrap_or(0);
+            if acc > 0 { crypto_key(&app, acc) } else { None }
+        } else {
+            None
+        };
+        Storage::new(key).save(&path, &data)
     })
     .await
     .map_err(|e| e.to_string())?

@@ -67,17 +67,50 @@ export function panelSlider(node, options = {}) {
     );
   }
 
+  function cleanupTouchListeners() {
+    window.removeEventListener("touchend", handleTouchEnd, { capture: true });
+    window.removeEventListener("touchcancel", handleTouchCancel, { capture: true });
+  }
+
+  function cleanupMouseListeners() {
+    if (activeMouseMove) {
+      window.removeEventListener("mousemove", activeMouseMove);
+      activeMouseMove = null;
+    }
+    if (activeMouseUp) {
+      window.removeEventListener("mouseup", activeMouseUp, { capture: true });
+      activeMouseUp = null;
+    }
+  }
+
+  function cancelDrag() {
+    const wasEngaged = isDragEngaged || isMouseEngaged;
+    isTouchTracking = false;
+    isDragEngaged = false;
+    isMouseTracking = false;
+    isMouseEngaged = false;
+    cleanupMouseListeners();
+    cleanupTouchListeners();
+    document.body.style.userSelect = "";
+    document.body.style.cursor = "";
+    if (wasEngaged) {
+      const active = getActive();
+      const width = node.offsetWidth || window.innerWidth;
+      onDragEnd(active, 0, width);
+    }
+  }
+
   function handleTouchStart(e) {
     if (e.touches.length !== 1) {
-      isTouchTracking = false;
+      cancelDrag();
       return;
     }
     if (!canDrag()) {
-      isTouchTracking = false;
+      cancelDrag();
       return;
     }
     if (isInteractiveElement(e.target)) {
-      isTouchTracking = false;
+      cancelDrag();
       return;
     }
 
@@ -88,13 +121,21 @@ export function panelSlider(node, options = {}) {
     const now = Date.now();
     touchHistory = [{ x: touchStartX, time: now }];
     onPrepare();
+
+    window.addEventListener("touchend", handleTouchEnd, { capture: true });
+    window.addEventListener("touchcancel", handleTouchCancel, { capture: true });
   }
 
   function handleTouchMove(e) {
     if (!isTouchTracking || e.touches.length !== 1) return;
 
+    if (!canDrag()) {
+      cancelDrag();
+      return;
+    }
+
     if (e.__panelSliderHandled && !isDragEngaged) {
-      isTouchTracking = false;
+      cancelDrag();
       return;
     }
 
@@ -105,7 +146,7 @@ export function panelSlider(node, options = {}) {
 
     if (!isDragEngaged) {
       if (Math.abs(diffY) > 8 && Math.abs(diffY) >= Math.abs(diffX)) {
-        isTouchTracking = false;
+        cancelDrag();
         return;
       }
       if (Math.abs(diffX) > 8 && Math.abs(diffX) > Math.abs(diffY) * 1.15) {
@@ -113,7 +154,7 @@ export function panelSlider(node, options = {}) {
           const active = getActive();
           const total = getPagesCount();
           if ((active === 0 && diffX > 0) || (active === total - 1 && diffX < 0)) {
-            isTouchTracking = false;
+            cancelDrag();
             return;
           }
         }
@@ -138,6 +179,7 @@ export function panelSlider(node, options = {}) {
   }
 
   function handleTouchEnd() {
+    cleanupTouchListeners();
     if (!isTouchTracking) return;
     isTouchTracking = false;
     if (!isDragEngaged) return;
@@ -156,6 +198,7 @@ export function panelSlider(node, options = {}) {
   }
 
   function handleTouchCancel() {
+    cleanupTouchListeners();
     if (!isTouchTracking) return;
     isTouchTracking = false;
     if (!isDragEngaged) return;
@@ -168,9 +211,18 @@ export function panelSlider(node, options = {}) {
 
   function handleMouseDown(e) {
     if (e.button !== 0) return;
-    if (!canDrag()) return;
-    if (isInteractiveElement(e.target)) return;
-    if (e.target.closest("button, a")) return;
+    if (!canDrag()) {
+      cancelDrag();
+      return;
+    }
+    if (isInteractiveElement(e.target)) {
+      cancelDrag();
+      return;
+    }
+    if (e.target.closest("button, a, .chat-window")) {
+      cancelDrag();
+      return;
+    }
 
     mouseStartX = e.clientX;
     mouseStartY = e.clientY;
@@ -182,9 +234,12 @@ export function panelSlider(node, options = {}) {
 
     const onMouseMove = (moveEv) => {
       if (!isMouseTracking) return;
+      if (!canDrag()) {
+        cancelDrag();
+        return;
+      }
       if (moveEv.__panelSliderHandled && !isMouseEngaged) {
-        cleanupMouseListeners();
-        isMouseTracking = false;
+        cancelDrag();
         return;
       }
       const currentX = moveEv.clientX;
@@ -198,8 +253,7 @@ export function panelSlider(node, options = {}) {
             const active = getActive();
             const total = getPagesCount();
             if ((active === 0 && diffX > 0) || (active === total - 1 && diffX < 0)) {
-              cleanupMouseListeners();
-              isMouseTracking = false;
+              cancelDrag();
               return;
             }
           }
@@ -208,8 +262,7 @@ export function panelSlider(node, options = {}) {
           document.body.style.cursor = "grabbing";
           onDragStart();
         } else if (Math.abs(diffY) > 8) {
-          cleanupMouseListeners();
-          isMouseTracking = false;
+          cancelDrag();
           return;
         } else {
           return;
@@ -264,7 +317,7 @@ export function panelSlider(node, options = {}) {
     activeMouseMove = onMouseMove;
     activeMouseUp = onMouseUp;
     window.addEventListener("mousemove", onMouseMove);
-    window.addEventListener("mouseup", onMouseUp);
+    window.addEventListener("mouseup", onMouseUp, { capture: true });
   }
 
   function cleanupMouseListeners() {
@@ -295,11 +348,13 @@ export function panelSlider(node, options = {}) {
       onDragStart = newOptions.onDragStart || (() => {});
       onDragMove = newOptions.onDragMove || (() => {});
       onDragEnd = newOptions.onDragEnd || (() => {});
+
+      if (!canDrag()) {
+        cancelDrag();
+      }
     },
     destroy() {
-      cleanupMouseListeners();
-      document.body.style.userSelect = "";
-      document.body.style.cursor = "";
+      cancelDrag();
       node.removeEventListener("touchstart", handleTouchStart);
       node.removeEventListener("touchmove", handleTouchMove);
       node.removeEventListener("touchend", handleTouchEnd);

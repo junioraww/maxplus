@@ -247,15 +247,26 @@ export function isChatMuted(chat) {
   if (!chat) return false;
   let chatObj = typeof chat === "object" && chat !== null && typeof chat.getInfo === "function" ? chat.getInfo() : chat;
   const id = typeof chat === "number" || typeof chat === "string" ? Number(chat) : Number(chatObj?.id);
-  if (!isNaN(id)) {
-    const found = getChat(id).getInfo();
-    if (found) chatObj = found;
+
+  let ddu = chatObj?.dontDisturbUntil ?? chatObj?.settings?.dontDisturbUntil ?? (typeof chat === "object" ? chat?.dontDisturbUntil : undefined);
+  if ((ddu === undefined || ddu === null) && !isNaN(id)) {
+    try {
+      const found = getChat(id)?.getInfo?.();
+      if (found?.dontDisturbUntil !== undefined) ddu = found.dontDisturbUntil;
+      if (found && !chatObj) chatObj = found;
+    } catch {}
   }
-  if (!chatObj) return false;
-  const ddu = chatObj.dontDisturbUntil;
-  if (ddu === undefined || ddu === null || ddu === 0) return false;
   if (ddu === -1) return true;
-  return Number(ddu) > Date.now();
+  if (ddu != null && ddu !== 0) {
+    return Number(ddu) > Date.now();
+  }
+  return Boolean(
+    chatObj?.muted ||
+    chatObj?.isMuted ||
+    chatObj?.options?.MUTED ||
+    chatObj?.options?.IS_MUTED ||
+    (typeof chat === "object" && (chat?.muted || chat?.isMuted || chat?.options?.MUTED || chat?.options?.IS_MUTED))
+  );
 }
 
 let granted = false;

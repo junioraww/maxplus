@@ -33,8 +33,26 @@ export async function openChat(chatId) {
   const currentData = getStoreValue(data) || {};
   const openedChats = Array.isArray(currentData.openedChats) ? currentData.openedChats : [];
 
+  const chatEntry = getChat(chatId);
+  let updatedChat = null;
+  chatEntry.chatInfo.update((current) => {
+    if (!current) return current;
+    if (current.hasReaction || current.unreadReactions || current.lastReaction) {
+      updatedChat = {
+        ...current,
+        hasReaction: false,
+        unreadReactions: 0,
+        lastReaction: null,
+      };
+      return updatedChat;
+    }
+    return current;
+  });
+  if (updatedChat) {
+    saveChats([updatedChat]).catch(() => {});
+  }
+
   if (openedChats.findIndex(id => String(id) === String(chatId)) === -1) {
-    const chatEntry = getChat(chatId);
     let chat = chatEntry.getInfo();
 
     if (!chat) {

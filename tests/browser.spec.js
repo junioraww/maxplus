@@ -464,26 +464,26 @@ test.describe("Chat Unread Messages & Scroll Down Badge Verification", () => {
     await expect(page.locator(".chat-list-inner").first()).toBeVisible();
 
     await page.evaluate(() => {
-      window.__API.addIncomingMessages(50001, 100);
+      window.__API.addIncomingMessages(50001, 1000);
     });
 
-    const dialogBadge100 = dialogItem.locator(".badge");
-    await expect(dialogBadge100).toBeVisible();
-    await expect(dialogBadge100).toHaveText("99+");
+    const dialogBadge1000 = dialogItem.locator(".badge");
+    await expect(dialogBadge1000).toBeVisible();
+    await expect(dialogBadge1000).toHaveText("999+");
 
     await dialogItem.click();
     await expect(scrollEl).toBeVisible();
     await expect(separator).toBeVisible();
     await expect(scrollDownBtn).toBeVisible();
     await expect(scrollBadge).toBeVisible();
-    await expect(scrollBadge).toHaveText("99+");
+    await expect(scrollBadge).toHaveText("999+");
 
     await scrollEl.evaluate((el) => {
       el.scrollTop -= 50;
       el.dispatchEvent(new Event("scroll"));
     });
     await page.waitForTimeout(200);
-    await expect(scrollBadge).toHaveText("99+");
+    await expect(scrollBadge).toHaveText("999+");
 
     await scrollEl.evaluate((el) => {
       el.scrollTop += 200;
@@ -491,8 +491,8 @@ test.describe("Chat Unread Messages & Scroll Down Badge Verification", () => {
     });
     await page.waitForTimeout(200);
     const badgeNum = Number(await scrollBadge.textContent());
-    expect(badgeNum).toBeLessThanOrEqual(99);
-    expect(badgeNum).toBeGreaterThanOrEqual(90);
+    expect(badgeNum).toBeLessThanOrEqual(999);
+    expect(badgeNum).toBeGreaterThanOrEqual(900);
 
     await scrollDownBtn.click();
     await page.waitForTimeout(400);

@@ -12,6 +12,7 @@
   import { type } from "@tauri-apps/plugin-os";
 
   import { initTheme, activeThemeId } from '$lib/stores/theme';
+  import { initDrafts } from '$lib/stores/drafts';
   import API from '$lib/stores/api';
   import { add as addLog } from '$lib/stores/logs';
   import { showAlert } from '$lib/utils/alert';
@@ -93,6 +94,7 @@
     loadCamouflageSettings().catch(() => {});
     initKeyboardTracker();
     initTheme();
+    initDrafts();
     cleanupAutoLock = initAutoLockWatcher();
     await initProxyConfig();
     cleanupDeepLink = await initDeepLink();

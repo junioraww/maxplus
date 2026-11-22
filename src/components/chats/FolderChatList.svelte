@@ -85,7 +85,13 @@
   {#if loading}
     <div class="state">Загрузка...</div>
   {:else if chats.length === 0}
-    <div class="state">Нет чатов</div>
+    <div class="empty-folder-state">
+      <div class="empty-icon-wrap">
+        <img src="/icons/folder.svg" class="empty-folder-icon" alt="" />
+      </div>
+      <h3 class="empty-title font-title">В этой папке пусто</h3>
+      <p class="empty-subtitle">Чаты появятся здесь автоматически или добавьте их вручную</p>
+    </div>
   {:else}
     {#each visibleChats as chat (chat.id)}
       <ChatItem
@@ -135,6 +141,52 @@
     color: var(--text-muted, #8b929e);
     font-size: 16px;
     margin-top: 60px;
+  }
+
+  .empty-folder-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 80px 24px 40px;
+    text-align: center;
+    user-select: none;
+    margin: auto 0;
+  }
+
+  .empty-icon-wrap {
+    width: 72px;
+    height: 72px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.04);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 16px;
+  }
+
+  .empty-folder-icon {
+    width: 36px;
+    height: 36px;
+    opacity: 0.45;
+    filter: brightness(0) invert(1);
+  }
+
+  .empty-title {
+    font-size: 17px;
+    font-weight: var(--font-weight-title, 600);
+    line-height: 22px;
+    color: #ffffff;
+    margin: 0 0 8px;
+  }
+
+  .empty-subtitle {
+    font-size: 14px;
+    font-weight: var(--font-weight-normal, 400);
+    line-height: 18px;
+    color: var(--text-muted, #8b929e);
+    margin: 0;
+    max-width: 260px;
   }
 
   .scroll-sentinel {

@@ -576,6 +576,7 @@
 
   let unsubReceivedMessage = null;
   let unsubDeletedMessages = null;
+  let unsubReactionUpdate = null;
   let currentSubscribedChatId = null;
   let lastProcessedMessageKey = null;
 
@@ -589,8 +590,40 @@
       unsubDeletedMessages();
       unsubDeletedMessages = null;
     }
+    if (unsubReactionUpdate) {
+      unsubReactionUpdate();
+      unsubReactionUpdate = null;
+    }
+    if (unsubReactionUpdate) {
+      unsubReactionUpdate();
+      unsubReactionUpdate = null;
+    }
     currentSubscribedChatId = targetChatId;
     const currentChatCache = getChat(targetChatId);
+    if (currentChatCache?.reactionUpdate) {
+      unsubReactionUpdate = currentChatCache.reactionUpdate.subscribe((reactionData) => {
+        if (!reactionData || String(reactionData.chatId) !== String(targetChatId)) return;
+        const { messageId, totalCount, counters, yourReaction } = reactionData;
+        messages.update((_messages) => {
+          let changed = false;
+          const next = _messages.map((m) => {
+            if (String(m.id) === String(messageId)) {
+              changed = true;
+              return {
+                ...m,
+                reactionInfo: {
+                  counters: counters || [],
+                  totalCount: Number(totalCount || 0),
+                  yourReaction: yourReaction ?? (totalCount === 0 ? null : m.reactionInfo?.yourReaction),
+                },
+              };
+            }
+            return m;
+          });
+          return changed ? next : _messages;
+        });
+      });
+    }
     if (currentChatCache?.deletedMessages) {
       unsubDeletedMessages = currentChatCache.deletedMessages.subscribe(async (delData) => {
         if (!delData || String(delData.chatId) !== String(targetChatId)) return;
@@ -751,6 +784,10 @@
     if (unsubDeletedMessages) {
       unsubDeletedMessages();
       unsubDeletedMessages = null;
+    }
+    if (unsubReactionUpdate) {
+      unsubReactionUpdate();
+      unsubReactionUpdate = null;
     }
   });
 

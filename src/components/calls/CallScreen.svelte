@@ -1324,7 +1324,8 @@
   }
 
   .duration {
-    font-family: 'Inter Medium', sans-serif;
+    font-family: inherit;
+    font-feature-settings: "tnum";
     font-size: 15px;
     font-weight: 600;
     color: rgba(255,255,255,0.9);

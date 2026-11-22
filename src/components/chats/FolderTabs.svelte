@@ -39,11 +39,22 @@
     }
     const activeTabEl = tabsEl.querySelector(".tab.active");
     if (activeTabEl) {
-      const parentWrapper = activeTabEl.closest(".tab-wrapper");
-      const left = parentWrapper ? parentWrapper.offsetLeft : activeTabEl.offsetLeft;
-      const width = activeTabEl.offsetWidth;
-      indicatorLeft = left + 12;
-      indicatorWidth = Math.max(16, width - 24);
+      const parentWrapper = activeTabEl.closest(".tab-wrapper") || activeTabEl;
+      const titleEl = activeTabEl.querySelector(".tab-title");
+      const badgeEl = activeTabEl.querySelector(".tab-badge");
+      if (titleEl) {
+        indicatorLeft = parentWrapper.offsetLeft + titleEl.offsetLeft;
+        if (badgeEl && badgeEl.offsetWidth > 0) {
+          indicatorWidth = (badgeEl.offsetLeft + badgeEl.offsetWidth) - titleEl.offsetLeft;
+        } else {
+          indicatorWidth = titleEl.offsetWidth;
+        }
+      } else {
+        const left = parentWrapper ? parentWrapper.offsetLeft : activeTabEl.offsetLeft;
+        const width = activeTabEl.offsetWidth;
+        indicatorLeft = left + 12;
+        indicatorWidth = Math.max(16, width - 24);
+      }
       isIndicatorVisible = true;
     } else {
       isIndicatorVisible = false;
@@ -265,13 +276,13 @@
         on:contextmenu|preventDefault|stopPropagation={(e) => openContextMenu(folder, e)}
       >
         <button
-          class="tab"
+          class="tab font-title"
           class:active={String(activeFolder?.id) === String(folder?.id) && !isEditing}
           on:click={() => selectFolder(folder)}
         >
           <span class="tab-title">{folder.title}</span>
-          {#if unread > 0}
-            <span class="tab-badge">{unread > 99 ? '99+' : unread}</span>
+          {#if unread > 0 && folder.id !== 0 && folder.id !== "0" && folder.id !== "all.chat.folder"}
+            <span class="tab-badge font-title">{unread > 999 ? '999+' : unread}</span>
           {/if}
         </button>
 
@@ -412,11 +423,10 @@
   .tab {
     position: relative;
     height: 100%;
-    padding: 0 14px;
+    padding: 0 12px;
     background: none;
     border: none;
-    font-size: 16px;
-    font-weight: 500;
+    font-size: 15px;
     line-height: 20px;
     cursor: pointer;
     color: var(--text-secondary, #8b929e);
@@ -449,25 +459,25 @@
   }
 
   .tab-badge {
-    font-size: 13px;
-    font-weight: 600;
+    font-size: 11px;
     font-feature-settings: "tnum";
-    min-width: 20px;
-    height: 20px;
-    padding: 0 6px;
-    border-radius: 10px;
-    background: var(--accent-primary, #248bfe);
-    color: #ffffff;
+    min-width: 18px;
+    height: 18px;
+    padding: 0 5px;
+    border-radius: 9px;
+    background: #4b4b56;
+    color: #e5e7eb;
     display: inline-flex;
     align-items: center;
     justify-content: center;
     box-sizing: border-box;
     line-height: 1;
+    margin-top: 1px;
   }
 
   .tab:not(.active) .tab-badge {
     background: #4b4b56;
-    color: #dddddd;
+    color: #c0c4cc;
   }
 
   .done-btn {

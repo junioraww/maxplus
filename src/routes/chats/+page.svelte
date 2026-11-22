@@ -119,6 +119,11 @@
   let isSelectionMode = false;
 
   $: isSelectionMode = selectedChats.size > 0;
+  $: if (isSelectionMode) {
+    isFolderDragging = false;
+    isFolderSnapping = false;
+    folderDragOffset = 0;
+  }
 
   function openSearch() {
     openScreen(ChatsListSearchScreen);
@@ -129,6 +134,9 @@
   }
 
   function handleChatLongPress(event) {
+    isFolderDragging = false;
+    isFolderSnapping = false;
+    folderDragOffset = 0;
     const chat = event.detail;
     if (!selectedChats.has(chat.id)) {
       selectedChats.add(chat.id);
@@ -137,6 +145,9 @@
   }
 
   function handleChatToggle(event) {
+    isFolderDragging = false;
+    isFolderSnapping = false;
+    folderDragOffset = 0;
     const chat = event.detail;
     if (selectedChats.has(chat.id)) {
       selectedChats.delete(chat.id);
@@ -147,6 +158,9 @@
   }
 
   function clearSelection() {
+    isFolderDragging = false;
+    isFolderSnapping = false;
+    folderDragOffset = 0;
     selectedChats = new Set();
   }
 
@@ -313,13 +327,11 @@
           }
         });
         if (!matchesType) return false;
-      } else {
-        return false;
       }
     }
 
-    if (filters.includes(0) && !(chat.newMessages > 0)) return false;
-    if (filters.includes(1) && chat.newMessages > 0) return false;
+    if (filters.includes(0) && !(chat.newMessages > 0 || chat.unread || chat.markedUnread)) return false;
+    if (filters.includes(1) && (chat.newMessages > 0 || chat.unread || chat.markedUnread)) return false;
     if (filters.includes(7) && !isChatMuted(chat)) return false;
     if (filters.includes(11) && isChatMuted(chat)) return false;
 
@@ -540,9 +552,9 @@
             <button class="action-circle-btn" on:click={() => { clearForwardDraft(); clearSelection(); }} title="Отмена">
               <img src="/icons/close.svg" width="22" height="22" alt="" />
             </button>
-            <h1 class="toolbar-title">Выбери получателя</h1>
+            <h1 class="toolbar-title font-title">Выбери получателя</h1>
           {:else}
-            <h1 class="toolbar-title">Чаты</h1>
+            <h1 class="toolbar-title font-title">Чаты</h1>
             {#if !isStoriesExpanded}
               <button
                 type="button"
@@ -726,7 +738,6 @@
   .toolbar-title {
     margin: 0;
     font-size: 20px;
-    font-weight: 700;
     line-height: 24px;
     color: var(--text-primary, #ffffff);
     white-space: nowrap;

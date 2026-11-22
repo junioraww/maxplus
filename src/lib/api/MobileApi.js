@@ -28,6 +28,8 @@ import { handlePushUpdate } from "$lib/stores/stickers";
 import { ensureReactionsLoaded } from "$lib/stores/reactions";
 import { preloadComplaintReasons } from "$lib/stores/complaints";
 import { handleTranscriptionPush } from "$lib/stores/transcription";
+import { setChatTyping, clearChatTyping } from "$lib/stores/typing";
+import { setChatDraft, clearChatDraft, initDrafts } from "$lib/stores/drafts";
 import { vpnStatus } from "$lib/stores/proxySettings";
 import {
   addAccount,
@@ -203,6 +205,8 @@ export default class MobileApi extends BaseAPI {
         const message = response.payload.message;
         message.chatId = response.payload.chatId;
 
+        clearChatTyping(message.chatId, message.sender ?? message.from);
+
         const chat = getChat(message.chatId);
         if (message.status === "REMOVED") {
           chat.markMessageDeleted?.(message.id);
@@ -317,6 +321,13 @@ export default class MobileApi extends BaseAPI {
           }
         }
       } else if (opc === 129) {
+        const p = response.payload;
+        if (p?.chatId && p?.userId) {
+          const senderContact = getContact(p.userId);
+          const contactObj = get(senderContact);
+          const userName = contactObj?.names?.[0]?.name || contactObj?.firstName || "";
+          setChatTyping(p.chatId, p.userId, userName, p.action || "typing");
+        }
       } else if (opc === 130) {
         const payload = response.payload;
         if (payload?.chatId && payload?.mark && payload?.setAsUnread !== true) {
@@ -433,6 +444,73 @@ export default class MobileApi extends BaseAPI {
       } else if (opc === 216) {
         if (response.payload) {
           this.handleStoryPush(response.payload);
+        }
+      } else if (opc === 155 || opc === 156) {
+        const p = response.payload;
+        if (p?.chatId && p?.messageId) {
+          const chatId = p.chatId;
+          const messageId = String(p.messageId);
+          const rInfo = p.reactionInfo || {};
+          const totalCount = Number(p.totalCount ?? rInfo.totalCount ?? 0);
+          const counters = p.counters || rInfo.counters || [];
+          const yourReaction = p.yourReaction !== undefined ? p.yourReaction : rInfo.yourReaction;
+          const chat = getChat(chatId);
+          const myId = Number(get(currentUser));
+
+          // Notify open chat window immediately
+          chat.reactionUpdate?.set?.({
+            chatId,
+            messageId,
+            totalCount,
+            counters,
+            yourReaction,
+          });
+
+          const openedChats = sessionGet("openedChats") || [];
+          const isChatOpen = openedChats.some((id) => String(id) === String(chatId));
+          const isSelf = opc === 156 || (yourReaction != null && totalCount > 0);
+
+          let updatedChat = null;
+          chat.chatInfo.update((current) => {
+            if (!current) return current;
+            const prev = { ...current };
+            const rawReaction = counters?.[0]?.reaction;
+            const lastReactionEmoji = (typeof rawReaction === "object" ? rawReaction?.id : rawReaction) || "❤️";
+
+            if (isChatOpen || isSelf) {
+              // If the chat is open, or it was our own action, we don't increment unread badges.
+              // If all reactions removed or user is inside chat viewing it, clear badge.
+              if (totalCount === 0 || isChatOpen) {
+                prev.hasReaction = false;
+                prev.unreadReactions = 0;
+                prev.lastReaction = null;
+              }
+            } else if (totalCount > 0) {
+              // Remote user added/changed reaction on our message while chat is not open
+              prev.hasReaction = true;
+              prev.lastReaction = lastReactionEmoji;
+              prev.unreadReactions = 1;
+            } else {
+              // Remote user removed all reactions on this message
+              prev.hasReaction = false;
+              prev.unreadReactions = 0;
+              prev.lastReaction = null;
+            }
+
+            updatedChat = prev;
+            return prev;
+          });
+
+          if (updatedChat) {
+            await saveChats([updatedChat]).catch(() => {});
+          }
+
+          pluginEmit("message:reactions", {
+            chatId,
+            messageId,
+            totalCount,
+            counters,
+          });
         }
       }
     });
@@ -668,6 +746,7 @@ export default class MobileApi extends BaseAPI {
     }
 
     currentUser.set(resolvedUserId);
+    initDrafts().catch(() => {});
 
     return {
       success: true,
@@ -918,6 +997,7 @@ export default class MobileApi extends BaseAPI {
         await setAccountContact(account.id, fullContact);
         currentUserDetails.set(fullContact);
         currentUser.set(profile.contact.id);
+        initDrafts().catch(() => {});
       }
 
       const cachedContacts = await getCachedContacts();
@@ -2109,7 +2189,14 @@ export default class MobileApi extends BaseAPI {
       const mark = response?.mark != null ? Number(response.mark) : (markTime != null ? Number(markTime) : Date.now());
       const myId = Number(get(currentUser));
       const participants = { ...(chat.participants || {}), [myId]: mark };
-      updatedChat = { ...chat, newMessages: unread, participants };
+      updatedChat = {
+        ...chat,
+        newMessages: unread,
+        participants,
+        hasReaction: false,
+        unreadReactions: 0,
+        lastReaction: null,
+      };
       return updatedChat;
     });
 
