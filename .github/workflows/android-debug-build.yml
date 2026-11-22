@@ -2,6 +2,15 @@ name: Debug Max+ Android
 
 on:
   workflow_dispatch:
+    inputs:
+      rumax_branch:
+        description: "Branch of rumax to use"
+        required: false
+        default: "dev"
+      biometry_branch:
+        description: "Branch of tauri-plugin-biometry to use"
+        required: false
+        default: "main"
 
 jobs:
   build:
@@ -12,17 +21,17 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Cache Bun
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/.bun/install/cache
           key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
 
       - name: Cache Gradle
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/.gradle/caches
@@ -78,8 +87,10 @@ jobs:
 
       - name: Patch Cargo.toml for CI
         run: |
-          sed -i 's|path = "../../rumax"|git = "https://github.com/junioraww/rumax.git", branch = "dev"|g' src-tauri/Cargo.toml
-          sed -i 's|path = "../../tauri-plugin-biometry"|git = "https://github.com/junioraww/tauri-plugin-biometry.git", branch = "main"|g' src-tauri/Cargo.toml
+          RUMAX_BRANCH="${{ github.event.inputs.rumax_branch || 'dev' }}"
+          BIOMETRY_BRANCH="${{ github.event.inputs.biometry_branch || 'main' }}"
+          sed -i "s|path = \"../../rumax\"|git = \"https://github.com/junioraww/rumax.git\", branch = \"$RUMAX_BRANCH\"|g" src-tauri/Cargo.toml
+          sed -i "s|path = \"../../tauri-plugin-biometry\"|git = \"https://github.com/junioraww/tauri-plugin-biometry.git\", branch = \"$BIOMETRY_BRANCH\"|g" src-tauri/Cargo.toml
           sed -i '/libwebrtc/d' src-tauri/Cargo.toml
 
           echo "Cargo.toml updated:"
@@ -134,14 +145,14 @@ jobs:
           find src-tauri/gen/android/app/build/outputs/apk -type f -name "*.apk" || true
 
       - name: Upload arm64 APK
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: maxplus-debug-android-arm64
           path: |
             src-tauri/gen/android/app/build/outputs/apk/**/*arm64*/**/*.apk
 
       - name: Upload armeabi-v7a APK
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: maxplus-debug-android-arm
           path: |
@@ -149,7 +160,7 @@ jobs:
             !src-tauri/gen/android/app/build/outputs/apk/**/*arm64*/**
 
       - name: Upload x86 APK
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: x86-debug-apk
           path: |
@@ -157,14 +168,14 @@ jobs:
             !src-tauri/gen/android/app/build/outputs/apk/**/*x86_64*/**
 
       - name: Upload x86_64 APK
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: x86_64-debug-apk
           path: |
             src-tauri/gen/android/app/build/outputs/apk/**/*x86_64*/**/*.apk
 
       - name: Upload universal APK
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: universal-debug-apk
           path: |

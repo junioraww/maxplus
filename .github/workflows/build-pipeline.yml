@@ -9,7 +9,7 @@ on:
       rumax_branch:
         description: "Branch of rumax to use"
         required: false
-        default: "main"
+        default: "dev"
       biometry_branch:
         description: "Branch of tauri-plugin-biometry to use"
         required: false
@@ -22,11 +22,11 @@ jobs:
     timeout-minutes: 15
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - uses: oven-sh/setup-bun@v2
 
-      - uses: actions/cache@v4
+      - uses: actions/cache@v5
         with:
           path: |
             ~/.bun/install/cache
@@ -43,7 +43,7 @@ jobs:
 
       - run: bun x playwright test
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         if: failure()
         with:
           name: playwright-report
@@ -57,11 +57,11 @@ jobs:
     timeout-minutes: 15
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - uses: oven-sh/setup-bun@v2
 
-      - uses: actions/cache@v4
+      - uses: actions/cache@v5
         with:
           path: |
             ~/.bun/install/cache
@@ -88,13 +88,13 @@ jobs:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - uses: oven-sh/setup-bun@v2
 
       - uses: dtolnay/rust-toolchain@stable
 
-      - uses: actions/cache@v4
+      - uses: actions/cache@v5
         with:
           path: |
             ~/.bun/install/cache
@@ -138,7 +138,7 @@ jobs:
 
       - name: Patch Cargo.toml for CI
         run: |
-          RUMAX_BRANCH="${{ github.event.inputs.rumax_branch || 'main' }}"
+          RUMAX_BRANCH="${{ github.event.inputs.rumax_branch || 'dev' }}"
           BIOMETRY_BRANCH="${{ github.event.inputs.biometry_branch || 'main' }}"
           sed -i "s|path = \"../../rumax\"|git = \"https://github.com/junioraww/rumax.git\", branch = \"$RUMAX_BRANCH\"|g" src-tauri/Cargo.toml
           sed -i "s|path = \"../../tauri-plugin-biometry\"|git = \"https://github.com/junioraww/tauri-plugin-biometry.git\", branch = \"$BIOMETRY_BRANCH\"|g" src-tauri/Cargo.toml
@@ -162,13 +162,13 @@ jobs:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - uses: oven-sh/setup-bun@v2
 
       - uses: dtolnay/rust-toolchain@stable
 
-      - uses: actions/cache@v4
+      - uses: actions/cache@v5
         with:
           path: |
             ~/.bun/install/cache
@@ -212,7 +212,7 @@ jobs:
 
       - name: Patch Cargo.toml for CI
         run: |
-          RUMAX_BRANCH="${{ github.event.inputs.rumax_branch || 'main' }}"
+          RUMAX_BRANCH="${{ github.event.inputs.rumax_branch || 'dev' }}"
           BIOMETRY_BRANCH="${{ github.event.inputs.biometry_branch || 'main' }}"
           sed -i "s|path = \"../../rumax\"|git = \"https://github.com/junioraww/rumax.git\", branch = \"$RUMAX_BRANCH\"|g" src-tauri/Cargo.toml
           sed -i "s|path = \"../../tauri-plugin-biometry\"|git = \"https://github.com/junioraww/tauri-plugin-biometry.git\", branch = \"$BIOMETRY_BRANCH\"|g" src-tauri/Cargo.toml
@@ -258,7 +258,7 @@ jobs:
           ARCH=x86_64 ./appimagetool --appimage-extract-and-run --no-check-permissions squashfs-root "$LITE_APPIMAGE"
           rm -rf squashfs-root appimagetool
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: maxplus-linux
           path: |
@@ -274,7 +274,7 @@ jobs:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - uses: oven-sh/setup-bun@v2
         with:
@@ -282,7 +282,7 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
 
-      - uses: actions/cache@v4
+      - uses: actions/cache@v5
         with:
           path: |
             ~/.bun/install/cache
@@ -295,7 +295,7 @@ jobs:
 
       - name: Patch Cargo.toml for CI
         run: |
-          $branch = "${{ github.event.inputs.rumax_branch || 'main' }}"
+          $branch = "${{ github.event.inputs.rumax_branch || 'dev' }}"
           $biometry_branch = "${{ github.event.inputs.biometry_branch || 'main' }}"
           (Get-Content src-tauri/Cargo.toml) -replace 'path = "\.\./\.\./rumax"', "git = `"https://github.com/junioraww/rumax.git`", branch = `"$branch`"" | Set-Content src-tauri/Cargo.toml
           (Get-Content src-tauri/Cargo.toml) -replace 'path = "\.\./\.\./tauri-plugin-biometry"', "git = `"https://github.com/junioraww/tauri-plugin-biometry.git`", branch = `"$biometry_branch`"" | Set-Content src-tauri/Cargo.toml
@@ -309,7 +309,7 @@ jobs:
       - name: Build Windows Release
         run: bunx tauri build
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: maxplus-windows
           path: |
@@ -325,7 +325,7 @@ jobs:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - uses: oven-sh/setup-bun@v2
         with:
@@ -335,7 +335,7 @@ jobs:
         with:
           targets: aarch64-apple-darwin,x86_64-apple-darwin
 
-      - uses: actions/cache@v4
+      - uses: actions/cache@v5
         with:
           path: |
             ~/.bun/install/cache
@@ -348,7 +348,7 @@ jobs:
 
       - name: Patch Cargo.toml for CI
         run: |
-          RUMAX_BRANCH="${{ github.event.inputs.rumax_branch || 'main' }}"
+          RUMAX_BRANCH="${{ github.event.inputs.rumax_branch || 'dev' }}"
           BIOMETRY_BRANCH="${{ github.event.inputs.biometry_branch || 'main' }}"
           sed -i '' "s|path = \"../../rumax\"|git = \"https://github.com/junioraww/rumax.git\", branch = \"$RUMAX_BRANCH\"|g" src-tauri/Cargo.toml
           sed -i '' "s|path = \"../../tauri-plugin-biometry\"|git = \"https://github.com/junioraww/tauri-plugin-biometry.git\", branch = \"$BIOMETRY_BRANCH\"|g" src-tauri/Cargo.toml
@@ -368,7 +368,7 @@ jobs:
             [ -f "$f" ] && mv "$f" "${f//MAX/maxplus}"
           done
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: maxplus-macos
           path: src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg
@@ -382,15 +382,15 @@ jobs:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/cache@v4
+      - uses: actions/cache@v5
         with:
           path: |
             ~/.bun/install/cache
           key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
 
-      - uses: actions/cache@v4
+      - uses: actions/cache@v5
         with:
           path: |
             ~/.gradle/caches
@@ -441,7 +441,7 @@ jobs:
 
       - name: Patch Cargo.toml for CI
         run: |
-          RUMAX_BRANCH="${{ github.event.inputs.rumax_branch || 'main' }}"
+          RUMAX_BRANCH="${{ github.event.inputs.rumax_branch || 'dev' }}"
           BIOMETRY_BRANCH="${{ github.event.inputs.biometry_branch || 'main' }}"
           sed -i "s|path = \"../../rumax\"|git = \"https://github.com/junioraww/rumax.git\", branch = \"$RUMAX_BRANCH\"|g" src-tauri/Cargo.toml
           sed -i "s|path = \"../../tauri-plugin-biometry\"|git = \"https://github.com/junioraww/tauri-plugin-biometry.git\", branch = \"$BIOMETRY_BRANCH\"|g" src-tauri/Cargo.toml
@@ -489,51 +489,56 @@ jobs:
           bunx tauri android build --apk --split-per-abi
           bunx tauri android build --apk
           cd src-tauri/gen/android
-          ./gradlew :app:assembleArmFcmRelease :app:assembleUniversalFcmRelease
+          ./gradlew :app:assembleArm64FcmRelease :app:assembleArmFcmRelease :app:assembleUniversalFcmRelease
 
       - name: List All Android Outputs
         run: |
           find src-tauri/gen/android/app/build/outputs/apk -type f -name "*.apk" || true
 
       - name: Upload FOSS arm64 APK
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: maxplus-android-foss-arm64
           path: |
-            src-tauri/gen/android/app/build/outputs/apk/**/*foss*/*arm64*/**/*.apk
-            src-tauri/gen/android/app/build/outputs/apk/arm64/release/*.apk
+            src-tauri/gen/android/app/build/outputs/apk/arm64Foss/release/*.apk
+            src-tauri/gen/android/app/build/outputs/apk/**/*arm64*oss*/**/*.apk
+            src-tauri/gen/android/app/build/outputs/apk/**/app-*arm64*-foss*.apk
 
       - name: Upload FOSS Universal APK
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: maxplus-android-foss-universal
           path: |
-            src-tauri/gen/android/app/build/outputs/apk/**/*foss*/*universal*/**/*.apk
-            src-tauri/gen/android/app/build/outputs/apk/universal/release/*.apk
+            src-tauri/gen/android/app/build/outputs/apk/universalFoss/release/*.apk
+            src-tauri/gen/android/app/build/outputs/apk/**/*universal*oss*/**/*.apk
+            src-tauri/gen/android/app/build/outputs/apk/**/app-*universal*-foss*.apk
 
       - name: Upload FOSS arm APK
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: maxplus-android-foss-arm
           path: |
-            src-tauri/gen/android/app/build/outputs/apk/**/*foss*/*arm*/**/*.apk
+            src-tauri/gen/android/app/build/outputs/apk/armFoss/release/*.apk
+            src-tauri/gen/android/app/build/outputs/apk/**/app-*arm-foss*.apk
             !src-tauri/gen/android/app/build/outputs/apk/**/*arm64*/**
 
       - name: Upload FCM arm64 APK
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: maxplus-android-fcm-arm64
           path: |
-            src-tauri/gen/android/app/build/outputs/apk/**/*fcm*/*arm64*/**/*.apk
-            src-tauri/gen/android/app/build/outputs/apk/**/*fcm*/**/app-*-arm64*.apk
+            src-tauri/gen/android/app/build/outputs/apk/arm64Fcm/release/*.apk
+            src-tauri/gen/android/app/build/outputs/apk/**/*arm64*cm*/**/*.apk
+            src-tauri/gen/android/app/build/outputs/apk/**/app-*arm64*-fcm*.apk
 
       - name: Upload FCM Universal APK
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: maxplus-android-fcm-universal
           path: |
-            src-tauri/gen/android/app/build/outputs/apk/**/*fcm*/*universal*/**/*.apk
-            src-tauri/gen/android/app/build/outputs/apk/**/*fcm*/**/app-*-universal*.apk
+            src-tauri/gen/android/app/build/outputs/apk/universalFcm/release/*.apk
+            src-tauri/gen/android/app/build/outputs/apk/**/*universal*cm*/**/*.apk
+            src-tauri/gen/android/app/build/outputs/apk/**/app-*universal*-fcm*.apk
           if-no-files-found: warn
 
   build-ios:
@@ -545,7 +550,7 @@ jobs:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Setup Xcode
         uses: maxim-lobanov/setup-xcode@v1
@@ -566,7 +571,7 @@ jobs:
 
       - name: Patch Cargo.toml for CI
         run: |
-          RUMAX_BRANCH="${{ github.event.inputs.rumax_branch || 'main' }}"
+          RUMAX_BRANCH="${{ github.event.inputs.rumax_branch || 'dev' }}"
           BIOMETRY_BRANCH="${{ github.event.inputs.biometry_branch || 'main' }}"
           sed -i '' "s|path = \"../../rumax\"|git = \"https://github.com/junioraww/rumax.git\", branch = \"$RUMAX_BRANCH\"|g" src-tauri/Cargo.toml
           sed -i '' "s|path = \"../../tauri-plugin-biometry\"|git = \"https://github.com/junioraww/tauri-plugin-biometry.git\", branch = \"$BIOMETRY_BRANCH\"|g" src-tauri/Cargo.toml
@@ -587,7 +592,7 @@ jobs:
       - name: Build iOS Release
         run: bun tauri ios build --ci --target aarch64 --no-sign
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: maxplus-ios-unsigned
           path: |

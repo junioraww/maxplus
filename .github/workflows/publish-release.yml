@@ -34,7 +34,7 @@ jobs:
       NOTES: ${{ inputs.body || 'Production release update' }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Verify Version Match
         run: |
