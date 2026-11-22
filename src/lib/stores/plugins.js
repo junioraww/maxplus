@@ -1,15 +1,44 @@
-import { writable, get } from 'svelte/store';
+import { writable } from 'svelte/store';
 import { invoke } from '@tauri-apps/api/core';
+import { openSheet, dismissLayer } from '$lib/services/layerManager';
 
 const importModalStore = writable(null);
 export { importModalStore as pluginImportModal };
 
-export function showPluginImportModal(data) {
+let importModalLayerId = null;
+
+export async function showPluginImportModal(data) {
   importModalStore.set(data);
+  if (importModalLayerId) {
+    dismissLayer(importModalLayerId);
+    importModalLayerId = null;
+  }
+  const mod = await import('$components/plugins/PluginImportModal.svelte');
+  const res = openSheet(
+    mod.default || mod,
+    { data },
+    {
+      dim: true,
+      dimOpacity: 0.65,
+      canSwipe: true,
+      closeDelay: 200,
+      onClose: () => {
+        importModalLayerId = null;
+        importModalStore.set(null);
+      }
+    }
+  );
+  importModalLayerId = res.id;
+  return res;
 }
 
 export function closePluginImportModal() {
   importModalStore.set(null);
+  if (importModalLayerId) {
+    const id = importModalLayerId;
+    importModalLayerId = null;
+    dismissLayer(id);
+  }
 }
 
 function createPluginStore() {

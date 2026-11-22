@@ -35,6 +35,8 @@ function resolveModuleGraph(files, entryName) {
         const url = URL.createObjectURL(blob);
         createdUrls.push(url);
         resolved.set(key, url);
+        const clean = key.replace(/^.*[\\\/]/, '');
+        resolved.set(clean, url);
       }
     }
   }

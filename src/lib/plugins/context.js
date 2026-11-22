@@ -158,15 +158,21 @@ export function buildPluginContext(manifest, pluginId) {
 
     input: {
       getSelection() {
-        check('stores:read', 'ctx.input.getSelection()');
+        if (!granted.has('stores:read') && !granted.has('ui:mount')) {
+          check('stores:read', 'ctx.input.getSelection()');
+        }
         return get(composerSelection);
       },
       replaceSelection(data) {
-        check('stores:write', 'ctx.input.replaceSelection()');
+        if (!granted.has('stores:write') && !granted.has('events') && !granted.has('ui:mount')) {
+          check('stores:write', 'ctx.input.replaceSelection()');
+        }
         pluginEmit('input:replace-selection', data);
       },
       insert(data) {
-        check('stores:write', 'ctx.input.insert()');
+        if (!granted.has('stores:write') && !granted.has('events') && !granted.has('ui:mount')) {
+          check('stores:write', 'ctx.input.insert()');
+        }
         pluginEmit('input:insert', data);
       },
     },
@@ -232,7 +238,13 @@ export function buildPluginContext(manifest, pluginId) {
     },
 
     emit(event, data) {
-      check('events', 'ctx.emit()');
+      if (event === 'input:insert' || event === 'input:replace-selection') {
+        if (!granted.has('events') && !granted.has('stores:write') && !granted.has('ui:mount')) {
+          check('events', 'ctx.emit()');
+        }
+      } else {
+        check('events', 'ctx.emit()');
+      }
       pluginEmit(event, data);
     },
 

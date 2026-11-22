@@ -3,7 +3,7 @@
   import { fade, fly } from "svelte/transition";
   import { createEventDispatcher } from "svelte";
   import { registerBackHandler } from "$lib/utils/backButton";
-  import { open } from "@tauri-apps/plugin-dialog";
+  import { pickFileBytes } from "$lib/utils/filePicker";
   import { invoke } from "@tauri-apps/api/core";
 
   export let onScan = null;
@@ -219,22 +219,14 @@
 
   async function pickFromFile() {
     try {
-      const selected = await open({
-        multiple: false,
-        directory: false,
-        filters: [{ name: "Изображения", extensions: ["png", "jpeg", "jpg", "webp"] }],
+      const file = await pickFileBytes({
+        type: "PHOTO",
+        extensions: ["png", "jpeg", "jpg", "webp"],
+        name: "Изображения",
       });
-      if (!selected) return;
+      if (!file) return;
 
-      let blob;
-      try {
-        const bytes = await invoke("read_file", { path: selected });
-        blob = new Blob([new Uint8Array(bytes)]);
-      } catch (_) {
-        const res = await fetch(selected);
-        blob = await res.blob();
-      }
-
+      const blob = new Blob([file.bytes]);
       const result = await decodeImageBlob(blob);
       if (result) {
         handleScan(result);

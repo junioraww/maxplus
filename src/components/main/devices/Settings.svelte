@@ -9,6 +9,7 @@
 
   import { set as sessionSet } from "$lib/stores/session";
   import { generateDevice } from "$lib/utils/device";
+  import { pickFileText } from "$lib/utils/filePicker";
   import { getCurrentAccount, setAccountMeta } from "$lib/stores/accounts";
   import { activeThemeId } from "$lib/stores/theme";
   import { registerBackHandler } from "$lib/utils/backButton";
@@ -159,15 +160,16 @@
     isImporting = true;
 
     try {
-      const select = await invoke("pick", { type: "JSON" }).catch(() => null);
-      if (!select?.uri) return;
-
-      const data = await invoke("read_file", { path: select.uri });
-      const text = new TextDecoder().decode(new Uint8Array(data));
+      const file = await pickFileText({
+        type: "JSON",
+        extensions: ["json"],
+        name: "Конфиг девайса (.json)",
+      });
+      if (!file) return;
 
       let json;
       try {
-        json = JSON.parse(text);
+        json = JSON.parse(file.text);
       } catch (e) {
         return alert("JSON-файл содержит ошибки!");
       }
