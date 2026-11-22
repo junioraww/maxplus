@@ -510,7 +510,7 @@
     margin: 0;
     box-sizing: border-box;
     cursor: pointer;
-    z-index: 10;
+    z-index: var(--z-floating);
     line-height: 0;
     transition: transform 0.15s, background-color 0.15s, border-color 0.15s;
     box-shadow: 0 2px 5px rgba(0, 0, 0, 0.35);
@@ -550,7 +550,7 @@
     margin: 0;
     box-sizing: border-box;
     cursor: pointer;
-    z-index: 10;
+    z-index: var(--z-floating);
     line-height: 0;
     transition: transform 0.15s;
     box-shadow: 0 2px 5px rgba(0, 0, 0, 0.35);
@@ -583,7 +583,7 @@
     padding: 0;
     margin: 0;
     box-sizing: border-box;
-    z-index: 10;
+    z-index: var(--z-floating);
     line-height: 0;
     box-shadow: 0 2px 5px rgba(0, 0, 0, 0.35);
   }
@@ -620,7 +620,7 @@
     box-sizing: border-box;
     line-height: 1;
     border: 2px solid var(--bg-panel, #1c1d1f);
-    z-index: 2;
+    z-index: var(--z-panel);
   }
 
   .icon-box img {

@@ -366,7 +366,7 @@ import { goto } from "$app/navigation";
     cursor: pointer;
     box-shadow: 0 3px 8px rgba(0, 0, 0, 0.35);
     transition: background 0.15s, transform 0.12s;
-    z-index: 10;
+    z-index: var(--z-floating);
     pointer-events: auto;
   }
 
@@ -451,7 +451,7 @@ import { goto } from "$app/navigation";
     cursor: pointer;
     opacity: 0.8;
     transition: opacity 0.1s;
-    z-index: 10;
+    z-index: var(--z-header);
   }
 
   .scanner-icon:hover {

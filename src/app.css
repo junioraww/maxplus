@@ -157,6 +157,9 @@ img {
   --z-toast: 120;
   --z-loader: 130;
   --z-lock: 140;
+  --z-camouflage: 150;
+  --z-camouflage-preview: 151;
+  --z-camouflage-control: 152;
 }
 
 [data-theme="dark"] {

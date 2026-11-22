@@ -791,10 +791,11 @@ pub struct SystemInsets {
 pub fn get_system_insets() -> SystemInsets {
     #[cfg(target_os = "android")]
     {
-        if let Some(vm) = crate::notifications::GLOBAL_JVM.get() {
+        if let (Some(vm), Some(main_class)) = (
+            crate::notifications::GLOBAL_JVM.get(),
+            crate::notifications::GLOBAL_MAIN_ACTIVITY_CLASS.get(),
+        ) {
             let res = vm.attach_current_thread(|env| -> Result<SystemInsets, jni::errors::Error> {
-                let main_class = env.find_class(jni::jni_str!("me/junioraww/max/MainActivity"))
-                    .or_else(|_| env.find_class(jni::jni_str!("org/meowkie/max/MainActivity")))?;
                 let arr_obj = env.call_static_method(
                     main_class,
                     jni::jni_str!("getInsetsStatic"),
@@ -811,9 +812,12 @@ pub fn get_system_insets() -> SystemInsets {
                     right: buf[3],
                 })
             });
-            if let Ok(insets) = res {
-                return insets;
+            match res {
+                Ok(insets) => return insets,
+                Err(e) => eprintln!("MaxPlus: get_system_insets error: {e:?}"),
             }
+        } else {
+            eprintln!("MaxPlus: get_system_insets error: GLOBAL_JVM or GLOBAL_MAIN_ACTIVITY_CLASS not initialized");
         }
     }
     SystemInsets::default()

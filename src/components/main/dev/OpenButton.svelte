@@ -13,7 +13,7 @@
 <style>
   .open-dev {
     position: absolute;
-    z-index: 100;
+    z-index: var(--z-floating);
     color: white;
     width: 200px;
     height: 40px;

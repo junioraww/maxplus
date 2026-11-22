@@ -415,7 +415,7 @@
     justify-content: center;
     color: white;
     cursor: pointer;
-    z-index: 2;
+    z-index: var(--z-panel);
     padding: 0;
     pointer-events: auto;
   }
@@ -455,7 +455,7 @@
     border-radius: 4px 4px 0 0;
     transition: transform 0.25s cubic-bezier(0.25, 1, 0.5, 1), width 0.25s cubic-bezier(0.25, 1, 0.5, 1);
     pointer-events: none;
-    z-index: 5;
+    z-index: var(--z-floating);
   }
 
   .tab-badge {

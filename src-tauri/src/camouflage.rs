@@ -259,10 +259,11 @@ fn restore_macos_dock() {
 #[cfg(target_os = "android")]
 fn update_android_launcher(active: bool, alias_index: i32) {
     use jni::{jni_sig, jni_str};
-    if let Some(vm) = crate::notifications::GLOBAL_JVM.get() {
-        let _ = vm.attach_current_thread(|env| -> Result<(), jni::errors::Error> {
-            let main_class = env.find_class(jni_str!("me/junioraww/max/MainActivity"))
-                .or_else(|_| env.find_class(jni_str!("org/meowkie/max/MainActivity")))?;
+    if let (Some(vm), Some(main_class)) = (
+        crate::notifications::GLOBAL_JVM.get(),
+        crate::notifications::GLOBAL_MAIN_ACTIVITY_CLASS.get(),
+    ) {
+        let res = vm.attach_current_thread(|env| -> Result<(), jni::errors::Error> {
             env.call_static_method(
                 main_class,
                 jni_str!("setCamouflageState"),
@@ -271,5 +272,10 @@ fn update_android_launcher(active: bool, alias_index: i32) {
             )?;
             Ok(())
         });
+        if let Err(e) = res {
+            eprintln!("MaxPlus: update_android_launcher error: {e:?}");
+        }
+    } else {
+        eprintln!("MaxPlus: update_android_launcher error: GLOBAL_JVM or GLOBAL_MAIN_ACTIVITY_CLASS not initialized");
     }
 }

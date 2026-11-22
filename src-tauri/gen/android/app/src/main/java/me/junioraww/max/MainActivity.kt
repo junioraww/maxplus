@@ -26,6 +26,25 @@ class MainActivity : TauriActivity() {
     @Volatile var appContext: Context? = null
     @Volatile var currentCamouflageActive: Boolean = false
     @Volatile var currentCamouflageAliasIndex: Int = 1
+    @Volatile var pendingDisableComponent: android.content.ComponentName? = null
+
+    @JvmStatic
+    fun applyPendingComponentDisable(ctx: Context) {
+      val comp = pendingDisableComponent ?: return
+      pendingDisableComponent = null
+      try {
+        val pm = ctx.packageManager
+        if (pm.getComponentEnabledSetting(comp) != android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_DISABLED) {
+          pm.setComponentEnabledSetting(
+            comp,
+            android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
+            android.content.pm.PackageManager.DONT_KILL_APP
+          )
+        }
+      } catch (e: Throwable) {
+        Log.e("MaxPlus", "applyPendingComponentDisable error", e)
+      }
+    }
 
     @JvmStatic
     fun isStandaloneBuild(): Boolean {
@@ -173,43 +192,48 @@ class MainActivity : TauriActivity() {
         val pkg = ctx.packageName
         val defaultComponent = android.content.ComponentName(pkg, "$pkg.MainActivity")
         val allDecoys = (1..40).map { if (it == 1) "$pkg.MainActivityCalculator" else "$pkg.MainActivityDecoy$it" }
-        if (active) {
+        val runningComp = instance?.componentName
+
+        val targetComponent = if (active) {
           val safeIndex = if (aliasIndex in 1..40) aliasIndex else 1
           val targetAliasName = if (safeIndex == 1) "$pkg.MainActivityCalculator" else "$pkg.MainActivityDecoy$safeIndex"
-          val targetComponent = android.content.ComponentName(pkg, targetAliasName)
+          android.content.ComponentName(pkg, targetAliasName)
+        } else {
+          defaultComponent
+        }
+
+        if (pendingDisableComponent == targetComponent) {
+          pendingDisableComponent = null
+        }
+
+        if (pm.getComponentEnabledSetting(targetComponent) != android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_ENABLED) {
           pm.setComponentEnabledSetting(
             targetComponent,
             android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_ENABLED,
             android.content.pm.PackageManager.DONT_KILL_APP
           )
-          for (decoy in allDecoys) {
-            if (decoy != targetAliasName) {
+        }
+
+        val componentsToDisable = if (active) {
+          allDecoys.filter { it != targetComponent.className }.map { android.content.ComponentName(pkg, it) } + listOf(defaultComponent)
+        } else {
+          allDecoys.map { android.content.ComponentName(pkg, it) }
+        }
+
+        for (comp in componentsToDisable) {
+          if (runningComp != null && comp == runningComp && AppState.isAppInForeground) {
+            pendingDisableComponent = comp
+          } else {
+            if (pm.getComponentEnabledSetting(comp) != android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_DISABLED) {
               pm.setComponentEnabledSetting(
-                android.content.ComponentName(pkg, decoy),
+                comp,
                 android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
                 android.content.pm.PackageManager.DONT_KILL_APP
               )
             }
           }
-          pm.setComponentEnabledSetting(
-            defaultComponent,
-            android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
-            android.content.pm.PackageManager.DONT_KILL_APP
-          )
-        } else {
-          pm.setComponentEnabledSetting(
-            defaultComponent,
-            android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_ENABLED,
-            android.content.pm.PackageManager.DONT_KILL_APP
-          )
-          for (decoy in allDecoys) {
-            pm.setComponentEnabledSetting(
-              android.content.ComponentName(pkg, decoy),
-              android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
-              android.content.pm.PackageManager.DONT_KILL_APP
-            )
-          }
         }
+
         currentCamouflageActive = active
         currentCamouflageAliasIndex = aliasIndex
         instance?.let { act ->
@@ -554,9 +578,15 @@ class MainActivity : TauriActivity() {
     AppState.setAppInForeground(false)
     dispatchKeyboardState(false, 0)
   }
+
+  override fun onStop() {
+    super.onStop()
+    applyPendingComponentDisable(this)
+  }
   
   override fun onDestroy() {
     super.onDestroy()
+    applyPendingComponentDisable(this)
     currentWebView = null
     if (instance == this) {
       instance = null

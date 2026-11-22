@@ -1,6 +1,5 @@
 <script>
   import { onMount, onDestroy } from "svelte";
-  import { goto } from "$app/navigation";
   import { page } from "$app/stores";
   import SettingsPageWrapper from "$components/settings/SettingsPageWrapper.svelte";
   import SettingsDropout from "$components/settings/SettingsDropout.svelte";
@@ -23,6 +22,7 @@
     pluginCustomApps
   } from "$lib/camouflage/store";
   import DecoyApp from "$components/camouflage/DecoyApp.svelte";
+  import { keyboardOpen, keyboardHeight } from "$lib/stores/keyboard";
 
   export let onClose = null;
   $: from = $page.url.searchParams.get("from") || "/?card=settings";
@@ -53,6 +53,7 @@
   };
 
   $: allAppTypes = [...APP_TYPES, ...$pluginCustomApps];
+  $: isLockConfigured = Boolean(encryption || ($camouflageSettings?.enabled && $camouflageSettings?.pin));
 
   onMount(async () => {
     await loadData();
@@ -130,11 +131,50 @@
   }
 
   async function lockNow() {
+    if (!isLockConfigured) {
+      showAlert("Сначала включите биометрию, графический ключ или маскировку");
+      return;
+    }
     if ($camouflageSettings.enabled) {
       lockCamouflage();
-    } else {
+    } else if (encryption) {
       openLockScreen({ mode: "decrypt" });
     }
+  }
+
+  function handleEnableHardware() {
+    openLockScreen({
+      mode: "create",
+      lockType: "hardware",
+      account,
+      onSuccess: async () => {
+        await loadData();
+        showAlert("Биометрия включена");
+      }
+    });
+  }
+
+  function handleEnablePattern() {
+    openLockScreen({
+      mode: "create",
+      lockType: "pin",
+      account,
+      onSuccess: async () => {
+        await loadData();
+        showAlert("Графический ключ установлен");
+      }
+    });
+  }
+
+  function handleDisableEncryption() {
+    openLockScreen({
+      mode: "disable",
+      account,
+      onSuccess: async () => {
+        await loadData();
+        showAlert("Шифрование отключено");
+      }
+    });
   }
 </script>
 
@@ -284,7 +324,7 @@
 
           <div class="divider"></div>
           <div class="actions-row">
-            <button type="button" class="action-outline-btn danger" on:click={() => goto("/auth/lock?mode=disable")}>
+            <button type="button" class="action-outline-btn danger" on:click={handleDisableEncryption}>
               Отключить шифрование
             </button>
           </div>
@@ -295,14 +335,14 @@
               <button
                 type="button"
                 class="action-solid-btn"
-                on:click={() => goto("/auth/lock?mode=create&type=hardware")}
+                on:click={handleEnableHardware}
               >
                 Включить биометрию
               </button>
               <button
                 type="button"
                 class="action-outline-btn"
-                on:click={() => goto("/auth/lock?mode=create&type=pin")}
+                on:click={handleEnablePattern}
               >
                 Графический ключ
               </button>
@@ -310,7 +350,7 @@
               <button
                 type="button"
                 class="action-solid-btn"
-                on:click={() => goto("/auth/lock?mode=create&type=pin")}
+                on:click={handleEnablePattern}
               >
                 Установить графический ключ
               </button>
@@ -323,16 +363,23 @@
       <div class="settings-card">
         <SettingsDropout
           label="Время до блокировки"
-          description="Блокировать приложение при неактивности или скрытии экрана"
+          description={isLockConfigured ? "Блокировать приложение при неактивности или скрытии экрана" : "Требуется включить биометрию, графический ключ или маскировку"}
           options={AUTO_LOCK_OPTIONS}
           value={$autoLockTimer}
+          disabled={!isLockConfigured}
           on:change={(e) => handleAutoLockChange(e.detail)}
         />
 
         <div class="divider"></div>
 
         <div class="actions-row">
-          <button type="button" class="action-outline-btn" on:click={lockNow}>
+          <button
+            type="button"
+            class="action-outline-btn"
+            class:disabled={!isLockConfigured}
+            disabled={!isLockConfigured}
+            on:click={lockNow}
+          >
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
               <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
@@ -345,7 +392,13 @@
   </div>
 
   {#if showPinModal}
-    <div class="modal-backdrop" on:click={() => showPinModal = false} role="presentation">
+    <div
+      class="modal-backdrop"
+      class:has-keyboard={$keyboardOpen}
+      style={$keyboardOpen && $keyboardHeight > 0 ? `bottom: ${$keyboardHeight}px;` : ""}
+      on:click={() => showPinModal = false}
+      role="presentation"
+    >
       <div class="modal-card" on:click|stopPropagation role="dialog">
         <div class="bottom-sheet-handle"></div>
         <h2>Секретный PIN-код</h2>
@@ -358,6 +411,12 @@
           bind:value={newPin}
           placeholder="••••"
           autofocus
+          on:keydown={(e) => {
+            if (e.key === "Enter" && newPin.length === 4) savePin();
+          }}
+          on:input={() => {
+            if (newPin.length === 4) pinError = "";
+          }}
         />
         {#if pinError}
           <div class="modal-error">{pinError}</div>
@@ -415,9 +474,9 @@
   }
 
   .settings-card {
-    background: #1b1d22;
-    border: 1px solid rgba(255, 255, 255, 0.07);
-    border-radius: 14px;
+    background: #26262e;
+    border: 1px solid #333;
+    border-radius: 12px;
     overflow: hidden;
     display: flex;
     flex-direction: column;
@@ -433,7 +492,7 @@
   }
 
   .settings-row:hover {
-    background: rgba(255, 255, 255, 0.02);
+    background: rgba(255, 255, 255, 0.04);
   }
 
   .row-info {
@@ -490,7 +549,7 @@
     width: 44px;
     height: 24px;
     border-radius: 12px;
-    background: #2e3138;
+    background: #3a3a46;
     position: relative;
     transition: background 0.2s ease;
     flex-shrink: 0;
@@ -536,8 +595,8 @@
   }
 
   .pill-btn {
-    background: #24272f;
-    border: 1px solid rgba(255, 255, 255, 0.06);
+    background: #33333d;
+    border: 1px solid rgba(255, 255, 255, 0.08);
     border-radius: 10px;
     padding: 10px 8px;
     display: flex;
@@ -652,6 +711,12 @@
     opacity: 0.9;
   }
 
+  .action-outline-btn.disabled,
+  .action-outline-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+
   .badge {
     padding: 4px 10px;
     border-radius: 20px;
@@ -673,19 +738,29 @@
 
   .modal-backdrop {
     position: fixed;
-    inset: 0;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: var(--keyboard-inset, 0px);
     background: rgba(0, 0, 0, 0.65);
-    z-index: var(--z-modal, 7);
+    z-index: var(--z-modal);
     display: flex;
     align-items: flex-end;
     justify-content: center;
+    box-sizing: border-box;
+    overflow-y: auto;
+    transition: bottom 0.18s cubic-bezier(0.1, 0.9, 0.2, 1);
+  }
+
+  .modal-backdrop.has-keyboard {
+    align-items: flex-end;
   }
 
   .modal-card {
-    background: var(--bg-surface, #1e2025);
+    background: var(--bg-surface, #26262e);
     border-top: 1px solid rgba(255, 255, 255, 0.08);
     border-radius: 20px 20px 0 0;
-    padding: 12px 20px calc(20px + max(var(--safe-bottom, 0px), var(--keyboard-inset, 0px)));
+    padding: 14px 20px calc(16px + max(var(--safe-bottom, 0px) - var(--keyboard-inset, 0px), 0px));
     width: 100%;
     max-width: 480px;
     display: flex;
@@ -693,7 +768,10 @@
     gap: 14px;
     box-sizing: border-box;
     box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.5);
-    transition: padding-bottom 0.15s ease-out;
+  }
+
+  .modal-backdrop.has-keyboard .modal-card {
+    padding-bottom: 16px;
   }
 
   .bottom-sheet-handle {

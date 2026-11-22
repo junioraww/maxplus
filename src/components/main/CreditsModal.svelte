@@ -792,7 +792,7 @@
     width: 100%;
     height: 100%;
     pointer-events: none;
-    z-index: 1;
+    z-index: var(--z-base);
   }
 
   .webgl-canvas {
@@ -800,7 +800,7 @@
     inset: 0;
     width: 100%;
     height: 100%;
-    z-index: 2;
+    z-index: var(--z-panel);
     cursor: grab;
     touch-action: none;
   }
@@ -818,7 +818,7 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    z-index: 10;
+    z-index: var(--z-floating);
   }
 
   .nav-cluster {
@@ -872,7 +872,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    z-index: 5;
+    z-index: var(--z-floating);
     pointer-events: none;
   }
 
@@ -903,7 +903,7 @@
   .scene-stage {
     position: absolute;
     inset: 0;
-    z-index: 5;
+    z-index: var(--z-floating);
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -933,7 +933,7 @@
     font-size: 0.76rem;
     letter-spacing: 0.04em;
     pointer-events: none;
-    z-index: 10;
+    z-index: var(--z-floating);
   }
 
   @media (max-width: 640px) {

@@ -4,7 +4,7 @@
   width: 100vw;
   height: 100vh;
   height: 100dvh;
-  z-index: 999999;
+  z-index: var(--z-camouflage);
   background-color: var(--camo-bg, #000000);
   color: var(--camo-text, #ffffff);
   font-family: var(--camo-font, system-ui, sans-serif);
@@ -21,7 +21,7 @@
 }
 
 .camo-root.preview-mode {
-  z-index: 1000000;
+  z-index: var(--z-camouflage-preview);
 }
 
 .anim-fade {
@@ -81,7 +81,7 @@
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  z-index: 1000002;
+  z-index: var(--z-camouflage-control);
   backdrop-filter: blur(8px);
   transition: transform 0.12s ease;
 }
@@ -620,7 +620,7 @@ h1 {
   justify-content: center;
   margin: -6px 0;
   position: relative;
-  z-index: 2;
+  z-index: var(--z-panel);
 }
 
 .swap-circle-btn {
