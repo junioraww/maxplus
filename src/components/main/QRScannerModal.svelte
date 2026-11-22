@@ -8,6 +8,9 @@
 
   export let onScan = null;
   export let onClose = null;
+  let propClose = null;
+  export { propClose as close };
+  export let setBackHandler = null;
 
   const dispatch = createEventDispatcher();
 
@@ -53,6 +56,7 @@
       unregisterBack();
       unregisterBack = null;
     }
+    if (propClose) propClose();
     if (onClose) onClose();
     dispatch("close");
   }
@@ -249,10 +253,19 @@
     }
   }
 
+  function handleBack() {
+    close();
+    return false;
+  }
+
+  $: if (setBackHandler) {
+    setBackHandler(handleBack);
+  }
+
   onMount(() => {
-    unregisterBack = registerBackHandler(() => {
-      close();
-    });
+    if (!setBackHandler) {
+      unregisterBack = registerBackHandler(handleBack);
+    }
     startCamera();
   });
 

@@ -16,10 +16,13 @@
   import ProxySettingsPage from "../../../routes/settings/proxy/+page.svelte";
 
   export let onClose = null;
+  export let close = null;
+  export let setBackHandler = null;
   const dispatch = createEventDispatcher();
 
   function handleClose() {
     if (onClose) onClose();
+    if (close) close();
     dispatch("close");
   }
 
@@ -27,15 +30,23 @@
   let isProxyOpen = false;
   let unregisterBack = null;
 
+  function handleDevBack() {
+    if (isProxyOpen) {
+      isProxyOpen = false;
+      return false;
+    }
+    handleClose();
+    return false;
+  }
+
+  $: if (setBackHandler) {
+    setBackHandler(handleDevBack);
+  }
+
   onMount(() => {
-    unregisterBack = registerBackHandler(() => {
-      if (isProxyOpen) {
-        isProxyOpen = false;
-        return false;
-      }
-      handleClose();
-      return true;
-    });
+    if (!setBackHandler) {
+      unregisterBack = registerBackHandler(handleDevBack);
+    }
   });
 
   onDestroy(() => {
