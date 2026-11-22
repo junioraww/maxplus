@@ -5,6 +5,7 @@
   import { onMount, onDestroy, createEventDispatcher } from "svelte";
 
   export let onClose = null;
+  export let setBackHandler = null;
   const dispatch = createEventDispatcher();
 
   import { set as sessionSet } from "$lib/stores/session";
@@ -23,11 +24,20 @@
   let isImporting = false;
   let unregisterBack = null;
 
-  onMount(async () => {
-    unregisterBack = registerBackHandler(() => {
+  $: if (setBackHandler) {
+    setBackHandler(() => {
       close();
-      return true;
+      return false;
     });
+  }
+
+  onMount(async () => {
+    if (!setBackHandler) {
+      unregisterBack = registerBackHandler(() => {
+        close();
+        return true;
+      });
+    }
     glow = true;
     const acc = await getCurrentAccount().catch(() => null);
     if (acc?.id) {

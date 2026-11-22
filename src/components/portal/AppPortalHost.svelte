@@ -28,21 +28,31 @@
   $: activeLayers = $layerStack.filter((l) => !l.isClosing);
   $: hasLayers = activeLayers.length > 0;
 
-  function syncBackRegistration(shouldRegister) {
-    if (shouldRegister) {
-      if (!unregisterBack) {
+  let lastActiveLayerCount = 0;
+  let lastTopLayerId = null;
+
+  $: {
+    const count = activeLayers.length;
+    const topId = count > 0 ? activeLayers[count - 1].id : null;
+    if (count !== lastActiveLayerCount || topId !== lastTopLayerId) {
+      lastActiveLayerCount = count;
+      lastTopLayerId = topId;
+      if (count > 0) {
+        if (typeof unregisterBack === "function") {
+          const fn = unregisterBack;
+          unregisterBack = null;
+          fn();
+        }
         unregisterBack = registerBackHandler(handleBackPress);
-      }
-    } else {
-      if (typeof unregisterBack === "function") {
-        const fn = unregisterBack;
-        unregisterBack = null;
-        fn();
+      } else {
+        if (typeof unregisterBack === "function") {
+          const fn = unregisterBack;
+          unregisterBack = null;
+          fn();
+        }
       }
     }
   }
-
-  $: syncBackRegistration(hasLayers);
 
   onDestroy(() => {
     if (typeof unregisterBack === "function") {
@@ -94,6 +104,7 @@
   $: hasDimmingLayer = allDimmingLayers.length > 0;
   $: anyDimmingActive = allDimmingLayers.some((l) => !l.isClosing);
   $: topDimLayer = allDimmingLayers[allDimmingLayers.length - 1];
+  $: topDimLayerIndex = topDimLayer ? $layerStack.indexOf(topDimLayer) : -1;
   $: scrimOpacity = anyDimmingActive
     ? (topDimLayer?.options?.dimOpacity ?? 0.65)
     : 0;
@@ -111,7 +122,7 @@
   function getLayerZIndex(layer, idx) {
     const offset =
       layer.type === "screen"
-        ? 0
+        ? 1
         : layer.type === "drawer"
         ? 2
         : layer.type === "sheet"
@@ -120,11 +131,13 @@
         ? 6
         : layer.type === "viewer"
         ? 8
-        : 10;
-    return `calc(var(--z-modal) + ${idx * 2 + offset})`;
+        : 9;
+    return `calc(var(--z-modal) + ${idx * 10 + offset})`;
   }
 
-  $: scrimZIndex = "var(--z-modal-backdrop)";
+  $: scrimZIndex = topDimLayerIndex >= 0
+    ? `calc(var(--z-modal) + ${topDimLayerIndex * 10})`
+    : "var(--z-modal-backdrop)";
 
   let activeSwipeLayerId = null;
   let swipeStartX = 0;
@@ -443,6 +456,11 @@
           on:animationend={(e) => onTransitionEnd(e, layer)}
         >
           <div
+            class="portal-dropout-backdrop"
+            on:click={() => dismissLayer(layer.id)}
+            role="presentation"
+          ></div>
+          <div
             class="portal-dropout-wrapper"
             style={computeDropoutPosition(layer.options?.coords)}
           >
@@ -714,6 +732,13 @@
     position: fixed;
     inset: 0;
     pointer-events: none;
+  }
+
+  .portal-dropout-backdrop {
+    position: fixed;
+    inset: 0;
+    background: transparent;
+    pointer-events: auto;
   }
 
   .portal-dropout-wrapper {

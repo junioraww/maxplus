@@ -3,6 +3,7 @@
   import { cubicOut } from "svelte/easing";
   import {
     createEventDispatcher,
+    onMount,
     onDestroy
   } from "svelte";
   import { get } from "svelte/store";
@@ -43,7 +44,7 @@
     currentRealChats,
   } from "$lib/stores/api";
 
-  const unregisterBack = registerBackHandler(() => {
+  function handleProfileBack() {
     if (showDeleteConfirm) { showDeleteConfirm = false; return false; }
     if (showPurgeConfirm) { showPurgeConfirm = false; return false; }
     if (showRemoveMemberConfirm) { showRemoveMemberConfirm = false; return false; }
@@ -53,12 +54,31 @@
     if (showInputs) { showInputs = false; return false; }
     if (showMenu) { showMenu = false; return false; }
     if (selectedMemberMenuId) { selectedMemberMenuId = null; return false; }
+    if (profileHistory.length > 0) {
+      goBack();
+      return false;
+    }
     goBack();
-    return true;
+    return false;
+  }
+
+  let unregisterBack = null;
+
+  $: if (setBackHandler) {
+    setBackHandler(handleProfileBack);
+  }
+
+  onMount(() => {
+    if (!setBackHandler) {
+      unregisterBack = registerBackHandler(handleProfileBack);
+    }
   });
 
   onDestroy(() => {
-    unregisterBack();
+    if (typeof unregisterBack === "function") {
+      unregisterBack();
+      unregisterBack = null;
+    }
     if (scrollRafId) cancelAnimationFrame(scrollRafId);
     if (scrollEndTimer) clearTimeout(scrollEndTimer);
     if (scrollTimeout) clearTimeout(scrollTimeout);
@@ -1274,16 +1294,6 @@
     } else {
       closeModal();
     }
-  }
-
-  $: if (setBackHandler) {
-    setBackHandler(() => {
-      if (profileHistory.length > 0) {
-        goBack();
-        return false;
-      }
-      return true;
-    });
   }
 </script>
 
