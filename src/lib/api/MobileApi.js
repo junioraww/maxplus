@@ -378,6 +378,17 @@ export default class MobileApi extends BaseAPI {
         if (p?.folders) {
           const sorted = sortFolders(p.folders, p.foldersOrder || []);
           currentFolders.set(sorted);
+        } else if (p?.folder) {
+          currentFolders.update((folders) => {
+            const list = folders || [];
+            const idx = list.findIndex((f) => String(f.id) === String(p.folder.id));
+            if (idx !== -1) {
+              const copy = [...list];
+              copy[idx] = { ...copy[idx], ...p.folder };
+              return copy;
+            }
+            return [...list, p.folder];
+          });
         }
       } else if (opc === 150) {
         const p = response.payload;
@@ -1582,12 +1593,14 @@ export default class MobileApi extends BaseAPI {
 
   async getChats(chatIds) {
     await this.waitSync();
-    return await invoke("get_chats", { chatIds });
+    const ids = (chatIds || []).map((id) => Number(typeof id === "object" && id !== null ? id.id : id));
+    return await invoke("get_chats", { chatIds: ids });
   }
 
   async getChat(chatId) {
+    const id = Number(typeof chatId === "object" && chatId !== null ? chatId.id : chatId);
     await this.waitSync();
-    return await invoke("get_chats", { chatIds: [chatId] });
+    return await invoke("get_chats", { chatIds: [id] });
   }
 
   async getChatMedia(chatId, messageId = null, attachTypes = ["AUDIO", "VIDEO"], forward = 0, backward = 60) {
@@ -2202,9 +2215,19 @@ export default class MobileApi extends BaseAPI {
 
     if (updatedChat) {
       await saveChats([ updatedChat ]).catch(() => {});
+      currentRealChats.update((ids) => [...(ids || [])]);
     }
 
     return response;
+  }
+
+  async markAsRead(chatId, messageId = null, markTime = null) {
+    const rawId = Number(typeof chatId === "object" && chatId !== null ? chatId.id : chatId);
+    const chatEntry = getChat(rawId);
+    const info = chatEntry?.getInfo ? chatEntry.getInfo() : null;
+    const msgId = messageId || info?.lastMessage?.id || 0;
+    const time = markTime != null ? Number(markTime) : (info?.lastEventTime || Date.now());
+    return await this.readMessage(rawId, msgId, 0, time);
   }
 
   async refreshInviteLink(chatId) {

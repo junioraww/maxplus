@@ -46,6 +46,7 @@ export default class API {
     getVideoById() { throw "getVideoById: Unimplemented" }
     getFileById() { throw "getFileById: Unimplemented" }
     readMessage() { throw "readMessage: Unimplemented" }
+    markAsRead() { throw "markAsRead: Unimplemented" }
     setPresence() { throw "setPresence: Unimplemented" }
     getCalls() { throw "getCalls: Unimplemented" }
     updateProfile() { throw "updateProfile: Unimplemented" }
@@ -92,4 +93,5 @@ export default class API {
     enterCallByLink() { throw 'enterCallByLink: Unimplemented'; }
     makeCallInviteLink() { throw 'makeCallInviteLink: Unimplemented'; }
     eraseCallRecords() { throw 'eraseCallRecords: Unimplemented'; }
+    markAsRead(chatId, messageId = null, markTime = null) { throw "markAsRead: Unimplemented"; }
 }

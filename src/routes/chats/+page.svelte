@@ -68,6 +68,7 @@
       if (String(fa.id) !== String(fb.id) || fa.title !== fb.title) return false;
       if (JSON.stringify(fa.filters || []) !== JSON.stringify(fb.filters || [])) return false;
       if (JSON.stringify(fa.include || []) !== JSON.stringify(fb.include || [])) return false;
+      if (JSON.stringify(fa.favorites || []) !== JSON.stringify(fb.favorites || [])) return false;
     }
     return true;
   }
@@ -79,11 +80,15 @@
 
     let nextFolders;
     if (allIndex >= 0) {
-      nextFolders = rawFolders.map((f) =>
-        isAllChatsFolder(f) ? { ...f, id: "all.chat.folder", title: f.title || "Все" } : f
-      );
+      const allFolder = {
+        ...rawFolders[allIndex],
+        id: "all.chat.folder",
+        title: rawFolders[allIndex].title || "Все",
+        favorites: rawFolders[allIndex].favorites || [],
+      };
+      nextFolders = [allFolder, ...nonAll];
     } else {
-      nextFolders = [{ id: "all.chat.folder", title: "Все", filters: null }, ...nonAll];
+      nextFolders = [{ id: "all.chat.folder", title: "Все", filters: null, favorites: [] }, ...nonAll];
     }
 
     if (!areFoldersEqual(localFolders, nextFolders)) {
@@ -124,6 +129,13 @@
     isFolderSnapping = false;
     folderDragOffset = 0;
   }
+  $: isAllSelectedPinned = (() => {
+    if (!selectedChats.size) return false;
+    const currentFolder = localFolders[activeFolderIndex] || localFolders[0];
+    if (!currentFolder) return false;
+    const currentFavs = Array.from(currentFolder.favorites || []).map(Number);
+    return Array.from(selectedChats).every((id) => currentFavs.includes(Number(id)));
+  })();
 
   function openSearch() {
     openScreen(ChatsListSearchScreen);
@@ -354,18 +366,24 @@
         chatMatchesFolder(chat, folder, $currentUser, contactIdSet)
       );
       const folderFavs = (folder.favorites || []).map(Number);
+      const isAllFolder = isAllChatsFolder(folder);
       filtered.sort((a, b) => {
-        const pinA = folderFavs.includes(Number(a.id)) ? 2 : (a.favIndex || (a.pinned ? 1 : 0));
-        const pinB = folderFavs.includes(Number(b.id)) ? 2 : (b.favIndex || (b.pinned ? 1 : 0));
+        const isFavA = folderFavs.includes(Number(a.id));
+        const isFavB = folderFavs.includes(Number(b.id));
+        const pinA = isFavA ? 2 : (isAllFolder ? (a.favIndex || (a.pinned ? 1 : 0)) : 0);
+        const pinB = isFavB ? 2 : (isAllFolder ? (b.favIndex || (b.pinned ? 1 : 0)) : 0);
         if (pinA !== pinB) return pinB - pinA;
         const timeA = a.lastMessage?.time || a.lastEventTime || 0;
         const timeB = b.lastMessage?.time || b.lastEventTime || 0;
         return timeB - timeA;
       });
-      const decorated = filtered.map((c) => ({
-        ...c,
-        isPinned: folderFavs.includes(Number(c.id)) || Boolean(c.favIndex || c.pinned),
-      }));
+      const decorated = filtered.map((c) => {
+        const isFav = folderFavs.includes(Number(c.id));
+        return {
+          ...c,
+          isPinned: isFav || (isAllFolder ? Boolean(c.favIndex || c.pinned) : false),
+        };
+      });
       result.set(folder.id, decorated);
     }
     return result;
@@ -527,7 +545,7 @@
               <span class="send-icon" aria-hidden="true"></span>
             </button>
           {:else}
-            <button class="icon-btn" on:click={pinSelected} title="Закрепить">
+            <button class="icon-btn" on:click={pinSelected} title={isAllSelectedPinned ? "Открепить" : "Закрепить"}>
               <img src="/icons/pin.svg" width="20" height="20" alt="" />
             </button>
             <button class="icon-btn" on:click={muteNotifications} title="Уведомления">
@@ -621,13 +639,35 @@
       const folder = e.detail;
       if (!folder) return;
       const chatsInFolder = chatsByFolderId.get(folder.id) || [];
-      for (const c of chatsInFolder) {
-        if (c?.id) {
-          try {
-            await $API?.markAsRead?.(c.id);
-          } catch {}
-        }
+      const unreadChats = chatsInFolder.filter((c) => c?.id && (c.newMessages || 0) > 0);
+      if (!unreadChats.length) return;
+
+      const now = Date.now();
+      for (const c of unreadChats) {
+        const chatStore = getChat(c.id);
+        chatStore?.chatInfo?.update?.((current) => {
+          if (!current) return current;
+          return {
+            ...current,
+            newMessages: 0,
+            hasReaction: false,
+            unreadReactions: 0,
+            lastReaction: null,
+            unread: false,
+            markedUnread: false,
+          };
+        });
       }
+      currentRealChats.update((ids) => [...(ids || [])]);
+
+      await Promise.allSettled(
+        unreadChats.map((c) =>
+          $API?.markAsRead
+            ? $API.markAsRead(c.id, c.lastMessage?.id, c.lastEventTime || now)
+            : Promise.resolve()
+        )
+      );
+      currentRealChats.update((ids) => [...(ids || [])]);
     }}
     on:deleteFolder={(e) => {
       const folder = e.detail;
@@ -672,7 +712,10 @@
                 {isSelectionMode}
                 {selectedChats}
                 loading={$currentlySyncing && i === activeFolderIndex && (!$currentRealChats || $currentRealChats.length === 0)}
-                on:open={(e) => e.detail && openChat(e.detail)}
+                on:open={(e) => {
+                  const id = e.detail?.id ?? e.detail;
+                  if (id != null) openChat(id);
+                }}
                 on:longpress={handleChatLongPress}
                 on:toggle={handleChatToggle}
                 on:findContact={openContactAdd}
