@@ -48,7 +48,12 @@
 
   $: muted = Boolean(isChatMuted(currentChat) || isChatMuted(chat) || currentChat?.muted || currentChat?.isMuted || chat?.muted || chat?.isMuted);
   $: isBot = $contact?.options?.includes("BOT") || chat?.options?.BOT === true || chat?.options?.IS_BOT === true;
-  $: isPinned = Boolean(currentChat?.favIndex || currentChat?.pinned || chat?.favIndex || chat?.pinned || chat?.isPinned);
+  export let isPinned = undefined;
+  $: resolvedPinned = isPinned !== undefined
+    ? Boolean(isPinned)
+    : (chat?.isPinned !== undefined
+      ? Boolean(chat.isPinned)
+      : Boolean(currentChat?.favIndex || currentChat?.pinned || chat?.favIndex || chat?.pinned));
 
   $: title =
     (currentChat?.id === 0 || chat?.id === 0)
@@ -299,7 +304,7 @@
     if (selectionMode) {
       dispatch("toggle", chat);
     } else {
-      dispatch("open", chat);
+      dispatch("open", chat.id);
       openChat(chat.id);
     }
   }
@@ -308,7 +313,7 @@
 <div
   class="chat-item"
   class:selected={isSelected}
-  class:pinned={isPinned}
+  class:pinned={resolvedPinned}
   on:mousedown={handleMouseDown}
   on:mousemove={handleMouseMove}
   on:mouseup={handleMouseUp}
@@ -380,7 +385,7 @@
           {/if}
         {/if}
         <span class="time">{timeDisplay}</span>
-        {#if isPinned}
+        {#if resolvedPinned}
           <img src="/icons/pin.svg" class="pin-icon" alt="" />
         {/if}
         {#each $pluginChatTrailings as item (item.id)}

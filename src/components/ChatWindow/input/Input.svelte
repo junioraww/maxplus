@@ -133,8 +133,13 @@
 
   let previousChatId = null;
   $: if (chat?.id !== previousChatId) {
-    if (previousChatId != null && !editingMessage && newMessage) {
-      setChatDraft(previousChatId, newMessage);
+    if (previousChatId != null && !editingMessage) {
+      const trimmed = newMessage?.trim();
+      if (trimmed) {
+        setChatDraft(previousChatId, newMessage);
+      } else {
+        clearChatDraft(previousChatId);
+      }
     }
     previousChatId = chat?.id;
     if (!editingMessage && chat?.id != null) {
@@ -959,8 +964,13 @@
   }
 
   onDestroy(() => {
-    if (chat?.id != null && !editingMessage && newMessage) {
-      setChatDraft(chat.id, newMessage);
+    if (chat?.id != null && !editingMessage) {
+      const trimmed = newMessage?.trim();
+      if (trimmed) {
+        setChatDraft(chat.id, newMessage);
+      } else {
+        clearChatDraft(chat.id);
+      }
     }
     if (unregisterStickerBack) {
       unregisterStickerBack();

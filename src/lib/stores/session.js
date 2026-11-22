@@ -29,7 +29,11 @@ export const now = readable(Date.now(), (setVal) => {
   return () => clearInterval(interval);
 });
 
-export async function openChat(chatId) {
+export async function openChat(rawChatId) {
+  if (rawChatId == null) return;
+  const chatId = typeof rawChatId === "object" && rawChatId !== null ? rawChatId.id : rawChatId;
+  if (chatId == null) return;
+
   const currentData = getStoreValue(data) || {};
   const openedChats = Array.isArray(currentData.openedChats) ? currentData.openedChats : [];
 

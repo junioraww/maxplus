@@ -410,6 +410,14 @@ export default class MockApi extends BaseAPI {
     return { unread: remaining, mark: markTime };
   }
 
+  async markAsRead(chatId, messageId = null, markTime = null) {
+    const rawId = Number(typeof chatId === "object" && chatId !== null ? chatId.id : chatId);
+    const targetChat = this.chats.find((c) => Number(c.id) === rawId);
+    const msgId = messageId || targetChat?.lastMessage?.id || 0;
+    const time = markTime || targetChat?.lastEventTime || Date.now();
+    return await this.readMessage(rawId, msgId, 0, time);
+  }
+
   addIncomingMessages(chatId, count = 1) {
     const targetChat = this.chats.find((c) => String(c.id) === String(chatId));
     if (!targetChat) return [];

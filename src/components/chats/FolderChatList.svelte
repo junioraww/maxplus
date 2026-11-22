@@ -98,6 +98,7 @@
         {chat}
         selectionMode={isSelectionMode}
         isSelected={selectedChats.has(chat.id)}
+        isPinned={chat.isPinned}
         on:open
         on:longpress
         on:toggle
