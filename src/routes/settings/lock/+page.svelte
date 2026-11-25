@@ -3,6 +3,7 @@
   import { page } from "$app/stores";
   import SettingsPageWrapper from "$components/settings/SettingsPageWrapper.svelte";
   import SettingsDropout from "$components/settings/SettingsDropout.svelte";
+  import Switch from "$components/common/Switch.svelte";
   import { getCurrentAccount, getDatabaseFilesCount } from "$lib/stores/accounts";
   import { checkHardwareBiometry } from "$lib/services/hardwareSecurity";
   import { openLockScreen } from "$lib/stores/lockScreen";
@@ -194,9 +195,7 @@
               Подменяет интерфейс приложения при запуске на выбранный инструмент
             </span>
           </div>
-          <div class="toggle" class:active={$camouflageSettings.enabled}>
-            <div class="toggle-thumb"></div>
-          </div>
+          <Switch checked={$camouflageSettings.enabled} ariaLabel="Режим маскировки" />
         </div>
 
         {#if $camouflageSettings.enabled}
@@ -543,35 +542,6 @@
     height: 1px;
     background: rgba(255, 255, 255, 0.05);
     margin: 0 16px;
-  }
-
-  .toggle {
-    width: 44px;
-    height: 24px;
-    border-radius: 12px;
-    background: #3a3a46;
-    position: relative;
-    transition: background 0.2s ease;
-    flex-shrink: 0;
-  }
-
-  .toggle.active {
-    background: #25c275;
-  }
-
-  .toggle-thumb {
-    width: 20px;
-    height: 20px;
-    border-radius: 50%;
-    background: #ffffff;
-    position: absolute;
-    top: 2px;
-    left: 2px;
-    transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-  }
-
-  .toggle.active .toggle-thumb {
-    transform: translateX(20px);
   }
 
   .inner-block {

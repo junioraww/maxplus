@@ -171,19 +171,28 @@ export function createMessagesLoader({
       const chatCache = getChatCache();
       const cached = await chatCache?.loadMessages(from, backward);
 
-      onAnchorCapture();
-      if (cached) {
+      if (cached && cached.length) {
+        if (!isInitial && typeof onAnchorCapture === "function") {
+          onAnchorCapture();
+        }
         await mergeMessages(cached, false);
+        if (!isInitial && typeof onAnchorRestore === "function") {
+          await onAnchorRestore();
+        }
       }
-      onAnchorRestore();
-      onAnchorCapture();
 
       const api = getApi();
       if (!initialized || isInitial) {
         const { error, messages: serverMessages } = await api.getMessages(currentChatId, from, backward, forward);
         if (error) throw new Error(error);
 
+        if (!isInitial && typeof onAnchorCapture === "function") {
+          onAnchorCapture();
+        }
         await mergeMessages(serverMessages, true);
+        if (!isInitial && typeof onAnchorRestore === "function") {
+          await onAnchorRestore();
+        }
 
         if (serverMessages.length < backward + forward) {
           if (forward === 0) {
@@ -205,16 +214,21 @@ export function createMessagesLoader({
           all_loaded = true;
         }
 
-        await mergeMessages(olderMessages, true);
+        if (olderMessages && olderMessages.length) {
+          if (typeof onAnchorCapture === "function") {
+            onAnchorCapture();
+          }
+          await mergeMessages(olderMessages, true);
+          if (typeof onAnchorRestore === "function") {
+            await onAnchorRestore();
+          }
+        }
       }
     } catch (e) {
       console.error(e);
     } finally {
-      onAnchorRestore();
       loading = false;
     }
-
-    onAnchorRestore();
   }
 
   async function loadNewer() {

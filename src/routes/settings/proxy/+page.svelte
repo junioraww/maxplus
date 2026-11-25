@@ -2,6 +2,7 @@
   import { onMount } from "svelte";
   import { page } from "$app/stores";
   import SettingsPageWrapper from "$components/settings/SettingsPageWrapper.svelte";
+  import Switch from "$components/common/Switch.svelte";
   import {
     proxyConfig,
     proxyLoading,
@@ -11,6 +12,8 @@
     vpnStatus,
     checkVpn,
     toggleVpnBypass,
+    DEFAULT_BYPASS_HOSTS,
+    sanitizeBypassHosts,
   } from "$lib/stores/proxySettings";
 
   export let isTab = false;
@@ -23,11 +26,36 @@
   let port = 1080;
   let username = "";
   let password = "";
-  let proxyMaxplusSite = true;
+  let bypassHosts = [...DEFAULT_BYPASS_HOSTS];
+  let newBypassInput = "";
   let vpnBypassEnabled = false;
 
   let testRunning = false;
   let testResult = null;
+
+  function isEssential(h) {
+    const lower = (h || "").toLowerCase();
+    return lower === "localhost" || lower === "127.0.0.1";
+  }
+
+  function addBypassHost() {
+    const trimmed = newBypassInput.trim();
+    if (!trimmed) return;
+    if (!bypassHosts.some(h => h.toLowerCase() === trimmed.toLowerCase())) {
+      bypassHosts = [...bypassHosts, trimmed];
+    }
+    newBypassInput = "";
+  }
+
+  function removeBypassHost(index) {
+    const item = bypassHosts[index];
+    if (isEssential(item)) return;
+    bypassHosts = bypassHosts.filter((_, i) => i !== index);
+  }
+
+  function resetBypassHosts() {
+    bypassHosts = [...DEFAULT_BYPASS_HOSTS];
+  }
 
   $: isAndroid = $vpnStatus?.vpn_bypass_supported;
 
@@ -49,7 +77,7 @@
     port = cfg.port || 1080;
     username = cfg.username || "";
     password = cfg.password || "";
-    proxyMaxplusSite = cfg.proxy_maxplus_site !== false;
+    bypassHosts = cfg.bypass_hosts?.length ? [...cfg.bypass_hosts] : [...DEFAULT_BYPASS_HOSTS];
     vpnBypassEnabled = Boolean(cfg.vpn_bypass_enabled);
   });
 
@@ -60,7 +88,7 @@
       port: Number(port) || 1080,
       username,
       password,
-      proxy_maxplus_site: proxyMaxplusSite,
+      bypass_hosts: bypassHosts,
       vpn_bypass_enabled: vpnBypassEnabled,
     });
   }
@@ -75,7 +103,7 @@
         port: Number(port) || 1080,
         username,
         password,
-        proxy_maxplus_site: proxyMaxplusSite,
+        bypass_hosts: bypassHosts,
       });
     } finally {
       testRunning = false;
@@ -108,8 +136,8 @@
         <div class="status-sub">
           {#if currentSavedActive}
             {$proxyConfig.host}:{$proxyConfig.port || 1080}
-            {#if $proxyConfig.proxy_maxplus_site}
-              • включая Max+
+            {#if $proxyConfig.bypass_hosts?.length}
+              • исключений: {$proxyConfig.bypass_hosts.length}
             {/if}
           {:else}
             Прямое подключение
@@ -216,18 +244,65 @@
 
         <div class="card-divider"></div>
 
-        <div
-          class="toggle-row"
-          on:click={() => proxyMaxplusSite = !proxyMaxplusSite}
-        >
-          <div class="toggle-info">
-            <span class="toggle-title">Запросы к сайту Max+</span>
-            <span class="toggle-desc">
-              Плагины, аватарки и API через прокси
-            </span>
+        <div class="bypass-section">
+          <div class="bypass-header">
+            <div class="bypass-title-col">
+              <span class="bypass-title">Исключения (обход прокси)</span>
+              <span class="bypass-desc">
+                Сайты и IP-адреса, запросы к которым отправляются напрямую без прокси
+              </span>
+            </div>
+            <button
+              type="button"
+              class="bypass-reset-btn"
+              title="Восстановить список по умолчанию"
+              on:click={resetBypassHosts}
+            >
+              Сбросить
+            </button>
           </div>
-          <div class="toggle-track" class:active={proxyMaxplusSite}>
-            <div class="toggle-thumb" class:active={proxyMaxplusSite}></div>
+
+          <div class="bypass-tags-container">
+            {#each bypassHosts as bHost, idx}
+              <div class="bypass-chip" class:essential={isEssential(bHost)}>
+                <span class="bypass-chip-text">{bHost}</span>
+                {#if isEssential(bHost)}
+                  <span class="bypass-chip-lock" title="Обязательный системный адрес">🔒</span>
+                {:else}
+                  <button
+                    type="button"
+                    class="bypass-chip-remove"
+                    title="Удалить"
+                    on:click={() => removeBypassHost(idx)}
+                  >
+                    ✕
+                  </button>
+                {/if}
+              </div>
+            {/each}
+          </div>
+
+          <div class="bypass-input-row">
+            <input
+              type="text"
+              class="text-input bypass-input"
+              placeholder="Добавить домен или IP (например: api.example.com)"
+              bind:value={newBypassInput}
+              on:keydown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  addBypassHost();
+                }
+              }}
+            />
+            <button
+              type="button"
+              class="bypass-add-btn"
+              disabled={!newBypassInput.trim()}
+              on:click={addBypassHost}
+            >
+              Добавить
+            </button>
           </div>
         </div>
 
@@ -269,9 +344,7 @@
               Трафик через Wi-Fi или сотовую сеть в обход VPN
             </span>
           </div>
-          <div class="toggle-track" class:active={vpnBypassEnabled}>
-            <div class="toggle-thumb" class:active={vpnBypassEnabled}></div>
-          </div>
+          <Switch checked={vpnBypassEnabled} ariaLabel="Обход VPN" />
         </div>
       </div>
     {/if}
@@ -521,6 +594,143 @@
     border-color: #248bfe;
   }
 
+  .bypass-section {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .bypass-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  .bypass-title-col {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+
+  .bypass-title {
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: #fff;
+  }
+
+  .bypass-desc {
+    font-size: 0.8rem;
+    color: #888;
+    line-height: 1.35;
+  }
+
+  .bypass-reset-btn {
+    background: transparent;
+    border: none;
+    color: #248bfe;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    padding: 2px 6px;
+    border-radius: 6px;
+    white-space: nowrap;
+    transition: background 0.15s, color 0.15s;
+  }
+
+  .bypass-reset-btn:hover {
+    background: rgba(36, 139, 254, 0.1);
+  }
+
+  .bypass-tags-container {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 8px 10px;
+    background: #1c1c21;
+    border: 1px solid #333;
+    border-radius: 10px;
+    min-height: 42px;
+    align-items: center;
+  }
+
+  .bypass-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: #2a2a34;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 6px;
+    padding: 3px 8px;
+    font-size: 12.5px;
+    color: #e5e7eb;
+    line-height: 1.4;
+  }
+
+  .bypass-chip.essential {
+    background: rgba(16, 185, 129, 0.1);
+    border-color: rgba(16, 185, 129, 0.25);
+    color: #10b981;
+  }
+
+  .bypass-chip-lock {
+    font-size: 10px;
+    opacity: 0.8;
+  }
+
+  .bypass-chip-remove {
+    background: transparent;
+    border: none;
+    color: #9ca3af;
+    font-size: 11px;
+    cursor: pointer;
+    padding: 0 2px;
+    line-height: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: color 0.15s;
+  }
+
+  .bypass-chip-remove:hover {
+    color: #ef4444;
+  }
+
+  .bypass-input-row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+
+  .bypass-input {
+    flex: 1;
+    height: 38px;
+  }
+
+  .bypass-add-btn {
+    height: 38px;
+    padding: 0 16px;
+    background: #2a2a34;
+    border: 1px solid #3a3a44;
+    border-radius: 10px;
+    color: #fff;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 0.15s, border-color 0.15s;
+  }
+
+  .bypass-add-btn:hover:not(:disabled) {
+    background: #343440;
+    border-color: #248bfe;
+  }
+
+  .bypass-add-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
   .toggle-row {
     display: flex;
     align-items: center;
@@ -546,35 +756,6 @@
     font-size: 0.82rem;
     color: #888;
     line-height: 1.35;
-  }
-
-  .toggle-track {
-    width: 44px;
-    height: 24px;
-    background: #3a3a3c;
-    border-radius: 12px;
-    position: relative;
-    transition: background-color 0.2s ease;
-    flex-shrink: 0;
-  }
-
-  .toggle-track.active {
-    background: #248bfe;
-  }
-
-  .toggle-thumb {
-    width: 20px;
-    height: 20px;
-    background: white;
-    border-radius: 50%;
-    position: absolute;
-    top: 2px;
-    left: 2px;
-    transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-  }
-
-  .toggle-thumb.active {
-    transform: translateX(20px);
   }
 
   .test-row {

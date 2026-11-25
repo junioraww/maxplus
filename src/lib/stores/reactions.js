@@ -1,7 +1,15 @@
 import { writable } from "svelte/store";
 import { invoke } from "$lib/utils/invoke";
 
-const FALLBACK_REACTIONS = ["👍", "❤️", "🔥", "🤣", "😢", "😮", "🎉", "👎"];
+const FALLBACK_REACTIONS = [
+  "❤️", "👍", "🔥", "😆", "😭", "😍", "👌", "💩",
+  "💯", "😁", "✅", "😡", "🎉", "👎", "😱", "🥺",
+  "💔", "🤩", "💀", "🤟", "🤡", "😎", "🙄", "😐",
+  "🤯", "🤪", "😌", "🤤", "😇", "😘", "🥰", "🥳",
+  "🌚", "🌝", "😴", "😈", "🤬", "🙂", "🤔", "🫡",
+  "🙈", "🙉", "🙊", "🐱", "🐶", "✊", "🤞", "✌️",
+  "🤝", "👏", "🙏", "💪", "🖕", "👀", "✨", "⚡️"
+];
 const STORAGE_KEY = "maxplus_reaction_emojis";
 const EXPIRATION_MS = 24 * 60 * 60 * 1000;
 

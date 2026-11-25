@@ -2,13 +2,34 @@ import { writable, get } from "svelte/store";
 import { invoke } from "@tauri-apps/api/core";
 import { showAlert } from "$lib/utils/alert";
 
+export const DEFAULT_BYPASS_HOSTS = [
+  "maxplus.dev",
+  "*.maxplus.dev",
+  "localhost",
+  "127.0.0.1",
+];
+
+export function sanitizeBypassHosts(hosts) {
+  let list = Array.isArray(hosts) ? hosts.map(h => String(h).trim()).filter(Boolean) : [];
+  if (list.length === 0) {
+    list = [...DEFAULT_BYPASS_HOSTS];
+  }
+  if (!list.some(h => h.toLowerCase() === "localhost")) {
+    list.push("localhost");
+  }
+  if (!list.some(h => h.toLowerCase() === "127.0.0.1")) {
+    list.push("127.0.0.1");
+  }
+  return list;
+}
+
 const defaultSettings = {
   proxy_type: "none",
   host: "",
   port: 1080,
   username: "",
   password: "",
-  proxy_maxplus_site: true,
+  bypass_hosts: [...DEFAULT_BYPASS_HOSTS],
   vpn_bypass_enabled: false,
 };
 
@@ -34,7 +55,7 @@ export async function loadProxyConfig() {
         port: Number(settings.port) || 1080,
         username: settings.username || "",
         password: settings.password || "",
-        proxy_maxplus_site: settings.proxy_maxplus_site !== false,
+        bypass_hosts: sanitizeBypassHosts(settings.bypass_hosts),
         vpn_bypass_enabled: Boolean(settings.vpn_bypass_enabled),
       });
     }
@@ -54,7 +75,7 @@ export async function saveProxyConfig(newSettings) {
       port: Number(newSettings.port) || 1080,
       username: newSettings.username ? newSettings.username.trim() : null,
       password: newSettings.password ? newSettings.password : null,
-      proxy_maxplus_site: newSettings.proxy_maxplus_site !== false,
+      bypass_hosts: sanitizeBypassHosts(newSettings.bypass_hosts),
       vpn_bypass_enabled: Boolean(newSettings.vpn_bypass_enabled),
     };
     await invoke("update_proxy_config", { settings: payload });
@@ -76,7 +97,7 @@ export async function testProxy(settings) {
       port: Number(settings.port) || 1080,
       username: settings.username ? settings.username.trim() : null,
       password: settings.password ? settings.password : null,
-      proxy_maxplus_site: settings.proxy_maxplus_site !== false,
+      bypass_hosts: sanitizeBypassHosts(settings.bypass_hosts),
     };
     return await invoke("ping_proxy_endpoint", { settings: payload });
   } catch (e) {

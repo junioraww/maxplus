@@ -3026,6 +3026,11 @@ export const CallService = {
       showAlert('Нельзя позвонить самому себе');
       return;
     }
+    const calleeU64 = Number(peerId);
+    if (!calleeU64 || isNaN(calleeU64) || calleeU64 <= 0) {
+      showAlert('Групповые звонки временно недоступны');
+      return;
+    }
     _isStartingCall = true;
     _closeMatchingChat(peerId);
     try {
@@ -3066,10 +3071,78 @@ export const CallService = {
     }
   },
 
+  async _placeGroupCall(chatId, chatTitle, chatAvatar, isVideo, mode = CALL_MODE.PLAIN) {
+    if (_isStartingCall) return;
+    if (!chatId) {
+      showAlert('Не удалось определить чат для звонка');
+      return;
+    }
+    _isStartingCall = true;
+    try {
+      await this._endActive();
+      patchCallState({
+        phase: CALL_PHASE.CONNECTING,
+        callType: isVideo ? 'video' : 'audio',
+        mode,
+        isGroup: true,
+        peerId: chatId,
+        peerName: chatTitle || 'Групповой звонок',
+        roomName: chatTitle || 'Групповой звонок',
+        peerAvatar: chatAvatar || null,
+        errorText: null,
+      });
+      const convId = _genConversationId();
+      const internalParams = await _buildInternalParams();
+      const resp = await invoke('begin_group_call', {
+        chatId: Number(chatId),
+        isVideo: Boolean(isVideo),
+        conversationId: convId,
+        internalParams,
+      });
+      log('begin_group_call response:', resp);
+      const endpoint = this._extractEndpoint(resp);
+      if (!endpoint) throw new Error('No ws2 endpoint in response');
+      startOutgoingRingback();
+      const convParams = this._extractConvParams(resp);
+      const session = new MaxCallSession();
+      _activeSession = session;
+      await session.begin({
+        endpoint,
+        conversationId: resp?.conversationId || convId,
+        role: 'originator',
+        isVideo: Boolean(isVideo),
+        mode,
+        peerId: null,
+        convParams,
+      });
+    } catch (e) {
+      stopCallAudio();
+      try { if (_activeSession) await _activeSession.hangup(); } catch {}
+      _activeSession = null;
+      showAlert('Не удалось начать групповой звонок: ' + (e?.message || e));
+      resetCallState();
+    } finally {
+      _isStartingCall = false;
+    }
+  },
+
+  async placeGroupAudioCall(chatId, chatTitle, chatAvatar, mode = CALL_MODE.PLAIN) {
+    return this._placeGroupCall(chatId, chatTitle, chatAvatar, false, mode);
+  },
+
+  async placeGroupVideoCall(chatId, chatTitle, chatAvatar, mode = CALL_MODE.PLAIN) {
+    return this._placeGroupCall(chatId, chatTitle, chatAvatar, true, mode);
+  },
+
   async placeVideoCall(peerId, peerName, peerAvatar, mode = CALL_MODE.PLAIN) {
     if (_isStartingCall) return;
     if (!peerId || Number(peerId) === Number(get(currentUser))) {
       showAlert('Нельзя позвонить самому себе');
+      return;
+    }
+    const calleeU64 = Number(peerId);
+    if (!calleeU64 || isNaN(calleeU64) || calleeU64 <= 0) {
+      showAlert('Групповые видеозвонки временно недоступны');
       return;
     }
     _isStartingCall = true;
@@ -3110,6 +3183,69 @@ export const CallService = {
     } finally {
       _isStartingCall = false;
     }
+  },
+
+  async _placeGroupCall(chatId, chatTitle, chatAvatar, isVideo, mode = CALL_MODE.PLAIN) {
+    if (_isStartingCall) return;
+    if (!chatId) {
+      showAlert('Не удалось определить чат для звонка');
+      return;
+    }
+    _isStartingCall = true;
+    try {
+      await this._endActive();
+      patchCallState({
+        phase: CALL_PHASE.CONNECTING,
+        callType: isVideo ? 'video' : 'audio',
+        mode,
+        isGroup: true,
+        peerId: chatId,
+        peerName: chatTitle || 'Групповой звонок',
+        roomName: chatTitle || 'Групповой звонок',
+        peerAvatar: chatAvatar || null,
+        errorText: null,
+      });
+      const convId = _genConversationId();
+      const internalParams = await _buildInternalParams();
+      const resp = await invoke('begin_group_call', {
+        chatId: Number(chatId),
+        isVideo: Boolean(isVideo),
+        conversationId: convId,
+        internalParams,
+      });
+      log('begin_group_call response:', resp);
+      const endpoint = this._extractEndpoint(resp);
+      if (!endpoint) throw new Error('No ws2 endpoint in response');
+      startOutgoingRingback();
+      const convParams = this._extractConvParams(resp);
+      const session = new MaxCallSession();
+      _activeSession = session;
+      await session.begin({
+        endpoint,
+        conversationId: resp?.conversationId || convId,
+        role: 'originator',
+        isVideo: Boolean(isVideo),
+        mode,
+        peerId: null,
+        convParams,
+      });
+    } catch (e) {
+      stopCallAudio();
+      try { if (_activeSession) await _activeSession.hangup(); } catch {}
+      _activeSession = null;
+      showAlert('Не удалось начать групповой звонок: ' + (e?.message || e));
+      resetCallState();
+    } finally {
+      _isStartingCall = false;
+    }
+  },
+
+  async placeGroupAudioCall(chatId, chatTitle, chatAvatar, mode = CALL_MODE.PLAIN) {
+    return this._placeGroupCall(chatId, chatTitle, chatAvatar, false, mode);
+  },
+
+  async placeGroupVideoCall(chatId, chatTitle, chatAvatar, mode = CALL_MODE.PLAIN) {
+    return this._placeGroupCall(chatId, chatTitle, chatAvatar, true, mode);
   },
 
   async handleIncomingPush(pushData) {
@@ -3232,6 +3368,69 @@ export const CallService = {
     } finally {
       _isStartingCall = false;
     }
+  },
+
+  async _placeGroupCall(chatId, chatTitle, chatAvatar, isVideo, mode = CALL_MODE.PLAIN) {
+    if (_isStartingCall) return;
+    if (!chatId) {
+      showAlert('Не удалось определить чат для звонка');
+      return;
+    }
+    _isStartingCall = true;
+    try {
+      await this._endActive();
+      patchCallState({
+        phase: CALL_PHASE.CONNECTING,
+        callType: isVideo ? 'video' : 'audio',
+        mode,
+        isGroup: true,
+        peerId: chatId,
+        peerName: chatTitle || 'Групповой звонок',
+        roomName: chatTitle || 'Групповой звонок',
+        peerAvatar: chatAvatar || null,
+        errorText: null,
+      });
+      const convId = _genConversationId();
+      const internalParams = await _buildInternalParams();
+      const resp = await invoke('begin_group_call', {
+        chatId: Number(chatId),
+        isVideo: Boolean(isVideo),
+        conversationId: convId,
+        internalParams,
+      });
+      log('begin_group_call response:', resp);
+      const endpoint = this._extractEndpoint(resp);
+      if (!endpoint) throw new Error('No ws2 endpoint in response');
+      startOutgoingRingback();
+      const convParams = this._extractConvParams(resp);
+      const session = new MaxCallSession();
+      _activeSession = session;
+      await session.begin({
+        endpoint,
+        conversationId: resp?.conversationId || convId,
+        role: 'originator',
+        isVideo: Boolean(isVideo),
+        mode,
+        peerId: null,
+        convParams,
+      });
+    } catch (e) {
+      stopCallAudio();
+      try { if (_activeSession) await _activeSession.hangup(); } catch {}
+      _activeSession = null;
+      showAlert('Не удалось начать групповой звонок: ' + (e?.message || e));
+      resetCallState();
+    } finally {
+      _isStartingCall = false;
+    }
+  },
+
+  async placeGroupAudioCall(chatId, chatTitle, chatAvatar, mode = CALL_MODE.PLAIN) {
+    return this._placeGroupCall(chatId, chatTitle, chatAvatar, false, mode);
+  },
+
+  async placeGroupVideoCall(chatId, chatTitle, chatAvatar, mode = CALL_MODE.PLAIN) {
+    return this._placeGroupCall(chatId, chatTitle, chatAvatar, true, mode);
   },
 
   declineIncoming(extraData = null) {
@@ -3387,6 +3586,69 @@ export const CallService = {
     } finally {
       _isStartingCall = false;
     }
+  },
+
+  async _placeGroupCall(chatId, chatTitle, chatAvatar, isVideo, mode = CALL_MODE.PLAIN) {
+    if (_isStartingCall) return;
+    if (!chatId) {
+      showAlert('Не удалось определить чат для звонка');
+      return;
+    }
+    _isStartingCall = true;
+    try {
+      await this._endActive();
+      patchCallState({
+        phase: CALL_PHASE.CONNECTING,
+        callType: isVideo ? 'video' : 'audio',
+        mode,
+        isGroup: true,
+        peerId: chatId,
+        peerName: chatTitle || 'Групповой звонок',
+        roomName: chatTitle || 'Групповой звонок',
+        peerAvatar: chatAvatar || null,
+        errorText: null,
+      });
+      const convId = _genConversationId();
+      const internalParams = await _buildInternalParams();
+      const resp = await invoke('begin_group_call', {
+        chatId: Number(chatId),
+        isVideo: Boolean(isVideo),
+        conversationId: convId,
+        internalParams,
+      });
+      log('begin_group_call response:', resp);
+      const endpoint = this._extractEndpoint(resp);
+      if (!endpoint) throw new Error('No ws2 endpoint in response');
+      startOutgoingRingback();
+      const convParams = this._extractConvParams(resp);
+      const session = new MaxCallSession();
+      _activeSession = session;
+      await session.begin({
+        endpoint,
+        conversationId: resp?.conversationId || convId,
+        role: 'originator',
+        isVideo: Boolean(isVideo),
+        mode,
+        peerId: null,
+        convParams,
+      });
+    } catch (e) {
+      stopCallAudio();
+      try { if (_activeSession) await _activeSession.hangup(); } catch {}
+      _activeSession = null;
+      showAlert('Не удалось начать групповой звонок: ' + (e?.message || e));
+      resetCallState();
+    } finally {
+      _isStartingCall = false;
+    }
+  },
+
+  async placeGroupAudioCall(chatId, chatTitle, chatAvatar, mode = CALL_MODE.PLAIN) {
+    return this._placeGroupCall(chatId, chatTitle, chatAvatar, false, mode);
+  },
+
+  async placeGroupVideoCall(chatId, chatTitle, chatAvatar, mode = CALL_MODE.PLAIN) {
+    return this._placeGroupCall(chatId, chatTitle, chatAvatar, true, mode);
   },
 
   async deleteCallHistory(historyIds) {

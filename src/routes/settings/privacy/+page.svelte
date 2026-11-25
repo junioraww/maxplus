@@ -3,6 +3,7 @@
   import { fade, fly } from "svelte/transition";
   import { cubicOut } from "svelte/easing";
   import SettingsPageWrapper from "$components/settings/SettingsPageWrapper.svelte";
+  import Switch from "$components/common/Switch.svelte";
   import { page } from "$app/stores";
   import { get } from "svelte/store";
   import {
@@ -398,9 +399,7 @@
           <span class="toggle-title">Отчёты о прочтении</span>
           <span class="toggle-desc">Передавать и отображать глобальные отметки прочтения</span>
         </div>
-        <div class="toggle-track" class:active={$privacyConfig.showReadMark}>
-          <div class="toggle-thumb" class:active={$privacyConfig.showReadMark}></div>
-        </div>
+        <Switch checked={$privacyConfig.showReadMark} ariaLabel="Отчёты о прочтении" />
       </div>
 
       <div class="card-divider"></div>
@@ -413,9 +412,7 @@
           <span class="toggle-title">Фильтрация небезопасного контента</span>
           <span class="toggle-desc">Скрывать потенциально чувствительные или взрослые материалы</span>
         </div>
-        <div class="toggle-track" class:active={$privacyConfig.contentLevelAccess}>
-          <div class="toggle-thumb" class:active={$privacyConfig.contentLevelAccess}></div>
-        </div>
+        <Switch checked={$privacyConfig.contentLevelAccess} ariaLabel="Фильтрация небезопасного контента" />
       </div>
 
       <div class="card-divider"></div>
@@ -428,9 +425,7 @@
           <span class="toggle-title">Предупреждать о подозрительных файлах</span>
           <span class="toggle-desc">Показывать запрос подтверждения при открытии неизвестных форматов</span>
         </div>
-        <div class="toggle-track" class:active={$privacyConfig.unsafeFiles}>
-          <div class="toggle-thumb" class:active={$privacyConfig.unsafeFiles}></div>
-        </div>
+        <Switch checked={$privacyConfig.unsafeFiles} ariaLabel="Предупреждать о подозрительных файлах" />
       </div>
 
       <div class="card-divider"></div>
@@ -447,9 +442,7 @@
           <span class="toggle-title">Расшифровка голосовых сообщений</span>
           <span class="toggle-desc">Автоматическое распознавание речи на сервере</span>
         </div>
-        <div class="toggle-track" class:active={$privacyConfig.audioTranscriptionEnabled}>
-          <div class="toggle-thumb" class:active={$privacyConfig.audioTranscriptionEnabled}></div>
-        </div>
+        <Switch checked={$privacyConfig.audioTranscriptionEnabled} ariaLabel="Расшифровка голосовых сообщений" />
       </div>
 
       <div class="card-divider"></div>
@@ -466,9 +459,7 @@
           <span class="toggle-title">Подсказки стикеров</span>
           <span class="toggle-desc">Предлагать подходящие стикеры при вводе эмодзи</span>
         </div>
-        <div class="toggle-track" class:active={$privacyConfig.stickersSuggest === "ON"}>
-          <div class="toggle-thumb" class:active={$privacyConfig.stickersSuggest === "ON"}></div>
-        </div>
+        <Switch checked={$privacyConfig.stickersSuggest === "ON"} ariaLabel="Подсказки стикеров" />
       </div>
     </div>
 
@@ -853,35 +844,6 @@
   .toggle-desc {
     font-size: 0.82rem;
     color: #888;
-  }
-
-  .toggle-track {
-    width: 44px;
-    height: 24px;
-    background: #3a3a3c;
-    border-radius: 12px;
-    position: relative;
-    flex-shrink: 0;
-    transition: background-color 0.2s;
-  }
-
-  .toggle-track.active {
-    background: #0ea5e9;
-  }
-
-  .toggle-thumb {
-    width: 20px;
-    height: 20px;
-    background: #fff;
-    border-radius: 50%;
-    position: absolute;
-    top: 2px;
-    left: 2px;
-    transition: transform 0.2s;
-  }
-
-  .toggle-thumb.active {
-    transform: translateX(20px);
   }
 
   .modal-backdrop {

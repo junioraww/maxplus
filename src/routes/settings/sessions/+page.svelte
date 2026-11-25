@@ -57,7 +57,7 @@
     return (
       date.toLocaleDateString() +
       " " +
-      date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+      date.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit", hour12: false })
     );
   }
 </script>

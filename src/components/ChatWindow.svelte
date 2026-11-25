@@ -14,6 +14,7 @@
 
   import Message from "$components/ChatWindow/Message.svelte";
   import PinnedMessage from "$components/ChatWindow/PinnedMessage.svelte";
+  import Avatar from "$components/main/Avatar.svelte";
   import "$lib/styles/AnimatedPanel.css";
   import API, {
     currentUser,
@@ -34,12 +35,38 @@
     openProfile,
     get as sessionGet,
   } from "$lib/stores/session";
-  import { handleReaction } from "$components/ChatWindow/actions";
+  import {
+    handleReaction,
+    retryFailedMessage,
+    removeFailedMessage,
+  } from "$components/ChatWindow/actions";
+  import BottomSheet from "$components/main/BottomSheet.svelte";
+
+  let failedActionMessage = null;
+
+  async function handleRetryFailedMessage() {
+    const target = failedActionMessage;
+    failedActionMessage = null;
+    if (!target) return;
+    await retryFailedMessage(chat, chatSettings, messages, target, decodedMessages).catch(() => {});
+  }
+
+  async function handleDeleteFailedMessage() {
+    const target = failedActionMessage;
+    failedActionMessage = null;
+    if (!target) return;
+    removeFailedMessage(messages, target);
+    await tick();
+    virtualScroll.applyPendingHeights($messages);
+    virtualScroll.computeCumulativeHeights($messages);
+    await updateVisibleMessages();
+  }
   import { convertFileSrc } from "@tauri-apps/api/core";
   import { getProxiedMediaUrl } from "$lib/utils/images";
   import { getAttachType } from "$lib/utils/mediaUtils";
   import { scrollToBottom } from "$lib/utils/scroll";
   import { getChatScroll } from "$lib/stores/chatScroll";
+  import { openSheet, dismissLayer } from "$lib/services/layerManager";
   import Settings from "$components/ChatWindow/Settings.svelte";
   import E2eModal from "$components/ChatWindow/E2eModal.svelte";
   import Dropout from "$components/ChatWindow/Dropout.svelte";
@@ -75,6 +102,7 @@
   import { swipeToClose } from "$components/ChatWindow/swipeToClose";
   import { createVirtualScrollManager, DEFAULT_HEIGHT } from "$components/ChatWindow/chatVirtualScroll";
   import { createMessagesLoader, BATCH_SIZE } from "$components/ChatWindow/chatMessagesLoader";
+  import { createChatScrollController } from "$components/ChatWindow/chatScrollController";
   import { getMountStore } from "$lib/plugins/mount-registry";
 
   const pluginChatBackground = getMountStore("chat:background");
@@ -82,9 +110,16 @@
 
   export let chatId;
   let prevActiveChatId = null;
+  let e2eLayerId = null;
+
   $: if (chatId !== prevActiveChatId) {
     prevActiveChatId = chatId;
     clearSelection();
+    if (e2eLayerId) {
+      dismissLayer(e2eLayerId);
+      e2eLayerId = null;
+    }
+    gotSecretChatRequest = null;
   }
 
   $: chatStore = chatId != null ? getChat(chatId).chatInfo : null;
@@ -92,6 +127,41 @@
 
   let title;
   let gotSecretChatRequest = null;
+
+  function showE2eSheet(req) {
+    if (!req || !chat) return;
+    if (e2eLayerId) {
+      dismissLayer(e2eLayerId);
+      e2eLayerId = null;
+    }
+    const layer = openSheet(
+      E2eModal,
+      {
+        chat,
+        messages,
+        chatSettings,
+        gotSecretChatRequest: req,
+      },
+      {
+        dim: true,
+        dimOpacity: 0.65,
+        dismissOnDim: true,
+        canSwipe: true,
+        closeDelay: 250,
+        onClose: () => {
+          if (e2eLayerId === layer.id) {
+            e2eLayerId = null;
+          }
+          gotSecretChatRequest = null;
+        },
+      }
+    );
+    e2eLayerId = layer.id;
+  }
+
+  $: if (gotSecretChatRequest && chat && !e2eLayerId) {
+    showE2eSheet(gotSecretChatRequest);
+  }
 
   let replyTo = null;
   let editingMessage = null;
@@ -263,11 +333,7 @@
   }
 
   function handleCloseChat() {
-    if (savePositionTimeout) {
-      clearTimeout(savePositionTimeout);
-      savePositionTimeout = null;
-    }
-    saveCurrentPosition();
+    scrollController?.saveCurrentPosition();
     closeChat(chat?.id ?? chatId);
   }
 
@@ -282,13 +348,13 @@
   });
 
   onDestroy(() => {
+    if (e2eLayerId) {
+      dismissLayer(e2eLayerId);
+      e2eLayerId = null;
+    }
     unregisterBack();
     clearSelection();
-    if (savePositionTimeout) {
-      clearTimeout(savePositionTimeout);
-      savePositionTimeout = null;
-    }
-    scrollResizeObserver?.disconnect();
+    scrollController?.destroy();
     virtualScroll.destroy();
   });
 
@@ -297,20 +363,89 @@
 
   let innerList;
   let visibleMessages = {};
-  let currentScrollAnchor = null;
+  let containerWidth = 800;
 
-  function handleAnchorCapture() {
-    currentScrollAnchor = virtualScroll.captureScrollAnchor(scrollElement, visibleMessages);
+  $: if (scrollElement) {
+    containerWidth = scrollElement.clientWidth || containerWidth;
   }
 
-  function handleAnchorRestore() {
-    virtualScroll.restoreScrollAnchor(scrollElement, currentScrollAnchor);
+  let dateSeparators = {};
+  $: if ($messages.length) {
+    const newSeparators = {};
+    let lastDateStr = null;
+    for (const msg of $messages) {
+      const dateStr = new Date(msg.time).toLocaleDateString();
+      if (dateStr !== lastDateStr) {
+        newSeparators[msg.id] = dateStr;
+        lastDateStr = dateStr;
+      }
+    }
+    dateSeparators = newSeparators;
+    virtualScroll.setDateSeparators(newSeparators);
   }
+
+  async function makeVisible(id) {
+    if (!visibleMessages[id]) {
+      visibleMessages[id] = document.getElementById("m-" + id);
+      await tick();
+    }
+  }
+
+  async function updateVisibleMessages() {
+    if (scrollElement) {
+      containerWidth = scrollElement.clientWidth || 800;
+    }
+    const anchor = scrollElement && !scrollController?.isProgrammaticScroll
+      ? virtualScroll.captureScrollAnchor(scrollElement)
+      : null;
+
+    visibleMessages = virtualScroll.calculateVisibleMessages({
+      scrollElement,
+      messagesList: uniqueMessages,
+      dateSeparatorsMap: dateSeparators,
+    });
+
+    if (anchor && scrollElement && !scrollController?.isProgrammaticScroll) {
+      await tick();
+      virtualScroll.restoreScrollAnchor(scrollElement, anchor);
+    }
+
+    if (scrollController?.userHasScrolled) {
+      scrollController.checkUnreadMessagesOnScroll();
+    }
+  }
+
+  let loader = null;
+
+  const scrollController = createChatScrollController({
+    getScrollElement: () => scrollElement,
+    getInnerList: () => innerList,
+    virtualScroll,
+    getLoader: () => loader,
+    getChat: () => chat,
+    getChatId: () => chatId,
+    getChatSettings: () => chatSettings,
+    getCurrentUser: () => $currentUser,
+    getMessages: () => $messages,
+    getUniqueMessages: () => uniqueMessages,
+    getVisibleMessages: () => visibleMessages,
+    getDateSeparators: () => dateSeparators,
+    updateVisibleMessages,
+    makeVisible,
+    getApi: () => $API,
+    saveChats,
+    getChatFromCache: getChat,
+    onShowScrollDownChange: (val) => { showScrollDown = val; },
+    onUnreadBadgeCountChange: (val) => { unreadBadgeCount = val; },
+    onShowUnreadSeparatorChange: (val) => { showUnreadSeparator = val; },
+    onUnreadAnchorIdChange: (val) => { unreadAnchorId = val; },
+    onUserScrolled: () => {},
+  });
 
   const decodedMessages = writable({});
   $: chatCache = getChat(chat?.id ?? chatId);
 
-  const loader = createMessagesLoader({
+  loader = createMessagesLoader({
     messages,
     decodedMessages,
     getChatObj: () => chat,
@@ -318,260 +453,10 @@
     getChatSettings: () => chatSettings,
     getChatCache: () => chatCache,
     getApi: () => $API,
-    onAnchorCapture: handleAnchorCapture,
-    onAnchorRestore: handleAnchorRestore,
+    onAnchorCapture: () => scrollController.captureAnchor(),
+    onAnchorRestore: () => scrollController.restoreAnchor(),
     onSecretChatRequest: (req) => { gotSecretChatRequest = req; },
   });
-
-  let scrollTimeout = null;
-  let updateScheduled = false;
-  let userHasScrolled = false;
-  let savePositionTimeout = null;
-  let isInitialMounting = true;
-  let isProgrammaticScroll = false;
-  let readTimer = null;
-  let lastReadMessageId = null;
-  let readMarkTime = 0;
-  let unreadStartTime = 0;
-  let sessionInitialUnread = 0;
-
-  async function updateVisibleMessages() {
-    visibleMessages = virtualScroll.calculateVisibleMessages({
-      scrollElement,
-      messagesList: $messages,
-    });
-    if (userHasScrolled) {
-      checkUnreadMessagesOnScroll();
-    }
-  }
-
-  function saveCurrentPosition() {
-    virtualScroll.savePosition({
-      targetChatId: chat?.id ?? chatId,
-      scrollElement,
-      all_loaded_newer: loader.all_loaded_newer,
-      visibleMessages,
-      messagesList: $messages,
-      isInitialMounting,
-      isProgrammaticScroll,
-    });
-  }
-
-  function queueSavePosition() {
-    if (savePositionTimeout) clearTimeout(savePositionTimeout);
-    savePositionTimeout = setTimeout(saveCurrentPosition, 200);
-  }
-
-  function removeUnreadSeparatorSafely() {
-    if (!showUnreadSeparator) return;
-    const sep = document.getElementById("unread-separator");
-    const isAbove = sep && scrollElement && (sep.offsetTop + sep.offsetHeight <= scrollElement.scrollTop);
-    const distanceFromBottom = scrollElement
-      ? scrollElement.scrollHeight - scrollElement.scrollTop - scrollElement.clientHeight
-      : 0;
-    const isNearEnd = distanceFromBottom <= 35;
-
-    showUnreadSeparator = false;
-
-    if (isNearEnd && scrollElement) {
-      requestAnimationFrame(() => {
-        if (scrollElement) {
-          scrollElement.scrollTop = scrollElement.scrollHeight;
-        }
-      });
-    } else if (isAbove && scrollElement) {
-      const anchor = virtualScroll.captureScrollAnchor(scrollElement, visibleMessages);
-      if (anchor) {
-        requestAnimationFrame(() => {
-          virtualScroll.restoreScrollAnchor(scrollElement, anchor);
-        });
-      }
-    }
-  }
-
-  function resolveUnreadState(unreadCount) {
-    sessionInitialUnread = unreadCount;
-    const myId = Number($currentUser);
-    const peerMsgs = ($messages || []).filter((m) => Number(m.sender) !== myId && !m.deleted);
-    const myMark = Number(chat?.participants?.[myId] || 0);
-
-    let firstUnread = null;
-    if (unreadCount > 0 && peerMsgs.length > 0) {
-      if (myMark > 0) {
-        firstUnread = peerMsgs.find((m) => Number(m.time || 0) > myMark) || null;
-      }
-      if (!firstUnread) {
-        firstUnread = peerMsgs.length >= unreadCount
-          ? peerMsgs[peerMsgs.length - unreadCount]
-          : peerMsgs[0];
-      }
-    }
-
-    unreadAnchorId = firstUnread ? firstUnread.id : null;
-    showUnreadSeparator = Boolean(firstUnread && unreadCount > 0);
-
-    if (firstUnread) {
-      unreadStartTime = Number(firstUnread.time || 0);
-      const idx = peerMsgs.findIndex((m) => String(m.id) === String(firstUnread.id));
-      if (idx > 0) {
-        readMarkTime = Number(peerMsgs[idx - 1].time || 0);
-      } else {
-        readMarkTime = myMark > 0 ? myMark : Math.max(0, unreadStartTime - 1);
-      }
-    } else {
-      unreadStartTime = 0;
-      const lastMsg = ($messages || []).filter((m) => !m.deleted).pop();
-      readMarkTime = lastMsg ? Number(lastMsg.time || 0) : myMark;
-    }
-  }
-
-  function isMessageReadOnScreen(rect, containerRect) {
-    if (rect.bottom <= containerRect.top) return true;
-    if (rect.top >= containerRect.bottom - 2) return false;
-    const h = rect.bottom - rect.top;
-    if (h <= 0) return false;
-    const visibleTop = Math.max(rect.top, containerRect.top);
-    const visibleBottom = Math.min(rect.bottom, containerRect.bottom);
-    const visibleHeight = Math.max(0, visibleBottom - visibleTop);
-    return visibleHeight >= Math.min(h * 0.7, containerRect.height * 0.5);
-  }
-
-  function checkUnreadMessagesOnScroll() {
-    if (isInitialMounting || isProgrammaticScroll) return;
-    if ($chatSettings?.reader === false) return;
-    if (!chat || !scrollElement || !$messages || $messages.length === 0) return;
-
-    const myId = Number($currentUser);
-    const containerRect = scrollElement.getBoundingClientRect();
-    const distanceFromBottom = scrollElement.scrollHeight - scrollElement.scrollTop - scrollElement.clientHeight;
-
-    let candidate = null;
-    let highestVisibleTime = readMarkTime;
-
-    for (let i = $messages.length - 1; i >= 0; i--) {
-      const m = $messages[i];
-      if (m.deleted) continue;
-      if (unreadStartTime && Number(m.time || 0) < unreadStartTime) continue;
-
-      const el = document.getElementById("m-" + m.id);
-      if (!el) continue;
-
-      const rect = el.getBoundingClientRect();
-      if (isMessageReadOnScreen(rect, containerRect)) {
-        candidate = m;
-        highestVisibleTime = Math.max(highestVisibleTime, Number(m.time || 0));
-        break;
-      }
-    }
-
-    if (!candidate || highestVisibleTime <= readMarkTime) {
-      return;
-    }
-
-    readMarkTime = highestVisibleTime;
-    let targetMsg = candidate;
-    if (Number(candidate.sender) === myId) {
-      const peerMsg = $messages
-        .filter((m) => Number(m.sender) !== myId && !m.deleted && Number(m.time) <= highestVisibleTime)
-        .pop();
-      if (peerMsg) {
-        targetMsg = peerMsg;
-      }
-    }
-    lastReadMessageId = targetMsg.id;
-
-    const peerMessages = $messages.filter(
-      (m) => Number(m.sender) !== myId && !m.deleted
-    );
-
-    let remaining;
-    if (loader.all_loaded_newer) {
-      const unreadPeerMsgs = peerMessages.filter(
-        (m) => Number(m.time || 0) >= unreadStartTime
-      );
-      remaining = unreadPeerMsgs.filter(
-        (m) => Number(m.time || 0) > readMarkTime
-      ).length;
-    } else {
-      const unreadPeerMsgs = peerMessages.filter(
-        (m) => Number(m.time || 0) >= unreadStartTime
-      );
-      const readCount = unreadPeerMsgs.filter(
-        (m) => Number(m.time || 0) <= readMarkTime
-      ).length;
-      remaining = Math.max(0, sessionInitialUnread - readCount);
-    }
-
-    unreadBadgeCount = remaining;
-
-    let updatedChat = null;
-    getChat(chat.id).chatInfo.update((current) => {
-      if (!current) return current;
-      updatedChat = {
-        ...current,
-        newMessages: remaining,
-        participants: {
-          ...(current.participants || {}),
-          [myId]: candidate.time,
-        },
-      };
-      return updatedChat;
-    });
-
-    if (updatedChat) {
-      saveChats([ updatedChat ]).catch(() => {});
-    }
-
-    if (remaining === 0) {
-      removeUnreadSeparatorSafely();
-      if (distanceFromBottom <= 50) {
-        showScrollDown = false;
-      }
-    }
-
-    $API.readMessage(chat.id, targetMsg.id, remaining, highestVisibleTime).catch((e) => {
-      console.error("readMessage failed", e);
-    });
-  }
-
-  function handleScroll(event) {
-    if (isInitialMounting || isProgrammaticScroll) return;
-
-    userHasScrolled = true;
-    queueSavePosition();
-    const target = event.currentTarget;
-    const distanceFromBottom = target.scrollHeight - target.scrollTop - target.clientHeight;
-    showScrollDown = !loader.all_loaded_newer || unreadBadgeCount > 0 || distanceFromBottom > 50;
-
-    checkUnreadMessagesOnScroll();
-
-    if (!updateScheduled) {
-      updateScheduled = true;
-      requestAnimationFrame(async () => {
-        await updateVisibleMessages();
-        updateScheduled = false;
-        checkUnreadMessagesOnScroll();
-      });
-    }
-
-    if (target.scrollTop <= 50 && !loader.loading && !loader.all_loaded) {
-      if (scrollLoaderTimeout) return;
-      scrollLoaderTimeout = setTimeout(async () => {
-        await loader.loadHistory();
-        await updateVisibleMessages();
-        setTimeout(() => (scrollLoaderTimeout = null), 500);
-      }, 200);
-    }
-
-    if (distanceFromBottom <= 100 && !loader.loadingNewer && !loader.all_loaded_newer) {
-      if (scrollBottomLoaderTimeout) return;
-      scrollBottomLoaderTimeout = setTimeout(async () => {
-        await loader.loadNewer();
-        await updateVisibleMessages();
-        setTimeout(() => (scrollBottomLoaderTimeout = null), 500);
-      }, 200);
-    }
-  }
 
 
   let unsubReceivedMessage = null;
@@ -738,7 +623,11 @@
 
         if (loader.all_loaded_newer) {
           messages.update((_messages) => {
-            const idx = _messages.findIndex((x) => String(x.id) === String(message.id));
+            const idx = _messages.findIndex(
+              (x) =>
+                String(x.id) === String(message.id) ||
+                (message.cid != null && x.cid != null && String(x.cid) === String(message.cid))
+            );
             if (idx !== -1) {
               const old = _messages[idx];
               _messages[idx] = {
@@ -817,6 +706,69 @@
     return result;
   })();
 
+  $: messageGroupInfo = (() => {
+    const list = uniqueMessages || [];
+    const info = {};
+    for (let i = 0; i < list.length; i++) {
+      const curr = list[i];
+      if (!curr) continue;
+      const prev = i > 0 ? list[i - 1] : null;
+      const next = i < list.length - 1 ? list[i + 1] : null;
+
+      const isCurrSystem = Boolean(curr.attaches?.some((x) => x._type === "CONTROL") || curr.type === "SYSTEM");
+      const hasDateSep = Boolean(dateSeparators[curr.id]);
+
+      let isPrevSame = false;
+      if (prev && !hasDateSep && !isCurrSystem) {
+        const isPrevSystem = Boolean(prev.attaches?.some((x) => x._type === "CONTROL") || prev.type === "SYSTEM");
+        if (!isPrevSystem && String(prev.sender) === String(curr.sender)) {
+          const diff = Math.abs((curr.time || 0) - (prev.time || 0));
+          if (diff <= 300000) {
+            isPrevSame = true;
+          }
+        }
+      }
+
+      let isNextSame = false;
+      if (next && !isCurrSystem) {
+        const nextHasDateSep = Boolean(dateSeparators[next.id]);
+        if (!nextHasDateSep) {
+          const isNextSystem = Boolean(next.attaches?.some((x) => x._type === "CONTROL") || next.type === "SYSTEM");
+          if (!isNextSystem && String(next.sender) === String(curr.sender)) {
+            const diff = Math.abs((next.time || 0) - (curr.time || 0));
+            if (diff <= 300000) {
+              isNextSame = true;
+            }
+          }
+        }
+      }
+
+      info[curr.id] = {
+        isFirstInGroup: !isPrevSame,
+        isLastInGroup: !isNextSame,
+        isConsecutive: isPrevSame,
+      };
+    }
+    return info;
+  })();
+
+  let dismissedReportBanners = new Set();
+  $: isGroupOwner = Boolean(
+    chat &&
+    $currentUser != null &&
+    (Number(chat.owner || chat.ownerId) === Number($currentUser))
+  );
+  $: showReportLeaveBanner = Boolean(
+    chat &&
+    (chat.type === "CHAT" || chat.type === "GROUP") &&
+    !isGroupOwner &&
+    !dismissedReportBanners.has(chat.id)
+  );
+
+  function handleReportAndLeave() {
+    complaintMessage = { id: 0 };
+  }
+
   $: cachedContact = chat?.type === "DIALOG" ? getContact(avatarUserId) : writable(undefined);
   $: title = chat?.id === 0 ? "Избранное" : (chat?.title || $cachedContact?.names?.[0]?.name);
   $: isBot = $cachedContact?.options?.includes("BOT") || chat?.options?.BOT === true || chat?.options?.IS_BOT === true;
@@ -891,8 +843,8 @@
   }
 
   onMount(async () => {
-    isInitialMounting = true;
-    isProgrammaticScroll = true;
+    scrollController.isInitialMounting = true;
+    scrollController.isProgrammaticScroll = true;
 
     const targetChatId = chatId ?? chat?.id;
     const currentChat = get(getChat(targetChatId).chatInfo) || chat;
@@ -902,8 +854,15 @@
 
     clearChatNotification(targetChatId);
 
-    virtualScroll.setupResizeObserver();
-    startAutoScrollIfAtBottom(hasSavedScroll, unreadCount);
+    if (scrollElement) {
+      containerWidth = scrollElement.clientWidth || 800;
+    }
+
+    virtualScroll.setupResizeObserver(
+      () => scrollElement,
+      () => !scrollController.isInitialMounting && !scrollController.isProgrammaticScroll && scrollController.userHasScrolled
+    );
+    scrollController.startAutoScrollIfAtBottom(hasSavedScroll, unreadCount);
 
     let initialFrom = Date.now() + sessionGet("drift");
     if (hasSavedScroll) {
@@ -930,14 +889,14 @@
 
     await tick();
 
-    virtualScroll.measureAllHeights(innerList);
-    virtualScroll.computeCumulativeHeights($messages);
+    virtualScroll.measureAllHeights(innerList, containerWidth);
+    virtualScroll.computeCumulativeHeights($messages, containerWidth, dateSeparators);
 
-    resolveUnreadState(unreadCount);
+    scrollController.resolveUnreadState(unreadCount);
 
     let positioned = false;
     if (hasSavedScroll) {
-      const isSavedScrollOlderThanUnread = !unreadStartTime || Number(savedPos.bottomMessageTime) < unreadStartTime;
+      const isSavedScrollOlderThanUnread = !scrollController.unreadStartTime || Number(savedPos.bottomMessageTime) < scrollController.unreadStartTime;
       if (isSavedScrollOlderThanUnread) {
         let targetId = savedPos.bottomMessageId;
         if (targetId && !document.getElementById("m-" + targetId) && $messages.length > 0) {
@@ -958,7 +917,7 @@
           }
         }
         if (targetId) {
-          positioned = await scrollToMessage(targetId, {
+          positioned = await scrollController.scrollToMessage(targetId, {
             offset: savedPos.offset != null ? savedPos.offset : 40,
           });
         }
@@ -970,7 +929,7 @@
           const msgs = $messages;
           if (msgs.length > 0) {
             const mid = msgs[Math.floor(msgs.length / 2)].id;
-            await scrollToMessage(mid, { offset: 40 });
+            await scrollController.scrollToMessage(mid, { offset: 40 });
             positioned = true;
           }
         }
@@ -978,11 +937,11 @@
     }
 
     if (!positioned && unreadCount > 0) {
-      positioned = await scrollToUnreadBanner();
+      positioned = await scrollController.scrollToUnreadBanner();
     }
 
     if (!positioned) {
-      await scrollToBottomDirect();
+      await scrollController.scrollToBottomDirect();
     }
 
     await tick();
@@ -995,83 +954,11 @@
       scrollElement.scrollTop = scrollElement.scrollHeight;
       showScrollDown = false;
     }
-    isInitialMounting = false;
-    isProgrammaticScroll = false;
+    scrollController.isInitialMounting = false;
+    scrollController.isProgrammaticScroll = false;
     window.addEventListener("mouseup", stopDrag);
     window.addEventListener("blur", stopDrag);
   });
-
-  async function scrollToUnreadBanner() {
-    if (!scrollElement) return false;
-    await tick();
-    let sep = document.getElementById("unread-separator");
-    if (!sep && unreadAnchorId) {
-      await makeVisible(unreadAnchorId);
-      sep = document.getElementById("unread-separator");
-    }
-    if (!sep) return false;
-
-    isProgrammaticScroll = true;
-    let containerRect = scrollElement.getBoundingClientRect();
-    let sepRect = sep.getBoundingClientRect();
-    let delta = sepRect.bottom - (containerRect.bottom - 2);
-    scrollElement.scrollTop = Math.max(0, scrollElement.scrollTop + delta);
-
-    await tick();
-    await updateVisibleMessages();
-    await tick();
-
-    sep = document.getElementById("unread-separator");
-    if (sep) {
-      containerRect = scrollElement.getBoundingClientRect();
-      sepRect = sep.getBoundingClientRect();
-      delta = sepRect.bottom - (containerRect.bottom - 2);
-      if (Math.abs(delta) > 2) {
-        scrollElement.scrollTop = Math.max(0, scrollElement.scrollTop + delta);
-      }
-    }
-
-    const distanceFromBottom = scrollElement.scrollHeight - scrollElement.scrollTop - scrollElement.clientHeight;
-    showScrollDown = !loader.all_loaded_newer || (unreadBadgeCount > 0 && distanceFromBottom > 10) || distanceFromBottom > 50;
-
-    setTimeout(() => {
-      isProgrammaticScroll = false;
-    }, 150);
-    return true;
-  }
-
-  async function jumpToBottom() {
-    unreadBadgeCount = 0;
-    removeUnreadSeparatorSafely();
-    let updatedChat = null;
-    getChat(chat.id).chatInfo.update((c) => {
-      if (!c) return c;
-      updatedChat = { ...c, newMessages: 0 };
-      return updatedChat;
-    });
-    if (updatedChat) {
-      saveChats([ updatedChat ]).catch(() => {});
-    }
-
-    if (!loader.all_loaded_newer) {
-      loader.all_loaded_newer = true;
-      await loader.loadHistory(true, Date.now() + sessionGet("drift"), 40, 0);
-      await tick();
-    }
-    scrollToBottom(scrollElement, true);
-    userHasScrolled = true;
-    showScrollDown = false;
-    await tick();
-    await updateVisibleMessages();
-
-    const latest = $messages[$messages.length - 1];
-    if (latest && $chatSettings?.reader !== false) {
-      lastReadMessageId = latest.id;
-      $API.readMessage(chat.id, latest.id, 0, latest.time).catch((e) => {
-        console.error("readMessage failed", e);
-      });
-    }
-  }
 
   let holdSelectTimer = null;
   let isHoldSelectTriggered = false;
@@ -1210,7 +1097,7 @@
       lastDropoutClosedAt = Date.now();
     }
 
-    if (attachesDropout && !e.target.closest(".attaches-dropout") && !e.target.closest(".input-button") && !e.target.closest(".attach-toggle-btn")) {
+    if (attachesDropout && !e.target.closest(".attaches-bottom-sheet, .attaches-dropout, .attaches-sheet-backdrop, .portal-sheet-wrapper, .portal-layer-sheet-container") && !e.target.closest(".input-button") && !e.target.closest(".attach-toggle-btn")) {
       attachesDropout = null;
     }
   }
@@ -1220,27 +1107,30 @@
 
   function selectMessage(e, msg) {
     if (Date.now() - lastDropoutClosedAt < 400) return;
+    const isContextOrLongPress = e?.type === "contextmenu" || e?.isLongPress;
     if (
       e?.target?.closest?.("a") ||
       e?.target?.closest?.(".rich-link") ||
       e?.target?.closest?.(".link-dropout-card") ||
       e?.target?.closest?.(".dropout-backdrop") ||
-      e?.target?.closest?.("img") ||
-      e?.target?.closest?.("video") ||
-      e?.target?.closest?.(".reply-block") ||
-      e?.target?.closest?.(".forward-block") ||
-      e?.target?.closest?.(".inline-keyboard") ||
-      e?.target?.closest?.(".inline-btn") ||
       e?.target?.closest?.(".avatar-msg-btn") ||
-      e?.target?.closest?.(".avatar-wrapper") ||
-      e?.target?.closest?.(".media-grid") ||
-      e?.target?.closest?.(".grid-item") ||
-      e?.target?.closest?.(".attaches") ||
+      e?.target?.closest?.(".inline-btn") ||
       e?.target?.closest?.(".media-download-badge") ||
-      e?.target?.closest?.(".file-attachment") ||
-      e?.target?.closest?.(".file-attach") ||
-      e?.target?.closest?.(".attach") ||
-      e?.target?.closest?.(".encrypted-media-placeholder")
+      (!isContextOrLongPress && (
+        e?.target?.closest?.("img") ||
+        e?.target?.closest?.("video") ||
+        e?.target?.closest?.(".reply-block") ||
+        e?.target?.closest?.(".forward-block") ||
+        e?.target?.closest?.(".inline-keyboard") ||
+        e?.target?.closest?.(".avatar-wrapper") ||
+        e?.target?.closest?.(".media-grid") ||
+        e?.target?.closest?.(".grid-item") ||
+        e?.target?.closest?.(".attaches") ||
+        e?.target?.closest?.(".file-attachment") ||
+        e?.target?.closest?.(".file-attach") ||
+        e?.target?.closest?.(".attach") ||
+        e?.target?.closest?.(".encrypted-media-placeholder")
+      ))
     ) return;
 
     if (msg === dropoutActiveAt?.msg) return;
@@ -1412,18 +1302,74 @@
       clientX: detail?.clientX ?? (typeof window !== "undefined" ? window.innerWidth / 2 : 0),
       clientY: detail?.clientY ?? (typeof window !== "undefined" ? window.innerHeight / 2 : 0),
       target: detail?.target,
+      isLongPress: true,
     };
     selectMessage(fakeEvent, msg);
   }
 
   function handleMessageContextMenu(msg, e) {
     if (!msg) return;
-    if (e.target.closest("a, .rich-link, .link-dropout-card, .dropout-backdrop")) return;
+    if (e.target.closest("a, .rich-link, .link-dropout-card, .dropout-backdrop, input, textarea")) return;
     if ($isSelecting) {
       toggleMessageSelection(msg.id);
     } else {
       selectMessage(e, msg);
     }
+  }
+
+  async function handleCopyMedia(msg) {
+    if (!msg) return;
+    const photo = msg.attaches?.find(a => (a._type || a.type) === "PHOTO");
+    if (photo) {
+      try {
+        const url = photo.baseUrl || photo.url;
+        if (url && navigator?.clipboard?.writeText) {
+          await navigator.clipboard.writeText(url);
+        }
+      } catch (err) {
+        console.error("Failed to copy media:", err);
+      }
+    }
+  }
+
+  async function handleSaveMedia(msg) {
+    if (!msg) return;
+    const media = msg.attaches?.find(a => {
+      const t = a._type || a.type;
+      return t === "PHOTO" || t === "VIDEO" || t === "FILE" || t === "AUDIO";
+    });
+    if (media) {
+      try {
+        const url = media.baseUrl || media.url;
+        if (url) {
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = media.name || "media";
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+        }
+      } catch (err) {
+        console.error("Failed to save media:", err);
+      }
+    }
+  }
+
+  async function handleShareLink(msg) {
+    if (!msg) return;
+    try {
+      const link = `https://max.im/c/${chat?.id || chatId}/${msg.id}`;
+      if (navigator?.clipboard?.writeText) {
+        await navigator.clipboard.writeText(link);
+      }
+    } catch (err) {
+      console.error("Failed to copy share link:", err);
+    }
+  }
+
+  function handleOpenComments(msg) {
+    if (!msg) return;
+    openChat(chat?.id || chatId, msg.id);
   }
 
   function handleStartForward(msgs) {
@@ -1506,21 +1452,6 @@
     }
   }
 
-  let dateSeparators = {};
-  $: if ($messages.length) {
-    const newSeparators = {};
-    let lastDateStr = null;
-    for (const msg of $messages) {
-      const dateStr = new Date(msg.time).toLocaleDateString();
-      if (dateStr !== lastDateStr) {
-        newSeparators[msg.id] = dateStr;
-        lastDateStr = dateStr;
-      }
-    }
-    dateSeparators = newSeparators;
-  }
-
-  let scrollResizeObserver;
   let lastClientHeight = 0;
   let prevActiveMediaBool = null;
   let scrollAnchorBeforeMediaChange = null;
@@ -1548,85 +1479,6 @@
     }
     scrollAnchorBeforeMediaChange = null;
   });
-
-  function startAutoScrollIfAtBottom(hasSavedScroll, initialUnreadCount) {
-    if (!scrollElement) return;
-    lastClientHeight = scrollElement.clientHeight;
-
-    scrollResizeObserver = new ResizeObserver(() => {
-      if (!scrollElement || isProgrammaticScroll) return;
-      const { scrollTop, scrollHeight, clientHeight } = scrollElement;
-      const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
-
-      if (!userHasScrolled && !hasSavedScroll && initialUnreadCount === 0) {
-        scrollElement.scrollTop = scrollHeight;
-        showScrollDown = false;
-        return;
-      }
-
-      if (distanceFromBottom <= 30 && unreadBadgeCount === 0) {
-        showScrollDown = false;
-      }
-    });
-
-    if (innerList) {
-      scrollResizeObserver.observe(innerList);
-    }
-  }
-
-  async function scrollToBottomDirect() {
-    if (!scrollElement) return;
-    isProgrammaticScroll = true;
-    scrollElement.scrollTop = scrollElement.scrollHeight;
-    await tick();
-    await updateVisibleMessages();
-    await tick();
-    scrollElement.scrollTop = scrollElement.scrollHeight;
-    showScrollDown = false;
-    setTimeout(() => {
-      isProgrammaticScroll = false;
-    }, 150);
-  }
-
-  async function scrollToMessage(targetMsgId, options = {}) {
-    if (!scrollElement || !targetMsgId) return false;
-    await tick();
-    let targetEl = document.getElementById("m-" + targetMsgId);
-    if (!targetEl) return false;
-
-    isProgrammaticScroll = true;
-    const { offset = 40 } = options;
-    const containerRect = scrollElement.getBoundingClientRect();
-    let elRect = targetEl.getBoundingClientRect();
-    let currentScroll = scrollElement.scrollTop;
-    scrollElement.scrollTop = Math.max(0, currentScroll + (elRect.top - containerRect.top) - offset);
-
-    await tick();
-    await updateVisibleMessages();
-    await tick();
-
-    targetEl = document.getElementById("m-" + targetMsgId);
-    if (targetEl) {
-      elRect = targetEl.getBoundingClientRect();
-      const diff = elRect.top - containerRect.top - offset;
-      if (Math.abs(diff) >= 0.5) {
-        scrollElement.scrollTop = Math.max(0, scrollElement.scrollTop + diff);
-      }
-    }
-
-    setTimeout(() => {
-      isProgrammaticScroll = false;
-    }, 150);
-    return true;
-  }
-
-
-  async function makeVisible(id) {
-    if (!visibleMessages[id]) {
-      visibleMessages[id] = document.getElementById("m-" + id);
-      await tick();
-    }
-  }
 
   $: otherReadTime = (() => {
     let maxMark = chat?.otherReadTime || 0;
@@ -1874,8 +1726,31 @@
     />
   {/if}
 
+  {#if showReportLeaveBanner}
+    <div class="group-report-leave-banner">
+      <div class="banner-spacer"></div>
+      <button class="group-report-leave-btn" type="button" on:click={handleReportAndLeave}>
+        Выйти и пожаловаться
+      </button>
+      <button
+        class="group-report-dismiss-btn"
+        type="button"
+        on:click={() => {
+          dismissedReportBanners.add(chat.id);
+          dismissedReportBanners = dismissedReportBanners;
+        }}
+        aria-label="Скрыть баннер"
+      >
+        <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none">
+          <line x1="18" y1="6" x2="6" y2="18" />
+          <line x1="6" y1="6" x2="18" y2="18" />
+        </svg>
+      </button>
+    </div>
+  {/if}
+
   <div
-    on:scroll={handleScroll}
+    on:scroll={scrollController.handleScroll}
     on:mousedown={startDrag}
     on:mouseleave={stopDrag}
     on:mouseup={mouseUp}
@@ -1891,13 +1766,6 @@
       </div>
     {/each}
 
-    <E2eModal
-      {chat}
-      {messages}
-      {chatSettings}
-      {gotSecretChatRequest}
-    />
-
     {#if chat.pinnedMessage}
       <PinnedMessage msg={chat.pinnedMessage} {chat} on:unpin={(e) => handleUnpinMessage(e.detail.id)} />
     {/if}
@@ -1909,12 +1777,23 @@
     >
       <div style={"flex-shrink: 0; height: " + (chat.pinnedMessage ? "60px" : "10px")}></div>
 
+      {#if (chat?.type === "CHAT" || chat?.type === "GROUP")}
+        <div class="group-hero-card">
+          <div class="group-hero-avatar">
+            <Avatar {chat} size={71} allowStories={false} showOnline={false} />
+          </div>
+          <div class="group-hero-title">{chat.title || chat.name || "Группа"}</div>
+          <div class="group-hero-subtitle">
+            Можно общаться, ставить реакции<br />и делиться файлами
+          </div>
+        </div>
+      {/if}
+
       {#each uniqueMessages as msg (msg.id)}
         {#if showUnreadSeparator && unreadAnchorId && String(msg.id) === String(unreadAnchorId)}
           <div
             id="unread-separator"
             class="unread-separator"
-            out:slide={{ duration: 250 }}
           >
             <div class="unread-separator-line"></div>
             <span class="unread-separator-text">Непрочитанные сообщения</span>
@@ -1930,7 +1809,7 @@
             if ($isSelecting) toggleMessageSelection(msg.id);
           }}
         >
-          {#if visibleMessages[msg.id] || !$messageHeights[msg.id]}
+          {#if visibleMessages[msg.id]}
             <div
               class="observer-area"
               use:observeResize={msg.id}
@@ -1949,6 +1828,9 @@
                 decoded={$decodedMessages[msg.id]}
                 selected={$selectionState.selected.has(String(msg.id))}
                 selectionMode={$isSelecting}
+                isFirstInGroup={messageGroupInfo[msg.id]?.isFirstInGroup ?? true}
+                isLastInGroup={messageGroupInfo[msg.id]?.isLastInGroup ?? true}
+                isConsecutive={messageGroupInfo[msg.id]?.isConsecutive ?? false}
                 on:openMedia={(e) => openMedia(e.detail.attach, e.detail.originEl)}
                 on:openChat={() => openChat(chat.id, msg.id)}
                 on:openStickerPack={(e) => handleOpenStickerPack(e.detail.sticker)}
@@ -1958,10 +1840,13 @@
                 on:messageClick={(e) => handleMessageClick(e.detail.msg, e.detail.e)}
                 on:longpress={(e) => handleMessageLongPress(e.detail.msg, e.detail)}
                 on:contextmenu={(e) => handleMessageContextMenu(e.detail.msg, e.detail.e)}
+                on:openComments={(e) => handleOpenComments(e.detail.msg)}
+                on:forward={(e) => handleStartForward([e.detail.msg])}
+                on:failedClick={(e) => (failedActionMessage = e.detail)}
               />
             </div>
           {:else}
-            <div class="placeholder" style="width:100%; height:{($messageHeights[msg.id] || DEFAULT_HEIGHT)}px;"></div>
+            <div class="placeholder" style="width:100%; height:{virtualScroll.getHeight(msg, containerWidth, Boolean(dateSeparators[msg.id]))}px;"></div>
           {/if}
         </div>
       {/each}
@@ -1978,6 +1863,9 @@
     on:history={(e) => (historyModalMessage = e.detail.msg)}
     on:seenBy={(e) => (seenByModalData = e.detail)}
     on:copyText={(e) => handleCopyText(e.detail.msg)}
+    on:copyMedia={(e) => handleCopyMedia(e.detail.msg)}
+    on:saveMedia={(e) => handleSaveMedia(e.detail.msg)}
+    on:shareLink={(e) => handleShareLink(e.detail.msg)}
     on:forward={(e) => handleStartForward([e.detail.msg])}
     on:select={(e) => startSelection(chat?.id || chatId, e.detail.msg?.id)}
     on:report={(e) => (complaintMessage = e.detail.msg)}
@@ -1999,6 +1887,26 @@
       readers={seenByModalData.readers}
       on:close={() => (seenByModalData = null)}
     />
+  {/if}
+
+  {#if failedActionMessage}
+    <BottomSheet
+      title="Не удалось отправить сообщение"
+      maxHeight="40vh"
+      on:close={() => (failedActionMessage = null)}
+    >
+      <div class="failed-msg-sheet">
+        {#if failedActionMessage.error}
+          <div class="failed-msg-error">{failedActionMessage.error}</div>
+        {/if}
+        <button type="button" class="failed-msg-btn primary" on:click={handleRetryFailedMessage}>
+          Повторить отправку
+        </button>
+        <button type="button" class="failed-msg-btn danger" on:click={handleDeleteFailedMessage}>
+          Удалить
+        </button>
+      </div>
+    </BottomSheet>
   {/if}
 
   {#if activeStickerPack}
@@ -2072,7 +1980,7 @@
     hasReply={!!replyTo}
     {showStickerPanel}
     {unreadBadgeCount}
-    on:click={jumpToBottom}
+    on:click={scrollController.jumpToBottom}
   />
 
   {#if complaintMessage}
@@ -2128,11 +2036,13 @@
     width: 100%;
     height: 100%;
     max-height: 100%;
-    background-color: var(--bg-chat);
+    background-color: var(--bg-chat, #161621);
+    background-image: var(--bg-chat-pattern, none);
+    background-repeat: repeat;
+    background-size: 360px 360px;
     padding-top: 0;
     padding-bottom: 0;
-    box-shadow: -4px 0 24px rgba(0, 0, 0, 0.45);
-    will-change: transform;
+    box-shadow: none;
   }
 
   .chat-window.is-selecting,
@@ -2144,10 +2054,14 @@
 
   .chat-window.animating {
     transition: transform 0.22s cubic-bezier(0.25, 1, 0.5, 1);
+    box-shadow: -4px 0 24px rgba(0, 0, 0, 0.45);
+    will-change: transform;
   }
 
   .chat-window.swiping {
     transition: none;
+    box-shadow: -4px 0 24px rgba(0, 0, 0, 0.45);
+    will-change: transform;
   }
 
   .message-list-container {
@@ -2155,9 +2069,9 @@
     min-height: 0;
     overflow-y: auto;
     display: block;
-    flex-direction: column;
     overflow-anchor: none;
     overflow-x: hidden;
+    contain: content;
   }
 
   .message-list-container.no-input {
@@ -2167,9 +2081,8 @@
   .message-list-inner {
     width: 100%;
     display: flex;
-    gap: 8px;
+    gap: 0;
     flex-direction: column;
-    transition: opacity 0.15s;
   }
 
   @media screen and (min-width: 500px) {
@@ -2206,6 +2119,7 @@
     border-radius: 0;
     box-sizing: border-box;
     transition: background 0.15s ease;
+    contain: layout style paint;
   }
 
   .message-wrapper.is-selected {
@@ -2216,6 +2130,7 @@
   .observer-area {
     position: relative;
     width: 100%;
+    display: flow-root;
   }
 
   .chat-header-container {
@@ -2302,25 +2217,24 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: 8px 16px;
-    gap: 12px;
+    padding: var(--msg-unread-padding, 8px 16px);
+    margin: var(--msg-unread-margin, 8px 0);
     width: 100%;
     box-sizing: border-box;
     user-select: none;
+    -webkit-user-select: none;
     flex-shrink: 0;
-  }
-
-  .unread-separator-line {
-    flex: 1;
-    height: 1px;
-    background: rgba(82, 136, 236, 0.4);
+    background: var(--msg-unread-bar-bg, rgba(59, 130, 246, 0.12));
+    border-radius: var(--msg-unread-bar-radius, 0px);
   }
 
   .unread-separator-text {
-    font-size: 13px;
+    font-size: var(--msg-unread-font-size, 13px);
     font-weight: 500;
-    color: var(--accent-color, #5288ec);
+    color: var(--msg-unread-bar-text, var(--accent-primary, #3b82f6));
     white-space: nowrap;
+    text-align: center;
+    letter-spacing: 0.15px;
   }
 
   .channel-preview-bar {
@@ -2376,5 +2290,149 @@
 
   .channel-mute-btn:hover {
     background: var(--bg-surface-elevated, #2e3038);
+  }
+
+  /* Group Report / Leave Banner (Matching MAX PinBarsWidget & abd.java) */
+  .group-report-leave-banner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 12px 6px 16px;
+    background: var(--bg-surface, #1e2025);
+    border-bottom: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.06));
+    flex-shrink: 0;
+    z-index: var(--z-header, 4);
+    min-height: 48px;
+    box-sizing: border-box;
+  }
+
+  .banner-spacer {
+    width: 32px;
+    flex-shrink: 0;
+  }
+
+  .group-report-leave-btn {
+    background: rgba(255, 255, 255, 0.08);
+    border: none;
+    border-radius: 12px;
+    color: #eb5757;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    padding: 8px 18px;
+    min-height: 36px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 1;
+    max-width: 280px;
+    margin: 0 auto;
+    transition: background 0.15s ease, transform 0.1s ease;
+  }
+
+  .group-report-leave-btn:hover {
+    background: rgba(255, 255, 255, 0.12);
+  }
+
+  .group-report-leave-btn:active {
+    background: rgba(255, 255, 255, 0.16);
+    transform: scale(0.98);
+  }
+
+  .group-report-dismiss-btn {
+    background: transparent;
+    border: none;
+    color: rgba(255, 255, 255, 0.45);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    padding: 6px;
+    border-radius: 50%;
+    width: 32px;
+    height: 32px;
+    flex-shrink: 0;
+    transition: color 0.15s ease, background 0.15s ease;
+  }
+
+  .group-report-dismiss-btn:hover {
+    color: #ffffff;
+    background: rgba(255, 255, 255, 0.08);
+  }
+
+  /* Group Welcome Hero Card (exact 1-to-1 from zb3.java, fw0.java, he9.java) */
+  .group-hero-card {
+    background: linear-gradient(135deg, rgba(33, 42, 43, 0.64) 0%, rgba(33, 42, 43, 0.88) 100%);
+    border: 2px solid rgba(56, 62, 69, 0.44);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border-radius: 24px;
+    padding: 20px 24px 24px 24px;
+    margin: 24px auto;
+    min-width: 296px;
+    max-width: 320px;
+    width: fit-content;
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    box-sizing: border-box;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
+  }
+
+  .group-hero-avatar {
+    margin-bottom: 12px;
+  }
+
+  .group-hero-title {
+    color: #ffffff;
+    font-size: 17px;
+    font-weight: 600;
+    line-height: 1.25;
+    margin-bottom: 8px;
+    word-break: break-word;
+  }
+
+  .group-hero-subtitle {
+    color: rgba(255, 255, 255, 0.65);
+    font-size: 13px;
+    line-height: 1.35;
+    font-weight: 400;
+    max-width: 250px;
+    margin: 0 auto;
+    text-align: center;
+  }
+
+  .failed-msg-sheet {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 8px 16px 20px;
+  }
+
+  .failed-msg-error {
+    font-size: 13px;
+    color: rgba(255, 255, 255, 0.65);
+    margin-bottom: 4px;
+  }
+
+  .failed-msg-btn {
+    width: 100%;
+    height: 44px;
+    border: none;
+    border-radius: 12px;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  .failed-msg-btn.primary {
+    background: var(--accent-color, #2563eb);
+    color: #ffffff;
+  }
+
+  .failed-msg-btn.danger {
+    background: rgba(239, 68, 68, 0.16);
+    color: #ef4444;
   }
 </style>

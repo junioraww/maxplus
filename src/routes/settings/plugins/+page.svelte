@@ -10,6 +10,7 @@
   import { pickFileBytes } from "$lib/utils/filePicker";
   import { invoke } from "@tauri-apps/api/core";
   import { showAlert } from "$lib/utils/alert";
+  import Switch from "$components/common/Switch.svelte";
 
   export let onClose = null;
 
@@ -196,14 +197,11 @@
             <span class="auto-update-title">Авто-обновление плагинов</span>
             <span class="auto-update-desc">Автоматически скачивать проверенные совместимые обновления</span>
           </div>
-          <label class="toggle">
-            <input
-              type="checkbox"
-              checked={$pluginSettingsStore.autoUpdate}
-              on:change={(e) => pluginSettingsStore.setAutoUpdate(e.target.checked)}
-            />
-            <span class="slider"></span>
-          </label>
+          <Switch
+            checked={$pluginSettingsStore.autoUpdate}
+            on:change={(e) => pluginSettingsStore.setAutoUpdate(e.detail)}
+            ariaLabel="Авто-обновление плагинов"
+          />
         </div>
 
         <div class="update-actions-row">
@@ -650,53 +648,6 @@
   .auto-update-desc {
     font-size: 12px;
     color: var(--text-muted, #71717a);
-  }
-
-  .toggle {
-    position: relative;
-    display: inline-block;
-    width: 44px;
-    height: 24px;
-    flex-shrink: 0;
-  }
-
-  .toggle input {
-    opacity: 0;
-    width: 0;
-    height: 0;
-  }
-
-  .slider {
-    position: absolute;
-    cursor: pointer;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background-color: var(--bg-surface-2, #27272a);
-    transition: 200ms ease;
-    border-radius: 24px;
-    border: 1px solid var(--border-card);
-  }
-
-  .slider:before {
-    position: absolute;
-    content: "";
-    height: 18px;
-    width: 18px;
-    left: 2px;
-    bottom: 2px;
-    background-color: white;
-    transition: 200ms ease;
-    border-radius: 50%;
-  }
-
-  input:checked + .slider {
-    background-color: var(--accent-primary, #0284c7);
-  }
-
-  input:checked + .slider:before {
-    transform: translateX(20px);
   }
 
   .update-actions-row {

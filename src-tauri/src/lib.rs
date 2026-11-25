@@ -93,13 +93,6 @@ impl<R: tauri::Runtime> tauri::plugin::Plugin<R> for CamouflageBootPlugin {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    #[cfg(target_os = "linux")]
-    {
-        if std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none() {
-            std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
-        }
-    }
-
     ssl::init_ssl_certificates();
     video::start_video_proxy();
     webapp_proxy::start_webapp_proxy();
@@ -349,6 +342,7 @@ pub fn run() {
             files::fetch_url_text,
             files::fetch_url_bytes,
             files::download_to_path,
+            files::get_recent_media,
             media_validator::validate_media_batch,
             media_validator::sanitize_mp4_edit_list,
             media_validator::calculate_ogg_crc,
@@ -441,6 +435,7 @@ pub fn run() {
             commands::proxy_http_request,
             commands::parse_mxp,
             commands::begin_call,
+            commands::begin_group_call,
             commands::set_camouflage_icon,
             commands::restore_camouflage_icon,
             commands::save_camouflage_shell,

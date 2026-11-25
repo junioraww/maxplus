@@ -21,6 +21,7 @@
   export let isSelf = false;
   export let allowStories = false;
   export let enableStoryRing = false;
+  export let showOnline = true;
 
   $: canShowStory = allowStories || enableStoryRing;
 
@@ -226,7 +227,7 @@
     {/if}
   </div>
 
-  {#if isOnline && !selectionMode}
+  {#if isOnline && showOnline && !selectionMode}
     <span class="online-badge"></span>
   {/if}
 

@@ -59,16 +59,12 @@
         <span class="modal-subtitle">{filteredPacks.length} наборов</span>
       </div>
       <button class="close-btn" type="button" on:click={close}>
-        <svg viewBox="0 0 24 24" width="20" height="20">
-          <path fill="currentColor" d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
-        </svg>
+        <span class="mask-icon" style="-webkit-mask-image: url('/icons/close.svg'); mask-image: url('/icons/close.svg'); width: 20px; height: 20px;"></span>
       </button>
     </div>
 
     <div class="search-wrap">
-      <svg viewBox="0 0 24 24" width="18" height="18" class="search-icon">
-        <path fill="currentColor" d="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/>
-      </svg>
+      <span class="mask-icon search-icon" style="-webkit-mask-image: url('/icons/search.svg'); mask-image: url('/icons/search.svg'); width: 18px; height: 18px;"></span>
       <input
         type="text"
         placeholder="Поиск по наборам"
@@ -77,9 +73,7 @@
       />
       {#if query}
         <button type="button" class="clear-btn" on:click={() => { query = ""; }}>
-          <svg viewBox="0 0 24 24" width="16" height="16">
-            <path fill="currentColor" d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
-          </svg>
+          <span class="mask-icon" style="-webkit-mask-image: url('/icons/close.svg'); mask-image: url('/icons/close.svg'); width: 16px; height: 16px;"></span>
         </button>
       {/if}
     </div>

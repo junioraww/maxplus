@@ -264,7 +264,7 @@
 {/if}
 
 {#if $Session.loaded}
-  {#key $page.url.pathname}
+  {#key $page?.url?.pathname || ''}
     <main in:fade={{ duration: 150 }} inert={isAnyModalActive}>
       <slot />
     </main>

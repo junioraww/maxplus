@@ -5,6 +5,7 @@
   export let userId;
   export let readTime;
   export let reaction = null;
+  export let compact = false;
 
   $: contactStore = userId ? getContact(userId) : null;
   $: contact = $contactStore;
@@ -20,30 +21,33 @@
     const now = new Date();
     const isToday = date.toDateString() === now.toDateString();
     if (isToday) {
-      return `сегодня в ${date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
+      return `сегодня в ${date.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit", hour12: false })}`;
     }
     const yesterday = new Date(now);
     yesterday.setDate(yesterday.getDate() - 1);
     if (date.toDateString() === yesterday.toDateString()) {
-      return `вчера в ${date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
+      return `вчера в ${date.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit", hour12: false })}`;
     }
-    return date.toLocaleString([], {
+    return date.toLocaleString("ru-RU", {
       day: "2-digit",
       month: "2-digit",
       year: "numeric",
       hour: "2-digit",
       minute: "2-digit",
+      hour12: false,
     });
   }
 </script>
 
-<div class="seen-by-item">
+<div class="seen-by-item" class:compact on:click>
   <div class="avatar-wrap">
-    <Avatar {userId} size={38} />
+    <Avatar {userId} size={compact ? 36 : 38} />
   </div>
   <div class="user-meta">
     <div class="user-name">{displayName}</div>
-    <div class="user-read-time">{formatTime(readTime)}</div>
+    {#if !compact}
+      <div class="user-read-time">{formatTime(readTime)}</div>
+    {/if}
   </div>
   {#if reaction}
     <div class="reaction-badge">{reaction}</div>
@@ -62,6 +66,18 @@
 
   .seen-by-item:hover {
     background: rgba(255, 255, 255, 0.05);
+  }
+
+  .seen-by-item.compact {
+    padding: 7px 10px;
+    border-radius: 10px;
+    cursor: pointer;
+  }
+
+  .seen-by-item.compact .user-name {
+    font-size: 15px;
+    font-weight: 500;
+    color: #ffffff;
   }
 
   .avatar-wrap {

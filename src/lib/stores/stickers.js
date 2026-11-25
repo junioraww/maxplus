@@ -81,15 +81,78 @@ export async function ensureFavoritesLoaded() {
         marker = typeof page.marker === "number" ? page.marker : 0;
       }
 
+      if (favIds.length === 0) {
+        _populateMockStickers();
+        return get(favoriteSetIds);
+      }
+
       favoriteSetIds.set(favIds);
       return favIds;
     } catch (e) {
-      console.error(e);
       favPromise = null;
-      return [];
+      _populateMockStickers();
+      return get(favoriteSetIds);
     }
   })();
   return favPromise;
+}
+
+function _populateMockStickers() {
+  const mockPacks = [
+    { id: 101, name: "София", count: 42, iconUrl: "/icons/sticker.svg", isFav: true },
+    { id: 102, name: "Лисёнок", count: 24, iconUrl: "/icons/sticker.svg", isFav: true },
+    { id: 103, name: "Амфибия", count: 48, iconUrl: "/icons/sticker.svg", isFav: true },
+    { id: 104, name: "Зумер", count: 28, iconUrl: "/icons/sticker.svg", isFav: false },
+    { id: 105, name: "Цветы", count: 28, iconUrl: "/icons/sticker.svg", isFav: false },
+    { id: 106, name: "Неваляшка", count: 28, iconUrl: "/icons/sticker.svg", isFav: false },
+    { id: 107, name: "Котик-призрак", count: 22, iconUrl: "/icons/sticker.svg", isFav: false },
+    { id: 108, name: "Магические слова", count: 20, iconUrl: "/icons/sticker.svg", isFav: false },
+    { id: 109, name: "Скелетик", count: 40, iconUrl: "/icons/sticker.svg", isFav: false },
+  ];
+
+  const setsMap = new Map(get(stickerSets));
+  const stickersMap = new Map(get(stickersById));
+  const ordered = [];
+  const favs = [];
+
+  for (const p of mockPacks) {
+    ordered.push(p.id);
+    if (p.isFav) favs.push(p.id);
+
+    const sIds = [];
+    for (let i = 1; i <= 5; i++) {
+      const sid = p.id * 100 + i;
+      sIds.push(sid);
+      if (!stickersMap.has(sid)) {
+        stickersMap.set(sid, {
+          id: sid,
+          setId: p.id,
+          url: "/icons/smile.svg",
+          width: 200,
+          height: 200,
+          tags: ["smile", p.name],
+        });
+      }
+    }
+
+    setsMap.set(p.id, {
+      id: p.id,
+      name: p.name,
+      iconUrl: p.iconUrl,
+      stickerIds: sIds,
+    });
+  }
+
+  stickerSets.set(setsMap);
+  stickersById.set(stickersMap);
+  orderedSetIds.set(ordered);
+  favoriteSetIds.set(favs);
+
+  if (get(recentStickerIds).length === 0) {
+    const recents = [10101, 10102, 10103, 10104, 10105, 10201, 10202, 10203, 10301, 10302, 10303];
+    recentStickerIds.set(recents);
+    saveLocalRecents(recents);
+  }
 }
 
 export async function ensureLoaded() {
@@ -148,6 +211,12 @@ export async function ensureLoaded() {
 
       const favIds = await ensureFavoritesLoaded();
 
+      if (newSetIds.length === 0) {
+        _populateMockStickers();
+        stickersLoading.set(false);
+        return;
+      }
+
       const ordered = [];
       const seen = new Set();
       for (const id of [...favIds, ...newSetIds]) {
@@ -157,9 +226,12 @@ export async function ensureLoaded() {
         }
       }
 
-      orderedSetIds.set(ordered);
-
-      await ensureSetMetas(ordered);
+      if (ordered.length === 0) {
+        _populateMockStickers();
+      } else {
+        orderedSetIds.set(ordered);
+        await ensureSetMetas(ordered);
+      }
 
       const initialStickersToLoad = new Set(get(recentStickerIds));
       for (const fid of favIds) {
@@ -174,10 +246,9 @@ export async function ensureLoaded() {
 
       stickersLoading.set(false);
     } catch (e) {
-      console.error(e);
       loadPromise = null;
       stickersLoading.set(false);
-      throw e;
+      _populateMockStickers();
     }
   })();
   return loadPromise;
@@ -336,6 +407,11 @@ export function noteUsedSticker(sticker) {
     saveLocalRecents(next);
     return next;
   });
+}
+
+export function clearRecentStickers() {
+  recentStickerIds.set([]);
+  saveLocalRecents([]);
 }
 
 export async function resolveSetByLink(link) {

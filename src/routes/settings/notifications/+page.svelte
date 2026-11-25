@@ -5,6 +5,7 @@
   import { slide } from "svelte/transition";
   import { flip } from "svelte/animate";
   import SettingsPageWrapper from "$components/settings/SettingsPageWrapper.svelte";
+  import Switch from "$components/common/Switch.svelte";
 
   import { get } from "svelte/store";
   import API, { currentUser, currentRealChats } from "$lib/stores/api";
@@ -54,7 +55,7 @@
     const date = new Date(Number(until));
     const now = new Date();
     const isToday = date.toDateString() === now.toDateString();
-    const timeStr = date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    const timeStr = date.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit", hour12: false });
     if (isToday) {
       return `До ${timeStr}`;
     }
@@ -122,9 +123,7 @@
           <span class="toggle-title">Все уведомления</span>
           <span class="toggle-desc">Оповещения о входящих сообщениях и вызовах</span>
         </div>
-        <div class="toggle-track" class:active={$clientNotificationsEnabled}>
-          <div class="toggle-thumb" class:active={$clientNotificationsEnabled}></div>
-        </div>
+        <Switch checked={$clientNotificationsEnabled} ariaLabel="Все уведомления" />
       </div>
     </div>
 
@@ -144,9 +143,7 @@
           <span class="toggle-title">Предпросмотр сообщений</span>
           <span class="toggle-desc">Показывать текст входящего сообщения</span>
         </div>
-        <div class="toggle-track" class:active={$messagePreviewEnabled && $clientNotificationsEnabled}>
-          <div class="toggle-thumb" class:active={$messagePreviewEnabled && $clientNotificationsEnabled}></div>
-        </div>
+        <Switch checked={$messagePreviewEnabled && $clientNotificationsEnabled} disabled={!$clientNotificationsEnabled} ariaLabel="Предпросмотр сообщений" />
       </div>
 
       <div class="card-divider"></div>
@@ -162,9 +159,7 @@
           <span class="toggle-title">Звук</span>
           <span class="toggle-desc">Звуковой сигнал при получении сообщения</span>
         </div>
-        <div class="toggle-track" class:active={$notificationSoundEnabled && $clientNotificationsEnabled}>
-          <div class="toggle-thumb" class:active={$notificationSoundEnabled && $clientNotificationsEnabled}></div>
-        </div>
+        <Switch checked={$notificationSoundEnabled && $clientNotificationsEnabled} disabled={!$clientNotificationsEnabled} ariaLabel="Звук" />
       </div>
     </div>
 
@@ -181,9 +176,7 @@
           <span class="toggle-title">Уведомления о звонках</span>
           <span class="toggle-desc">Оповещать о входящих аудио- и видеозвонках</span>
         </div>
-        <div class="toggle-track" class:active={$callNotificationsEnabled}>
-          <div class="toggle-thumb" class:active={$callNotificationsEnabled}></div>
-        </div>
+        <Switch checked={$callNotificationsEnabled} ariaLabel="Уведомления о звонках" />
       </div>
 
       <div class="card-divider"></div>
@@ -199,9 +192,7 @@
           <span class="toggle-title">Звук звонка</span>
           <span class="toggle-desc">Воспроизводить рингтон при входящем звонке</span>
         </div>
-        <div class="toggle-track" class:active={$callSoundEnabled && $callNotificationsEnabled}>
-          <div class="toggle-thumb" class:active={$callSoundEnabled && $callNotificationsEnabled}></div>
-        </div>
+        <Switch checked={$callSoundEnabled && $callNotificationsEnabled} disabled={!$callNotificationsEnabled} ariaLabel="Звук звонка" />
       </div>
 
       <div class="card-divider"></div>
@@ -217,9 +208,7 @@
           <span class="toggle-title">Вибрация при звонке</span>
           <span class="toggle-desc">Вибрировать при входящем звонке</span>
         </div>
-        <div class="toggle-track" class:active={$callVibrationEnabled && $callNotificationsEnabled}>
-          <div class="toggle-thumb" class:active={$callVibrationEnabled && $callNotificationsEnabled}></div>
-        </div>
+        <Switch checked={$callVibrationEnabled && $callNotificationsEnabled} disabled={!$callNotificationsEnabled} ariaLabel="Вибрация при звонке" />
       </div>
 
       <div class="card-divider"></div>
@@ -232,9 +221,7 @@
           <span class="toggle-title">Новые контакты</span>
           <span class="toggle-desc">Уведомлять, когда контакт присоединяется</span>
         </div>
-        <div class="toggle-track" class:active={$newContactsNotificationsEnabled}>
-          <div class="toggle-thumb" class:active={$newContactsNotificationsEnabled}></div>
-        </div>
+        <Switch checked={$newContactsNotificationsEnabled} ariaLabel="Новые контакты" />
       </div>
     </div>
 
@@ -395,36 +382,6 @@
   .toggle-desc {
     font-size: 0.82rem;
     color: #888;
-  }
-
-  .toggle-track {
-    width: 44px;
-    height: 24px;
-    background: #333;
-    border-radius: 12px;
-    position: relative;
-    transition: background 0.2s;
-    cursor: pointer;
-    flex-shrink: 0;
-  }
-
-  .toggle-track.active {
-    background: #6366f1;
-  }
-
-  .toggle-thumb {
-    width: 18px;
-    height: 18px;
-    background: #fff;
-    border-radius: 50%;
-    position: absolute;
-    top: 3px;
-    left: 3px;
-    transition: transform 0.2s;
-  }
-
-  .toggle-thumb.active {
-    transform: translateX(20px);
   }
 
   .section-header {

@@ -8,6 +8,7 @@
   import { getContact } from "$lib/stores/contacts";
   import Avatar from "$components/main/Avatar.svelte";
   import Signature from "$components/main/Signature.svelte";
+  import Switch from "$components/common/Switch.svelte";
   import { showAlert } from "$lib/utils/alert";
   import { showConfirm } from "$lib/stores/session";
   import { registerBackHandler } from "$lib/utils/backButton";
@@ -401,13 +402,11 @@
             <div class="member-info">
               <span class="member-title">{preset.label}</span>
             </div>
-            <div
-              class="switch"
-              class:active={filters.includes(preset.id)}
-              on:click|stopPropagation={() => toggleFolderFilter(preset.id)}
-            >
-              <div class="switch-thumb"></div>
-            </div>
+            <Switch
+              checked={filters.includes(preset.id)}
+              on:change={() => toggleFolderFilter(preset.id)}
+              ariaLabel={preset.label}
+            />
           </div>
         {/each}
       </div>
@@ -828,38 +827,6 @@
   .filter-icon-img {
     filter: brightness(0) invert(1);
     opacity: 0.85;
-  }
-
-  .switch {
-    width: 44px;
-    height: 26px;
-    border-radius: 13px;
-    background: rgba(255, 255, 255, 0.18);
-    position: relative;
-    cursor: pointer;
-    transition: background 0.2s cubic-bezier(0.2, 0.9, 0.3, 1);
-    flex-shrink: 0;
-  }
-
-  .switch.active {
-    background: var(--accent-primary, #248bfe);
-  }
-
-  .switch-thumb {
-    width: 20px;
-    height: 20px;
-    border-radius: 50%;
-    background: #ffffff;
-    position: absolute;
-    top: 3px;
-    left: 0;
-    transform: translateX(3px);
-    transition: transform 0.2s cubic-bezier(0.2, 0.9, 0.3, 1);
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
-  }
-
-  .switch.active .switch-thumb {
-    transform: translateX(21px);
   }
 
   .delete-folder-row {

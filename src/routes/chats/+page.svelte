@@ -281,76 +281,124 @@
     clearSelection();
   }
 
-  function chatMatchesFolder(chat, folder, myId, contactIds) {
-    if (folder.id === 0 || folder.title === "Все" || folder.id === "all.chat.folder") {
+  const FOLDER_FILTER = {
+    UNREAD: 0,
+    READ: 1,
+    CHANNEL: 2,
+    GROUP: 3,
+    DIALOG: 4,
+    MUTED: 7,
+    CONTACT: 8,
+    NON_CONTACT: 9,
+    BOT: 10,
+    UNMUTED: 11,
+    MARKED_UNREAD: 12,
+    ORG: 13,
+  };
+
+  function resolveDirectPeerId(chat, myUserId) {
+    if (!chat) return null;
+    const myStr = String(myUserId);
+    if (chat.participants && typeof chat.participants === "object") {
+      const other = Object.keys(chat.participants).find((p) => String(p) !== myStr);
+      if (other) return String(other);
+    }
+    if (chat.id != null && myUserId != null) {
+      try {
+        return (BigInt(chat.id) ^ BigInt(myUserId)).toString();
+      } catch {}
+    }
+    return null;
+  }
+
+  function inspectChatCategory(chat, myUserId, contactIdSet) {
+    const raw = String(chat?.type || "").toUpperCase();
+    if (raw === "CHANNEL") return "channel";
+    if (raw === "CHAT" || raw === "GROUP" || raw === "SUPERGROUP") return "group";
+
+    const isDirect = raw === "DIALOG" || raw === "PRIVATE";
+    if (!isDirect) return "other";
+
+    const peerStr = resolveDirectPeerId(chat, myUserId);
+    const isSavedSelf = peerStr !== null && peerStr === String(myUserId);
+
+    let botFlag = false;
+    if (peerStr) {
+      const contactData = get(getContact(peerStr));
+      const contactOpts = contactData?.options;
+      botFlag = Boolean(
+        Array.isArray(contactOpts) ? contactOpts.includes("BOT") : contactOpts?.BOT
+      );
+    }
+    if (!botFlag && chat?.options) {
+      const opts = chat.options;
+      botFlag = Boolean(
+        Array.isArray(opts) ? opts.includes("BOT") : (opts.BOT || opts.IS_BOT || opts.bot)
+      );
+    }
+    if (botFlag) return "bot";
+
+    if (peerStr && !isSavedSelf && contactIdSet.has(peerStr)) {
+      return "contact_dialog";
+    }
+    if (peerStr && !isSavedSelf) {
+      return "non_contact_dialog";
+    }
+    return "dialog";
+  }
+
+  function isChatInFolder(chat, folder, myUserId, contactIdSet) {
+    if (!folder || folder.id === 0 || folder.title === "Все" || folder.id === "all.chat.folder") {
       return true;
     }
 
-    const include = folder.include || folder.includedChats || [];
-    const isIncluded = include.includes(chat.id);
-    const filters = folder.filters || [];
+    const explicitIds = folder.include || folder.includedChats || [];
+    const isExplicitlyIncluded = explicitIds.some((id) => String(id) === String(chat?.id));
+    const activeFilters = folder.filters || [];
 
-    if (!isIncluded) {
-      if (!filters.length) return false;
+    if (!isExplicitlyIncluded) {
+      if (!activeFilters.length) return false;
 
-      const isDialog = chat.type === "DIALOG" || chat.type === "private";
-      let peerId = null;
-      if (isDialog) {
-        if (chat.participants && Object.keys(chat.participants).length > 0) {
-          const other = Object.keys(chat.participants).find(id => String(id) !== String(myId));
-          if (other) peerId = Number(other);
-        }
-        if (!peerId && chat.id && myId) {
-          try {
-            peerId = Number(BigInt(chat.id) ^ BigInt(myId));
-          } catch {}
-        }
-      }
+      const category = inspectChatCategory(chat, myUserId, contactIdSet);
+      const TYPE_FILTER_IDS = [
+        FOLDER_FILTER.CONTACT,
+        FOLDER_FILTER.NON_CONTACT,
+        FOLDER_FILTER.GROUP,
+        FOLDER_FILTER.CHANNEL,
+        FOLDER_FILTER.BOT,
+        FOLDER_FILTER.DIALOG,
+        FOLDER_FILTER.ORG,
+      ];
+      const activeTypeFilters = activeFilters.filter((f) => TYPE_FILTER_IDS.includes(f));
 
-      const cachedContact = peerId ? get(getContact(peerId)) : null;
-      const isBot =
-        Boolean(cachedContact?.options && (Array.isArray(cachedContact.options) ? cachedContact.options.includes("BOT") : cachedContact.options.BOT)) ||
-        chat?.options?.BOT === true ||
-        chat?.options?.IS_BOT === true ||
-        Boolean(Array.isArray(chat?.options) && chat.options.includes("BOT")) ||
-        chat?.options?.bot === true;
-
-      const isSelf = peerId != null && peerId === myId;
-      const isContact = isDialog && !isBot && !isSelf && peerId != null && contactIds.has(peerId);
-
-      const typeFilters = filters.filter((f) => [8, 9, 3, 2, 10, 4, 13].includes(f));
-      if (typeFilters.length > 0) {
-        const matchesType = typeFilters.some((f) => {
-          switch (f) {
-            case 8:
-              return isDialog && !isBot && isContact;
-            case 9:
-              return isDialog && !isBot && !isSelf && !isContact;
-            case 3:
-              return chat.type === "CHAT" || chat.type === "GROUP" || chat.type === "group" || chat.type === "supergroup";
-            case 2:
-              return chat.type === "CHANNEL" || chat.type === "channel";
-            case 10:
-              return isBot;
-            case 4:
-              return isDialog;
-            default:
-              return false;
+      if (activeTypeFilters.length > 0) {
+        const matchesCategory = activeTypeFilters.some((filterId) => {
+          if (filterId === FOLDER_FILTER.CONTACT) return category === "contact_dialog";
+          if (filterId === FOLDER_FILTER.NON_CONTACT) return category === "non_contact_dialog";
+          if (filterId === FOLDER_FILTER.GROUP) return category === "group";
+          if (filterId === FOLDER_FILTER.CHANNEL) return category === "channel";
+          if (filterId === FOLDER_FILTER.BOT) return category === "bot";
+          if (filterId === FOLDER_FILTER.DIALOG) {
+            return category === "dialog" || category === "contact_dialog" || category === "non_contact_dialog";
           }
+          return false;
         });
-        if (!matchesType) return false;
+        if (!matchesCategory) return false;
       }
     }
 
-    if (filters.includes(0) && !(chat.newMessages > 0 || chat.unread || chat.markedUnread)) return false;
-    if (filters.includes(1) && (chat.newMessages > 0 || chat.unread || chat.markedUnread)) return false;
-    if (filters.includes(7) && !isChatMuted(chat)) return false;
-    if (filters.includes(11) && isChatMuted(chat)) return false;
+    const hasUnread = Boolean((chat.newMessages || 0) > 0 || chat.unread || chat.markedUnread);
+    if (activeFilters.includes(FOLDER_FILTER.UNREAD) && !hasUnread) return false;
+    if (activeFilters.includes(FOLDER_FILTER.READ) && hasUnread) return false;
+
+    const muted = isChatMuted(chat);
+    if (activeFilters.includes(FOLDER_FILTER.MUTED) && !muted) return false;
+    if (activeFilters.includes(FOLDER_FILTER.UNMUTED) && muted) return false;
 
     return true;
   }
 
-  $: contactIdSet = new Set($currentRealContacts || []);
+  $: contactIdSet = new Set(($currentRealContacts || []).map(String));
 
   $: chatsByFolderId = (() => {
     if (!$currentRealChats || !localFolders.length) return new Map();
@@ -363,7 +411,7 @@
     for (let f = 0; f < localFolders.length; f++) {
       const folder = localFolders[f];
       const filtered = chats.filter((chat) =>
-        chatMatchesFolder(chat, folder, $currentUser, contactIdSet)
+        isChatInFolder(chat, folder, $currentUser, contactIdSet)
       );
       const folderFavs = (folder.favorites || []).map(Number);
       const isAllFolder = isAllChatsFolder(folder);

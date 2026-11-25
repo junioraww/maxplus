@@ -2,10 +2,6 @@
 
 #[cfg(target_os = "linux")]
 fn setup_linux_environment() {
-    if std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none() {
-        std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
-    }
-
     let has_plugins = |path: &std::path::Path| -> bool {
         if !path.is_dir() {
             return false;

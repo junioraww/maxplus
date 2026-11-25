@@ -120,9 +120,9 @@
     bottom: calc(100% + 14px);
     left: 50%;
     transform: translateX(-50%);
-    width: 200px;
-    height: 200px;
-    z-index: 50;
+    width: 220px;
+    height: 220px;
+    z-index: var(--z-floating, 5);
     pointer-events: none;
   }
 
@@ -159,11 +159,11 @@
   }
 
   .video-recorder-circle {
-    width: 200px;
-    height: 200px;
+    width: 220px;
+    height: 220px;
     border-radius: 50%;
     object-fit: cover;
-    border: 3px solid #248bfe;
+    border: 4px solid var(--accent-primary, #248bfe);
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
     background: #000;
   }

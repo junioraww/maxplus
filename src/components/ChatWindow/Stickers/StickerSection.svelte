@@ -186,9 +186,7 @@
             on:click={handleToggleFavorite}
             title="Удалить из моих"
           >
-            <svg viewBox="0 0 24 24" width="16" height="16">
-              <path fill="currentColor" d="M19 13H5v-2h14v2z"/>
-            </svg>
+            <span class="mask-icon" style="-webkit-mask-image: url('/icons/minus.svg'); mask-image: url('/icons/minus.svg'); width: 16px; height: 16px;"></span>
             <span class="action-text">Удалить</span>
           </button>
         {:else}
@@ -199,9 +197,7 @@
             on:click={handleToggleFavorite}
             title="Добавить в мои стикеры"
           >
-            <svg viewBox="0 0 24 24" width="16" height="16">
-              <path fill="currentColor" d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/>
-            </svg>
+            <span class="mask-icon" style="-webkit-mask-image: url('/icons/plus.svg'); mask-image: url('/icons/plus.svg'); width: 16px; height: 16px;"></span>
             <span class="action-text">Добавить</span>
           </button>
         {/if}

@@ -1486,9 +1486,12 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: calc(var(--safe-top, 0px) + 18px) 20px 15px 20px;
+    height: calc(64px + var(--safe-top, 0px));
+    padding: var(--safe-top, 0px) 16px 0;
+    box-sizing: border-box;
+    background: rgba(0, 0, 0, 0.84);
     color: white;
-    z-index: 10;
+    z-index: var(--z-header, 4);
     transition: opacity 200ms ease;
     gap: 16px;
   }

@@ -14,6 +14,7 @@
   import { getCurrentAccount, setAccountMeta } from "$lib/stores/accounts";
   import { activeThemeId } from "$lib/stores/theme";
   import { registerBackHandler } from "$lib/utils/backButton";
+  import Switch from "$components/common/Switch.svelte";
   import API from "$lib/stores/api";
 
   let glow = false;
@@ -268,9 +269,7 @@
             <span class="telemetry-badge" class:enabled={telemetryMode !== "disabled"}>
               {telemetryMode === "disabled" ? "Отключена" : telemetryMode === "fake" ? "Фейковая" : "Включена"}
             </span>
-            <div class="toggle-track" class:active={telemetryMode !== "disabled"}>
-              <div class="toggle-thumb" class:active={telemetryMode !== "disabled"}></div>
-            </div>
+            <Switch checked={telemetryMode !== "disabled"} ariaLabel="Телеметрия" />
           </div>
         </div>
       </div>
@@ -500,36 +499,6 @@
     color: #34c759;
   }
 
-  .toggle-track {
-    width: 44px;
-    height: 24px;
-    background: #e5e5ea;
-    border-radius: 12px;
-    position: relative;
-    transition: background-color 0.2s ease;
-    flex-shrink: 0;
-  }
-
-  .toggle-track.active {
-    background: #007aff;
-  }
-
-  .toggle-thumb {
-    width: 20px;
-    height: 20px;
-    background: white;
-    border-radius: 50%;
-    position: absolute;
-    top: 2px;
-    left: 2px;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
-    transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-  }
-
-  .toggle-thumb.active {
-    transform: translateX(20px);
-  }
-
   .overlay.dark-theme .modal {
     background: #17181c;
     color: #ffffff;
@@ -583,13 +552,5 @@
 
   .overlay.dark-theme .value {
     color: #ffffff;
-  }
-
-  .overlay.dark-theme .toggle-track {
-    background: #3a3a3c;
-  }
-
-  .overlay.dark-theme .toggle-track.active {
-    background: #248bfe;
   }
 </style>

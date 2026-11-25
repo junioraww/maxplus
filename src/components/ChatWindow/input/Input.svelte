@@ -40,7 +40,10 @@
   import SelectedAttaches from "$components/ChatWindow/input/SelectedAttaches.svelte";
   import EditingBanner from "$components/ChatWindow/input/EditingBanner.svelte";
   import AttachesMenu from "$components/ChatWindow/input/AttachesMenu.svelte";
-  import PollCreateModal from "$components/ChatWindow/PollCreateModal.svelte";
+  import PollCreateScreen from "$components/ChatWindow/PollCreateScreen.svelte";
+  import LocationPickerScreen from "$components/ChatWindow/LocationPickerScreen.svelte";
+  import ContactPickerScreen from "$components/ChatWindow/ContactPickerScreen.svelte";
+  import { openScreen } from "$lib/services/layerManager";
   import VoiceReviewPanel from "$components/ChatWindow/input/VoiceReviewPanel.svelte";
   import VideoNoteReviewPanel from "$components/ChatWindow/input/VideoNoteReviewPanel.svelte";
   import VideoRecorderPreview from "$components/ChatWindow/input/VideoRecorderPreview.svelte";
@@ -577,7 +580,7 @@
 
     if (
       attachesDropout &&
-      !e.target.closest(".attaches-dropout") &&
+      !e.target.closest(".attaches-bottom-sheet, .attaches-dropout, .attaches-sheet-backdrop, .portal-sheet-wrapper, .portal-layer-sheet-container") &&
       !e.target.closest(".attach-toggle-btn")
     ) {
       attachesDropout = null;
@@ -846,7 +849,8 @@
 
     let mediaDescriptor = null;
     for (const attach of attaches) {
-      if ((attach._type || attach.type) === "POLL") {
+      const aType = attach._type || attach.type;
+      if (aType === "POLL" || aType === "LOCATION" || aType === "CONTACT") {
         _attaches.push(attach);
         continue;
       }
@@ -934,7 +938,7 @@
   function autoResize() {
     if (!textareaEl) return;
     textareaEl.style.height = "auto";
-    textareaEl.style.height = Math.min(textareaEl.scrollHeight, 120) + "px";
+    textareaEl.style.height = Math.min(textareaEl.scrollHeight, 160) + "px";
   }
 
   let unregisterStickerBack = null;
@@ -1054,6 +1058,21 @@
       }
       autoResize();
     }
+  }
+
+  function handleBackspaceEmoji() {
+    if (!newMessage) return;
+    if (typeof Intl !== "undefined" && Intl.Segmenter) {
+      const segmenter = new Intl.Segmenter(undefined, { granularity: "grapheme" });
+      const segments = Array.from(segmenter.segment(newMessage));
+      if (segments.length > 0) {
+        newMessage = segments.slice(0, -1).map((s) => s.segment).join("");
+      }
+    } else {
+      newMessage = newMessage.slice(0, -1);
+    }
+    formatRevision++;
+    tick().then(() => autoResize());
   }
 
   let hiddenVoiceInputEl;
@@ -1268,11 +1287,71 @@
     }
   }
 
+  function handleAttachesSelect(detail) {
+    attachesDropout = null;
+    if (detail?.path) {
+      attaches = [
+        ...attaches,
+        {
+          path: detail.path,
+          type: detail.type || (detail.is_video ? "VIDEO" : "PHOTO"),
+          mime: detail.mime || (detail.is_video ? "video/mp4" : "image/jpeg"),
+          name: detail.name,
+          size: detail.size,
+        },
+      ];
+      return;
+    }
+    selectFile(detail?.type || detail);
+  }
+
   async function selectFile(type) {
     attachesDropout = null;
 
     if (type === "POLL") {
-      showPollModal = true;
+      openScreen(PollCreateScreen, {
+        onCreate: (detail) => handleCreatePoll({ detail }),
+      });
+      return;
+    }
+
+    if (type === "LOCATION") {
+      openScreen(LocationPickerScreen, {
+        onSelect: (loc) => {
+          attaches = [
+            ...attaches,
+            {
+              _type: "LOCATION",
+              type: "LOCATION",
+              latitude: loc.latitude,
+              longitude: loc.longitude,
+              zoom: loc.zoom || 15,
+              address: loc.address,
+              livePeriod: loc.livePeriod || 0,
+            },
+          ];
+        },
+      });
+      return;
+    }
+
+    if (type === "CONTACT") {
+      openScreen(ContactPickerScreen, {
+        onSelect: (contact) => {
+          const vcf = `BEGIN:VCARD\nVERSION:3.0\nFN:${contact.name || "Контакт"}\nTEL;TYPE=CELL:${contact.phone || ""}\nEND:VCARD`;
+          attaches = [
+            ...attaches,
+            {
+              _type: "CONTACT",
+              type: "CONTACT",
+              contactId: contact.contactId ? Number(contact.contactId) : undefined,
+              name: contact.name,
+              phone: contact.phone,
+              vcfBody: vcf,
+            },
+          ];
+        },
+      });
       return;
     }
 
@@ -1301,12 +1380,14 @@
 
   async function handleCreatePoll(event) {
     showPollModal = false;
-    const { title, options, settings } = event.detail;
+    const { title, options, settings, description, cover } = event.detail;
 
     const pollAttach = {
       _type: "POLL",
       title,
       settings,
+      description: description || undefined,
+      cover: cover || undefined,
       answers: options.map((text) => ({ text })),
     };
 
@@ -1793,17 +1874,16 @@
   on:preview={(e) => dispatch("previewMedia", { attach: e.detail.attach, attaches, originEl: e.detail.originEl })}
 />
 
-{#if $forwardDraft && $forwardDraft.messages?.length > 0}
-  <ForwardPreview />
-{/if}
-
-<EditingBanner {editingMessage} on:cancel={cancelEdit} />
-
-{#if replyTo}
-  <Reply {chat} {messages} bind:replyTo />
-{/if}
-
 <div class="input-area">
+  {#if $forwardDraft && $forwardDraft.messages?.length > 0}
+    <ForwardPreview />
+  {/if}
+
+  <EditingBanner {editingMessage} on:cancel={cancelEdit} />
+
+  {#if replyTo}
+    <Reply {chat} {messages} bind:replyTo />
+  {/if}
   {#if stickerSuggestions.length > 0 && newMessage.trim().length > 0}
     <StickerSuggestionsDropout
       suggestions={stickerSuggestions}
@@ -1865,29 +1945,27 @@
           on:sendLocked={stopAndSendRecording}
         />
       {:else}
+        <button
+          class="button emoji-btn"
+          class:active={showStickerPanel}
+          type="button"
+          title={showStickerPanel ? "Клавиатура" : "Эмодзи и стикеры"}
+          on:click={toggleStickerPanel}
+        >
+          {#if showStickerPanel}
+            <span class="mask-icon" style="-webkit-mask-image: url('/icons/keyboard.svg'); mask-image: url('/icons/keyboard.svg'); width: 22px; height: 22px;"></span>
+          {:else}
+            <span class="mask-icon" style="-webkit-mask-image: url('/icons/sticker.svg'); mask-image: url('/icons/sticker.svg'); width: 22px; height: 22px;"></span>
+          {/if}
+        </button>
+
         {#each $pluginInputLeft as item (item.id)}
           <div class="plugin-mount-inline plugin-input-left" data-plugin-mount={item.pluginId || item.id}>
             {@html item.html}
           </div>
         {/each}
-        <button
-          class="button attach-toggle-btn"
-          class:active={!!attachesDropout}
-          type="button"
-          on:click|stopPropagation={toggleAttachesDropout}
-          title="Прикрепить"
-        >
-          <svg viewBox="0 0 24 24" width="22" height="22">
-            <path fill="currentColor" d="M16.5 6v11.5c0 2.21-1.79 4-4 4s-4-1.79-4-4V5a2.5 2.5 0 0 1 5 0v10.5c0 .83-.67 1.5-1.5 1.5s-1.5-.67-1.5-1.5V6H9v9.5a3 3 0 0 0 6 0V5c0-2.21-1.79-4-4-4S7 2.79 7 5v12.5c0 3.04 2.46 5.5 5.5 5.5s5.5-2.46 5.5-5.5V6h-1.5z"/>
-          </svg>
-        </button>
-
-        {#if attachesDropout}
-          <AttachesMenu on:select={(e) => selectFile(e.detail.type)} on:close={() => (attachesDropout = null)} />
-        {/if}
 
         <div class="input-container" class:focused={false}>
-
           <div class="textarea-wrapper">
             {#if hasFormatting}
               <div class="input-backdrop" bind:this={backdropEl} aria-hidden="true">
@@ -2002,44 +2080,33 @@
               }}
             ></textarea>
           </div>
-
-          {#if botCommands.length > 0}
-            <button
-              class="bot-cmd-btn"
-              class:active={isMenuVisible}
-              type="button"
-              title="Команды бота"
-              on:click={() => (showCommandsMenu = !showCommandsMenu)}
-            >
-              <span class="slash-icon">/</span>
-            </button>
-          {/if}
-
-          <button
-            class="emoji-btn"
-            class:active={showStickerPanel}
-            type="button"
-            title={showStickerPanel ? "Клавиатура" : "Эмодзи и стикеры"}
-            on:click={toggleStickerPanel}
-          >
-            {#if showStickerPanel}
-              <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <rect x="2" y="4" width="20" height="16" rx="2" />
-                <line x1="6" y1="8" x2="6.01" y2="8" />
-                <line x1="10" y1="8" x2="10.01" y2="8" />
-                <line x1="14" y1="8" x2="14.01" y2="8" />
-                <line x1="18" y1="8" x2="18.01" y2="8" />
-                <line x1="6" y1="12" x2="6.01" y2="12" />
-                <line x1="10" y1="12" x2="10.01" y2="12" />
-                <line x1="14" y1="12" x2="14.01" y2="12" />
-                <line x1="18" y1="12" x2="18.01" y2="12" />
-                <line x1="7" y1="16" x2="17" y2="16" />
-              </svg>
-            {:else}
-              <img src="icons/smile.svg" alt="smile" />
-            {/if}
-          </button>
         </div>
+
+        {#if botCommands.length > 0}
+          <button
+            class="button bot-cmd-btn"
+            class:active={isMenuVisible}
+            type="button"
+            title="Команды бота"
+            on:click={() => (showCommandsMenu = !showCommandsMenu)}
+          >
+            <span class="slash-icon">/</span>
+          </button>
+        {/if}
+
+        <button
+          class="button attach-toggle-btn"
+          class:active={!!attachesDropout}
+          type="button"
+          on:click|stopPropagation={toggleAttachesDropout}
+          title="Прикрепить"
+        >
+          <span class="mask-icon" style="-webkit-mask-image: url('/icons/attachment.svg'); mask-image: url('/icons/attachment.svg'); width: 22px; height: 22px;"></span>
+        </button>
+
+        {#if attachesDropout}
+          <AttachesMenu on:select={(e) => handleAttachesSelect(e.detail)} on:close={() => (attachesDropout = null)} />
+        {/if}
 
         {#each $pluginInputRight as item (item.id)}
           <div class="plugin-mount-inline plugin-input-right" data-plugin-mount={item.pluginId || item.id}>
@@ -2054,28 +2121,35 @@
 
         {#if newMessage.length || attaches.length || ($forwardDraft && $forwardDraft.messages?.length > 0)}
           <button class="button send-button" class:disabled-cooldown={isLockedOut} disabled={isLockedOut} type="button" on:click={onSend} title="Отправить">
-            <span class="send-icon" aria-hidden="true"></span>
+            <span class="mask-icon" style="-webkit-mask-image: url('/icons/send.svg'); mask-image: url('/icons/send.svg'); width: 20px; height: 20px;"></span>
           </button>
         {:else}
           <button
-            class="button voice-button"
-            class:video-mode={recordMode === 'video'}
+            class="button camera-button"
             class:disabled-cooldown={isLockedOut}
             disabled={isLockedOut}
             type="button"
-            title={recordMode === 'voice' ? 'Зажмите для записи, нажмите для переключения на видео' : 'Зажмите для записи, нажмите для переключения на голос'}
-            on:pointerdown={handleRecordPointerDown}
+            title="Видеосообщение"
+            on:pointerdown={(e) => {
+              recordMode = 'video';
+              handleRecordPointerDown(e);
+            }}
           >
-            {#if recordMode === 'voice'}
-              <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
-                <path d="M15.5 5.5C15.5 3.567 13.933 2 12 2C10.067 2 8.5 3.567 8.5 5.5V12C8.5 13.933 10.067 15.5 12 15.5C13.933 15.5 15.5 13.933 15.5 12V5.5Z"/>
-                <path d="M4.5 11.5C4.5 15.642 7.858 19 12 19M12 19C16.142 19 19.5 15.642 19.5 11.5M12 19V22"/>
-              </svg>
-            {:else}
-              <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor">
-                <path d="M17 10.5V7c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.55 0 1-.45 1-1v-3.5l4 4v-11l-4 4z"/>
-              </svg>
-            {/if}
+            <span class="mask-icon" style="-webkit-mask-image: url('/icons/camera.svg'); mask-image: url('/icons/camera.svg'); width: 22px; height: 22px;"></span>
+          </button>
+
+          <button
+            class="button voice-button"
+            class:disabled-cooldown={isLockedOut}
+            disabled={isLockedOut}
+            type="button"
+            title="Голосовое сообщение"
+            on:pointerdown={(e) => {
+              recordMode = 'voice';
+              handleRecordPointerDown(e);
+            }}
+          >
+            <span class="mask-icon" style="-webkit-mask-image: url('/icons/mic.svg'); mask-image: url('/icons/mic.svg'); width: 22px; height: 22px;"></span>
           </button>
         {/if}
       {/if}
@@ -2089,6 +2163,7 @@
         showStickerPanel = false;
       }}
       on:insertEmoji={handleInsertEmoji}
+      on:backspace={handleBackspaceEmoji}
     />
   {:else}
     <div
@@ -2124,12 +2199,6 @@
     />
   {/if}
 
-  {#if showPollModal}
-    <PollCreateModal
-      on:create={handleCreatePoll}
-      on:close={() => (showPollModal = false)}
-    />
-  {/if}
 
   <input
     bind:this={hiddenVoiceInputEl}
@@ -2152,9 +2221,9 @@
     position: relative;
     padding: 0;
     flex-shrink: 0;
-    background: var(--bg-app);
-    border-top: 1px solid var(--border-card);
-    z-index: 10;
+    background: var(--bg-topbar, #212126);
+    border-top: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.04));
+    z-index: var(--z-header, 4);
     width: 100%;
     max-width: 100%;
     min-width: 0;
@@ -2163,10 +2232,9 @@
 
   .input-controls {
     display: flex;
-    align-items: center;
-    gap: 8px;
+    align-items: flex-end;
     position: relative;
-    padding: 8px 12px calc(10px + var(--safe-bottom, 0px));
+    padding: 6px 8px calc(6px + var(--safe-bottom, 0px)) 8px;
     width: 100%;
     max-width: 100%;
     min-width: 0;
@@ -2175,23 +2243,19 @@
   }
 
   .input-controls.keyboard-open {
-    padding-bottom: 10px;
+    padding-bottom: 6px;
   }
 
   .input-container {
     display: flex;
     align-items: flex-end;
-    background-color: var(--bg-surface);
-    border-radius: 18px;
+    background: transparent;
     flex-grow: 1;
-    min-height: 48px;
+    min-width: 0;
+    min-height: 36px;
     box-sizing: border-box;
     border: none;
-    transition: background-color 0.15s ease;
-  }
-
-  .input-container:focus-within {
-    background-color: #23262d;
+    margin: 0 4px;
   }
 
   .textarea-wrapper {
@@ -2208,9 +2272,9 @@
     left: 0;
     right: 0;
     bottom: 0;
-    padding: 11px 14px;
-    font-size: 15px;
-    line-height: 22px;
+    padding: 8px 4px;
+    font-size: 16px;
+    line-height: 20px;
     font-family: inherit;
     letter-spacing: normal;
     white-space: pre-wrap;
@@ -2220,7 +2284,7 @@
     overflow-y: hidden;
     overflow-x: hidden;
     pointer-events: none;
-    color: var(--text-secondary);
+    color: var(--text-primary, #ffffff);
     user-select: none;
     box-sizing: border-box;
   }
@@ -2270,7 +2334,7 @@
 
   .backdrop-trailing-break {
     display: inline;
-    line-height: 22px;
+    line-height: 20px;
   }
 
   textarea {
@@ -2278,28 +2342,29 @@
     box-sizing: border-box;
     flex-grow: 1;
     background-color: transparent;
-    color: var(--text-secondary);
+    color: var(--text-primary, #ffffff);
     border: none;
     resize: none;
     overflow-y: auto;
-    min-height: 44px;
-    max-height: 120px;
-    font-size: 15px;
-    line-height: 22px;
+    min-height: 36px;
+    max-height: 160px;
+    font-size: 16px;
+    line-height: 20px;
     letter-spacing: normal;
     white-space: pre-wrap;
     word-break: break-word;
     overflow-wrap: break-word;
     tab-size: 4;
-    padding: 11px 14px;
+    padding: 8px 4px;
     outline: none;
     font-family: inherit;
     width: 0;
+    caret-color: var(--accent-primary, #248bfe);
   }
 
   textarea.has-formatting {
     color: transparent !important;
-    caret-color: var(--text-color, #ffffff) !important;
+    caret-color: var(--text-primary, #ffffff) !important;
   }
 
   textarea.has-formatting::selection {
@@ -2308,7 +2373,8 @@
   }
 
   textarea::placeholder {
-    color: var(--text-subtle);
+    color: var(--text-muted, #8e8e93);
+    opacity: 0.5;
   }
 
   .plugin-mount-inline {
@@ -2320,8 +2386,8 @@
 
   .button {
     border: none;
-    width: 44px;
-    height: 44px;
+    width: 36px;
+    height: 36px;
     border-radius: 50%;
     flex-shrink: 0;
     display: flex;
@@ -2329,106 +2395,107 @@
     justify-content: center;
     cursor: pointer;
     background: transparent;
-    color: var(--text-muted);
-    transition: all 0.18s ease;
+    color: var(--text-muted, #8e8e93);
+    transition: all 0.18s var(--motion-curve, cubic-bezier(0.25, 0.1, 0.25, 1.0));
+    padding: 0;
   }
 
   .button:hover {
-    color: #fff;
-    background: rgba(255, 255, 255, 0.06);
+    color: var(--text-primary, #ffffff);
+    background: rgba(255, 255, 255, 0.08);
   }
 
   .button:active {
     transform: scale(0.92);
   }
 
-  .attach-toggle-btn.active {
-    color: var(--accent-primary);
-    background: var(--accent-subtle);
-  }
-
-  .send-button {
-    color: var(--accent-primary);
-    background: var(--accent-subtle);
-  }
-
-  .send-icon {
-    width: 22px;
-    height: 22px;
-    background-color: currentColor;
-    -webkit-mask: url("/icons/send.svg") no-repeat center / contain;
-    mask: url("/icons/send.svg") no-repeat center / contain;
-    display: inline-block;
-  }
-
-  .send-button:hover {
-    color: #fff;
-    background: var(--accent-primary);
-  }
-
   .emoji-btn {
-    background: none;
-    border: none;
-    cursor: pointer;
-    width: 38px;
-    height: 38px;
-    margin-right: 5px;
-    margin-bottom: 5px;
+    width: 28px;
+    height: 28px;
+    margin: 0 4px 4px 4px;
+    color: var(--text-muted, #8e8e93);
+    opacity: 0.85;
+    border-radius: 50%;
     display: flex;
     align-items: center;
     justify-content: center;
-    opacity: 0.65;
-    border-radius: 50%;
-    transition: all 0.18s ease;
     flex-shrink: 0;
-  }
-
-  .emoji-btn img {
-    width: 22px;
-    height: 22px;
   }
 
   .emoji-btn:hover {
     opacity: 1;
+    color: var(--text-primary, #ffffff);
     background: rgba(255, 255, 255, 0.08);
   }
 
   .emoji-btn.active {
     opacity: 1;
-    background: var(--accent-subtle-hover);
-    filter: brightness(1.2);
+    color: var(--accent-primary, #248bfe);
+    background: var(--accent-subtle, rgba(36, 139, 254, 0.12));
+  }
+
+  .attach-toggle-btn {
+    width: 36px;
+    height: 36px;
+    padding: 4px;
+    margin-left: 4px;
+    color: var(--text-muted, #8e8e93);
+  }
+
+  .attach-toggle-btn.active {
+    color: var(--accent-primary, #248bfe);
+    background: var(--accent-subtle, rgba(36, 139, 254, 0.12));
+  }
+
+  .send-button {
+    width: 36px;
+    height: 36px;
+    color: #ffffff;
+    background: var(--accent-primary, #248bfe);
+    margin-left: 8px;
+    box-shadow: 0 2px 6px rgba(36, 139, 254, 0.35);
+  }
+
+  .send-button:hover {
+    color: #ffffff;
+    background: var(--accent-primary-hover, #1b74d9);
+  }
+
+  .camera-button,
+  .voice-button {
+    width: 36px;
+    height: 36px;
+    margin-left: 4px;
+    color: var(--text-muted, #8e8e93);
+  }
+
+  .camera-button:hover,
+  .voice-button:hover {
+    color: var(--accent-primary, #248bfe);
+    background: var(--accent-subtle, rgba(36, 139, 254, 0.12));
   }
 
   .bot-cmd-btn {
-    background: none;
-    border: none;
-    cursor: pointer;
-    padding: 0;
-    width: 38px;
-    height: 38px;
-    margin-right: 2px;
-    margin-bottom: 5px;
+    width: 28px;
+    height: 28px;
+    margin: 0 2px 4px 2px;
     display: flex;
     align-items: center;
     justify-content: center;
-    opacity: 0.65;
-    color: var(--text-secondary);
+    color: var(--text-muted, #8e8e93);
     border-radius: 50%;
     flex-shrink: 0;
     transition: all 0.18s ease;
   }
 
   .bot-cmd-btn:hover {
-    opacity: 1;
-    color: #fff;
+    color: var(--text-primary, #ffffff);
     background: rgba(255, 255, 255, 0.08);
   }
 
   .bot-cmd-btn.active {
-    opacity: 1;
-    color: var(--accent-primary);
-    background: var(--accent-subtle-hover);
-    filter: brightness(1.2);
+    color: var(--accent-primary, #248bfe);
+    background: var(--accent-subtle, rgba(36, 139, 254, 0.12));
   }
 
   .slash-icon {

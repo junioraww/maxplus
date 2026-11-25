@@ -92,6 +92,7 @@ delegate_cmd!(fetch_join_requests(chat_id: i64) => get_join_requests(chat_id));
 delegate_cmd!(confirm_join_requests(chat_id: i64, user_ids: Vec<i64>, show_history: Option<bool>) => confirm_join_requests(chat_id, user_ids, show_history));
 delegate_cmd!(decline_join_requests(chat_id: i64, user_ids: Vec<i64>) => decline_join_requests(chat_id, user_ids));
 delegate_cmd!(begin_call(callee_id: u64, is_video: bool, conversation_id: String, internal_params: String) => start_outgoing_call(callee_id, is_video, conversation_id, internal_params));
+delegate_cmd!(begin_group_call(chat_id: i64, is_video: bool, conversation_id: String, internal_params: String) => start_group_call(chat_id, is_video, conversation_id, internal_params));
 delegate_cmd!(open_conference(conversation_id: String) => open_conference(conversation_id));
 delegate_cmd!(enter_call_by_link(join_link: String, is_video: bool, internal_params: String) => enter_by_link(join_link, is_video, internal_params));
 delegate_cmd!(make_call_invite_link(conversation_id: String) => make_invite_link(conversation_id));

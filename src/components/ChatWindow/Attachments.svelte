@@ -624,19 +624,57 @@
   <PollBubble {attach} {messageId} {chatId} />
 {/each}
 
-{#each attaches.filter(a =>
-  a._type !== "PHOTO" &&
-  a._type !== "VIDEO" &&
-  a._type !== "AUDIO" &&
-  a._type !== "FILE" &&
-  a._type !== "STICKER" &&
-  a._type !== "CONTROL" &&
-  a._type !== "INLINE_KEYBOARD" &&
-  a._type !== "REPLY" &&
-  a._type !== "FORWARD" &&
-  a._type !== "CALL" &&
-  a._type !== "POLL") as attach}
-  <div class="unsupported-attach">{attach._type} не поддерживается</div>
+{#each attaches.filter(a => (a._type || a.type) === "LOCATION") as attach}
+  <div class="location-bubble-attach" on:click={() => {
+    const lat = attach.latitude || attach.lat || 0;
+    const lng = attach.longitude || attach.lng || 0;
+    window.open(`https://www.openstreetmap.org/?mlat=${lat}&mlon=${lng}#map=16/${lat}/${lng}`, '_blank');
+  }}>
+    <div class="location-bubble-icon" class:live={Boolean(attach.livePeriod)}>
+      <span class="mask-icon" style="-webkit-mask-image: url('/icons/location.svg'); mask-image: url('/icons/location.svg'); width: 24px; height: 24px; background-color: #248bfe; display: inline-block;"></span>
+    </div>
+    <div class="location-bubble-info">
+      <div class="location-bubble-title">
+        {attach.livePeriod ? "Трансляция геопозиции" : "Геопозиция"}
+      </div>
+      <div class="location-bubble-coords">
+        {attach.address || `${attach.latitude?.toFixed?.(6) ?? attach.latitude}, ${attach.longitude?.toFixed?.(6) ?? attach.longitude}`}
+      </div>
+    </div>
+  </div>
+{/each}
+
+{#each attaches.filter(a => (a._type || a.type) === "CONTACT") as attach}
+  <div class="contact-bubble-attach">
+    <div class="contact-bubble-icon">
+      <span class="mask-icon" style="-webkit-mask-image: url('/icons/user.svg'); mask-image: url('/icons/user.svg'); width: 24px; height: 24px; background-color: #248bfe; display: inline-block;"></span>
+    </div>
+    <div class="contact-bubble-info">
+      <div class="contact-bubble-name">{attach.name || "Контакт"}</div>
+      {#if attach.phone}
+        <div class="contact-bubble-phone">{attach.phone}</div>
+      {/if}
+    </div>
+  </div>
+{/each}
+
+{#each attaches.filter(a => {
+  const t = a._type || a.type;
+  return t !== "PHOTO" &&
+    t !== "VIDEO" &&
+    t !== "AUDIO" &&
+    t !== "FILE" &&
+    t !== "STICKER" &&
+    t !== "CONTROL" &&
+    t !== "INLINE_KEYBOARD" &&
+    t !== "REPLY" &&
+    t !== "FORWARD" &&
+    t !== "CALL" &&
+    t !== "POLL" &&
+    t !== "LOCATION" &&
+    t !== "CONTACT";
+}) as attach}
+  <div class="unsupported-attach">{attach._type || attach.type} не поддерживается</div>
 {/each}
 
 <style>
@@ -655,6 +693,11 @@
     cursor: pointer;
     position: relative;
     overflow: hidden;
+    min-width: 0;
+    min-height: 0;
+    width: 100%;
+    height: 100%;
+    box-sizing: border-box;
     background: linear-gradient(
       90deg,
       rgba(255, 255, 255, 0.04) 0%,
@@ -745,12 +788,16 @@
     display: flex;
     align-items: center;
     gap: 10px;
-    padding: 8px;
-    border-radius: 10px;
+    padding: 8px 12px;
+    border-radius: var(--msg-system-radius, 12px);
     cursor: pointer;
-    background-color: #0002;
-    margin-right: 10px;
+    background: var(--msg-quote-bg, rgba(255, 255, 255, 0.07));
     margin-top: 4px;
+    transition: background 0.15s ease;
+  }
+
+  .file-attach:hover {
+    background: rgba(255, 255, 255, 0.12);
   }
 
   .file-icon {
@@ -758,21 +805,26 @@
     max-width: 36px;
     height: 36px;
     border-radius: 50%;
-    background: rgba(255, 255, 255, 0.1);
+    background: var(--msg-quote-border, #38bdf8);
+    color: #ffffff;
     display: flex;
     align-items: center;
     justify-content: center;
     font-size: 16px;
+    flex-shrink: 0;
   }
 
   .file-info {
     display: flex;
     flex-direction: column;
     overflow: hidden;
+    min-width: 0;
   }
 
   .file-name {
     font-size: 13px;
+    font-weight: 500;
+    color: inherit;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -780,7 +832,8 @@
 
   .file-size {
     font-size: 11px;
-    opacity: 0.6;
+    color: var(--msg-time-color, rgba(255, 255, 255, 0.65));
+    margin-top: 2px;
   }
 
   .unsupported-attach {
@@ -833,5 +886,79 @@
     font-weight: 500;
     color: rgba(255, 255, 255, 0.9);
     text-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+  }
+
+  .location-bubble-attach,
+  .contact-bubble-attach {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 14px;
+    background: var(--msg-quote-bg, rgba(255, 255, 255, 0.07));
+    border-radius: var(--msg-system-radius, 12px);
+    margin-top: 4px;
+    cursor: pointer;
+    transition: background 0.15s ease;
+  }
+
+  .location-bubble-attach:hover,
+  .contact-bubble-attach:hover {
+    background: rgba(255, 255, 255, 0.12);
+  }
+
+  .location-bubble-icon,
+  .contact-bubble-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: rgba(56, 189, 248, 0.18);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+
+  .location-bubble-icon.live {
+    background: rgba(56, 189, 248, 0.28);
+    box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.35);
+    animation: live-pulse 2s infinite ease-in-out;
+  }
+
+  @keyframes live-pulse {
+    0%, 100% {
+      box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.4);
+    }
+    50% {
+      box-shadow: 0 0 0 7px rgba(56, 189, 248, 0.08);
+    }
+  }
+
+  .location-bubble-info,
+  .contact-bubble-info {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .location-bubble-title,
+  .contact-bubble-name {
+    font-size: 15px;
+    font-weight: 500;
+    color: inherit;
+    line-height: 18px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .location-bubble-coords,
+  .contact-bubble-phone {
+    font-size: 12px;
+    color: var(--msg-time-color, rgba(255, 255, 255, 0.65));
+    margin-top: 2px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 </style>

@@ -119,6 +119,26 @@
               {attach.title || "Опрос"}
             </div>
           </div>
+        {:else if attachType === "LOCATION"}
+          <div class="file-preview">
+            <div class="file-icon">
+              <span class="mask-icon" style="-webkit-mask-image: url('/icons/location.svg'); mask-image: url('/icons/location.svg'); width: 22px; height: 22px; background-color: #248bfe; display: inline-block;"></span>
+            </div>
+            <div class="file-name">
+              {#if attach.livePeriod}
+                Трансляция ({attach.livePeriod >= 3600 ? attach.livePeriod / 3600 + " ч" : attach.livePeriod / 60 + " мин"})
+              {:else}
+                {attach.address || "Геопозиция"}
+              {/if}
+            </div>
+          </div>
+        {:else if attachType === "CONTACT"}
+          <div class="file-preview">
+            <div class="file-icon">
+              <span class="mask-icon" style="-webkit-mask-image: url('/icons/user.svg'); mask-image: url('/icons/user.svg'); width: 22px; height: 22px; background-color: #248bfe; display: inline-block;"></span>
+            </div>
+            <div class="file-name">{attach.name || "Контакт"}</div>
+          </div>
         {:else}
           <div class="file-preview">
             <div class="file-icon">
@@ -156,8 +176,8 @@
     flex-shrink: 0;
     overflow-x: auto;
     z-index: var(--z-base, 1);
-    background-color: #17191d;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+    background-color: var(--bg-topbar, #212126);
+    border-bottom: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
   }
 
   .attach-card {

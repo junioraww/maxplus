@@ -9,10 +9,8 @@
   import { get } from "svelte/store";
   import { registerBackHandler } from "$lib/utils/backButton";
   import ConfirmModal from "$components/main/ConfirmModal.svelte";
-  import InputModal from "$components/main/InputModal.svelte";
   import Signature from "$components/main/Signature.svelte";
   import Avatar from "$components/main/Avatar.svelte";
-  import GroupAddMembersModal from "$components/chats/GroupAddMembersModal.svelte";
   import GroupAdminModal from "$components/chats/GroupAdminModal.svelte";
   import GroupSharedMedia from "$components/chats/GroupSharedMedia.svelte";
   import GroupJoinRequestsModal from "$components/chats/GroupJoinRequestsModal.svelte";
@@ -28,10 +26,13 @@
   import { CallService } from "$lib/services/CallService";
   import { getStoryPreviewForUser, openStoriesViewer } from "$lib/stores/stories";
   import { autoDownloadEncryptedMedia } from "$lib/stores/e2eSettings";
+  import Switch from "$components/common/Switch.svelte";
   import { switchEnc } from "$components/ChatWindow/e2e";
   import { getChatSettings, getChat } from "$lib/stores/messages";
+  import { openScreen } from "$lib/services/layerManager";
   import Session, {
     openChat as _openChat,
+    openProfile,
     closeChat as _closeChat,
     openAvatarGallery as _openAvatarGallery,
     openSafeAvatarPicker as _openSafeAvatarPicker,
@@ -44,16 +45,21 @@
     currentRealChats,
   } from "$lib/stores/api";
 
+  let showReportLeaveConfirm = false;
+
   function handleProfileBack() {
+    if (showReportLeaveConfirm) { showReportLeaveConfirm = false; return false; }
     if (showDeleteConfirm) { showDeleteConfirm = false; return false; }
     if (showPurgeConfirm) { showPurgeConfirm = false; return false; }
     if (showRemoveMemberConfirm) { showRemoveMemberConfirm = false; return false; }
-    if (showAddMembersModal) { showAddMembersModal = false; return false; }
     if (showAdminModal) { showAdminModal = false; return false; }
     if (showJoinRequestsModal) { showJoinRequestsModal = false; return false; }
-    if (showInputs) { showInputs = false; return false; }
     if (showMenu) { showMenu = false; return false; }
     if (selectedMemberMenuId) { selectedMemberMenuId = null; return false; }
+    if (subview !== "main") {
+      subview = "main";
+      return false;
+    }
     if (profileHistory.length > 0) {
       goBack();
       return false;
@@ -78,13 +84,6 @@
     if (typeof unregisterBack === "function") {
       unregisterBack();
       unregisterBack = null;
-    }
-    if (scrollRafId) cancelAnimationFrame(scrollRafId);
-    if (scrollEndTimer) clearTimeout(scrollEndTimer);
-    if (scrollTimeout) clearTimeout(scrollTimeout);
-    if (typeof window !== "undefined") {
-      window.removeEventListener("mousemove", handleWindowMouseMove);
-      window.removeEventListener("mouseup", handleWindowMouseUp);
     }
   });
 
@@ -204,237 +203,29 @@
     !isDeletedOrBlocked
   );
 
-  let activeTab = view === "settings" ? "settings" : "info";
-  let didInitialSelect = Boolean(view);
+  let subview = "main";
+  let didInitialSelect = false;
 
   $: if (view && !didInitialSelect) {
     if (view === "settings" && hasSettings) {
-      activeTab = "settings";
+      subview = "channel_settings";
       didInitialSelect = true;
-    } else if (view !== "settings") {
-      activeTab = "info";
+    } else if (view === "media") {
+      subview = "media";
       didInitialSelect = true;
-    }
-  }
-
-  let availableTabs = ["info"];
-  $: {
-    const nextTabs = chat
-      ? (hasSettings ? ["info", "media", "settings"] : ["info", "media"])
-      : ["info"];
-    if (nextTabs.length !== availableTabs.length || nextTabs.some((t, i) => t !== availableTabs[i])) {
-      availableTabs = nextTabs;
-    }
-  }
-
-  let hasVisitedMediaTab = false;
-  $: if (activeTab === "media") {
-    hasVisitedMediaTab = true;
-  }
-
-  const tabLabels = {
-    info: "Информация",
-    media: "Медиа",
-    settings: "Настройки",
-  };
-
-  $: activeTabIndex = Math.max(0, availableTabs.indexOf(activeTab));
-
-  let swipeContainer;
-  let isProgrammaticScroll = false;
-  let scrollTimeout = null;
-  let scrollRafId = null;
-  let scrollEndTimer = null;
-  let indicatorProgress = 0;
-
-  $: if (!swipeContainer || isProgrammaticScroll) {
-    indicatorProgress = activeTabIndex;
-  }
-
-  let isMouseDragging = false;
-  let mouseStartX = 0;
-  let mouseStartY = 0;
-  let mouseStartScrollLeft = 0;
-  let mouseHasMoved = false;
-
-  function scrollToTabIndex(index) {
-    const tabId = availableTabs[index];
-    if (!tabId) return;
-    activeTab = tabId;
-    indicatorProgress = index;
-    if (!swipeContainer) return;
-
-    isProgrammaticScroll = true;
-    swipeContainer.scrollTo({
-      left: index * swipeContainer.clientWidth,
-      behavior: "smooth",
-    });
-
-    clearTimeout(scrollTimeout);
-    scrollTimeout = setTimeout(() => {
-      isProgrammaticScroll = false;
-    }, 350);
-  }
-
-  function selectTab(tabId) {
-    const idx = availableTabs.indexOf(tabId);
-    if (idx !== -1) {
-      scrollToTabIndex(idx);
-    }
-  }
-
-  let pagerRaf = null;
-
-  function handlePagerScroll() {
-    if (!swipeContainer || isProgrammaticScroll) return;
-    if (pagerRaf) return;
-
-    pagerRaf = requestAnimationFrame(() => {
-      pagerRaf = null;
-      if (!swipeContainer || isProgrammaticScroll) return;
-      const width = swipeContainer.clientWidth;
-      if (width === 0) return;
-      const nextProgress = swipeContainer.scrollLeft / width;
-      if (Math.abs(nextProgress - indicatorProgress) > 0.005) {
-        indicatorProgress = nextProgress;
-      }
-      const rawIndex = nextProgress;
-      const newIndex = Math.round(rawIndex);
-      if (Math.abs(rawIndex - newIndex) < 0.15 && newIndex !== activeTabIndex && availableTabs[newIndex]) {
-        activeTab = availableTabs[newIndex];
-      }
-    });
-
-    clearTimeout(scrollEndTimer);
-    scrollEndTimer = setTimeout(() => {
-      if (!swipeContainer || isProgrammaticScroll) return;
-      const width = swipeContainer.clientWidth;
-      if (width === 0) return;
-      const finalIndex = Math.max(0, Math.min(availableTabs.length - 1, Math.round(swipeContainer.scrollLeft / width)));
-      if (availableTabs[finalIndex] && activeTab !== availableTabs[finalIndex]) {
-        activeTab = availableTabs[finalIndex];
-      }
-    }, 60);
-  }
-
-  function isInteractiveTarget(target) {
-    return Boolean(
-      target.closest(
-        "button, a, input, textarea, select, .tg-card, .clickable, .tg-btn, .tg-btn-action, .tg-row-clickable, .tg-switch, .tg-seg-btn, .tg-eye-btn, .tg-copy-btn, .tg-icon-btn, .tg-menu-item, .media-grid-item, .media-list-row, .btn-more, .tg-topbar, .tg-tabs, [role='button']"
-      )
-    );
-  }
-
-  function handleSwipeMouseDown(e) {
-    if (e.button !== 0) return;
-    if (isInteractiveTarget(e.target)) return;
-    if (!swipeContainer) return;
-
-    isMouseDragging = true;
-    mouseStartX = e.clientX;
-    mouseStartY = e.clientY;
-    mouseStartScrollLeft = swipeContainer.scrollLeft;
-    mouseHasMoved = false;
-
-    if (typeof window !== "undefined") {
-      window.addEventListener("mousemove", handleWindowMouseMove);
-      window.addEventListener("mouseup", handleWindowMouseUp);
-    }
-  }
-
-  function handleWindowMouseMove(e) {
-    if (!isMouseDragging || !swipeContainer) return;
-    const dx = e.clientX - mouseStartX;
-    const dy = e.clientY - mouseStartY;
-
-    if (!mouseHasMoved && Math.abs(dy) > Math.abs(dx) && Math.abs(dy) > 6) {
-      isMouseDragging = false;
-      if (typeof window !== "undefined") {
-        window.removeEventListener("mousemove", handleWindowMouseMove);
-        window.removeEventListener("mouseup", handleWindowMouseUp);
-      }
-      return;
-    }
-
-    if (Math.abs(dx) > 4) {
-      mouseHasMoved = true;
-    }
-
-    if (mouseHasMoved) {
-      e.preventDefault();
-      swipeContainer.scrollLeft = mouseStartScrollLeft - dx;
-      if (!pagerRaf) {
-        pagerRaf = requestAnimationFrame(() => {
-          pagerRaf = null;
-          if (swipeContainer) {
-            indicatorProgress = swipeContainer.scrollLeft / swipeContainer.clientWidth;
-          }
-        });
-      }
-    }
-  }
-
-  function handleWindowMouseUp(e) {
-    if (typeof window !== "undefined") {
-      window.removeEventListener("mousemove", handleWindowMouseMove);
-      window.removeEventListener("mouseup", handleWindowMouseUp);
-    }
-    if (!isMouseDragging) return;
-    isMouseDragging = false;
-    if (!swipeContainer || !mouseHasMoved) return;
-
-    const width = swipeContainer.clientWidth;
-    if (width === 0) return;
-
-    const dx = e.clientX - mouseStartX;
-    let targetIndex = activeTabIndex;
-
-    if (Math.abs(dx) > width * 0.15 || Math.abs(dx) > 50) {
-      targetIndex = dx > 0 ? activeTabIndex - 1 : activeTabIndex + 1;
     } else {
-      targetIndex = Math.round(swipeContainer.scrollLeft / width);
-    }
-
-    targetIndex = Math.max(0, Math.min(availableTabs.length - 1, targetIndex));
-    scrollToTabIndex(targetIndex);
-  }
-
-  function handleResize() {
-    if (!swipeContainer) return;
-    const idx = availableTabs.indexOf(activeTab);
-    if (idx !== -1) {
-      swipeContainer.scrollLeft = idx * swipeContainer.clientWidth;
-      indicatorProgress = idx;
-    }
-  }
-
-  $: {
-    if (swipeContainer && !isMouseDragging && !isProgrammaticScroll && availableTabs.length > 0) {
-      const idx = availableTabs.indexOf(activeTab);
-      if (idx !== -1) {
-        const targetLeft = idx * swipeContainer.clientWidth;
-        if (Math.abs(swipeContainer.scrollLeft - targetLeft) > 10) {
-          isProgrammaticScroll = true;
-          swipeContainer.scrollTo({
-            left: targetLeft,
-            behavior: "smooth"
-          });
-          clearTimeout(scrollTimeout);
-          scrollTimeout = setTimeout(() => {
-            isProgrammaticScroll = false;
-          }, 350);
-        }
-      }
+      subview = "main";
+      didInitialSelect = true;
     }
   }
 
   let showMenu = false;
   let showDeleteConfirm = false;
-  let showInputs = false;
   let memberSearch = "";
 
-  $: isGroupAdmin = chat?.type === "CHAT" && (chat?.admins?.includes(Number($currentUser)) || chat?.admins?.includes($currentUser) || Number(chat?.owner) === Number($currentUser));
-  $: isGroupOwner = chat?.type === "CHAT" && Number(chat?.owner) === Number($currentUser);
+  $: isGroupChat = chat?.type === "CHAT";
+  $: isGroupAdmin = isGroupChat && (chat?.admins?.includes(Number($currentUser)) || chat?.admins?.includes($currentUser) || Number(chat?.owner) === Number($currentUser));
+  $: isGroupOwner = isGroupChat && Number(chat?.owner) === Number($currentUser);
 
   let groupMembers = [];
   let groupMembersMarker = null;
@@ -444,7 +235,6 @@
   let isSearchingMembers = false;
   let searchDebounceTimer;
 
-  let showAddMembersModal = false;
   let showAdminModal = false;
   let adminModalMember = null;
   let showJoinRequestsModal = false;
@@ -542,13 +332,69 @@
   }
 
   let cachedTitle = "";
-  $: {
-    const fresh = ($contact && getContactDisplayName($contact)) || chat?.title || ($contact ? "Пользователь" : "");
-    if (fresh) cachedTitle = fresh;
+  let lastProfileChatId = null;
+  $: if (chatId !== lastProfileChatId) {
+    lastProfileChatId = chatId;
+    cachedTitle = "";
   }
-  $: title = cachedTitle || ($contact && getContactDisplayName($contact)) || chat?.title || ($contact ? "Пользователь" : "");
+  $: title = (() => {
+    if (isChannel || isGroupChat) {
+      return chat?.title || chat?.name || cachedTitle || "Без названия";
+    }
+    return ($contact && getContactDisplayName($contact)) || chat?.title || chat?.name || cachedTitle || ($contact ? "Пользователь" : "");
+  })();
+  $: if (chat?.title && (isChannel || isGroupChat)) {
+    cachedTitle = chat.title;
+  }
   $: avatar = chat?.baseRawUrl || chat?.baseUrl || chat?.baseRawIconUrl || chat?.baseIconUrl || chat?.iconUrl || $contact?.baseRawUrl || $contact?.baseUrl || null;
   $: chatLink = chat?.link;
+
+  let editTitle = "";
+  let editDescription = "";
+
+  async function handleEditClick() {
+    if (isChannel || isGroupChat) {
+      const mod = await import("$components/ChatEditScreen.svelte");
+      openScreen(
+        mod.default || mod,
+        {
+          chat,
+          onAvatarClick: openAvatarGallery,
+          onUpdated: (updated) => {
+            chat = updated;
+          },
+          onDeleted: () => {
+            closeModal();
+          },
+          onLeft: () => {
+            closeModal();
+          },
+        },
+        { canSwipe: true }
+      );
+    } else if (isOwnProfile) {
+      const mod = await import("../routes/settings/profile/+page.svelte");
+      openScreen(mod.default || mod, {}, { canSwipe: true });
+    }
+  }
+
+  async function saveChatProfile() {
+    if (!chat?.id) return;
+    const trimmedTitle = editTitle.trim();
+    if (!trimmedTitle) {
+      showToast("Введите название");
+      return;
+    }
+    try {
+      chat.title = trimmedTitle;
+      chat.description = editDescription.trim() || undefined;
+      await $API.updateChatProfile(chat);
+      showToast("Изменения сохранены");
+      subview = "main";
+    } catch (e) {
+      showToast("Не удалось сохранить");
+    }
+  }
 
   $: isOwnProfile = Boolean(!chat || chat.type === "DIALOG") && userId != null && Number(userId) === Number($currentUser);
   $: canEditChatPhoto = Boolean(
@@ -720,13 +566,10 @@
 
   function handleAction(action) {
     showMenu = false;
-    if (action === "edit")     return showInputs = true;
+    if (action === "edit")     return handleEditClick();
     if (action === "mute")     return toggleMute();
     if (action === "copy")     return copyLink();
-    if (action === "settings") {
-      activeTab = "settings";
-      return;
-    }
+    if (action === "settings") return handleEditClick();
     if (action === "delete")   return showDeleteConfirm = true;
     if (action === "quit")     return leaveChat();
     if (action === "invite")   return refreshInvite();
@@ -740,8 +583,8 @@
   const closeChat = () => chat?.id != null && _closeChat(chat.id);
 
   function handleWindowClick(e) {
-    if (showMenu && !e.target.closest(".tg-menu-container")) showMenu = false;
-    if (selectedMemberMenuId && !e.target.closest(".tg-member-more-container")) selectedMemberMenuId = null;
+    if (showMenu && !e.target.closest(".profile-action-tile-wrap") && !e.target.closest(".profile-menu-container")) showMenu = false;
+    if (selectedMemberMenuId && !e.target.closest(".profile-member-more-container")) selectedMemberMenuId = null;
   }
 
   function formatId(num) {
@@ -773,17 +616,18 @@
   }
 
   function getMemberName(memberItem) {
-    const id = memberItem?.contact?.id || memberItem?.userId || memberItem?.id || memberItem;
-    if (id && Number(id) === Number($currentUser)) {
-      return "Вы";
-    }
     if (memberItem?.contact?.names?.[0]?.name) return memberItem.contact.names[0].name;
     if (memberItem?.contact?.name) return memberItem.contact.name;
     if (memberItem?.contact?.names?.[0]?.firstName) {
       const n = memberItem.contact.names[0];
       return [n.firstName, n.lastName].filter(Boolean).join(" ");
     }
+    const id = memberItem?.contact?.id || memberItem?.userId || memberItem?.id || memberItem;
     if (id) {
+      if (Number(id) === Number($currentUser)) {
+        const selfName = $currentUserDetails?.names?.[0]?.name || $currentUserDetails?.name;
+        if (selfName) return selfName;
+      }
       try {
         const c = get(getContact(Number(id)));
         if (c?.names?.[0]?.name) return c.names[0].name;
@@ -967,18 +811,42 @@
     showToast("Права владельца переданы");
   }
 
-  let isPickingAdmin = false;
-  function onMembersAdded(event) {
-    const { userIds } = event.detail;
-    showAddMembersModal = false;
-    if (isPickingAdmin && userIds?.length) {
-      isPickingAdmin = false;
-      openAdminModal({ contact: { id: userIds[0] }, userId: userIds[0] });
-      return;
-    }
-    isPickingAdmin = false;
-    showToast(isChannel ? `Добавлено подписчиков: ${userIds.length}` : `Добавлено участников: ${userIds.length}`);
-    loadInitialMembers();
+  async function openUserPickerForMembers(pickingAdmin = false) {
+    const mod = await import("$components/chats/UserSelectScreen.svelte");
+    const existingIds = new Set((groupMembers || []).map((m) => m.id).filter(Boolean));
+    openScreen(
+      mod.default || mod,
+      pickingAdmin
+        ? {
+            title: "Добавить администратора",
+            multiSelect: false,
+            autoAddToChat: false,
+            onSelect: (picked) => {
+              if (picked?.id) {
+                openAdminModal({ contact: { id: picked.id }, userId: picked.id });
+              }
+            }
+          }
+        : {
+            title: isChannel ? "Добавить подписчиков" : "Пригласить участников",
+            confirmLabel: "Добавить",
+            multiSelect: true,
+            chat,
+            chatId,
+            isChannel,
+            existingMemberIds: existingIds,
+            autoAddToChat: true,
+            onConfirm: (userIds) => {
+              showToast(
+                isChannel
+                  ? `Добавлено подписчиков: ${userIds.length}`
+                  : `Добавлено участников: ${userIds.length}`
+              );
+              loadInitialMembers();
+            }
+          },
+      { canSwipe: true }
+    );
   }
 
   $: channelCommentsEnabled = Boolean(
@@ -1005,10 +873,32 @@
     initChannelLinkInput();
   }
 
-  async function setChannelAccessType(type) {
-    if (!chatId || !isChannelAdmin) return;
+  $: canEditChatSettings = Boolean(isChannelAdmin || isGroupAdmin || isGroupOwner);
+
+  function normalizeChannelSlug(value) {
+    return String(value || "")
+      .trim()
+      .replace(/^(https?:\/\/)?(www\.)?max\.ru\//i, "")
+      .replace(/^@/, "")
+      .trim();
+  }
+
+  function extractLinkError(err, fallback) {
+    const raw = typeof err === "string" ? err : (err?.localizedMessage || err?.message || "");
+    if (!raw) return fallback;
     try {
-      const link = type === "PUBLIC" ? (channelLinkInput.trim() || undefined) : undefined;
+      const parsed = JSON.parse(raw);
+      return parsed?.localizedMessage || parsed?.message || parsed?.title || fallback;
+    } catch {
+      return raw;
+    }
+  }
+
+  async function setChannelAccessType(type) {
+    if (!chatId || !canEditChatSettings) return;
+    try {
+      const slug = normalizeChannelSlug(channelLinkInput);
+      const link = type === "PUBLIC" ? (slug || undefined) : undefined;
       const res = await $API.setChannelAccess(chatId, type, link);
       if (chat) {
         chat.access = type;
@@ -1019,32 +909,38 @@
         }
         chat = { ...chat };
       }
-      showToast(type === "PUBLIC" ? "Канал стал публичным" : "Канал стал частным");
+      showToast(type === "PUBLIC" ? (isChannel ? "Канал стал публичным" : "Чат стал публичным") : (isChannel ? "Канал стал частным" : "Чат стал частным"));
     } catch (e) {
-      showToast(e?.message || "Ошибка смены типа канала");
+      showToast(extractLinkError(e, "Ошибка смены типа"));
     }
   }
 
   async function savePublicChannelLink() {
-    const raw = channelLinkInput.trim().replace(/^https?:\/\/max\.ru\//, "").replace(/^@/, "");
+    const raw = normalizeChannelSlug(channelLinkInput);
     if (!raw || !chatId) return;
+    const currentSlug = (chat?.link && !chat.link.includes("join/")) ? normalizeChannelSlug(chat.link) : "";
+    if (raw === currentSlug && channelAccessType === "PUBLIC") {
+      isEditingChannelLink = false;
+      showToast("Ссылка сохранена");
+      return;
+    }
     try {
       const res = await $API.setChannelAccess(chatId, "PUBLIC", raw);
       if (chat) {
         chat.access = "PUBLIC";
-        chat.link = `https://max.ru/${raw}`;
+        chat.link = res?.chat?.link || res?.link || `https://max.ru/${raw}`;
         chatLink = chat.link;
         chat = { ...chat };
       }
       isEditingChannelLink = false;
       showToast("Ссылка сохранена");
     } catch (e) {
-      showToast(e?.message || "Ошибка сохранения ссылки");
+      showToast(extractLinkError(e, "Ошибка сохранения ссылки"));
     }
   }
 
   async function toggleChannelComments() {
-    if (!chatId || !isChannelAdmin) return;
+    if (!chatId || !canEditChatSettings) return;
     const next = !channelCommentsEnabled;
     try {
       await $API.setChannelOptions(chatId, {
@@ -1063,7 +959,7 @@
   }
 
   async function toggleChannelSignatures() {
-    if (!chatId || !isChannelAdmin) return;
+    if (!chatId || !canEditChatSettings) return;
     const next = !channelSignaturesEnabled;
     try {
       await $API.setChannelOptions(chatId, {
@@ -1082,7 +978,7 @@
   }
 
   async function toggleChannelJoinRequest() {
-    if (!chatId || !isChannelAdmin) return;
+    if (!chatId || !canEditChatSettings) return;
     const next = !channelJoinRequestEnabled;
     try {
       await $API.setChannelOptions(chatId, {
@@ -1101,7 +997,7 @@
   }
 
   async function revokeChannelLink() {
-    if (!chatId || !isChannelAdmin) return;
+    if (!chatId || !canEditChatSettings) return;
     try {
       const res = await $API.revokeChannelInviteLink(chatId);
       const updatedLink = res?.chat?.link || res?.link;
@@ -1232,7 +1128,6 @@
     try {
       await $API.deleteChatForAll(chat);
     } catch (e) {
-      console.error(e);
       showToast("Не удалось удалить чат");
     }
   }
@@ -1276,21 +1171,58 @@
   }
 
   function selectMember(memberId) {
-    profileHistory = [
-      ...profileHistory,
-      { chatId, userId, view: activeTab }
-    ];
-    currentNavUserId = memberId;
-    currentNavChatId = null;
-    activeTab = "info";
+    if (!memberId) return;
+    openProfile({ userId: memberId, stack: true });
+  }
+
+  async function openSharedMediaScreen() {
+    if (!chat) return;
+    const mod = await import("$components/chats/SharedMediaScreen.svelte");
+    openScreen(mod.default || mod, { chat }, { canSwipe: true });
+  }
+
+  async function openAdvancedSettings() {
+    const mod = await import("$components/ChatWindow/AdvancedSettingsScreen.svelte");
+    openScreen(mod.default || mod, { chat, userId }, { canSwipe: true });
+  }
+
+  function handleProfileSearch() {
+    closeModal();
+    if (chat?.id) {
+      _openChat(chat.id);
+      setTimeout(() => {
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new CustomEvent("open-chat-search", { detail: { chatId: chat.id } }));
+        }
+      }, 100);
+    }
+  }
+
+  async function handleReportAndLeave() {
+    showReportLeaveConfirm = false;
+    try {
+      if (chat?.id) {
+        await $API.leaveGroup(chat.id);
+      }
+    } catch (e) {}
+    closeModal();
+    showToast("Вы вышли из группы");
   }
 
   function goBack() {
+    if (subview === "chat_link_settings") {
+      subview = "channel_settings";
+      return;
+    }
+    if (subview !== "main") {
+      subview = "main";
+      return;
+    }
     if (profileHistory.length > 0) {
       const prev = profileHistory.pop();
       currentNavChatId = prev.chatId;
       currentNavUserId = prev.userId;
-      if (prev.view) activeTab = prev.view;
+      if (prev.view) subview = prev.view;
     } else {
       closeModal();
     }
@@ -1299,2305 +1231,1759 @@
 
 <svelte:window
   on:click={handleWindowClick}
-  on:resize={handleResize}
 />
 
-<div class="tg-profile-panel">
-    <div class="tg-topbar">
-      <button class="tg-icon-btn" on:click={goBack} aria-label="Назад">
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-          <line x1="19" y1="12" x2="5" y2="12"></line>
-          <polyline points="12 19 5 12 12 5"></polyline>
-        </svg>
-      </button>
+<div class="profile-window">
+  <!-- Top Navigation Toolbar (56px) -->
+  <header class="profile-toolbar">
+    <button type="button" class="profile-icon-button" on:click={goBack} aria-label="Назад">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <line x1="19" y1="12" x2="5" y2="12"></line>
+        <polyline points="12 19 5 12 12 5"></polyline>
+      </svg>
+    </button>
 
-      <div class="tg-topbar-title">
-        {#if activeTab === "settings"}
-          {isChannel ? "Настройки канала" : "Настройки чата"}
-        {:else if isChannel}
-          Канал
-        {:else if chat?.type === "CHAT"}
-          Информация о группе
-        {:else if chat?.type === "DIALOG"}
-          Информация
-        {:else}
-          Профиль
-        {/if}
-      </div>
+    <div class="profile-toolbar-title">
+      {#if subview === "media"}
+        Вложения
+      {:else if subview === "channel_settings"}
+        {isChannel ? "Редактировать" : ""}
+      {:else if subview === "chat_link_settings"}
+        {isChannel ? "Тип канала" : "Тип чата"}
+      {/if}
+    </div>
 
-      <div class="tg-menu-container">
-        {#if chat}
-          <button class="tg-icon-btn" on:click|stopPropagation={toggleMenu} aria-label="Меню">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <circle cx="12" cy="12" r="1.5"></circle>
-              <circle cx="12" cy="5" r="1.5"></circle>
-              <circle cx="12" cy="19" r="1.5"></circle>
+    <div class="profile-toolbar-right">
+      {#if subview === "main"}
+        {#if isChannelAdmin || isGroupAdmin || isGroupOwner || isOwnProfile}
+          <button
+            type="button"
+            class="profile-icon-button"
+            on:click={handleEditClick}
+            aria-label="Редактировать"
+            title="Редактировать"
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 20h9"></path>
+              <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
             </svg>
           </button>
         {/if}
+      {/if}
+    </div>
+  </header>
 
-        {#if showMenu}
-          <div
-            class="tg-dropdown"
-            transition:scale={{ duration: 140, start: 0.92 }}
-          >
-            {#if chat?.admins?.includes($currentUser)}
-              <div class="tg-menu-item" on:click={() => handleAction("edit")}>
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M12 20h9"/>
-                  <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
-                </svg>
-                <span>Изменить</span>
+  <!-- Body Container -->
+  <div class="profile-body-stage">
+    {#if subview === "media"}
+    <div class="profile-subview-content" in:fly={{ x: 30, duration: 200 }} out:fly={{ x: 30, duration: 150 }}>
+      {#if chat}
+        <GroupSharedMedia {chat} />
+      {/if}
+    </div>
+
+  {:else if subview === "channel_settings"}
+    <div class="profile-subview-content" in:fly={{ x: 30, duration: 200 }} out:fly={{ x: 30, duration: 150 }}>
+      <div class="profile-cards-list">
+        <!-- Avatar preview with blue corner camera badge (matching MAX Screenshot 2) -->
+        <div class="profile-edit-avatar-wrap" on:click={openAvatarGallery}>
+          <Avatar
+            chat={chat}
+            title={editTitle || title}
+            size={96}
+            allowStories={false}
+          />
+          <div class="profile-avatar-camera-overlay">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
+              <circle cx="12" cy="13" r="4"></circle>
+            </svg>
+          </div>
+        </div>
+
+        <!-- Separate Name card with clear button (matching MAX Screenshot 2) -->
+        <div class="profile-card">
+          <div class="profile-field-name-row">
+            <input
+              type="text"
+              class="profile-field-edit-input"
+              bind:value={editTitle}
+              placeholder={isChannel ? "Название канала" : "Название чата"}
+            />
+            {#if editTitle}
+              <button
+                type="button"
+                class="profile-field-clear-btn"
+                on:click={() => (editTitle = "")}
+                aria-label="Очистить"
+              >
+                <span class="mask-icon" style="-webkit-mask-image: url('/icons/close.svg'); mask-image: url('/icons/close.svg'); width: 16px; height: 16px;"></span>
+              </button>
+            {/if}
+          </div>
+        </div>
+
+        <!-- Separate Description card (matching MAX Screenshot 2) -->
+        <div class="profile-card">
+          <div class="profile-field-edit-group">
+            <textarea
+              class="profile-field-edit-textarea"
+              bind:value={editDescription}
+              placeholder={isChannel ? "О канале" : "О чате"}
+              rows="3"
+            ></textarea>
+          </div>
+        </div>
+
+        <!-- Chat/Channel Type & Invite Link subscreen entry (d23.java) -->
+        <div class="profile-card">
+          <div class="profile-item-row" on:click={() => (subview = "chat_link_settings")}>
+            <div class="profile-item-icon">
+              <span class="mask-icon" style="-webkit-mask-image: url('/icons/link.svg'); mask-image: url('/icons/link.svg'); width: 22px; height: 22px;"></span>
+            </div>
+            <div class="profile-item-content">
+              <div class="profile-item-title">{isChannel ? "Тип канала и ссылка" : "Тип чата и ссылка"}</div>
+            </div>
+            <span class="profile-item-trailing">{channelAccessType === "PUBLIC" ? "Публичный" : "Частный"}</span>
+            <span class="mask-icon profile-item-chevron" style="-webkit-mask-image: url('/icons/arrow.svg'); mask-image: url('/icons/arrow.svg'); width: 14px; height: 14px;"></span>
+          </div>
+        </div>
+
+        {#if isChannel}
+          <!-- Channel Options (ep6.java:104-127) -->
+          <div class="profile-card">
+            <div class="profile-item-row" on:click={toggleChannelComments}>
+              <div class="profile-item-icon">
+                <span class="mask-icon" style="-webkit-mask-image: url('/icons/chats.svg'); mask-image: url('/icons/chats.svg'); width: 22px; height: 22px;"></span>
               </div>
-              {#if chat.link}
-                <div class="tg-menu-item" on:click={() => handleAction("invite")}>
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <polyline points="23 4 23 10 17 10"/>
-                    <polyline points="1 20 1 14 7 14"/>
-                    <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
-                  </svg>
-                  <span>Обновить ссылку</span>
+              <div class="profile-item-content">
+                <div class="profile-item-title">Комментарии</div>
+                <div class="profile-item-subtitle">Обсуждение публикаций</div>
+              </div>
+              <Switch checked={channelCommentsEnabled} ariaLabel="Комментарии" />
+            </div>
+
+            <div class="profile-item-row" on:click={toggleChannelSignatures}>
+              <div class="profile-item-icon">
+                <span class="mask-icon" style="-webkit-mask-image: url('/icons/edit.svg'); mask-image: url('/icons/edit.svg'); width: 22px; height: 22px;"></span>
+              </div>
+              <div class="profile-item-content">
+                <div class="profile-item-title">Подписи сообщений</div>
+                <div class="profile-item-subtitle">Имя автора в каждом посте</div>
+              </div>
+              <Switch checked={channelSignaturesEnabled} ariaLabel="Подписи сообщений" />
+            </div>
+          </div>
+        {/if}
+
+        <!-- Admins management -->
+        {#if isChannel}
+          <div class="profile-card-caption">Администраторы · {channelAdmins.length}</div>
+          <div class="profile-card">
+            {#if isChannelOwner || (channelAdminPerms & 4) !== 0}
+              <div class="profile-item-row" on:click={() => openUserPickerForMembers(true)}>
+                <div class="profile-item-icon accent">
+                  <span class="mask-icon" style="-webkit-mask-image: url('/icons/user-plus.svg'); mask-image: url('/icons/user-plus.svg'); width: 22px; height: 22px;"></span>
                 </div>
-              {/if}
-            {/if}
-
-            {#if hasSettings}
-              <div class="tg-menu-item" on:click={() => handleAction("mute")}>
-                {#if muted}
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
-                    <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
-                  </svg>
-                  <span>Включить звук</span>
-                {:else}
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
-                    <path d="M18.63 13A17.89 17.89 0 0 1 18 8"/>
-                    <path d="M6.26 6.26A5.86 5.86 0 0 0 6 8c0 7-3 9-3 9h14"/>
-                    <line x1="1" y1="1" x2="23" y2="23"/>
-                  </svg>
-                  <span>Отключить звук</span>
-                {/if}
+                <div class="profile-item-content">
+                  <div class="profile-item-title accent">Добавить администратора</div>
+                </div>
               </div>
             {/if}
 
-            {#if chatLink}
-              <div class="tg-menu-item" on:click={() => handleAction("copy")}>
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
-                  <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
-                </svg>
-                <span>Скопировать ссылку</span>
+            {#each channelAdmins as adminItem}
+              <div class="profile-item-row" on:click={() => openAdminModal(adminItem)}>
+                <Avatar
+                  contactId={adminItem.id}
+                  size={40}
+                  src={adminItem?.contact?.baseUrl || adminItem?.contact?.baseRawUrl}
+                  title={getMemberName(adminItem)}
+                />
+                <div class="profile-item-content">
+                  <div class="profile-name-badge-row">
+                    <span class="profile-item-title">{getMemberName(adminItem)}</span>
+                    <span class="profile-role-pill" class:admin={!adminItem.isOwner}>{adminItem.alias}</span>
+                  </div>
+                  <div class="profile-item-subtitle">
+                    <Signature contactId={adminItem.id} />
+                  </div>
+                </div>
+                <span class="mask-icon profile-item-chevron" style="-webkit-mask-image: url('/icons/arrow.svg'); mask-image: url('/icons/arrow.svg'); width: 14px; height: 14px;"></span>
               </div>
-            {/if}
+            {/each}
+          </div>
+        {/if}
 
-            {#if chat?.type === "CHAT" && (isGroupAdmin || chat.owner === $currentUser)}
-              <div class="tg-menu-item" on:click={() => { showMenu = false; showRefreshInviteConfirm = true; }}>
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <polyline points="23 4 23 10 17 10"/>
-                  <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
-                </svg>
-                <span>Обновить ссылку</span>
-              </div>
-            {/if}
+        <!-- Actions card (matching MAX Screenshot 2 & ep6.java:202-206) -->
+        <div class="profile-card">
+          <div class="profile-item-row" on:click={() => { purgeForAll = false; showPurgeConfirm = true; }}>
+            <div class="profile-item-icon">
+              <span class="mask-icon" style="-webkit-mask-image: url('/icons/recent.svg'); mask-image: url('/icons/recent.svg'); width: 22px; height: 22px;"></span>
+            </div>
+            <div class="profile-item-content">
+              <div class="profile-item-title">Стереть переписку</div>
+            </div>
+          </div>
 
-            {#if chat?.type === "CHAT" && isGroupAdmin}
-              <div class="tg-menu-item" on:click={() => { showMenu = false; showJoinRequestsModal = true; }}>
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
-                  <circle cx="9" cy="7" r="4"/>
-                  <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
-                  <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
-                </svg>
-                <span>Заявки на вступление</span>
-                {#if joinRequests.length > 0}
-                  <span class="tg-menu-badge">{joinRequests.length}</span>
-                {/if}
-              </div>
-            {/if}
+          <div class="profile-item-row danger" on:click={() => (isChannel ? quitChannel() : leaveChat())}>
+            <div class="profile-item-icon danger">
+              <span class="mask-icon" style="-webkit-mask-image: url('/icons/forward.svg'); mask-image: url('/icons/forward.svg'); width: 22px; height: 22px;"></span>
+            </div>
+            <div class="profile-item-content">
+              <div class="profile-item-title danger">{isChannel ? "Покинуть канал" : "Выйти из чата"}</div>
+            </div>
+          </div>
+        </div>
 
-            {#if chat.owner === $currentUser || chat.type === "DIALOG"}
-              <div class="tg-menu-divider"></div>
-              <div class="tg-menu-item danger" on:click={() => handleAction("delete")}>
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <polyline points="3 6 5 6 21 6"/>
-                  <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
-                </svg>
-                <span>Удалить для всех</span>
+        <!-- Delete Chat/Channel card (matching MAX Screenshot 2) -->
+        {#if (isChannel && isChannelOwner) || (isGroupChat && isGroupOwner)}
+          <div class="profile-card">
+            <div class="profile-item-row danger" on:click={() => (showDeleteConfirm = true)}>
+              <div class="profile-item-icon danger">
+                <span class="mask-icon" style="-webkit-mask-image: url('/icons/trash.svg'); mask-image: url('/icons/trash.svg'); width: 22px; height: 22px;"></span>
               </div>
-            {/if}
-
-            {#if chat.type === "CHAT"}
-              <div class="tg-menu-divider"></div>
-              <div class="tg-menu-item danger" on:click={() => handleAction("quit")}>
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
-                  <polyline points="16 17 21 12 16 7"/>
-                  <line x1="21" y1="12" x2="9" y2="12"/>
-                </svg>
-                <span>Выйти из группы</span>
+              <div class="profile-item-content">
+                <div class="profile-item-title danger">{isChannel ? "Удалить канал" : "Удалить чат"}</div>
               </div>
-            {/if}
+            </div>
           </div>
         {/if}
       </div>
     </div>
 
-    {#if chat}
-      <div class="tg-tabs">
-        {#each availableTabs as tabId}
-          <button
-            type="button"
-            class="tg-tab"
-            class:active={activeTab === tabId}
-            on:click={() => selectTab(tabId)}
-          >
-            <span>{tabLabels[tabId] || tabId}</span>
-          </button>
-        {/each}
-        <div
-          class="tg-tab-indicator"
-          class:animating={isProgrammaticScroll}
-          style="width: {100 / availableTabs.length}%; transform: translateX({indicatorProgress * 100}%);"
-        ></div>
-      </div>
-    {/if}
-
-    {#key (userId || chatId)}
-      <div
-        class="tg-swipe-container"
-        class:dragging={isMouseDragging}
-        bind:this={swipeContainer}
-        on:scroll={handlePagerScroll}
-        on:mousedown={handleSwipeMouseDown}
-      >
-        <div class="tg-tab-page">
-          <div class="tg-tab-page-content">
-                    <div class="tg-hero">
-          <div
-            class="tg-avatar-wrap"
-            bind:this={avatarWrapEl}
-            class:clickable={Boolean(avatar || canUploadAvatar || (userId && (!chat || chat.type === "DIALOG")))}
-            on:click={openAvatarGallery}
-          >
-            <Avatar
-              chat={chat}
-              title={title}
-              contactId={chat?.type === "DIALOG" ? ($contact?.id ?? userId) : undefined}
-              isSelf={isOwnProfile}
-              userId={isOwnProfile ? Number($currentUserDetails?.id || $currentUser) : userId}
-              size={96}
-              allowStories={true}
-            />
-            {#if canUploadAvatar}
-              <button
-                type="button"
-                class="tg-avatar-edit-badge"
-                title="Обновить фото"
-                disabled={isUploadingAvatar}
-                on:click|stopPropagation={() => _openSafeAvatarPicker({
-                  targetId: targetProfileEntityId,
-                  isChat: Boolean(chat && chat.type !== "DIALOG"),
-                  onApplySuccess: () => showToast("Аватарка успешно установлена"),
-                  onUploadStandard: handleAvatarUpload
-                })}
-              >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                  <line x1="12" y1="5" x2="12" y2="19"/>
-                  <line x1="5" y1="12" x2="19" y2="12"/>
-                </svg>
-              </button>
-            {/if}
-          </div>
-
-          <h2 class="tg-hero-name">{title}</h2>
-
-          <div class="tg-hero-status" class:online={$currentPresence[$contact?.id]?.status === 1 || $currentPresence[$contact?.id]?.on === "ON" || Boolean($contact?.online)}>
-            {#if chat?.type === "CHAT"}
-              {formatMembersCount(totalMemberCount)}{#if onlineCount > 0}, {formatOnlineCount(onlineCount)}{/if}
-            {:else if isChannel}
-              {formatSubscribersCount(totalMemberCount)}
-            {:else}
-              <Signature contact={contact} chat={chat} />
-            {/if}
-          </div>
-
-          {#if hasProfileStories}
+  {:else if subview === "chat_link_settings"}
+    <div class="profile-subview-content" in:fly={{ x: 30, duration: 200 }} out:fly={{ x: 30, duration: 150 }}>
+      <div class="profile-cards-list">
+        <div class="profile-card-caption">{isChannel ? "Тип канала" : "Тип чата"}</div>
+        <div class="profile-card">
+          <div class="profile-segmented-row">
             <button
               type="button"
-              class="tg-story-profile-chip"
-              on:click={() => openStoriesViewer(targetProfileEntityId)}
+              class="profile-segmented-btn"
+              class:active={channelAccessType === "PUBLIC"}
+              on:click={() => setChannelAccessType("PUBLIC")}
             >
-              <span class="tg-story-chip-dot"></span>
-              <span>{profileStoryPreview.totalCount} {profileStoryPreview.totalCount === 1 ? "история" : profileStoryPreview.totalCount < 5 ? "истории" : "историй"}</span>
+              <span class="profile-seg-title">Публичный</span>
+              <span class="profile-seg-sub">Доступен всем</span>
             </button>
-          {/if}
-
-          <div class="tg-actions-row">
-            <button type="button" class="tg-action-btn" on:click={openChat}>
-              <div class="tg-action-circle">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
-                </svg>
-              </div>
-              <span class="tg-action-label">Чат</span>
+            <button
+              type="button"
+              class="profile-segmented-btn"
+              class:active={channelAccessType === "PRIVATE"}
+              on:click={() => setChannelAccessType("PRIVATE")}
+            >
+              <span class="profile-seg-title">Частный</span>
+              <span class="profile-seg-sub">По ссылке</span>
             </button>
-
-            {#if hasSettings}
-              <button type="button" class="tg-action-btn" on:click={toggleMute}>
-                <div class="tg-action-circle">
-                  {#if muted}
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                      <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
-                      <path d="M18.63 13A17.89 17.89 0 0 1 18 8"/>
-                      <path d="M6.26 6.26A5.86 5.86 0 0 0 6 8c0 7-3 9-3 9h14"/>
-                      <path d="M18 8a6 6 0 0 0-9.33-5"/>
-                      <line x1="1" y1="1" x2="23" y2="23"/>
-                    </svg>
-                  {:else}
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                      <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
-                      <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
-                    </svg>
-                  {/if}
-                </div>
-                <span class="tg-action-label">{muted ? "Звук вкл." : "Без звука"}</span>
-              </button>
-            {/if}
-
-            {#if chatLink}
-              <button type="button" class="tg-action-btn" on:click={copyLink}>
-                <div class="tg-action-circle">
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
-                    <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
-                  </svg>
-                </div>
-                <span class="tg-action-label">Ссылка</span>
-              </button>
-            {/if}
-
-            {#if canCallUser}
-              <button
-                type="button"
-                class="tg-action-btn"
-                on:click={() => {
-                  const targetId = userId;
-                  const targetTitle = title;
-                  const targetAvatar = $contact?.baseUrl || $contact?.baseRawUrl;
-                  closeModal();
-                  CallService.placeAudioCall(targetId, targetTitle, targetAvatar);
-                }}
-              >
-                <div class="tg-action-circle tg-action-circle--call">
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/>
-                  </svg>
-                </div>
-                <span class="tg-action-label">Позвонить</span>
-              </button>
-              <button
-                type="button"
-                class="tg-action-btn"
-                on:click={() => {
-                  const targetId = userId;
-                  const targetTitle = title;
-                  const targetAvatar = $contact?.baseUrl || $contact?.baseRawUrl;
-                  closeModal();
-                  CallService.placeVideoCall(targetId, targetTitle, targetAvatar);
-                }}
-              >
-                <div class="tg-action-circle tg-action-circle--video">
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <polygon points="23 7 16 12 23 17 23 7"/>
-                    <rect x="1" y="5" width="15" height="14" rx="2" ry="2"/>
-                  </svg>
-                </div>
-                <span class="tg-action-label">Видео</span>
-              </button>
-            {/if}
           </div>
         </div>
 
-        {#if infoFields.length || chatLink || userId || chatId}
-          <div class="tg-section-header">Информация</div>
-          <div class="tg-card">
-            {#if chatLink}
-              <div class="tg-row tg-row-clickable" on:click={copyLink}>
-                <div class="tg-row-icon tg-icon-link">
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <circle cx="12" cy="12" r="4"/>
-                    <path d="M16 8v5a3 3 0 0 0 6 0v-1a10 10 0 1 0-3.92 7.94"/>
-                  </svg>
-                </div>
-                <div class="tg-row-main">
-                  <div class="tg-row-title tg-link-text">
-                    {#if chatLink.includes("join/")}
-                      {chatLink.slice(0, 26)}...{chatLink.slice(-4)}
-                    {:else}
-                      @{chatLink.replace("https://max.ru/", "")}
-                    {/if}
-                  </div>
-                  <div class="tg-row-subtitle">Имя пользователя / Ссылка</div>
-                </div>
-                <button type="button" class="tg-copy-btn" title="Скопировать ссылку" on:click|stopPropagation={copyLink}>
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
-                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
-                  </svg>
-                </button>
-                {#if chat?.type === "CHAT" && (isGroupAdmin || chat?.owner === $currentUser)}
-                  <button type="button" class="tg-copy-btn" title="Отозвать и создать новую ссылку" on:click|stopPropagation={() => (showRefreshInviteConfirm = true)}>
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                      <polyline points="23 4 23 10 17 10"/>
-                      <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
-                    </svg>
-                  </button>
-                {/if}
-              </div>
-            {/if}
-
-            {#each infoFields as field}
-              <div class="tg-row tg-row-clickable" on:click={() => copyText(field.value, field.label)}>
-                <div class="tg-row-icon tg-icon-info">
-                  {#if field.icon === "phone"}
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                      <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/>
-                    </svg>
-                  {:else if field.icon === "calendar"}
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                      <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
-                      <line x1="16" y1="2" x2="16" y2="6"/>
-                      <line x1="8" y1="2" x2="8" y2="6"/>
-                      <line x1="3" y1="10" x2="21" y2="10"/>
-                    </svg>
-                  {:else}
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                      <circle cx="12" cy="12" r="10"/>
-                      <line x1="12" y1="16" x2="12" y2="12"/>
-                      <line x1="12" y1="8" x2="12.01" y2="8"/>
-                    </svg>
-                  {/if}
-                </div>
-                <div class="tg-row-main">
-                  <div class="tg-row-title selectable">{field.value}</div>
-                  <div class="tg-row-subtitle">{field.label}</div>
-                </div>
-                <button type="button" class="tg-copy-btn" title="Скопировать">
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
-                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
-                  </svg>
-                </button>
-              </div>
-            {/each}
-
-            {#if userId || chatId}
-              <div class="tg-row tg-row-clickable" on:click={() => copyText(userId || chatId, "ID")}>
-                <div class="tg-row-icon tg-icon-hash">
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <line x1="4" y1="9" x2="20" y2="9"/>
-                    <line x1="4" y1="15" x2="20" y2="15"/>
-                    <line x1="10" y1="3" x2="8" y2="21"/>
-                    <line x1="16" y1="3" x2="14" y2="21"/>
-                  </svg>
-                </div>
-                <div class="tg-row-main">
-                  <div class="tg-row-title">{formatId(userId || chatId)}</div>
-                  <div class="tg-row-subtitle">Идентификатор (ID)</div>
-                </div>
-                <button type="button" class="tg-copy-btn" title="Скопировать ID">
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
-                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
-                  </svg>
-                </button>
-              </div>
-            {/if}
-          </div>
-        {/if}
-
-        {#if chat?.type === "CHAT" || isChannel}
-          <div class="tg-section-header">
-            {isChannel ? "Подписчики" : "Участники"} · {totalMemberCount}
-          </div>
-
-          {#if totalMemberCount > 4 || memberSearch}
-            <div class="tg-search-bar">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <circle cx="11" cy="11" r="8"/>
-                <line x1="21" y1="21" x2="16.65" y2="16.65"/>
-              </svg>
+        {#if channelAccessType === "PUBLIC"}
+          <div class="profile-card-caption">Публичная ссылка</div>
+          <div class="profile-card">
+            <div class="profile-input-item">
               <input
                 type="text"
-                bind:value={memberSearch}
-                placeholder={isChannel ? "Поиск подписчиков..." : "Поиск участников..."}
-                class="tg-search-input"
+                bind:value={channelLinkInput}
+                placeholder="username"
+                class="profile-input-field"
+                on:keydown={(e) => e.key === "Enter" && savePublicChannelLink()}
               />
-            </div>
-          {/if}
-
-          <div class="tg-card tg-members-card">
-            {#if (isGroupAdmin || (isChannel && isChannelAdmin)) && joinRequests.length > 0}
-              <div
-                class="tg-row tg-requests-row"
-                on:click={() => (showJoinRequestsModal = true)}
-              >
-                <div class="tg-row-icon tg-icon-requests">
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
-                    <circle cx="9" cy="7" r="4"/>
-                    <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
-                    <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
-                  </svg>
-                </div>
-                <div class="tg-row-main">
-                  <div class="tg-row-title tg-requests-title">Заявки на вступление</div>
-                  <div class="tg-row-subtitle">Ожидают подтверждения: {joinRequests.length}</div>
-                </div>
-                <span class="tg-requests-badge">{joinRequests.length}</span>
-              </div>
-            {/if}
-
-            {#if !isChannel || isChannelOwner || (channelAdminPerms & 2) !== 0}
-              <div
-                class="tg-row tg-row-clickable tg-invite-row"
-                on:click={() => (showAddMembersModal = true)}
-              >
-                <div class="tg-row-icon tg-icon-invite">
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
-                    <circle cx="8.5" cy="7.5" r="4"/>
-                    <line x1="20" y1="8" x2="20" y2="14"/>
-                    <line x1="23" y1="11" x2="17" y2="11"/>
-                  </svg>
-                </div>
-                <div class="tg-row-main">
-                  <div class="tg-row-title tg-link-text">{isChannel ? "Добавить подписчиков" : "Добавить участников"}</div>
-                </div>
-              </div>
-            {/if}
-
-            {#each displayedMembers as memberItem, memberIdx (memberItem.contact?.id || memberItem.userId || memberItem.id || memberItem)}
-              {@const memberId = Number(memberItem.contact?.id || memberItem.userId || memberItem.id || memberItem)}
-              {@const isMemberOwner = Number(memberId) === Number(chat.owner)}
-              {@const isMemberAdmin = isMemberOwner || Boolean(chat.admins?.some(a => Number(a) === Number(memberId)))}
-              {@const memberAlias = memberItem.alias || (isMemberOwner ? "владелец" : isMemberAdmin ? "админ" : null)}
-              {@const canManage = canManageMember(memberId)}
-              <div
-                class="tg-row tg-member-row"
-                on:click={() => selectMember(memberId)}
-              >
-                <Avatar
-                  contactId={memberId}
-                  size={42}
-                  src={memberItem?.contact?.baseUrl || memberItem?.contact?.baseRawUrl}
-                  title={getMemberName(memberItem)}
-                />
-                <div class="tg-row-main">
-                  <div class="tg-member-name-row">
-                    <span class="tg-row-title">
-                      {getMemberName(memberItem)}
-                    </span>
-                    {#if memberAlias}
-                      <span class="tg-role-badge" class:admin={isMemberAdmin && !isMemberOwner}>{memberAlias}</span>
-                    {/if}
-                  </div>
-                  <div class="tg-row-subtitle">
-                    <Signature contactId={memberId} presence={memberItem.presence} />
-                  </div>
-                </div>
-
-                {#if canManage}
-                  <div class="tg-member-more-container" on:click|stopPropagation>
-                    <button
-                      type="button"
-                      class="tg-btn-member-more"
-                      on:click={() => toggleMemberMenu(memberId)}
-                      aria-label="Опции участника"
-                    >
-                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <circle cx="12" cy="12" r="1.5"/>
-                        <circle cx="12" cy="5" r="1.5"/>
-                        <circle cx="12" cy="19" r="1.5"/>
-                      </svg>
-                    </button>
-
-                    {#if selectedMemberMenuId === memberId}
-                      <div class="tg-dropdown tg-member-dropdown" class:bottom-up={memberIdx >= displayedMembers.length - 2 && displayedMembers.length > 2} transition:scale={{ duration: 120, start: 0.94 }}>
-                        <div class="tg-menu-item" on:click={() => { selectedMemberMenuId = null; selectMember(memberId); }}>
-                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
-                            <circle cx="12" cy="7" r="4"/>
-                          </svg>
-                          <span>Профиль</span>
-                        </div>
-                        {#if (!isChannel && (isGroupOwner || (isGroupAdmin && !isMemberAdmin))) || (isChannel && (isChannelOwner || ((channelAdminPerms & 4) !== 0 && !isMemberAdmin)))}
-                          <div class="tg-menu-item" on:click={() => { selectedMemberMenuId = null; openAdminModal(memberItem); }}>
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                              <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
-                            </svg>
-                            <span>{isMemberAdmin ? "Настроить права" : "Назначить админом"}</span>
-                          </div>
-                        {/if}
-                        {#if isMemberAdmin && ((!isChannel && isGroupOwner) || (isChannel && isChannelOwner)) && !isMemberOwner}
-                          <div class="tg-menu-item danger" on:click={() => { selectedMemberMenuId = null; demoteAdmin(memberId); }}>
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                              <line x1="18" y1="6" x2="6" y2="18"/>
-                              <line x1="6" y1="6" x2="18" y2="18"/>
-                            </svg>
-                            <span>Разжаловать</span>
-                          </div>
-                        {/if}
-                        <div class="tg-menu-item danger" on:click={() => { selectedMemberMenuId = null; promptKickMember(memberItem); }}>
-                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <polyline points="3 6 5 6 21 6"/>
-                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
-                          </svg>
-                          <span>{isChannel ? "Удалить из канала" : "Исключить"}</span>
-                        </div>
-                      </div>
-                    {/if}
-                  </div>
-                {:else}
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="tg-chevron">
-                    <polyline points="9 18 15 12 9 6"/>
-                  </svg>
-                {/if}
-              </div>
-            {/each}
-
-            {#if !groupMembersEnd && !memberSearch.trim()}
               <button
                 type="button"
-                class="tg-load-more-members"
-                disabled={groupMembersLoading}
-                on:click={loadMoreMembers}
+                class="profile-pill-button"
+                on:click={savePublicChannelLink}
               >
-                {groupMembersLoading ? "Загрузка..." : "Показать еще"}
+                Сохранить
               </button>
-            {/if}
+            </div>
+            <div class="profile-item-hint">max.ru/{channelLinkInput ? channelLinkInput.trim() : "username"}</div>
+          </div>
+        {:else}
+          <div class="profile-card-caption">Ссылка-приглашение</div>
+          <div class="profile-card">
+            <div class="profile-item-row" on:click={copyLink}>
+              <div class="profile-item-icon">
+                <span class="mask-icon" style="-webkit-mask-image: url('/icons/link.svg'); mask-image: url('/icons/link.svg'); width: 22px; height: 22px;"></span>
+              </div>
+              <div class="profile-item-content">
+                <div class="profile-item-title link">{chat?.link || "Создание ссылки..."}</div>
+                <div class="profile-item-subtitle">Нажмите для копирования</div>
+              </div>
+              <button type="button" class="profile-action-icon-btn" title="Сбросить" on:click|stopPropagation={() => (showRefreshInviteConfirm = true)}>
+                <span class="mask-icon" style="-webkit-mask-image: url('/icons/reload.svg'); mask-image: url('/icons/reload.svg'); width: 18px; height: 18px;"></span>
+              </button>
+            </div>
+          </div>
+
+          <div class="profile-card">
+            <div class="profile-item-row" on:click={toggleChannelJoinRequest}>
+              <div class="profile-item-icon">
+                <span class="mask-icon" style="-webkit-mask-image: url('/icons/user-plus.svg'); mask-image: url('/icons/user-plus.svg'); width: 22px; height: 22px;"></span>
+              </div>
+              <div class="profile-item-content">
+                <div class="profile-item-title">Заявки на вступление</div>
+                <div class="profile-item-subtitle">Требуется подтверждение админом</div>
+              </div>
+              <Switch checked={channelJoinRequestEnabled} ariaLabel="Заявки на вступление" />
+            </div>
           </div>
         {/if}
+      </div>
+    </div>
+  {:else}
+    <!-- Main Profile Screen -->
+    <div class="profile-scroll-body" in:fade={{ duration: 150 }}>
+      <!-- Hero Header Section -->
+      <section class="profile-hero-section">
+        <div
+          class="profile-avatar-container"
+          bind:this={avatarWrapEl}
+          class:clickable={Boolean(avatar || canUploadAvatar || (userId && (!chat || chat.type === "DIALOG")))}
+          on:click={openAvatarGallery}
+        >
+          <Avatar
+            chat={chat}
+            title={title}
+            contactId={chat?.type === "DIALOG" ? ($contact?.id ?? userId) : undefined}
+            isSelf={isOwnProfile}
+            userId={isOwnProfile ? Number($currentUserDetails?.id || $currentUser) : userId}
+            size={96}
+            allowStories={true}
+          />
+        </div>
 
-        <div class="tg-section-header">Действия</div>
-        <div class="tg-card">
-          {#if chat}
-            <div class="tg-row tg-row-clickable tg-danger-row" on:click={() => (showPurgeConfirm = true)}>
-              <div class="tg-row-icon tg-icon-danger">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <polyline points="3 6 5 6 21 6"/>
-                  <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
-                </svg>
-              </div>
-              <div class="tg-row-main">
-                <div class="tg-row-title danger">Очистить историю</div>
-              </div>
-            </div>
-          {/if}
-          {#if chat?.type === "CHANNEL"}
-            {#if chat?.id && $currentRealChats.includes(chat.id)}
-              <div class="tg-row tg-row-clickable tg-danger-row" on:click={quitChannel}>
-                <div class="tg-row-icon tg-icon-danger">
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M18 6L6 18M6 6l12 12"/>
-                  </svg>
-                </div>
-                <div class="tg-row-main">
-                  <div class="tg-row-title danger">Отписаться от канала</div>
-                </div>
-              </div>
-            {:else if chat?.link}
-              <div class="tg-row tg-row-clickable" on:click={joinChannel}>
-                <div class="tg-row-icon tg-icon-check">
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <polyline points="20 6 9 17 4 12"/>
-                  </svg>
-                </div>
-                <div class="tg-row-main">
-                  <div class="tg-row-title tg-link-text">Подписаться на канал</div>
-                </div>
-              </div>
-            {/if}
-          {/if}
+        <h1 class="profile-hero-title">{title}</h1>
 
+        <div class="profile-hero-subtitle">
           {#if chat?.type === "CHAT"}
-            <div class="tg-row tg-row-clickable tg-danger-row" on:click={() => handleAction("quit")}>
-              <div class="tg-row-icon tg-icon-danger">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
-                  <polyline points="16 17 21 12 16 7"/>
-                  <line x1="21" y1="12" x2="9" y2="12"/>
-                </svg>
-              </div>
-              <div class="tg-row-main">
-                <div class="tg-row-title danger">Выйти из группы</div>
-              </div>
-            </div>
-          {/if}
-
-          {#if chat?.owner === $currentUser || chat?.type === "DIALOG"}
-            <div class="tg-row tg-row-clickable tg-danger-row" on:click={() => handleAction("delete")}>
-              <div class="tg-row-icon tg-icon-danger">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <polyline points="3 6 5 6 21 6"/>
-                  <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
-                </svg>
-              </div>
-              <div class="tg-row-main">
-                <div class="tg-row-title danger">Удалить чат для всех</div>
-              </div>
-            </div>
+            {#if onlineCount > 0}
+              <span>{onlineCount} из {totalMemberCount} в сети</span>
+            {:else}
+              <span>{formatMembersCount(totalMemberCount)}</span>
+            {/if}
+          {:else if isChannel}
+            <span>{formatSubscribersCount(totalMemberCount)}</span>
+          {:else}
+            <Signature contact={contact} chat={chat} />
           {/if}
         </div>
-          </div>
-        </div>
 
-        {#if chat}
-          <div class="tg-tab-page">
-            <div class="tg-tab-page-content">
-              {#if hasVisitedMediaTab}
-                <GroupSharedMedia {chat} />
+        {#if hasProfileStories}
+          <button
+            type="button"
+            class="profile-story-pill"
+            on:click={() => openStoriesViewer(targetProfileEntityId)}
+          >
+            <span class="profile-story-dot"></span>
+            <span>{profileStoryPreview.totalCount} {profileStoryPreview.totalCount === 1 ? "история" : profileStoryPreview.totalCount < 5 ? "истории" : "историй"}</span>
+          </button>
+        {/if}
+
+        <!-- Capsule Action Tiles Grid (1-to-1 visual parity with Screenshots 3 & 4) -->
+        <div class="profile-action-tiles-grid">
+          {#if isChannel}
+            <!-- Channel Profile: [ Звук ] [ Найти ] [ Поделиться ] [ Ещё ] -->
+            <button type="button" class="profile-action-tile" on:click={toggleMute}>
+              <div class="profile-action-tile-icon">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
+                  <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
+                </svg>
+              </div>
+              <span class="profile-action-tile-label">{muted ? "Звук вкл." : "Звук"}</span>
+            </button>
+
+            <button type="button" class="profile-action-tile" on:click={handleProfileSearch}>
+              <div class="profile-action-tile-icon">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="11" cy="11" r="8"></circle>
+                  <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                </svg>
+              </div>
+              <span class="profile-action-tile-label">Найти</span>
+            </button>
+
+            <button type="button" class="profile-action-tile" on:click={copyLink}>
+              <div class="profile-action-tile-icon">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"></path>
+                  <polyline points="16 6 12 2 8 6"></polyline>
+                  <line x1="12" y1="2" x2="12" y2="15"></line>
+                </svg>
+              </div>
+              <span class="profile-action-tile-label">Поделиться</span>
+            </button>
+
+            <div class="profile-action-tile-wrap">
+              <button type="button" class="profile-action-tile" on:click|stopPropagation={toggleMenu}>
+                <div class="profile-action-tile-icon">
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor">
+                    <circle cx="5" cy="12" r="2.2"></circle>
+                    <circle cx="12" cy="12" r="2.2"></circle>
+                    <circle cx="19" cy="12" r="2.2"></circle>
+                  </svg>
+                </div>
+                <span class="profile-action-tile-label">Ещё</span>
+              </button>
+
+              {#if showMenu}
+                <div class="profile-dropdown-menu" transition:scale={{ duration: 140, start: 0.92 }}>
+                  {#if chatLink}
+                    <button type="button" class="profile-dropdown-item" on:click={() => { showMenu = false; copyLink(); }}>
+                      <span class="mask-icon" style="-webkit-mask-image: url('/icons/link.svg'); mask-image: url('/icons/link.svg'); width: 18px; height: 18px;"></span>
+                      <span>Скопировать ссылку</span>
+                    </button>
+                  {/if}
+                  <button type="button" class="profile-dropdown-item" on:click={() => { showMenu = false; purgeForAll = false; showPurgeConfirm = true; }}>
+                    <span class="mask-icon" style="-webkit-mask-image: url('/icons/recent.svg'); mask-image: url('/icons/recent.svg'); width: 18px; height: 18px;"></span>
+                    <span>Очистить историю</span>
+                  </button>
+                  {#if isChannelOwner}
+                    <button type="button" class="profile-dropdown-item danger" on:click={() => { showMenu = false; showDeleteConfirm = true; }}>
+                      <span class="mask-icon" style="-webkit-mask-image: url('/icons/trash.svg'); mask-image: url('/icons/trash.svg'); width: 18px; height: 18px;"></span>
+                      <span>Удалить канал</span>
+                    </button>
+                  {:else}
+                    <button type="button" class="profile-dropdown-item danger" on:click={() => { showMenu = false; quitChannel(); }}>
+                      <span class="mask-icon" style="-webkit-mask-image: url('/icons/forward.svg'); mask-image: url('/icons/forward.svg'); width: 18px; height: 18px;"></span>
+                      <span>Покинуть канал</span>
+                    </button>
+                  {/if}
+                </div>
               {/if}
             </div>
-          </div>
-        {/if}
 
-        {#if hasSettings}
-          <div class="tg-tab-page">
-            <div class="tg-tab-page-content">
-              {#if isChannel}
-                <div class="tg-section-header">Основное</div>
-                <div class="tg-card">
-                  <div class="tg-row tg-row-clickable" on:click={() => (showInputs = true)}>
-                    <div class="tg-row-icon tg-icon-info">
-                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M12 20h9"/>
-                        <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
-                      </svg>
-                    </div>
-                    <div class="tg-row-main">
-                      <div class="tg-row-title">{chat?.title || "Без названия"}</div>
-                      <div class="tg-row-subtitle">{chat?.description || "Добавить описание"}</div>
-                    </div>
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="tg-chevron">
-                      <polyline points="9 18 15 12 9 6"/>
-                    </svg>
-                  </div>
-                </div>
-
-                <div class="tg-section-header">Тип канала</div>
-                <div class="tg-segmented">
-                  <button
-                    type="button"
-                    class="tg-seg-btn"
-                    class:active={channelAccessType === "PUBLIC"}
-                    on:click={() => setChannelAccessType("PUBLIC")}
-                  >
-                    <span class="tg-seg-title">Публичный</span>
-                    <span class="tg-seg-sub">Доступен всем</span>
-                  </button>
-                  <button
-                    type="button"
-                    class="tg-seg-btn"
-                    class:active={channelAccessType === "PRIVATE"}
-                    on:click={() => setChannelAccessType("PRIVATE")}
-                  >
-                    <span class="tg-seg-title">Частный</span>
-                    <span class="tg-seg-sub">По ссылке</span>
-                  </button>
-                </div>
-
-                <div class="tg-caption">
-                  {channelAccessType === "PUBLIC"
-                    ? "Публичный канал можно найти через поиск, подписаться может любой пользователь."
-                    : "В частный канал можно вступить только по ссылке-приглашению."}
-                </div>
-
-                {#if channelAccessType === "PUBLIC"}
-                  <div class="tg-section-header">Публичная ссылка</div>
-                  <div class="tg-card">
-                    <div class="tg-row tg-input-row">
-                      <div class="tg-row-icon tg-icon-link">
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                          <circle cx="12" cy="12" r="4"/>
-                          <path d="M16 8v5a3 3 0 0 0 6 0v-1a10 10 0 1 0-3.92 7.94"/>
-                        </svg>
-                      </div>
-                      <div class="tg-row-main">
-                        <input
-                          type="text"
-                          bind:value={channelLinkInput}
-                          placeholder="username"
-                          class="tg-input"
-                          on:keydown={(e) => e.key === "Enter" && savePublicChannelLink()}
-                        />
-                        <div class="tg-row-subtitle">max.ru/{channelLinkInput ? channelLinkInput.trim() : "username"}</div>
-                      </div>
-                      <button
-                        type="button"
-                        class="tg-btn-action"
-                        on:click={savePublicChannelLink}
-                      >
-                        Сохранить
-                      </button>
-                    </div>
-                  </div>
-                {:else}
-                  <div class="tg-section-header">Ссылка-приглашение</div>
-                  <div class="tg-card">
-                    <div class="tg-row tg-row-clickable" on:click={copyLink}>
-                      <div class="tg-row-icon tg-icon-link">
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                          <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
-                          <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
-                        </svg>
-                      </div>
-                      <div class="tg-row-main">
-                        <div class="tg-row-title tg-link-text">
-                          {chat?.link || "Создание ссылки..."}
-                        </div>
-                        <div class="tg-row-subtitle">Нажмите, чтобы скопировать</div>
-                      </div>
-                      <button type="button" class="tg-copy-btn" title="Скопировать ссылку" on:click|stopPropagation={copyLink}>
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                          <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
-                          <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
-                        </svg>
-                      </button>
-                      <button type="button" class="tg-copy-btn" title="Сбросить ссылку" on:click|stopPropagation={() => (showRefreshInviteConfirm = true)}>
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                          <polyline points="23 4 23 10 17 10"/>
-                          <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
-                        </svg>
-                      </button>
-                    </div>
-                  </div>
-                {/if}
-
-                <div class="tg-section-header">Параметры канала</div>
-                <div class="tg-card">
-                  <div class="tg-row tg-row-clickable" on:click={toggleChannelComments}>
-                    <div class="tg-row-icon tg-icon-info">
-                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
-                      </svg>
-                    </div>
-                    <div class="tg-row-main">
-                      <div class="tg-row-title">Комментарии</div>
-                      <div class="tg-row-subtitle">Обсуждение публикаций канала</div>
-                    </div>
-                    <div class="tg-switch" class:active={channelCommentsEnabled}>
-                      <div class="tg-switch-thumb"></div>
-                    </div>
-                  </div>
-
-                  <div class="tg-row tg-row-clickable" on:click={toggleChannelSignatures}>
-                    <div class="tg-row-icon tg-icon-key">
-                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M12 20h9"/>
-                        <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
-                      </svg>
-                    </div>
-                    <div class="tg-row-main">
-                      <div class="tg-row-title">Подписи сообщений</div>
-                      <div class="tg-row-subtitle">Имя автора в каждом посте</div>
-                    </div>
-                    <div class="tg-switch" class:active={channelSignaturesEnabled}>
-                      <div class="tg-switch-thumb"></div>
-                    </div>
-                  </div>
-
-                  <div class="tg-row tg-row-clickable" on:click={toggleChannelJoinRequest}>
-                    <div class="tg-row-icon tg-icon-shield">
-                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
-                        <circle cx="8.5" cy="7.5" r="4"/>
-                        <line x1="20" y1="8" x2="20" y2="14"/>
-                        <line x1="23" y1="11" x2="17" y2="11"/>
-                      </svg>
-                    </div>
-                    <div class="tg-row-main">
-                      <div class="tg-row-title">Заявки на вступление</div>
-                      <div class="tg-row-subtitle">Администраторы подтверждают подписку</div>
-                    </div>
-                    <div class="tg-switch" class:active={channelJoinRequestEnabled}>
-                      <div class="tg-switch-thumb"></div>
-                    </div>
-                  </div>
-
-                  <div class="tg-row tg-row-clickable" on:click={toggleMute}>
-                    <div class="tg-row-icon tg-icon-bell">
-                      {#if muted}
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                          <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
-                          <path d="M18.63 13A17.89 17.89 0 0 1 18 8"/>
-                          <path d="M6.26 6.26A5.86 5.86 0 0 0 6 8c0 7-3 9-3 9h14"/>
-                          <path d="M18 8a6 6 0 0 0-9.33-5"/>
-                          <line x1="1" y1="1" x2="23" y2="23"/>
-                        </svg>
-                      {:else}
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                          <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
-                          <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
-                        </svg>
-                      {/if}
-                    </div>
-                    <div class="tg-row-main">
-                      <div class="tg-row-title">Уведомления</div>
-                      <div class="tg-row-subtitle">{muted ? "Отключены" : "Включены"}</div>
-                    </div>
-                    <div class="tg-switch" class:active={!muted}>
-                      <div class="tg-switch-thumb"></div>
-                    </div>
-                  </div>
-                </div>
-
-                <div class="tg-section-header">Администраторы · {channelAdmins.length}</div>
-                <div class="tg-card">
-                  {#if isChannelOwner || (channelAdminPerms & 4) !== 0}
-                    <div
-                      class="tg-row tg-row-clickable tg-invite-row"
-                      on:click={() => { isPickingAdmin = true; showAddMembersModal = true; }}
-                    >
-                      <div class="tg-row-icon tg-icon-invite">
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                          <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
-                          <circle cx="8.5" cy="7.5" r="4"/>
-                          <line x1="20" y1="8" x2="20" y2="14"/>
-                          <line x1="23" y1="11" x2="17" y2="11"/>
-                        </svg>
-                      </div>
-                      <div class="tg-row-main">
-                        <div class="tg-row-title tg-link-text">Добавить администратора</div>
-                      </div>
-                    </div>
-                  {/if}
-
-                  {#each channelAdmins as adminItem}
-                    <div
-                      class="tg-row tg-member-row tg-row-clickable"
-                      on:click={() => openAdminModal(adminItem)}
-                    >
-                      <Avatar
-                        contactId={adminItem.id}
-                        size={42}
-                        src={adminItem?.contact?.baseUrl || adminItem?.contact?.baseRawUrl}
-                        title={getMemberName(adminItem)}
-                      />
-                      <div class="tg-row-main">
-                        <div class="tg-member-name-row">
-                          <span class="tg-row-title">{getMemberName(adminItem)}</span>
-                          <span class="tg-role-badge" class:admin={!adminItem.isOwner}>{adminItem.alias}</span>
-                        </div>
-                        <div class="tg-row-subtitle">
-                          <Signature contactId={adminItem.id} />
-                        </div>
-                      </div>
-                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="tg-chevron">
-                        <polyline points="9 18 15 12 9 6"/>
-                      </svg>
-                    </div>
-                  {/each}
-                </div>
-
-                <div class="tg-section-header">Действия</div>
-                <div class="tg-card">
-                  {#if isChannelOwner}
-                    <div class="tg-row tg-row-clickable tg-danger-row" on:click={() => (showDeleteConfirm = true)}>
-                      <div class="tg-row-icon tg-icon-danger">
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                          <polyline points="3 6 5 6 21 6"/>
-                          <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
-                        </svg>
-                      </div>
-                      <div class="tg-row-main">
-                        <div class="tg-row-title danger">Удалить канал для всех</div>
-                      </div>
-                    </div>
-                  {:else}
-                    <div class="tg-row tg-row-clickable tg-danger-row" on:click={quitChannel}>
-                      <div class="tg-row-icon tg-icon-danger">
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                          <path d="M18 6L6 18M6 6l12 12"/>
-                        </svg>
-                      </div>
-                      <div class="tg-row-main">
-                        <div class="tg-row-title danger">Покинуть канал</div>
-                      </div>
-                    </div>
-                  {/if}
-                </div>
-              {:else}
-                {#if chat?.type !== "CHAT"}
-          <div class="tg-section-header">Шифрование и безопасность</div>
-          <div class="tg-card">
-            <div class="tg-row">
-              <div class="tg-row-icon tg-icon-shield">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
-                </svg>
-              </div>
-              <div class="tg-row-main">
-                <div class="tg-row-title">Сквозное шифрование</div>
-                <div class="tg-row-subtitle">
-                  {#if $chatSettings?.session?.shared_secret || $chatSettings?.session?.fingerprint || $chatSettings?.keys?.current}
-                    <span class="tg-badge tg-badge-success">Активно</span>
-                  {:else if $chatSettings?.pending}
-                    <span class="tg-badge tg-badge-warning">Запрос отправлен</span>
-                  {:else}
-                    <span class="tg-badge tg-badge-muted">Отключено</span>
-                  {/if}
-                </div>
-              </div>
-              <button
-                type="button"
-                class="tg-btn-action"
-                class:danger={$chatSettings?.session?.shared_secret || $chatSettings?.session?.fingerprint || $chatSettings?.keys?.current}
-                on:click={triggerSwitchEnc}
-              >
-                { !($chatSettings?.session?.shared_secret || $chatSettings?.session?.fingerprint || $chatSettings?.keys?.current) ? "Новая сессия" : "Отключить" }
-              </button>
-            </div>
-
-            {#if $chatSettings?.session?.fingerprint}
-              <div class="tg-row tg-row-clickable" on:click={copyFingerprint}>
-                <div class="tg-row-icon tg-icon-key">
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <circle cx="7.5" cy="15.5" r="4.5"/>
-                    <path d="M21 2l-9.6 9.6M15.5 7.5l3 3M18.5 4.5l3 3"/>
-                  </svg>
-                </div>
-                <div class="tg-row-main">
-                  <div class="tg-row-title">Ключ сессии</div>
-                  <div class="tg-fingerprint-emojis">
-                    {$chatSettings.session.fingerprint}
-                  </div>
-                </div>
-                <button type="button" class="tg-copy-btn" title="Скопировать ключ">
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
-                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
-                  </svg>
-                </button>
-              </div>
-            {/if}
-          </div>
-
-          <div class="tg-caption">
-            {#if $chatSettings?.session?.fingerprint}
-              Сравните эти 4 эмодзи с собеседником для проверки безопасности соединения.
-            {:else}
-              При включении переписка шифруется на устройстве, прочитать её можете только вы и собеседник.
-            {/if}
-            <div class="tg-caption-tag">Шифрование доступно между пользователями Max+</div>
-          </div>
-        {/if}
-
-        <div class="tg-section-header">Симметричный ключ (XOR)</div>
-        <div class="tg-card">
-          <div class="tg-row tg-input-row">
-            <div class="tg-row-icon tg-icon-lock">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
-                <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
-              </svg>
-            </div>
-            <div class="tg-row-main">
-              <input
-                type={showPassword ? "text" : "password"}
-                value={$chatSettings?.password || ""}
-                on:input={onPasswordInput}
-                class="tg-input"
-                placeholder="Введите общий секрет чата"
-              />
-            </div>
+          {:else if isGroupChat}
+            <!-- Group Profile: [ Звонок ] [ Звук ] [ Найти ] [ Ещё ] -->
             <button
               type="button"
-              class="tg-eye-btn"
-              on:click={() => (showPassword = !showPassword)}
-              aria-label="Показать пароль"
+              class="profile-action-tile"
+              on:click={() => {
+                closeModal();
+                if (chat?.id) CallService.placeAudioCall(chat.id, chat.title, chat.baseUrl || chat.baseRawUrl);
+              }}
             >
-              {#if showPassword}
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/>
-                  <line x1="1" y1="1" x2="23" y2="23"/>
+              <div class="profile-action-tile-icon">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path>
                 </svg>
-              {:else}
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
-                  <circle cx="12" cy="12" r="3"/>
-                </svg>
-              {/if}
+              </div>
+              <span class="profile-action-tile-label">Звонок</span>
             </button>
-          </div>
-        </div>
-        <div class="tg-caption">Дополнительный общий пароль для симметричного шифрования.</div>
 
-        <div class="tg-section-header">Обфускация трафика</div>
-        <div class="tg-segmented">
-          <button
-            type="button"
-            class="tg-seg-btn"
-            class:active={!$chatSettings?.obfuscation}
-            on:click={() => setObfuscation(null)}
-          >
-            <span class="tg-seg-title">Без маскировки</span>
-            <span class="tg-seg-sub">OFF</span>
-          </button>
+            <button type="button" class="profile-action-tile" on:click={toggleMute}>
+              <div class="profile-action-tile-icon">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
+                  <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
+                </svg>
+              </div>
+              <span class="profile-action-tile-label">{muted ? "Звук вкл." : "Звук"}</span>
+            </button>
 
-          <button
-            type="button"
-            class="tg-seg-btn"
-            class:active={$chatSettings?.obfuscation === "zh"}
-            on:click={() => setObfuscation("zh")}
-          >
-            <span class="tg-seg-title">Китайский</span>
-            <span class="tg-seg-sub">Zh</span>
-          </button>
+            <button type="button" class="profile-action-tile" on:click={handleProfileSearch}>
+              <div class="profile-action-tile-icon">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="11" cy="11" r="8"></circle>
+                  <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                </svg>
+              </div>
+              <span class="profile-action-tile-label">Найти</span>
+            </button>
 
-          <button
-            type="button"
-            class="tg-seg-btn"
-            class:active={$chatSettings?.obfuscation === "words"}
-            on:click={() => setObfuscation("words")}
-          >
-            <span class="tg-seg-title">Книжные слова</span>
-            <span class="tg-seg-sub">Tol</span>
-          </button>
-        </div>
+            <div class="profile-action-tile-wrap">
+              <button type="button" class="profile-action-tile" on:click|stopPropagation={toggleMenu}>
+                <div class="profile-action-tile-icon">
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor">
+                    <circle cx="5" cy="12" r="2.2"></circle>
+                    <circle cx="12" cy="12" r="2.2"></circle>
+                    <circle cx="19" cy="12" r="2.2"></circle>
+                  </svg>
+                </div>
+                <span class="profile-action-tile-label">Ещё</span>
+              </button>
 
-        <div class="tg-caption">
-          {#if $chatSettings?.obfuscation === "zh"}
-            Зашифрованный текст визуально маскируется иероглифами.
-          {:else if $chatSettings?.obfuscation === "words"}
-            {#await hasDictionary}
-              Проверка словаря...
-            {:then has}
-              {#if has}
-                Зашифрованный текст превращается в поток литературных слов.
-              {:else}
-                <span class="tg-warn-text">Словарь не найден. Загрузите список слов в настройках приложения.</span>
+              {#if showMenu}
+                <div class="profile-dropdown-menu" transition:scale={{ duration: 140, start: 0.92 }}>
+                  {#if chatLink}
+                    <button type="button" class="profile-dropdown-item" on:click={() => { showMenu = false; copyLink(); }}>
+                      <span class="mask-icon" style="-webkit-mask-image: url('/icons/link.svg'); mask-image: url('/icons/link.svg'); width: 18px; height: 18px;"></span>
+                      <span>Скопировать ссылку</span>
+                    </button>
+                  {/if}
+                  {#if (isGroupAdmin || isGroupOwner) && chatLink}
+                    <button type="button" class="profile-dropdown-item" on:click={() => { showMenu = false; showRefreshInviteConfirm = true; }}>
+                      <span class="mask-icon" style="-webkit-mask-image: url('/icons/reload.svg'); mask-image: url('/icons/reload.svg'); width: 18px; height: 18px;"></span>
+                      <span>Обновить ссылку</span>
+                    </button>
+                  {/if}
+                  {#if (isGroupAdmin || isGroupOwner) && joinRequests.length > 0}
+                    <button type="button" class="profile-dropdown-item" on:click={() => { showMenu = false; showJoinRequestsModal = true; }}>
+                      <span class="mask-icon" style="-webkit-mask-image: url('/icons/user-plus.svg'); mask-image: url('/icons/user-plus.svg'); width: 18px; height: 18px;"></span>
+                      <span>Заявки на вступление</span>
+                      <span class="profile-menu-badge">{joinRequests.length}</span>
+                    </button>
+                  {/if}
+                  <button type="button" class="profile-dropdown-item" on:click={() => { showMenu = false; purgeForAll = false; showPurgeConfirm = true; }}>
+                    <span class="mask-icon" style="-webkit-mask-image: url('/icons/recent.svg'); mask-image: url('/icons/recent.svg'); width: 18px; height: 18px;"></span>
+                    <span>Очистить историю</span>
+                  </button>
+                  {#if isGroupOwner}
+                    <button type="button" class="profile-dropdown-item danger" on:click={() => { showMenu = false; showDeleteConfirm = true; }}>
+                      <span class="mask-icon" style="-webkit-mask-image: url('/icons/trash.svg'); mask-image: url('/icons/trash.svg'); width: 18px; height: 18px;"></span>
+                      <span>Удалить чат</span>
+                    </button>
+                  {:else}
+                    <button type="button" class="profile-dropdown-item danger" on:click={() => { showMenu = false; leaveChat(); }}>
+                      <span class="mask-icon" style="-webkit-mask-image: url('/icons/forward.svg'); mask-image: url('/icons/forward.svg'); width: 18px; height: 18px;"></span>
+                      <span>Выйти из чата</span>
+                    </button>
+                  {/if}
+                </div>
               {/if}
-            {/await}
+            </div>
+
           {:else}
-            Символы передаются в стандартном зашифрованном виде.
+            <!-- 1:1 Direct User Profile: [ Звонок ] [ Видео ] [ Звук ] [ Ещё ] -->
+            <button
+              type="button"
+              class="profile-action-tile"
+              on:click={() => {
+                const targetId = userId;
+                const targetTitle = title;
+                const targetAvatar = $contact?.baseUrl || $contact?.baseRawUrl;
+                closeModal();
+                CallService.placeAudioCall(targetId, targetTitle, targetAvatar);
+              }}
+            >
+              <div class="profile-action-tile-icon">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path>
+                </svg>
+              </div>
+              <span class="profile-action-tile-label">Звонок</span>
+            </button>
+
+            <button
+              type="button"
+              class="profile-action-tile"
+              on:click={() => {
+                const targetId = userId;
+                const targetTitle = title;
+                const targetAvatar = $contact?.baseUrl || $contact?.baseRawUrl;
+                closeModal();
+                CallService.placeVideoCall(targetId, targetTitle, targetAvatar);
+              }}
+            >
+              <div class="profile-action-tile-icon">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                  <polygon points="23 7 16 12 23 17 23 7"></polygon>
+                  <rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect>
+                </svg>
+              </div>
+              <span class="profile-action-tile-label">Видео</span>
+            </button>
+
+            <button type="button" class="profile-action-tile" on:click={toggleMute}>
+              <div class="profile-action-tile-icon">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
+                  <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
+                </svg>
+              </div>
+              <span class="profile-action-tile-label">{muted ? "Звук вкл." : "Звук"}</span>
+            </button>
+
+            <div class="profile-action-tile-wrap">
+              <button type="button" class="profile-action-tile" on:click|stopPropagation={toggleMenu}>
+                <div class="profile-action-tile-icon">
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor">
+                    <circle cx="5" cy="12" r="2.2"></circle>
+                    <circle cx="12" cy="12" r="2.2"></circle>
+                    <circle cx="19" cy="12" r="2.2"></circle>
+                  </svg>
+                </div>
+                <span class="profile-action-tile-label">Ещё</span>
+              </button>
+
+              {#if showMenu}
+                <div class="profile-dropdown-menu" transition:scale={{ duration: 140, start: 0.92 }}>
+                  {#if chatLink || $contact?.link}
+                    <button type="button" class="profile-dropdown-item" on:click={() => { showMenu = false; copyLink(); }}>
+                      <span class="mask-icon" style="-webkit-mask-image: url('/icons/link.svg'); mask-image: url('/icons/link.svg'); width: 18px; height: 18px;"></span>
+                      <span>Скопировать ссылку</span>
+                    </button>
+                  {/if}
+                  <button type="button" class="profile-dropdown-item" on:click={() => { showMenu = false; purgeForAll = false; showPurgeConfirm = true; }}>
+                    <span class="mask-icon" style="-webkit-mask-image: url('/icons/recent.svg'); mask-image: url('/icons/recent.svg'); width: 18px; height: 18px;"></span>
+                    <span>Очистить историю</span>
+                  </button>
+                  <button type="button" class="profile-dropdown-item danger" on:click={() => { showMenu = false; showDeleteConfirm = true; }}>
+                    <span class="mask-icon" style="-webkit-mask-image: url('/icons/trash.svg'); mask-image: url('/icons/trash.svg'); width: 18px; height: 18px;"></span>
+                    <span>Удалить чат</span>
+                  </button>
+                </div>
+              {/if}
+            </div>
           {/if}
         </div>
 
-        <div class="tg-section-header">Параметры чата</div>
-        <div class="tg-card">
-          <div class="tg-row tg-row-clickable" on:click={toggleMute}>
-            <div class="tg-row-icon tg-icon-bell">
-              {#if muted}
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
-                  <path d="M18.63 13A17.89 17.89 0 0 1 18 8"/>
-                  <path d="M6.26 6.26A5.86 5.86 0 0 0 6 8c0 7-3 9-3 9h14"/>
-                  <path d="M18 8a6 6 0 0 0-9.33-5"/>
-                  <line x1="1" y1="1" x2="23" y2="23"/>
+        {#if isGroupChat && !isGroupOwner}
+          <!-- Large Primary Button «Выйти и пожаловаться» (Matching Screenshot 2 & ok3.java:869) -->
+          <div class="profile-wide-btn-wrap">
+            <button
+              type="button"
+              class="profile-leave-report-large-btn"
+              on:click={() => (showReportLeaveConfirm = true)}
+            >
+              Выйти и пожаловаться
+            </button>
+          </div>
+        {/if}
+      </section>
+
+      <!-- Profile Cards List -->
+      <div class="profile-cards-list">
+        {#if !isGroupChat && !isChannel}
+          <!-- 1:1 Contact Phone Card -->
+          {#if chat?.phone || $contact?.phone}
+            <div class="profile-card">
+              <div class="profile-item-row" on:click={() => copyText(formatPhone(chat?.phone || $contact?.phone), "Телефон")}>
+                <div class="profile-item-content">
+                  <div class="profile-item-caption">Номер телефона</div>
+                  <div class="profile-item-title">{formatPhone(chat?.phone || $contact?.phone)}</div>
+                </div>
+              </div>
+            </div>
+          {/if}
+
+          <!-- Bio / Description Card -->
+          {#if chat?.description || $contact?.description}
+            <div class="profile-card">
+              <div class="profile-item-row no-hover" on:click={() => copyText(chat?.description || $contact?.description, "Описание")}>
+                <div class="profile-item-content">
+                  <div class="profile-item-caption">О себе</div>
+                  <div class="profile-item-body-text">{chat?.description || $contact?.description}</div>
+                </div>
+              </div>
+            </div>
+          {/if}
+        {/if}
+
+        {#if isChannel && (chat?.description || $contact?.description)}
+          <div class="profile-card">
+            <div class="profile-item-row no-hover" on:click={() => copyText(chat?.description || $contact?.description, "Описание")}>
+              <div class="profile-item-content">
+                <div class="profile-item-caption">Описание канала</div>
+                <div class="profile-item-body-text">{chat?.description || $contact?.description}</div>
+              </div>
+            </div>
+          </div>
+        {/if}
+
+        {#if isGroupChat && chat?.description}
+          <div class="profile-card">
+            <div class="profile-item-row no-hover" on:click={() => copyText(chat.description, "Описание")}>
+              <div class="profile-item-content">
+                <div class="profile-item-caption">Описание группы</div>
+                <div class="profile-item-body-text">{chat.description}</div>
+              </div>
+            </div>
+          </div>
+        {/if}
+
+        <!-- Shared Media ("Вложения") Card (Matches Screenshot 2) -->
+        {#if chat}
+          <div class="profile-card">
+            <div class="profile-item-row" on:click={openSharedMediaScreen}>
+              <div class="profile-item-icon">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+                  <rect x="3" y="3" width="13" height="13" rx="3" ry="3"></rect>
+                  <path d="M5 14l3-3 2.5 2.5 2-2 3.5 3.5"></path>
+                  <circle cx="7" cy="7" r="1.2"></circle>
+                  <path d="M21 8v10a3 3 0 0 1-3 3H8"></path>
                 </svg>
-              {:else}
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
-                  <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+              </div>
+              <div class="profile-item-content">
+                <div class="profile-item-title">Вложения</div>
+                <div class="profile-item-subtitle">Фото, видео, файлы и ссылки</div>
+              </div>
+              <span class="profile-item-chevron">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <polyline points="9 18 15 12 9 6"></polyline>
                 </svg>
+              </span>
+            </div>
+          </div>
+        {/if}
+
+        <!-- Channel Settings Nav Row (for Channel Admins) -->
+        {#if isChannel && isChannelAdmin}
+          <div class="profile-card">
+            <div class="profile-item-row" on:click={() => (subview = "channel_settings")}>
+              <div class="profile-item-icon">
+                <span class="mask-icon" style="-webkit-mask-image: url('/icons/settings.svg'); mask-image: url('/icons/settings.svg'); width: 22px; height: 22px;"></span>
+              </div>
+              <div class="profile-item-content">
+                <div class="profile-item-title">Управление каналом</div>
+                <div class="profile-item-subtitle">Ссылка, параметры, администраторы</div>
+              </div>
+              <span class="profile-item-chevron">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <polyline points="9 18 15 12 9 6"></polyline>
+                </svg>
+              </span>
+            </div>
+          </div>
+        {/if}
+
+        <!-- Members Section (for Groups & Channels - matching Screenshot 2) -->
+        {#if chat?.type === "CHAT" || isChannel}
+          <div class="profile-section-title-outside">
+            {isChannel ? "ПОДПИСЧИКИ" : "УЧАСТНИКИ"}
+          </div>
+
+          <div class="profile-card">
+            {#if isGroupAdmin || isGroupOwner || (isChannel && isChannelAdmin)}
+              <!-- Row 1: Добавить участника (blue) -->
+              <div
+                class="profile-item-row action-row-blue"
+                on:click={() => openUserPickerForMembers(false)}
+              >
+                <div class="profile-item-icon blue-tint">
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path>
+                    <circle cx="9" cy="7" r="4"></circle>
+                    <line x1="19" y1="8" x2="19" y2="14"></line>
+                    <line x1="22" y1="11" x2="16" y2="11"></line>
+                  </svg>
+                </div>
+                <div class="profile-item-content">
+                  <div class="profile-item-title blue-text">
+                    {isChannel ? "Добавить подписчика" : "Добавить участника"}
+                  </div>
+                </div>
+              </div>
+
+              <!-- Row 2: Пригласить по ссылке (blue) -->
+              {#if chatLink}
+                <div class="profile-item-row action-row-blue" on:click={copyLink}>
+                  <div class="profile-item-icon blue-tint">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
+                      <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
+                    </svg>
+                  </div>
+                  <div class="profile-item-content">
+                    <div class="profile-item-title blue-text">Пригласить по ссылке</div>
+                  </div>
+                </div>
+              {/if}
+            {/if}
+
+            <!-- Members List Rows -->
+            <div class="profile-members-list-wrapper">
+              {#each displayedMembers as memberItem (memberItem.contact?.id || memberItem.userId || memberItem.id || memberItem)}
+                {@const mId = memberItem.contact?.id || memberItem.userId || memberItem.id || memberItem}
+                {@const isMemberOwner = Number(chat?.owner) === Number(mId)}
+                {@const isMemberAdmin = !isMemberOwner && Boolean(chat?.admins?.includes(Number(mId)) || memberItem.role === 'ADMIN' || memberItem.alias === 'Администратор')}
+                {@const isSelf = Number(mId) === Number($currentUser)}
+                <div class="profile-item-row" on:click={() => selectMember(Number(mId))}>
+                  <Avatar
+                    contactId={Number(mId)}
+                    size={42}
+                    src={memberItem?.contact?.baseUrl || memberItem?.contact?.baseRawUrl}
+                    title={getMemberName(memberItem)}
+                  />
+                  <div class="profile-item-content">
+                    <div class="profile-name-badge-row">
+                      <span class="profile-item-title">{getMemberName(memberItem)}</span>
+                    </div>
+                    <div class="profile-item-subtitle">
+                      {#if isSelf}
+                        Вы
+                      {:else}
+                        <Signature contactId={Number(mId)} />
+                      {/if}
+                    </div>
+                  </div>
+
+                  {#if isMemberOwner}
+                    <span class="profile-member-role-text">владелец</span>
+                  {:else if isMemberAdmin}
+                    <span class="profile-member-role-text">администратор</span>
+                  {/if}
+                </div>
+              {/each}
+
+              {#if !groupMembersEnd && !memberSearch.trim()}
+                <button type="button" class="profile-load-more-btn" on:click={loadMoreMembers} disabled={groupMembersLoading}>
+                  {groupMembersLoading ? "Загрузка..." : "Показать ещё"}
+                </button>
               {/if}
             </div>
-            <div class="tg-row-main">
-              <div class="tg-row-title">Уведомления</div>
-              <div class="tg-row-subtitle">{muted ? "Отключены" : "Включены"}</div>
-            </div>
-            <div class="tg-switch" class:active={!muted}>
-              <div class="tg-switch-thumb"></div>
-            </div>
           </div>
+        {/if}
 
-          <div class="tg-row tg-row-clickable" on:click={swapReader}>
-            <div class="tg-row-icon tg-icon-check">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M20 6L9 17l-5-5"/>
+        <!-- MaxPlus Advanced Settings Entry Row (Opens as Screen) -->
+        <div class="profile-card">
+          <div class="profile-item-row clickable" on:click={openAdvancedSettings}>
+            <div class="profile-item-icon">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
               </svg>
             </div>
-            <div class="tg-row-main">
-              <div class="tg-row-title">Помечать прочитанным</div>
-              <div class="tg-row-subtitle">{$chatSettings?.reader ? "Автоматически" : "Вручную"}</div>
+            <div class="profile-item-content">
+              <div class="profile-item-title">Расширенные настройки</div>
+              <div class="profile-item-subtitle">
+                {#if $chatSettings?.session?.shared_secret || $chatSettings?.session?.fingerprint || $chatSettings?.keys?.current}
+                  <span class="profile-status-badge success">E2E активно</span>
+                {:else if $chatSettings?.pending}
+                  <span class="profile-status-badge warning">Запрос E2E</span>
+                {:else}
+                  Шифрование, E2E, приватность
+                {/if}
+              </div>
             </div>
-            <div class="tg-switch" class:active={$chatSettings?.reader}>
-              <div class="tg-switch-thumb"></div>
-            </div>
-          </div>
-
-          <div class="tg-row tg-row-clickable" on:click={toggleAutoDownload}>
-            <div class="tg-row-icon tg-icon-download">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                <polyline points="7 10 12 15 17 10"/>
-                <line x1="12" y1="15" x2="12" y2="3"/>
+            <span class="profile-item-chevron">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="9 18 15 12 9 6"></polyline>
               </svg>
-            </div>
-            <div class="tg-row-main">
-              <div class="tg-row-title">Автозагрузка зашифрованных медиа</div>
-              <div class="tg-row-subtitle">{$autoDownloadEncryptedMedia ? "Разрешена" : "Выключена"}</div>
-            </div>
-            <div class="tg-switch" class:active={$autoDownloadEncryptedMedia}>
-              <div class="tg-switch-thumb"></div>
-            </div>
-          </div>
-
-          <div class="tg-row tg-disabled-row">
-            <div class="tg-row-icon tg-icon-save">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
-                <polyline points="17 21 17 13 7 13 7 21"/>
-                <polyline points="7 3 7 8 15 8"/>
-              </svg>
-            </div>
-            <div class="tg-row-main">
-              <div class="tg-row-title">Сохранить переписку</div>
-              <div class="tg-row-subtitle">Экспорт сообщений и файлов</div>
-            </div>
-            <span class="tg-badge tg-badge-soon">Скоро</span>
+            </span>
           </div>
         </div>
 
-        {#if chat?.type === "CHAT" && isGroupAdmin}
-          <div class="tg-section-header">Разрешения группы</div>
-          <div class="tg-card">
-            <div class="tg-row tg-row-clickable" on:click={() => toggleGroupOption("allCanPinMessage")}>
-              <div class="tg-row-icon tg-icon-pin">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <line x1="12" y1="17" x2="12" y2="22"/>
-                  <path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z"/>
+        <!-- Danger Actions Card -->
+        <div class="profile-card">
+          {#if chat}
+            <div class="profile-item-row danger" on:click={() => { purgeForAll = false; showPurgeConfirm = true; }}>
+              <div class="profile-item-icon danger">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                  <polyline points="3 6 5 6 21 6"></polyline>
+                  <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
                 </svg>
               </div>
-              <div class="tg-row-main">
-                <div class="tg-row-title">Закреплять сообщения</div>
-                <div class="tg-row-subtitle">Все участники могут закреплять</div>
-              </div>
-              <div class="tg-switch" class:active={getGroupOption("allCanPinMessage")}>
-                <div class="tg-switch-thumb"></div>
+              <div class="profile-item-content">
+                <div class="profile-item-title danger">Очистить историю</div>
               </div>
             </div>
+          {/if}
 
-            <div class="tg-row tg-row-clickable" on:click={() => toggleGroupOption("onlyAdminCanAddMember")}>
-              <div class="tg-row-icon tg-icon-invite">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
-                  <circle cx="8.5" cy="7.5" r="4"/>
-                  <line x1="20" y1="8" x2="20" y2="14"/>
-                  <line x1="23" y1="11" x2="17" y2="11"/>
+          {#if isChannel}
+            {#if isChannelOwner}
+              <div class="profile-item-row danger" on:click={() => (showDeleteConfirm = true)}>
+                <div class="profile-item-icon danger">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="3 6 5 6 21 6"></polyline>
+                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                  </svg>
+                </div>
+                <div class="profile-item-content">
+                  <div class="profile-item-title danger">Удалить канал</div>
+                </div>
+              </div>
+            {:else}
+              <div class="profile-item-row danger" on:click={quitChannel}>
+                <div class="profile-item-icon danger">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+                    <polyline points="16 17 21 12 16 7"></polyline>
+                    <line x1="21" y1="12" x2="9" y2="12"></line>
+                  </svg>
+                </div>
+                <div class="profile-item-content">
+                  <div class="profile-item-title danger">Покинуть канал</div>
+                </div>
+              </div>
+            {/if}
+          {:else if chat?.type === "CHAT"}
+            <div class="profile-item-row danger" on:click={leaveChat}>
+              <div class="profile-item-icon danger">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+                  <polyline points="16 17 21 12 16 7"></polyline>
+                  <line x1="21" y1="12" x2="9" y2="12"></line>
                 </svg>
               </div>
-              <div class="tg-row-main">
-                <div class="tg-row-title">Добавление участников</div>
-                <div class="tg-row-subtitle">Только администраторы</div>
-              </div>
-              <div class="tg-switch" class:active={getGroupOption("onlyAdminCanAddMember")}>
-                <div class="tg-switch-thumb"></div>
+              <div class="profile-item-content">
+                <div class="profile-item-title danger">Покинуть группу</div>
               </div>
             </div>
-
-            <div class="tg-row tg-row-clickable" on:click={() => toggleGroupOption("onlyAdminCanCall")}>
-              <div class="tg-row-icon tg-icon-phone">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/>
+          {:else if chat}
+            <div class="profile-item-row danger" on:click={() => (showDeleteConfirm = true)}>
+              <div class="profile-item-icon danger">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                  <polyline points="3 6 5 6 21 6"></polyline>
+                  <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
                 </svg>
               </div>
-              <div class="tg-row-main">
-                <div class="tg-row-title">Звонки в группе</div>
-                <div class="tg-row-subtitle">Только администраторы могут звонить</div>
-              </div>
-              <div class="tg-switch" class:active={getGroupOption("onlyAdminCanCall")}>
-                <div class="tg-switch-thumb"></div>
+              <div class="profile-item-content">
+                <div class="profile-item-title danger">Удалить чат</div>
               </div>
             </div>
-
-            <div class="tg-row tg-row-clickable" on:click={() => toggleGroupOption("membersCanSeePrivateLink")}>
-              <div class="tg-row-icon tg-icon-link">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
-                  <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
-                </svg>
-              </div>
-              <div class="tg-row-main">
-                <div class="tg-row-title">Видимость ссылки приглашения</div>
-                <div class="tg-row-subtitle">Участники видят ссылку</div>
-              </div>
-              <div class="tg-switch" class:active={getGroupOption("membersCanSeePrivateLink")}>
-                <div class="tg-switch-thumb"></div>
-              </div>
-            </div>
-          </div>
-        {/if}
-              {/if}
-            </div>
-          </div>
-        {/if}
+          {/if}
+        </div>
       </div>
-    {/key}
-
-    {#if toastMessage}
-      <div class="tg-toast" in:fly={{ y: 20, duration: 180 }} out:fade={{ duration: 150 }}>
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-          <polyline points="20 6 9 17 4 12"/>
-        </svg>
-        <span>{toastMessage}</span>
-      </div>
-    {/if}
+    </div>
+  {/if}
   </div>
 
-{#if showDeleteConfirm}
-  <ConfirmModal
-    title="Удалить чат?"
-    message="Вы уверены?"
-    confirmText="Выйти"
-    on:confirm={deleteChat}
-    on:cancel={() => (showDeleteConfirm = false)}
-  />
-{/if}
+  <!-- Toast notification overlay -->
+  {#if toastMessage}
+    <div class="profile-toast" transition:fade={{ duration: 120 }}>
+      <span>{toastMessage}</span>
+    </div>
+  {/if}
+</div>
 
-{#if showInputs}
-  <InputModal
-    title="Настройки чата"
-    fields={[
-      {
-        key: "title",
-        label: "Название",
-        placeholder: "Введите название",
-        value: chat.title
-      }, {
-        key: "description",
-        label: "Описание",
-        placeholder: "Введите описание",
-        value: chat.description || "",
-        multiline: true
-      },
-    ]}
-    on:submit={updateChatProfile}
-    on:cancel={() => showInputs = false}
-  />
-{/if}
-
-{#if showAddMembersModal}
-  <GroupAddMembersModal
-    {chat}
-    existingMemberIds={new Set(groupMembers.map(m => Number(m.contact?.id || m.userId || m.id || m)))}
-    on:close={() => (showAddMembersModal = false)}
-    on:added={onMembersAdded}
-  />
-{/if}
-
-{#if showAdminModal}
+<!-- Modals & Overlays -->
+{#if showAdminModal && adminModalMember}
   <GroupAdminModal
-    {chat}
+    {chatId}
     member={adminModalMember}
-    on:close={() => (showAdminModal = false)}
+    isChannel={isChannel}
+    isOwner={isChannel ? isChannelOwner : isGroupOwner}
+    currentUserId={$currentUser}
+    on:close={() => { showAdminModal = false; adminModalMember = null; }}
     on:saved={onAdminSaved}
     on:revoked={onAdminRevoked}
-    on:transferred={onOwnershipTransferred}
+    on:transferOwnership={onOwnershipTransferred}
   />
 {/if}
 
 {#if showJoinRequestsModal}
   <GroupJoinRequestsModal
-    {chat}
+    {chatId}
+    isChannel={isChannel}
     on:close={() => (showJoinRequestsModal = false)}
     on:updated={onJoinRequestsUpdated}
   />
 {/if}
 
-{#if showRemoveMemberConfirm}
+{#if showDeleteConfirm}
   <ConfirmModal
-    title={isChannel ? "Удалить подписчика?" : "Исключить участника?"}
-    message={isChannel ? "Вы действительно хотите удалить этого подписчика из канала?" : "Вы действительно хотите удалить этого участника из группы?"}
-    confirmText={isChannel ? "Удалить" : "Исключить"}
-    on:confirm={kickConfirmedMember}
-    on:cancel={() => { showRemoveMemberConfirm = false; memberToRemove = null; }}
+    title={isChannel ? "Удалить канал?" : "Удалить чат?"}
+    message="Это действие нельзя отменить. Вся история сообщений будет удалена для всех."
+    confirmText="Удалить"
+    isDanger={true}
+    on:confirm={deleteChat}
+    on:cancel={() => (showDeleteConfirm = false)}
   />
 {/if}
 
 {#if showPurgeConfirm}
   <ConfirmModal
     title="Очистить историю сообщений?"
-    message="Все сообщения в этом чате будут удалены."
+    message="Все сообщения в этом чате будут безвозвратно удалены."
     confirmText="Очистить"
+    isDanger={true}
     on:confirm={confirmPurgeHistory}
     on:cancel={() => (showPurgeConfirm = false)}
+  />
+{/if}
+
+{#if showRemoveMemberConfirm && memberToRemove}
+  <ConfirmModal
+    title="Исключить участника?"
+    message="Вы действительно хотите исключить {getMemberName(memberToRemove)}?"
+    confirmText="Исключить"
+    isDanger={true}
+    on:confirm={kickConfirmedMember}
+    on:cancel={() => { showRemoveMemberConfirm = false; memberToRemove = null; }}
   />
 {/if}
 
 {#if showRefreshInviteConfirm}
   <ConfirmModal
     title="Отозвать ссылку приглашения?"
-    message="Предыдущая ссылка станет недействительной, и будет создана новая ссылка для приглашения."
-    confirmText="Отозвать и создать"
+    message="Предыдущая ссылка станет недействительной, и будет создана новая ссылка."
+    confirmText="Создать новую"
     on:confirm={() => { showRefreshInviteConfirm = false; refreshInvite(); }}
     on:cancel={() => (showRefreshInviteConfirm = false)}
   />
 {/if}
 
+{#if showReportLeaveConfirm}
+  <ConfirmModal
+    title="Выйти и пожаловаться?"
+    message="Вы покинете эту группу, а диалог будет отмечен как спам."
+    confirmText="Выйти и пожаловаться"
+    isDanger={true}
+    on:confirm={handleReportAndLeave}
+    on:cancel={() => (showReportLeaveConfirm = false)}
+  />
+{/if}
+
 <style>
-  .tg-profile-panel {
+  :root,
+  .profile-window {
+    --profile-bg: #0f1013;
+    --profile-card-bg: #21232c;
+    --profile-card-hover: #262933;
+    --profile-primary-blue: #007aff;
+    --profile-text-primary: #ffffff;
+    --profile-text-secondary: #8e8e93;
+    --profile-danger: #ff3b30;
+    --profile-radius: 16px;
+  }
+
+  .profile-window {
     position: relative;
     width: 100%;
     height: 100%;
-    background: #212121;
-    border-left: 1px solid rgba(255, 255, 255, 0.08);
+    background: var(--profile-bg, #0f1013);
     display: flex;
     flex-direction: column;
     box-sizing: border-box;
     overflow: hidden;
+    color: var(--profile-text-primary, #ffffff);
+    font-family: var(--font-family-base, system-ui, -apple-system, sans-serif);
   }
 
-  .tg-topbar {
+  /* Toolbar */
+  .profile-toolbar {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: calc(10px + var(--safe-top, 0px)) 14px 10px;
-    background: #212121;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-    flex-shrink: 0;
-    z-index: var(--z-floating);
-  }
-
-  .tg-tabs {
-    display: flex;
-    background: #212121;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-    flex-shrink: 0;
-    position: relative;
-    user-select: none;
-  }
-
-  .tg-tab {
-    flex: 1;
-    height: 44px;
-    background: transparent;
+    height: calc(56px + var(--safe-top, 0px));
+    padding: var(--safe-top, 0px) 12px 0 12px;
+    background: var(--profile-bg, #0f1013);
     border: none;
-    color: #707579;
-    font-size: 14px;
-    font-weight: 500;
-    cursor: pointer;
-    transition: color 0.15s;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    position: relative;
-    z-index: var(--z-base);
+    flex-shrink: 0;
+    box-sizing: border-box;
+    z-index: var(--z-header, 4);
   }
 
-  .tg-tab:hover {
-    color: #ffffff;
-  }
-
-  .tg-tab.active {
-    color: #3390ec;
-    font-weight: 600;
-  }
-
-  .tg-tab-indicator {
-    position: absolute;
-    bottom: 0;
-    left: 0;
-    height: 2px;
-    background: #3390ec;
-    border-radius: 2px 2px 0 0;
-    pointer-events: none;
-    will-change: transform;
-    z-index: var(--z-panel);
-  }
-
-  .tg-tab-indicator.animating {
-    transition: transform 0.25s cubic-bezier(0.25, 1, 0.5, 1);
-  }
-
-  .tg-topbar-title {
-    color: #ffffff;
+  .profile-toolbar-title {
+    color: var(--profile-text-primary, #ffffff);
     font-size: 17px;
+    line-height: 22px;
     font-weight: 600;
-    letter-spacing: -0.2px;
     flex: 1;
     margin: 0 12px;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+    text-align: left;
   }
 
-  .tg-icon-btn {
-    width: 36px;
-    height: 36px;
+  .profile-toolbar-right {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .profile-icon-button {
+    width: 40px;
+    height: 40px;
     border: none;
     border-radius: 50%;
     background: transparent;
-    color: #aaaaaa;
+    color: var(--profile-text-primary, #ffffff);
     display: flex;
     align-items: center;
     justify-content: center;
     cursor: pointer;
-    transition: background 0.15s, color 0.15s, transform 0.12s;
+    transition: background 0.15s, transform 0.12s;
+    flex-shrink: 0;
   }
 
-  .tg-icon-btn:hover {
+  .profile-icon-button:hover {
     background: rgba(255, 255, 255, 0.08);
-    color: #ffffff;
   }
 
-  .tg-icon-btn:active {
+  .profile-icon-button:active {
     transform: scale(0.92);
   }
 
-  .tg-menu-container {
+  /* Scrollable Body */
+  .profile-body-stage {
     position: relative;
-  }
-
-  .tg-dropdown {
-    position: absolute;
-    top: 42px;
-    right: 0;
-    background: #2b2b2b;
-    width: 210px;
-    border-radius: 12px;
-    padding: 6px;
-    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.55);
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-    z-index: var(--z-dropdown);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-  }
-
-  .tg-menu-item {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    padding: 9px 12px;
-    color: #ffffff;
-    font-size: 14px;
-    font-weight: 500;
-    cursor: pointer;
-    border-radius: 8px;
-    transition: background 0.12s;
-  }
-
-  .tg-menu-item:hover {
-    background: rgba(255, 255, 255, 0.08);
-  }
-
-  .tg-menu-item.danger {
-    color: #ff595a;
-  }
-
-  .tg-menu-item.danger:hover {
-    background: rgba(229, 57, 53, 0.15);
-  }
-
-  .tg-menu-divider {
-    height: 1px;
-    background: rgba(255, 255, 255, 0.06);
-    margin: 4px 6px;
-  }
-
-  .tg-swipe-container {
     flex: 1;
     min-height: 0;
-    display: flex;
-    overflow-x: auto;
-    overflow-y: hidden;
-    scroll-snap-type: x mandatory;
-    scrollbar-width: none;
-    -ms-overflow-style: none;
-    cursor: grab;
-    will-change: scroll-position;
-    -webkit-overflow-scrolling: touch;
-    overscroll-behavior-x: contain;
+    width: 100%;
+    overflow: hidden;
   }
 
-  .tg-swipe-container.dragging {
-    cursor: grabbing;
-    scroll-snap-type: none;
-    user-select: none;
-  }
-
-  .tg-swipe-container::-webkit-scrollbar {
-    display: none;
-  }
-
-  .tg-tab-page {
-    flex: 0 0 100%;
+  .profile-scroll-body,
+  .profile-subview-content {
+    position: absolute;
+    inset: 0;
     width: 100%;
     height: 100%;
-    min-height: 0;
-    scroll-snap-align: start;
-    scroll-snap-stop: always;
-    display: flex;
-    flex-direction: column;
     overflow-y: auto;
     overflow-x: hidden;
     -webkit-overflow-scrolling: touch;
     box-sizing: border-box;
-    cursor: default;
+    display: flex;
+    flex-direction: column;
   }
 
-  .tg-tab-page-content {
-    padding: 14px 14px calc(24px + var(--safe-bottom, 0px));
+  .profile-subview-content {
+    padding: 12px 16px calc(24px + var(--safe-bottom, 0px));
   }
 
-  .tg-hero {
+  /* Hero Section */
+  .profile-hero-section {
     display: flex;
     flex-direction: column;
     align-items: center;
     text-align: center;
-    padding: 10px 0 20px;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    padding: 8px 16px 16px 16px;
+    border: none;
     flex-shrink: 0;
   }
 
-  .tg-avatar-wrap {
-    margin-bottom: 12px;
+  .profile-avatar-container {
     position: relative;
+    width: 96px;
+    height: 96px;
+    border-radius: 50%;
+    margin-top: 4px;
+    margin-bottom: 12px;
   }
 
-  .tg-avatar-wrap.clickable {
+  .profile-avatar-container.clickable {
     cursor: pointer;
     transition: transform 0.14s;
   }
 
-  .tg-avatar-wrap.clickable:active {
+  .profile-avatar-container.clickable:active {
     transform: scale(0.96);
   }
 
-  .tg-avatar-edit-badge {
+  .profile-hero-title {
+    margin: 0;
+    color: var(--profile-text-primary, #ffffff);
+    font-size: 22px;
+    line-height: 28px;
+    font-weight: 600;
+    text-align: center;
+    word-break: break-word;
+    max-width: 90%;
+  }
+
+  .profile-hero-subtitle {
+    margin-top: 4px;
+    color: var(--profile-text-secondary, #8e8e93);
+    font-size: 14px;
+    line-height: 18px;
+    font-weight: 400;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    text-align: center;
+  }
+
+  .profile-story-pill {
+    margin-top: 10px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 12px;
+    border-radius: 12px;
+    background: rgba(0, 122, 255, 0.14);
+    color: var(--profile-primary-blue, #007aff);
+    font-size: 13px;
+    font-weight: 500;
+    border: none;
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+
+  .profile-story-pill:hover {
+    background: rgba(0, 122, 255, 0.22);
+  }
+
+  .profile-story-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--profile-primary-blue, #007aff);
+  }
+
+  /* Action Tiles Grid */
+  .profile-action-tiles-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 8px;
+    margin-top: 18px;
+    width: 100%;
+    max-width: 480px;
+    box-sizing: border-box;
+  }
+
+  .profile-action-tile-wrap {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+  }
+
+  .profile-action-tile {
+    width: 100%;
+    min-height: 64px;
+    border-radius: var(--profile-radius, 16px);
+    background: var(--profile-card-bg, #21232c);
+    border: none !important;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    padding: 8px 4px;
+    cursor: pointer;
+    transition: background 0.15s, transform 0.12s;
+    user-select: none;
+    box-sizing: border-box;
+    box-shadow: none;
+  }
+
+  .profile-action-tile:hover {
+    background: var(--profile-card-hover, #262933);
+  }
+
+  .profile-action-tile:active {
+    transform: scale(0.96);
+  }
+
+  .profile-action-tile-icon {
+    color: var(--profile-primary-blue, #007aff);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .profile-action-tile-label {
+    color: var(--profile-primary-blue, #007aff);
+    font-size: 12px;
+    font-weight: 500;
+    line-height: 15px;
+    text-align: center;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
+  }
+
+  .profile-wide-btn-wrap {
+    width: 100%;
+    max-width: 480px;
+    margin-top: 12px;
+    box-sizing: border-box;
+  }
+
+  .profile-leave-report-large-btn {
+    width: 100%;
+    height: 50px;
+    border-radius: var(--profile-radius, 16px);
+    background: var(--profile-primary-blue, #007aff);
+    color: #ffffff;
+    border: none;
+    font-size: 16px;
+    font-weight: 600;
+    cursor: pointer;
+    box-shadow: none;
+    transition: opacity 0.15s, transform 0.1s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    user-select: none;
+  }
+
+  .profile-leave-report-large-btn:hover {
+    opacity: 0.92;
+  }
+
+  .profile-leave-report-large-btn:active {
+    transform: scale(0.98);
+  }
+
+  /* Cards List & Cards */
+  .profile-cards-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 12px 16px calc(24px + var(--safe-bottom, 0px));
+    box-sizing: border-box;
+  }
+
+  .profile-card {
+    background: var(--profile-card-bg, #21232c);
+    border: none !important;
+    border-radius: var(--profile-radius, 16px);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    box-shadow: none;
+  }
+
+  .profile-card-caption {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--profile-primary-blue, #007aff);
+    padding: 6px 6px 2px 6px;
+    letter-spacing: 0.1px;
+  }
+
+  .profile-section-title-outside {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--profile-text-secondary, #8e8e93);
+    text-transform: uppercase;
+    padding: 14px 16px 6px 16px;
+    letter-spacing: 0.4px;
+  }
+
+  .profile-item-row {
+    min-height: 54px;
+    padding: 12px 16px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+    cursor: pointer;
+    transition: background 0.12s;
+    user-select: none;
+    box-sizing: border-box;
+  }
+
+  .profile-item-row:last-child {
+    border-bottom: none;
+  }
+
+  .profile-item-row:hover:not(.no-hover) {
+    background: rgba(255, 255, 255, 0.03);
+  }
+
+  .profile-item-row.no-hover {
+    cursor: default;
+  }
+
+  .action-row-blue {
+    cursor: pointer;
+  }
+
+  .action-row-blue:hover {
+    background: rgba(0, 122, 255, 0.08);
+  }
+
+  .blue-tint {
+    color: var(--profile-primary-blue, #007aff) !important;
+  }
+
+  .blue-text {
+    color: var(--profile-primary-blue, #007aff) !important;
+    font-weight: 500 !important;
+  }
+
+  .profile-member-role-text {
+    font-size: 13px;
+    color: var(--profile-text-secondary, #8e8e93);
+    margin-right: 4px;
+    flex-shrink: 0;
+    font-weight: 400;
+  }
+
+  .profile-item-icon {
+    width: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--profile-text-primary, #ffffff);
+    flex-shrink: 0;
+  }
+
+  .profile-item-icon.accent {
+    color: var(--profile-primary-blue, #007aff);
+  }
+
+  .profile-item-icon.danger {
+    color: var(--profile-danger, #ff3b30);
+  }
+
+  .profile-item-content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    overflow: hidden;
+  }
+
+  .profile-item-caption {
+    font-size: 13px;
+    color: var(--profile-text-secondary, #8e8e93);
+    font-weight: 400;
+  }
+
+  .profile-item-body-text {
+    font-size: 16px;
+    line-height: 21px;
+    color: var(--profile-text-primary, #ffffff);
+    word-break: break-word;
+    user-select: text;
+  }
+
+  .profile-item-title {
+    font-size: 16px;
+    line-height: 21px;
+    font-weight: 500;
+    color: var(--profile-text-primary, #ffffff);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .profile-item-title.danger {
+    color: var(--profile-danger, #ff3b30);
+  }
+
+  .profile-item-subtitle {
+    font-size: 13px;
+    line-height: 17px;
+    color: var(--profile-text-secondary, #8e8e93);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .profile-item-chevron {
+    color: var(--profile-text-secondary, #8e8e93);
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .profile-name-badge-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .profile-load-more-btn {
+    width: 100%;
+    padding: 12px;
+    background: transparent;
+    border: none;
+    color: var(--profile-primary-blue, #007aff);
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.12s;
+  }
+
+  .profile-load-more-btn:hover {
+    background: rgba(255, 255, 255, 0.04);
+  }
+
+  /* Segmented Controls for Channel Settings subview */
+  .profile-segmented-row {
+    display: flex;
+    gap: 4px;
+    padding: 6px;
+    box-sizing: border-box;
+  }
+
+  .profile-segmented-btn {
+    flex: 1;
+    background: transparent;
+    border: none;
+    border-radius: 10px;
+    padding: 8px 10px;
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    color: var(--profile-text-secondary, #8e8e93);
+    transition: background 0.15s, color 0.15s;
+  }
+
+  .profile-segmented-btn.active {
+    background: var(--profile-primary-blue, #007aff);
+    color: #ffffff;
+  }
+
+  .profile-seg-title {
+    font-size: 13px;
+    font-weight: 500;
+  }
+
+  .profile-seg-sub {
+    font-size: 11px;
+    opacity: 0.8;
+  }
+
+  .profile-input-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 16px;
+    box-sizing: border-box;
+  }
+
+  .profile-input-field {
+    flex: 1;
+    background: transparent;
+    border: none;
+    outline: none;
+    color: var(--profile-text-primary, #ffffff);
+    font-size: 15px;
+    font-family: inherit;
+  }
+
+  .profile-input-field::placeholder {
+    color: var(--profile-text-secondary, #8e8e93);
+  }
+
+  .profile-item-hint {
+    padding: 0 16px 10px 16px;
+    font-size: 12px;
+    color: var(--profile-text-secondary, #8e8e93);
+  }
+
+  .profile-pill-button {
+    padding: 6px 14px;
+    border-radius: 10px;
+    border: none;
+    background: var(--profile-primary-blue, #007aff);
+    color: #ffffff;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.12s, transform 0.1s;
+    flex-shrink: 0;
+  }
+
+  .profile-action-icon-btn {
+    width: 32px;
+    height: 32px;
+    border: none;
+    background: transparent;
+    border-radius: 50%;
+    color: var(--profile-text-secondary, #8e8e93);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: background 0.12s, color 0.12s;
+    flex-shrink: 0;
+  }
+
+  .profile-action-icon-btn:hover {
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--profile-text-primary, #ffffff);
+  }
+
+  .profile-status-badge {
+    font-size: 12px;
+    font-weight: 500;
+    padding: 2px 6px;
+    border-radius: 6px;
+    display: inline-block;
+  }
+
+  .profile-status-badge.success {
+    background: rgba(74, 222, 128, 0.15);
+    color: #4ade80;
+  }
+
+  .profile-status-badge.warning {
+    background: rgba(251, 191, 36, 0.15);
+    color: #fbbf24;
+  }
+
+  /* Dropdown Menu */
+  .profile-dropdown-menu {
+    position: absolute;
+    top: calc(100% + 8px);
+    right: 0;
+    background: var(--profile-card-bg, #21232c);
+    min-width: 210px;
+    border-radius: 16px;
+    padding: 6px;
+    box-shadow: 0 10px 32px rgba(0, 0, 0, 0.65);
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    z-index: 100;
+    border: none;
+    box-sizing: border-box;
+  }
+
+  .profile-dropdown-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 14px;
+    color: var(--profile-text-primary, #ffffff);
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    border-radius: 10px;
+    border: none;
+    background: transparent;
+    width: 100%;
+    text-align: left;
+    box-sizing: border-box;
+    transition: background 0.12s;
+  }
+
+  .profile-dropdown-item:hover {
+    background: rgba(255, 255, 255, 0.08);
+  }
+
+  .profile-dropdown-item.danger {
+    color: var(--profile-danger, #ff3b30);
+  }
+
+  .profile-dropdown-item.danger:hover {
+    background: rgba(255, 59, 48, 0.14);
+  }
+
+  .profile-menu-badge {
+    margin-left: auto;
+    font-size: 11px;
+    font-weight: 600;
+    background: var(--profile-primary-blue, #007aff);
+    color: #ffffff;
+    padding: 2px 7px;
+    border-radius: 10px;
+  }
+
+  .profile-toast {
+    position: absolute;
+    bottom: calc(24px + var(--safe-bottom, 0px));
+    left: 50%;
+    transform: translateX(-50%);
+    width: auto !important;
+    max-width: min(400px, 90%);
+    background: rgba(33, 35, 44, 0.95);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: none;
+    color: #ffffff;
+    padding: 10px 20px;
+    border-radius: 24px;
+    font-size: 14px;
+    font-weight: 500;
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45);
+    z-index: 120;
+    pointer-events: none;
+    white-space: nowrap;
+  }
+
+  .profile-edit-avatar-wrap {
+    position: relative;
+    width: 96px;
+    height: 96px;
+    margin: 16px auto 20px auto;
+    cursor: pointer;
+    border-radius: 50%;
+  }
+
+  .profile-avatar-camera-overlay {
     position: absolute;
     right: -2px;
     bottom: -2px;
     width: 32px;
     height: 32px;
     border-radius: 50%;
-    border: 2px solid #212121;
-    background: #3390ec;
-    color: #ffffff;
+    background: var(--profile-primary-blue, #007aff);
+    border: 2.5px solid var(--bg-main, #101114);
     display: flex;
     align-items: center;
     justify-content: center;
-    cursor: pointer;
-    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.4);
-    transition: background 0.15s, transform 0.12s, opacity 0.15s;
-    z-index: var(--z-floating, 5);
-  }
-
-  .tg-avatar-edit-badge:hover {
-    background: #4ea4f6;
-  }
-
-  .tg-avatar-edit-badge:active {
-    transform: scale(0.9);
-  }
-
-  .tg-avatar-edit-badge:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
-
-  .tg-hero-name {
-    margin: 0;
     color: #ffffff;
-    font-size: 22px;
-    font-weight: 600;
-    letter-spacing: -0.3px;
-    word-break: break-word;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+    z-index: 5;
+    pointer-events: none;
+    transition: transform 0.15s ease, opacity 0.15s ease;
   }
 
-  .tg-hero-status {
-    margin-top: 4px;
-    color: #707579;
-    font-size: 14px;
+  .profile-edit-avatar-wrap:hover .profile-avatar-camera-overlay {
+    transform: scale(1.06);
   }
 
-  .tg-hero-status.online {
-    color: #2ecc71;
-  }
-
-  .tg-actions-row {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 16px;
-    margin-top: 20px;
-    width: 100%;
-    max-width: 100%;
-    box-sizing: border-box;
-    flex-wrap: wrap;
-  }
-
-  .tg-action-btn {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 6px;
-    border: none;
-    background: transparent;
-    cursor: pointer;
-    transition: transform 0.12s, opacity 0.15s;
-    min-width: 56px;
-    max-width: 80px;
-    text-align: center;
-    flex-shrink: 0;
-  }
-
-  .tg-action-btn:active {
-    transform: scale(0.92);
-  }
-
-  .tg-action-circle {
-    width: 48px;
-    height: 48px;
-    border-radius: 50%;
-    background: #2b2b2b;
-    border: 1px solid rgba(255, 255, 255, 0.06);
-    color: #3390ec;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: background 0.15s, color 0.15s;
-  }
-
-  .tg-action-btn:hover .tg-action-circle {
-    background: #3390ec;
-    color: #ffffff;
-  }
-
-  .tg-action-circle--call {
-    color: var(--status-success, #4ade80);
-  }
-
-  .tg-action-btn:hover .tg-action-circle--call {
-    background: var(--status-success, #4ade80);
-    color: #fff;
-  }
-
-  .tg-action-circle--video {
-    color: var(--accent-primary, #248bfe);
-  }
-
-  .tg-action-btn:hover .tg-action-circle--video {
-    background: var(--accent-primary, #248bfe);
-    color: #fff;
-  }
-
-  .tg-action-label {
-    color: #aaaaaa;
-    font-size: 12px;
-    font-weight: 500;
-  }
-
-  .tg-section-header {
-    color: #707579;
-    font-size: 13px;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    margin: 18px 6px 8px;
-    flex-shrink: 0;
-  }
-
-  .tg-card {
-    background: #2b2b2b;
-    border-radius: 14px;
-    border: 1px solid rgba(255, 255, 255, 0.05);
-    overflow: hidden;
-    display: flex;
-    flex-direction: column;
-    flex-shrink: 0;
-  }
-
-  .tg-row {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    padding: 12px 14px;
-    min-height: 52px;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-    box-sizing: border-box;
-    flex-shrink: 0;
-  }
-
-  .tg-row:last-child {
-    border-bottom: none;
-  }
-
-  .tg-row-clickable {
-    cursor: pointer;
-    transition: background 0.15s;
-  }
-
-  .tg-row-clickable:hover {
-    background: rgba(255, 255, 255, 0.03);
-  }
-
-  .tg-row-icon {
-    width: 36px;
-    height: 36px;
-    border-radius: 10px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex-shrink: 0;
-  }
-
-  .tg-icon-link {
-    background: rgba(51, 144, 236, 0.15);
-    color: #3390ec;
-  }
-
-  .tg-icon-info {
-    background: rgba(135, 116, 225, 0.15);
-    color: #8774e1;
-  }
-
-  .tg-icon-hash {
-    background: rgba(255, 255, 255, 0.08);
-    color: #aaaaaa;
-  }
-
-  .tg-icon-bell {
-    background: rgba(255, 160, 0, 0.15);
-    color: #ffa000;
-  }
-
-  .tg-icon-shield {
-    background: rgba(51, 144, 236, 0.15);
-    color: #3390ec;
-  }
-
-  .tg-icon-key {
-    background: rgba(250, 173, 20, 0.15);
-    color: #faad14;
-  }
-
-  .tg-icon-download {
-    background: rgba(0, 188, 212, 0.15);
-    color: #00bcd4;
-  }
-
-  .tg-icon-check {
-    background: rgba(46, 201, 113, 0.15);
-    color: #2ecc71;
-  }
-
-  .tg-icon-invite {
-    background: rgba(51, 144, 236, 0.15);
-    color: #3390ec;
-  }
-
-  .tg-icon-phone {
-    background: rgba(46, 201, 113, 0.15);
-    color: #2ecc71;
-  }
-
-  .tg-icon-danger {
-    background: rgba(229, 57, 53, 0.15);
-    color: #ff595a;
-  }
-
-  .tg-row-main {
-    flex: 1;
-    min-width: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-  }
-
-  .tg-row-title {
-    color: #ffffff;
-    font-size: 15px;
-    font-weight: 500;
-    line-height: 1.35;
-    word-break: break-word;
-  }
-
-  .tg-row-title.danger {
-    color: #ff595a;
-  }
-
-  .tg-row-title.selectable {
-    user-select: text;
-    white-space: pre-wrap;
-    word-break: break-word;
-  }
-
-  .tg-row-subtitle {
-    color: #707579;
-    font-size: 13px;
-    line-height: 1.3;
-    word-break: break-word;
-  }
-
-  .tg-link-text {
-    color: #3390ec;
-    word-break: break-all;
-  }
-
-  .tg-member-name-row .tg-row-title {
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-
-  .tg-copy-btn {
-    border: none;
-    background: transparent;
-    color: #707579;
-    padding: 6px;
-    border-radius: 6px;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: color 0.15s, background 0.15s;
-  }
-
-  .tg-copy-btn:hover {
-    color: #3390ec;
-    background: rgba(51, 144, 236, 0.1);
-  }
-
-  .tg-badge {
-    display: inline-flex;
-    align-items: center;
-    padding: 2px 8px;
-    border-radius: 6px;
-    font-size: 12px;
-    font-weight: 600;
-  }
-
-  .tg-badge-success {
-    background: rgba(46, 201, 113, 0.18);
-    color: #2ecc71;
-  }
-
-  .tg-badge-warning {
-    background: rgba(255, 160, 0, 0.18);
-    color: #ffa000;
-  }
-
-  .tg-badge-muted {
-    background: rgba(255, 255, 255, 0.08);
-    color: #aaaaaa;
-  }
-
-  .tg-btn-action {
-    border: none;
-    border-radius: 8px;
-    padding: 7px 12px;
-    background: #3390ec;
-    color: #ffffff;
-    font-size: 13px;
-    font-weight: 500;
-    cursor: pointer;
-    transition: background 0.15s, transform 0.12s;
-    flex-shrink: 0;
-    white-space: nowrap;
-  }
-
-  .tg-btn-action:hover {
-    background: #4ea4f6;
-  }
-
-  .tg-btn-action:active {
-    transform: scale(0.96);
-  }
-
-  .tg-btn-action.danger {
-    background: rgba(229, 57, 53, 0.18);
-    color: #ff595a;
-  }
-
-  .tg-btn-action.danger:hover {
-    background: rgba(229, 57, 53, 0.28);
-  }
-
-  .tg-switch {
-    width: 44px;
-    height: 24px;
-    border-radius: 12px;
-    background: #3d3d3d;
-    position: relative;
-    transition: background 0.22s ease;
-    flex-shrink: 0;
-  }
-
-  .tg-switch.active {
-    background: #3390ec;
-  }
-
-  .tg-switch-thumb {
-    width: 20px;
-    height: 20px;
-    border-radius: 50%;
-    background: #ffffff;
-    position: absolute;
-    top: 2px;
-    left: 2px;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
-    transition: transform 0.22s cubic-bezier(0.3, 0, 0.1, 1);
-  }
-
-  .tg-switch.active .tg-switch-thumb {
-    transform: translateX(20px);
-  }
-
-  .tg-fingerprint-emojis {
-    font-size: 18px;
-    letter-spacing: 4px;
-    margin-top: 2px;
-  }
-
-  .tg-search-bar {
+  .profile-field-name-row {
     display: flex;
     align-items: center;
     gap: 10px;
-    background: #2b2b2b;
-    border-radius: 10px;
-    padding: 8px 12px;
-    margin-bottom: 8px;
-    border: 1px solid rgba(255, 255, 255, 0.05);
-    color: #707579;
+    padding: 13px 14px;
   }
 
-  .tg-search-input {
+  .profile-field-name-row .profile-field-edit-input {
     flex: 1;
+    min-width: 0;
+  }
+
+  .profile-field-clear-btn {
     background: transparent;
     border: none;
-    color: #ffffff;
-    font-size: 14px;
-    outline: none;
-  }
-
-  .tg-search-input::placeholder {
-    color: #707579;
-  }
-
-  .tg-member-row {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    cursor: pointer;
-  }
-
-  .tg-member-name-row {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }
-
-  .tg-role-badge {
-    font-size: 11px;
-    color: #3390ec;
-    background: rgba(51, 144, 236, 0.12);
-    padding: 1px 6px;
-    border-radius: 4px;
-    font-weight: 500;
-  }
-
-  .tg-role-badge.admin {
-    color: #8774e1;
-    background: rgba(135, 116, 225, 0.12);
-  }
-
-  .tg-chevron {
-    color: #707579;
-    flex-shrink: 0;
-  }
-
-  .tg-danger-row:hover {
-    background: rgba(229, 57, 53, 0.08);
-  }
-
-  .tg-toast {
-    position: absolute;
-    bottom: calc(20px + var(--safe-bottom, 0px));
-    left: 50%;
-    transform: translateX(-50%);
-    background: rgba(30, 30, 30, 0.95);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    color: #ffffff;
-    font-size: 13px;
-    font-weight: 500;
-    padding: 8px 16px;
-    border-radius: 999px;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
-    z-index: var(--z-toast);
-    pointer-events: none;
-  }
-
-  .tg-toast svg {
-    color: #2ecc71;
-  }
-
-  .tg-icon-lock {
-    background: rgba(156, 39, 176, 0.15);
-    color: #ba68c8;
-  }
-
-  .tg-icon-save {
-    background: rgba(255, 255, 255, 0.08);
-    color: #aaaaaa;
-  }
-
-  .tg-caption {
-    font-size: 13px;
-    color: #707579;
-    margin: 8px 14px 0;
-    line-height: 1.4;
-    flex-shrink: 0;
-  }
-
-  .tg-caption-tag {
-    margin-top: 4px;
-    color: #555555;
-    font-size: 11px;
-  }
-
-  .tg-warn-text {
-    color: #ffa000;
-  }
-
-  .tg-segmented {
-    display: flex;
-    gap: 8px;
-    background: #2b2b2b;
-    border-radius: 12px;
+    color: rgba(255, 255, 255, 0.45);
     padding: 4px;
-    border: 1px solid rgba(255, 255, 255, 0.05);
-    flex-shrink: 0;
-  }
-
-  .tg-seg-btn {
-    flex: 1;
+    border-radius: 50%;
     display: flex;
-    flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 2px;
-    padding: 8px 4px;
-    border: none;
-    background: transparent;
-    color: #707579;
-    border-radius: 9px;
     cursor: pointer;
-    transition: background 0.15s, color 0.15s;
+    flex-shrink: 0;
+    transition: color 0.15s ease, background 0.15s ease;
   }
 
-  .tg-seg-btn:hover {
+  .profile-field-clear-btn:hover {
     color: #ffffff;
-    background: rgba(255, 255, 255, 0.04);
+    background: rgba(255, 255, 255, 0.08);
   }
 
-  .tg-seg-btn.active {
-    background: #3390ec;
-    color: #ffffff;
+  .profile-item-trailing {
+    font-size: 14px;
+    color: rgba(255, 255, 255, 0.5);
+    margin-right: 4px;
+    flex-shrink: 0;
   }
 
-  .tg-seg-title {
-    font-size: 12px;
-    font-weight: 600;
+  .profile-field-edit-group {
+    display: flex;
+    flex-direction: column;
+    padding: 12px 14px;
+    gap: 4px;
   }
 
-  .tg-seg-sub {
-    font-size: 10px;
-    opacity: 0.7;
-    text-transform: uppercase;
-  }
-
-  .tg-input-row {
-    padding-right: 8px;
-  }
-
-  .tg-input {
-    width: 100%;
+  .profile-field-edit-input {
     background: transparent;
     border: none;
+    color: var(--text-primary, #ffffff);
+    font-size: 15px;
+    font-weight: 500;
     outline: none;
-    color: #ffffff;
+    padding: 0;
+    width: 100%;
+  }
+
+  .profile-field-edit-input::placeholder {
+    color: var(--text-muted, rgba(255, 255, 255, 0.4));
+  }
+
+  .profile-field-edit-textarea {
+    background: transparent;
+    border: none;
+    color: var(--text-primary, #ffffff);
     font-size: 14px;
+    line-height: 1.4;
+    outline: none;
+    padding: 0;
+    width: 100%;
+    resize: none;
     font-family: inherit;
   }
 
-  .tg-input::placeholder {
-    color: #707579;
-  }
-
-  .tg-eye-btn {
-    border: none;
-    background: transparent;
-    color: #707579;
-    padding: 6px;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: 6px;
-    transition: color 0.15s;
-    flex-shrink: 0;
-  }
-
-  .tg-eye-btn:hover {
-    color: #ffffff;
-  }
-
-  .tg-badge-soon {
-    background: rgba(255, 255, 255, 0.06);
-    color: #707579;
-  }
-
-  .tg-disabled-row {
-    opacity: 0.6;
-    cursor: not-allowed;
-  }
-
-  .tg-member-more-container {
-    position: relative;
-    display: flex;
-    align-items: center;
-  }
-
-  .tg-btn-member-more {
-    background: none;
-    border: none;
-    color: #8e8e93;
-    cursor: pointer;
-    padding: 6px;
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: background 0.15s, color 0.15s;
-  }
-
-  .tg-btn-member-more:hover {
-    background: rgba(255, 255, 255, 0.08);
-    color: #ffffff;
-  }
-
-  .tg-card.tg-members-card {
-    overflow: visible;
-  }
-
-  .tg-member-dropdown {
-    position: absolute;
-    right: 0;
-    top: 100%;
-    z-index: var(--z-dropdown);
-    min-width: 180px;
-    margin-top: 4px;
-  }
-
-  .tg-member-dropdown.bottom-up {
-    top: auto;
-    bottom: 100%;
-    margin-top: 0;
-    margin-bottom: 4px;
-  }
-
-  .tg-load-more-members {
-    width: 100%;
-    padding: 12px;
-    background: none;
-    border: none;
-    border-top: 1px solid rgba(255, 255, 255, 0.06);
-    color: #5288c1;
-    font-size: 13px;
-    font-weight: 500;
-    cursor: pointer;
-    text-align: center;
-    transition: background 0.15s;
-  }
-
-  .tg-load-more-members:hover {
-    background: rgba(255, 255, 255, 0.04);
-  }
-
-  .tg-load-more-members:disabled {
-    opacity: 0.5;
-    cursor: default;
-  }
-
-  .tg-requests-row {
-    cursor: pointer;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-  }
-
-  .tg-icon-requests {
-    background: rgba(82, 136, 193, 0.15);
-    color: #5288c1;
-  }
-
-  .tg-requests-title {
-    font-weight: 600;
-  }
-
-  .tg-requests-badge {
-    background: #5288c1;
-    color: #fff;
-    font-size: 11px;
-    font-weight: 600;
-    padding: 2px 7px;
-    border-radius: 10px;
-    margin-left: auto;
-  }
-
-  .tg-menu-badge {
-    background: #5288c1;
-    color: #fff;
-    font-size: 11px;
-    font-weight: 600;
-    padding: 2px 6px;
-    border-radius: 10px;
-    margin-left: auto;
-  }
-
-  .tg-icon-pin {
-    background: rgba(255, 179, 0, 0.15);
-    color: #ffb300;
-  }
-
-  .tg-invite-row {
-    cursor: pointer;
-    transition: background 0.15s ease;
-  }
-
-  .tg-invite-row:hover {
-    background: rgba(255, 255, 255, 0.05);
-  }
-
-  .tg-story-profile-chip {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    padding: 6px 14px;
-    border-radius: 20px;
-    background: rgba(59, 130, 246, 0.16);
-    border: 1px solid rgba(59, 130, 246, 0.35);
-    color: #60a5fa;
-    font-size: 13px;
-    font-weight: 600;
-    cursor: pointer;
-    margin: 8px auto 0 auto;
-    transition: transform 0.15s, background 0.15s;
-  }
-
-  .tg-story-profile-chip:active {
-    transform: scale(0.96);
-  }
-
-  .tg-story-chip-dot {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    background: #3b82f6;
+  .profile-field-edit-textarea::placeholder {
+    color: var(--text-muted, rgba(255, 255, 255, 0.4));
   }
 </style>
