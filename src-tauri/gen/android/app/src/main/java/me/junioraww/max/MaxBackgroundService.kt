@@ -17,12 +17,13 @@ import android.os.IBinder
 import android.os.PowerManager
 import android.util.Log
 import androidx.core.app.NotificationCompat
+import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
 
 class MaxBackgroundService : Service() {
 
     companion object {
-        const val SERVICE_NOTIFICATION_ID = 404040
+        const val SERVICE_NOTIFICATION_ID = 500000
         const val CHANNEL_ID = "me.junioraww.max.DAEMON_CHANNEL"
         const val ACTION_STOP_DAEMON = "me.junioraww.max.ACTION_STOP_DAEMON"
         private const val PREFS = "me_junioraww_max_daemon"
@@ -70,7 +71,8 @@ class MaxBackgroundService : Service() {
             }
         }
 
-        fun acquireTemporaryWakeLock(context: Context, durationMs: Long = 2000L) {
+        @JvmStatic
+        fun acquireTemporaryWakeLock(context: Context, durationMs: Long = 10000L) {
             try {
                 val powerManager = context.getSystemService(Context.POWER_SERVICE) as? PowerManager
                 val wakeLock = powerManager?.newWakeLock(
@@ -86,7 +88,6 @@ class MaxBackgroundService : Service() {
 
     private var connectivityManager: ConnectivityManager? = null
     private var networkCallback: ConnectivityManager.NetworkCallback? = null
-    private var serviceWakeLock: PowerManager.WakeLock? = null
 
     private external fun startDaemonNative(appDir: String, account: Long)
     private external fun stopDaemonNative()
@@ -100,19 +101,6 @@ class MaxBackgroundService : Service() {
             System.loadLibrary("maxplus_lib")
         } catch (e: Throwable) {
             Log.e("MaxPlus", "MaxBackgroundService: failed to load maxplus_lib", e)
-        }
-
-        try {
-            val powerManager = getSystemService(Context.POWER_SERVICE) as? PowerManager
-            serviceWakeLock = powerManager?.newWakeLock(
-                PowerManager.PARTIAL_WAKE_LOCK,
-                "MaxPlus:BackgroundServiceLock"
-            )?.apply {
-                setReferenceCounted(false)
-                acquire()
-            }
-        } catch (e: Throwable) {
-            Log.w("MaxPlus", "Failed to acquire service wake lock", e)
         }
 
         if (MainActivity.appContext == null) {
@@ -148,14 +136,6 @@ class MaxBackgroundService : Service() {
     override fun onDestroy() {
         isServiceRunning = false
         isDaemonConnected = false
-        try {
-            serviceWakeLock?.let {
-                if (it.isHeld) {
-                    it.release()
-                }
-            }
-            serviceWakeLock = null
-        } catch (_: Throwable) {}
         unregisterNetworkCallback()
         try {
             stopDaemonNative()
@@ -218,15 +198,12 @@ class MaxBackgroundService : Service() {
             .addAction(0, "Отключить", stopIntent)
             .build()
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            startForeground(
-                SERVICE_NOTIFICATION_ID,
-                notification,
-                ServiceInfo.FOREGROUND_SERVICE_TYPE_REMOTE_MESSAGING
-            )
+        val fgType = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            ServiceInfo.FOREGROUND_SERVICE_TYPE_REMOTE_MESSAGING
         } else {
-            startForeground(SERVICE_NOTIFICATION_ID, notification)
+            0
         }
+        ServiceCompat.startForeground(this, SERVICE_NOTIFICATION_ID, notification, fgType)
     }
 
     private fun registerNetworkCallback() {

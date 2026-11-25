@@ -7,20 +7,48 @@ use jni::{
 };
 use serde_json::Value;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 use tokio::sync::Notify;
 
 static DAEMON_RUNNING: AtomicBool = AtomicBool::new(false);
-static APP_IN_FOREGROUND: AtomicBool = AtomicBool::new(false);
-static DAEMON_RECONNECT_NOTIFY: std::sync::OnceLock<Arc<Notify>> = std::sync::OnceLock::new();
+static APP_IN_FOREGROUND: AtomicBool = AtomicBool::new(true);
+static DAEMON_RECONNECT_NOTIFY: OnceLock<Arc<Notify>> = OnceLock::new();
+static DAEMON_RT_HANDLE: OnceLock<tokio::runtime::Handle> = OnceLock::new();
 
 fn get_reconnect_notify() -> &'static Arc<Notify> {
     DAEMON_RECONNECT_NOTIFY.get_or_init(|| Arc::new(Notify::new()))
 }
 
+pub fn is_app_foreground() -> bool {
+    APP_IN_FOREGROUND.load(Ordering::SeqCst)
+}
+
+pub fn is_daemon_running() -> bool {
+    DAEMON_RUNNING.load(Ordering::SeqCst)
+}
+
 pub fn set_app_foreground(in_foreground: bool) {
-    APP_IN_FOREGROUND.store(in_foreground, Ordering::SeqCst);
+    let prev = APP_IN_FOREGROUND.swap(in_foreground, Ordering::SeqCst);
+    if prev == in_foreground {
+        return;
+    }
+
+    let spawn_update = || {
+        let client = crate::state::shared_client().clone();
+        async move {
+            client.set_presence(in_foreground).await;
+            if in_foreground && !client.probe_liveness().await {
+                trigger_daemon_reconnect();
+            }
+        }
+    };
+
+    if let Some(handle) = DAEMON_RT_HANDLE.get() {
+        handle.spawn(spawn_update());
+    } else if let Ok(handle) = tokio::runtime::Handle::try_current() {
+        handle.spawn(spawn_update());
+    }
 }
 
 pub fn trigger_daemon_reconnect() {
@@ -32,8 +60,7 @@ fn notify_daemon_connected(connected: bool) {
     let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         if let Some(vm) = crate::notifications::GLOBAL_JVM.get() {
             let _ = vm.attach_current_thread(|env| -> Result<(), jni::errors::Error> {
-                let service_class = env.find_class(jni_str!("me/junioraww/max/MaxBackgroundService"))
-                    .or_else(|_| env.find_class(jni_str!("org/meowkie/max/MaxBackgroundService")))?;
+                let service_class = env.find_class(jni_str!("me/junioraww/max/MaxBackgroundService"))?;
                 let _ = env.call_static_method(
                     &service_class,
                     jni_str!("setDaemonConnected"),
@@ -48,8 +75,7 @@ fn notify_daemon_connected(connected: bool) {
 
 #[cfg(target_os = "android")]
 fn get_app_context<'a>(env: &mut Env<'a>) -> Result<JObject<'a>, jni::errors::Error> {
-    let main_class = env.find_class(jni_str!("me/junioraww/max/MainActivity"))
-        .or_else(|_| env.find_class(jni_str!("org/meowkie/max/MainActivity")))?;
+    let main_class = env.find_class(jni_str!("me/junioraww/max/MainActivity"))?;
     let ctx_obj = env.call_static_method(
         main_class,
         jni_str!("getApplicationContextStatic"),
@@ -57,6 +83,31 @@ fn get_app_context<'a>(env: &mut Env<'a>) -> Result<JObject<'a>, jni::errors::Er
         &[],
     )?.l()?;
     Ok(ctx_obj)
+}
+
+#[cfg(target_os = "android")]
+fn acquire_temp_wakelock(duration_ms: i64) {
+    let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        if let Some(vm) = crate::notifications::GLOBAL_JVM.get() {
+            let _ = vm.attach_current_thread(|env| -> Result<(), jni::errors::Error> {
+                let app_ctx = get_app_context(env)?;
+                if app_ctx.is_null() {
+                    return Ok(());
+                }
+                let service_class = env.find_class(jni_str!("me/junioraww/max/MaxBackgroundService"))?;
+                env.call_static_method(
+                    &service_class,
+                    jni_str!("acquireTemporaryWakeLock"),
+                    jni_sig!("(Landroid/content/Context;J)V"),
+                    &[
+                        jni::objects::JValue::Object(&app_ctx),
+                        jni::objects::JValue::Long(duration_ms),
+                    ],
+                )?;
+                Ok(())
+            });
+        }
+    }));
 }
 
 #[cfg(target_os = "android")]
@@ -72,8 +123,7 @@ fn dispatch_incoming_message_to_jni(
 ) {
     if let Some(vm) = crate::notifications::GLOBAL_JVM.get() {
         let _ = vm.attach_current_thread(|env| -> Result<(), jni::errors::Error> {
-            let dispatcher_class = env.find_class(jni_str!("me/junioraww/max/NotificationDispatcher"))
-                .or_else(|_| env.find_class(jni_str!("org/meowkie/max/NotificationDispatcher")))?;
+            let dispatcher_class = env.find_class(jni_str!("me/junioraww/max/NotificationDispatcher"))?;
 
             let app_ctx = get_app_context(env)?;
             if app_ctx.is_null() {
@@ -92,7 +142,7 @@ fn dispatch_incoming_message_to_jni(
             let j_sender_name_obj = JObject::from(j_sender_name);
             let j_chat_title_obj = JObject::from(j_chat_title);
 
-            let res = env.call_static_method(
+            env.call_static_method(
                 &dispatcher_class,
                 jni_str!("dispatchMessage"),
                 jni_sig!("(Landroid/content/Context;JLjava/lang/String;Ljava/lang/String;Ljava/lang/String;JLjava/lang/String;Ljava/lang/String;Z)V"),
@@ -107,25 +157,7 @@ fn dispatch_incoming_message_to_jni(
                     jni::objects::JValue::Object(&j_chat_title_obj),
                     jni::objects::JValue::Bool(is_group),
                 ],
-            );
-
-            if res.is_err() {
-                env.call_static_method(
-                    &dispatcher_class,
-                    jni_str!("dispatchMessage"),
-                    jni_sig!("(Landroid/content/Context;JLjava/lang/String;Ljava/lang/String;Ljava/lang/String;JLjava/lang/String;Z)V"),
-                    &[
-                        jni::objects::JValue::Object(&app_ctx),
-                        jni::objects::JValue::Long(chat_id),
-                        jni::objects::JValue::Object(&j_mid_obj),
-                        jni::objects::JValue::Object(&j_text_obj),
-                        jni::objects::JValue::Object(&j_sender_id_obj),
-                        jni::objects::JValue::Long(account),
-                        jni::objects::JValue::Object(&j_sender_name_obj),
-                        jni::objects::JValue::Bool(is_group),
-                    ],
-                )?;
-            }
+            )?;
 
             Ok(())
         });
@@ -143,8 +175,7 @@ fn dispatch_incoming_call_to_jni(
 ) {
     if let Some(vm) = crate::notifications::GLOBAL_JVM.get() {
         let _ = vm.attach_current_thread(|env| -> Result<(), jni::errors::Error> {
-            let dispatcher_class = env.find_class(jni_str!("me/junioraww/max/NotificationDispatcher"))
-                .or_else(|_| env.find_class(jni_str!("org/meowkie/max/NotificationDispatcher")))?;
+            let dispatcher_class = env.find_class(jni_str!("me/junioraww/max/NotificationDispatcher"))?;
 
             let app_ctx = get_app_context(env)?;
             if app_ctx.is_null() {
@@ -182,8 +213,7 @@ fn dispatch_incoming_call_to_jni(
 fn dispatch_message_removed_to_jni(chat_id: i64, mid: &str) {
     if let Some(vm) = crate::notifications::GLOBAL_JVM.get() {
         let _ = vm.attach_current_thread(|env| -> Result<(), jni::errors::Error> {
-            let dispatcher_class = env.find_class(jni_str!("me/junioraww/max/NotificationDispatcher"))
-                .or_else(|_| env.find_class(jni_str!("org/meowkie/max/NotificationDispatcher")))?;
+            let dispatcher_class = env.find_class(jni_str!("me/junioraww/max/NotificationDispatcher"))?;
 
             let app_ctx = get_app_context(env)?;
             if app_ctx.is_null() {
@@ -201,6 +231,38 @@ fn dispatch_message_removed_to_jni(chat_id: i64, mid: &str) {
                     jni::objects::JValue::Object(&app_ctx),
                     jni::objects::JValue::Long(chat_id),
                     jni::objects::JValue::Object(&j_mid_obj),
+                ],
+            )?;
+            Ok(())
+        });
+    }
+}
+
+#[cfg(target_os = "android")]
+fn dispatch_message_edited_to_jni(chat_id: i64, mid: &str, new_text: &str) {
+    if let Some(vm) = crate::notifications::GLOBAL_JVM.get() {
+        let _ = vm.attach_current_thread(|env| -> Result<(), jni::errors::Error> {
+            let dispatcher_class = env.find_class(jni_str!("me/junioraww/max/NotificationDispatcher"))?;
+
+            let app_ctx = get_app_context(env)?;
+            if app_ctx.is_null() {
+                return Ok(());
+            }
+
+            let j_mid = env.new_string(mid)?;
+            let j_text = env.new_string(new_text)?;
+            let j_mid_obj = JObject::from(j_mid);
+            let j_text_obj = JObject::from(j_text);
+
+            env.call_static_method(
+                dispatcher_class,
+                jni_str!("dispatchMessageEdited"),
+                jni_sig!("(Landroid/content/Context;JLjava/lang/String;Ljava/lang/String;)V"),
+                &[
+                    jni::objects::JValue::Object(&app_ctx),
+                    jni::objects::JValue::Long(chat_id),
+                    jni::objects::JValue::Object(&j_mid_obj),
+                    jni::objects::JValue::Object(&j_text_obj),
                 ],
             )?;
             Ok(())
@@ -268,11 +330,7 @@ fn format_message_preview(msg: &Value, sender_name: &str) -> String {
                     "VIDEO" => {
                         let is_round = att.get("videoType").map_or(false, |v| v == "ROUND" || v == 1)
                             || att.get("isRound").and_then(|v| v.as_bool()) == Some(true);
-                        if is_round {
-                            attach_label = Some("Видео-сообщение");
-                        } else {
-                            attach_label = Some("Видео");
-                        }
+                        attach_label = Some(if is_round { "Видео-сообщение" } else { "Видео" });
                         break;
                     }
                     "AUDIO" => {
@@ -333,6 +391,11 @@ fn format_message_preview(msg: &Value, sender_name: &str) -> String {
 }
 
 async fn handle_daemon_packet(val: &Value, account: i64, app_dir: &str, client: &rumax::MaxClient) {
+    // When the app is in foreground, WebView/MobileApi handles incoming events.
+    if is_app_foreground() {
+        return;
+    }
+
     if val.get("type").and_then(|v| v.as_str()) != Some("rx") {
         return;
     }
@@ -347,6 +410,11 @@ async fn handle_daemon_packet(val: &Value, account: i64, app_dir: &str, client: 
         Some(p) => p,
         None => return,
     };
+
+    #[cfg(target_os = "android")]
+    if matches!(opcode, 128 | 137 | 142) {
+        acquire_temp_wakelock(10_000);
+    }
 
     match opcode {
         128 => {
@@ -367,8 +435,19 @@ async fn handle_daemon_packet(val: &Value, account: i64, app_dir: &str, client: 
                 dispatch_message_removed_to_jni(chat_id, &mid);
                 return;
             }
+            if status == "EDITED" || msg.get("edited").and_then(|v| v.as_bool()) == Some(true) {
+                #[cfg(target_os = "android")]
+                {
+                    let new_text = format_message_preview(msg, "");
+                    dispatch_message_edited_to_jni(chat_id, &mid, &new_text);
+                }
+                return;
+            }
 
             let sender_id = msg.get("sender").and_then(|v| v.as_i64()).unwrap_or(0);
+            if sender_id == account && account != 0 {
+                return;
+            }
 
             let root = crate::stores::resolve_app_root(app_dir);
             let creds = crate::stores::get_background_creds(app_dir, account as u64);
@@ -521,50 +600,59 @@ pub fn start_daemon(app_dir: String, account_id: i64) {
             }
         };
 
+        let _ = DAEMON_RT_HANDLE.set(rt.handle().clone());
+
         rt.block_on(async move {
             let reconnect_notify = get_reconnect_notify();
+            let client = crate::state::shared_client().clone();
 
             while DAEMON_RUNNING.load(Ordering::SeqCst) {
-                let target_id = if account_id != 0 {
-                    account_id as u64
-                } else {
-                    0
-                };
+                let target_id = if account_id != 0 { account_id as u64 } else { 0 };
                 let creds = crate::stores::get_background_creds(&app_dir, target_id);
-                let (server_user_id, token, identity) = match creds {
-                    Some((_, uid, t, id)) => (uid, t, id),
+                let (local_id, server_user_id, token, identity) = match creds {
+                    Some(c) => c,
                     None => {
-                        tokio::time::sleep(Duration::from_secs(5)).await;
+                        // Credentials unavailable (e.g., encrypted account locked after process death).
+                        // Wait for unlock/reconnect signal rather than spinning tightly.
+                        tokio::select! {
+                            _ = reconnect_notify.notified() => {}
+                            _ = tokio::time::sleep(Duration::from_secs(30)) => {}
+                        }
                         continue;
                     }
                 };
 
-                let client = rumax::MaxClient::new();
-                client.set_user_id(server_user_id).await;
-                client.set_token(token).await;
+                if !client.is_connected().await {
+                    client.set_user_id(server_user_id).await;
+                    client.set_token(token).await;
+                    client.set_presence(is_app_foreground()).await;
 
-                let connected = client.connect(identity, true).await.is_ok();
-
-                if !connected {
-                    #[cfg(target_os = "android")]
-                    notify_daemon_connected(false);
-                    tokio::select! {
-                        _ = reconnect_notify.notified() => {}
-                        _ = tokio::time::sleep(Duration::from_secs(5)) => {}
+                    if client.connect(identity, true).await.is_err() {
+                        #[cfg(target_os = "android")]
+                        notify_daemon_connected(false);
+                        tokio::select! {
+                            _ = reconnect_notify.notified() => {}
+                            _ = tokio::time::sleep(Duration::from_secs(5)) => {}
+                        }
+                        continue;
                     }
-                    continue;
-                }
 
-                let sync_res = client.sync(None).await;
-                if sync_res.is_err() {
-                    #[cfg(target_os = "android")]
-                    notify_daemon_connected(false);
-                    client.disconnect().await;
-                    tokio::select! {
-                        _ = reconnect_notify.notified() => {}
-                        _ = tokio::time::sleep(Duration::from_secs(5)) => {}
+                    let initial_sync_state = crate::stores::load_sync_state_disk(&app_dir, local_id).unwrap_or_default();
+                    match client.sync(initial_sync_state).await {
+                        Ok((_, _, new_sync_state)) => {
+                            let _ = crate::stores::save_sync_state_disk(&app_dir, local_id, &new_sync_state);
+                        }
+                        Err(_) => {
+                            #[cfg(target_os = "android")]
+                            notify_daemon_connected(false);
+                            client.disconnect().await;
+                            tokio::select! {
+                                _ = reconnect_notify.notified() => {}
+                                _ = tokio::time::sleep(Duration::from_secs(5)) => {}
+                            }
+                            continue;
+                        }
                     }
-                    continue;
                 }
 
                 #[cfg(target_os = "android")]
@@ -579,14 +667,24 @@ pub fn start_daemon(app_dir: String, account_id: i64) {
 
                     tokio::select! {
                         _ = reconnect_notify.notified() => {
-                            break;
+                            if !client.probe_liveness().await {
+                                break;
+                            }
                         }
                         event = rx.recv() => {
                             match event {
                                 Ok(val) => {
+                                    if val.get("type").and_then(|v| v.as_str()) == Some("log")
+                                        && val.get("response").and_then(|v| v.as_str()) == Some("closed")
+                                    {
+                                        break;
+                                    }
                                     handle_daemon_packet(&val, server_user_id as i64, &app_dir, &client).await;
                                 }
-                                Err(_) => {
+                                Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {
+                                    continue;
+                                }
+                                Err(tokio::sync::broadcast::error::RecvError::Closed) => {
                                     break;
                                 }
                             }
@@ -596,7 +694,6 @@ pub fn start_daemon(app_dir: String, account_id: i64) {
 
                 #[cfg(target_os = "android")]
                 notify_daemon_connected(false);
-                client.disconnect().await;
                 tokio::time::sleep(Duration::from_millis(500)).await;
             }
         });
@@ -660,43 +757,4 @@ pub extern "system" fn Java_me_junioraww_max_AppState_notifyAppStateNative<'loca
     in_foreground: jboolean,
 ) {
     set_app_foreground(in_foreground);
-}
-
-#[cfg(target_os = "android")]
-#[no_mangle]
-pub extern "system" fn Java_org_meowkie_max_MaxBackgroundService_startDaemonNative<'local>(
-    unowned_env: EnvUnowned<'local>,
-    this: JObject<'local>,
-    app_dir: JString<'local>,
-    account: i64,
-) {
-    Java_me_junioraww_max_MaxBackgroundService_startDaemonNative(unowned_env, this, app_dir, account);
-}
-
-#[cfg(target_os = "android")]
-#[no_mangle]
-pub extern "system" fn Java_org_meowkie_max_MaxBackgroundService_stopDaemonNative<'local>(
-    unowned_env: EnvUnowned<'local>,
-    this: JObject<'local>,
-) {
-    Java_me_junioraww_max_MaxBackgroundService_stopDaemonNative(unowned_env, this);
-}
-
-#[cfg(target_os = "android")]
-#[no_mangle]
-pub extern "system" fn Java_org_meowkie_max_MaxBackgroundService_onNetworkChangedNative<'local>(
-    unowned_env: EnvUnowned<'local>,
-    this: JObject<'local>,
-) {
-    Java_me_junioraww_max_MaxBackgroundService_onNetworkChangedNative(unowned_env, this);
-}
-
-#[cfg(target_os = "android")]
-#[no_mangle]
-pub extern "system" fn Java_org_meowkie_max_AppState_notifyAppStateNative<'local>(
-    unowned_env: EnvUnowned<'local>,
-    this: JObject<'local>,
-    in_foreground: jboolean,
-) {
-    Java_me_junioraww_max_AppState_notifyAppStateNative(unowned_env, this, in_foreground);
 }

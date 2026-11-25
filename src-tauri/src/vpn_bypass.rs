@@ -36,8 +36,7 @@ fn jni_call_check_vpn() -> Option<bool> {
     let vm = crate::notifications::GLOBAL_JVM.get()?;
     vm.attach_current_thread(|env| -> Result<bool, jni::errors::Error> {
         let main_class = env
-            .find_class(jni::jni_str!("me/junioraww/max/MainActivity"))
-            .or_else(|_| env.find_class(jni::jni_str!("org/meowkie/max/MainActivity")))?;
+            .find_class(jni::jni_str!("me/junioraww/max/MainActivity"))?;
         let res = env
             .call_static_method(
                 main_class,
@@ -56,8 +55,7 @@ fn jni_call_route_physical() -> Option<bool> {
     let vm = crate::notifications::GLOBAL_JVM.get()?;
     vm.attach_current_thread(|env| -> Result<bool, jni::errors::Error> {
         let main_class = env
-            .find_class(jni::jni_str!("me/junioraww/max/MainActivity"))
-            .or_else(|_| env.find_class(jni::jni_str!("org/meowkie/max/MainActivity")))?;
+            .find_class(jni::jni_str!("me/junioraww/max/MainActivity"))?;
         let res = env
             .call_static_method(
                 main_class,
@@ -76,8 +74,7 @@ fn jni_call_detach_route() -> Option<bool> {
     let vm = crate::notifications::GLOBAL_JVM.get()?;
     vm.attach_current_thread(|env| -> Result<bool, jni::errors::Error> {
         let main_class = env
-            .find_class(jni::jni_str!("me/junioraww/max/MainActivity"))
-            .or_else(|_| env.find_class(jni::jni_str!("org/meowkie/max/MainActivity")))?;
+            .find_class(jni::jni_str!("me/junioraww/max/MainActivity"))?;
         let res = env
             .call_static_method(
                 main_class,

@@ -241,6 +241,17 @@ pub async fn init(
     user_id: Option<u64>,
     token: Option<String>,
 ) -> Result<Value, Value> {
+    // Reuse the existing live connection (e.g., maintained by MaxBackgroundService)
+    // if it belongs to the same account and responds to a liveness ping.
+    if user_id.is_some()
+        && token.is_some()
+        && state.client.get_user_id().await == user_id
+        && state.client.get_token().await == token
+        && state.client.probe_liveness().await
+    {
+        return Ok(json!({ "reused": true }));
+    }
+
     state.client.disconnect().await;
 
     if let Some(uid) = user_id {
