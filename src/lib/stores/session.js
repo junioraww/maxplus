@@ -148,29 +148,32 @@ export function closeSettingsPage() {
   }
 }
 
-let activeProfileLayerId = null;
+let profileLayerStack = [];
 
 export async function openProfile(config = {}) {
   const mod = await import("$components/ProfileModal.svelte");
-  if (activeProfileLayerId) {
-    dismissLayer(activeProfileLayerId);
-    activeProfileLayerId = null;
+  // Only dismiss existing profile if explicitly requested or if opening a new root chat profile
+  if (config.replace && profileLayerStack.length > 0) {
+    for (const id of profileLayerStack) {
+      dismissLayer(id);
+    }
+    profileLayerStack = [];
   }
-  const res = openDrawer(mod.default || mod, config, {
+  const res = openScreen(mod.default || mod, config, {
+    canSwipe: true,
     onClose: () => {
-      activeProfileLayerId = null;
+      profileLayerStack = profileLayerStack.filter(id => id !== res.id);
     }
   });
-  activeProfileLayerId = res.id;
+  profileLayerStack.push(res.id);
   return res;
 }
 
 export const openProfileModal = openProfile;
 
 export function closeProfile() {
-  if (activeProfileLayerId) {
-    const id = activeProfileLayerId;
-    activeProfileLayerId = null;
+  if (profileLayerStack.length > 0) {
+    const id = profileLayerStack.pop();
     dismissLayer(id);
   }
 }

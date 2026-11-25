@@ -6,10 +6,8 @@
   import { getChat } from "$lib/stores/messages";
   import { getContact } from "$lib/utils/caching";
   import Session, { openChat, openProfile } from "$lib/stores/session";
-  import {
-    getAttachText, getSystemText
-  } from "$lib/utils/attachs";
-  import { scrollTo } from '$lib/utils/scroll';
+  import { getAttachText, getSystemText } from "$lib/utils/attachs";
+  import { scrollTo } from "$lib/utils/scroll";
   import MessagePreview from "$components/main/MessagePreview.svelte";
   import Avatar from "$components/main/Avatar.svelte";
   import Reactions from "$components/ChatWindow/Reactions.svelte";
@@ -36,11 +34,15 @@
   export let otherReadTime = 0;
   export let selected = false;
   export let selectionMode = false;
+  export let isFirstInGroup = true;
+  export let isLastInGroup = true;
+  export let isConsecutive = false;
 
   $: isMe = Number(msg.sender) === Number($currentUser);
-  $: isSending = msg.status === "sending" || msg.status === "pending" || msg.status === 0 || msg.sending === true;
-  $: isRead = !isSending && (isBot || msg.read === true || msg.status === 3 || msg.status === "read" || (otherReadTime > 0 && otherReadTime >= (msg.time || 0)));
-  $: isSystem = Boolean(msg.attaches?.some((x) => x._type === "CONTROL"));
+  $: isFailed = msg.status === "failed" || msg.status === 40;
+  $: isSending = !isFailed && (msg.status === "sending" || msg.status === "pending" || msg.status === 0 || msg.sending === true);
+  $: isRead = !isSending && !isFailed && (isBot || msg.read === true || msg.status === 3 || msg.status === "read" || (otherReadTime > 0 && otherReadTime >= (msg.time || 0)));
+  $: isSystem = Boolean(msg.attaches?.some((x) => x._type === "CONTROL") || msg.type === "SYSTEM");
 
   $: rawText = decoded ? (decoded.text ?? "") : (msg.text || "");
   $: isE2eDisable = Boolean(rawText && (rawText === "__E2E_DISABLE__" || rawText.includes('"e2e_control":"disable"')));
@@ -78,6 +80,40 @@
   })();
   $: transcription = $transcriptions[String(msg?.id)];
 
+  // Sender details for group header
+  $: cachedSenderContact = msg.sender ? getContact(msg.sender) : null;
+  $: senderContact = cachedSenderContact ? $cachedSenderContact : null;
+  $: senderAuthorName = (() => {
+    if (isMe) return "Вы";
+    if (senderContact?.names?.[0]?.firstName) {
+      return `${senderContact.names[0].firstName} ${senderContact.names[0].lastName || ""}`.trim();
+    }
+    if (senderContact?.name) return senderContact.name;
+    if (msg.senderName) return msg.senderName;
+    if (msg.sender) return String(msg.sender);
+    return "Пользователь";
+  })();
+  $: authorColorIdx = (() => {
+    if (senderAuthorName === "лис" || senderAuthorName?.toLowerCase() === "лис") return 3; // #78b1f5 (Max sky blue)
+    const num = Number(msg.sender);
+    if (!isNaN(num) && num > 0) return Math.abs(num) % 5;
+    let h = 0;
+    const str = String(senderAuthorName || msg.sender || "");
+    for (let i = 0; i < str.length; i++) h = (h * 31 + str.charCodeAt(i)) | 0;
+    return Math.abs(h) % 5;
+  })();
+
+  // Group roles
+  $: isGroupChat = chat?.type === "CHAT" || chat?.type === "GROUP";
+  $: isOwner = isGroupChat && (Number(msg.sender) === Number(chat?.owner || chat?.ownerId));
+  $: isAdmin = isGroupChat && !isOwner && Boolean(chat?.admins?.some((a) => Number(a) === Number(msg.sender)));
+  $: roleLabel = isOwner ? "владелец" : (isAdmin ? "админ" : (chat?.participantRoles?.[msg.sender] || null));
+  $: showGroupHeader = isGroupChat && !isMe && !isSystem && isFirstInGroup;
+
+  // Channel details
+  $: isChannel = chat?.type === "CHANNEL";
+  $: channelCommentsCount = msg.commentsCounter ?? msg.stats?.commentsCount ?? (Array.isArray(msg.comments) ? msg.comments.length : 0);
+
   function handleMediaClick(attach, originEl = null) {
     dispatch("openMedia", { attach, originEl });
   }
@@ -93,7 +129,10 @@
   }
 
   async function openReply(e) {
-    await makeVisible(linkedMsg.id);
+    if (!linkedMsg?.id) return;
+    if (makeVisible) {
+      await makeVisible(linkedMsg.id);
+    }
 
     const target = document.getElementById("m-" + linkedMsg.id);
     if (!target || !scrollElement) return;
@@ -110,7 +149,7 @@
         setTimeout(() => {
           highlight.remove();
         }, 1000);
-      }
+      },
     });
   }
 
@@ -194,19 +233,21 @@
     msg.deleted ||
     lines.length > 1 ||
     (effectiveText && effectiveText.length > 30) ||
-    isSystem
+    isChannel
   );
   $: isInlineRow = !hasBlocks && Boolean(effectiveText);
 
   $: showAvatar =
-    chat.type !== "CHANNEL" &&
-    !isSystem;
+    isGroupChat &&
+    !isMe &&
+    !isSystem &&
+    isFirstInGroup;
 
-  $: inlineKeyboardAttach = effectiveAttaches?.find(x => x._type === "INLINE_KEYBOARD");
-  $: stickerAttach = effectiveAttaches?.find(x => x._type === "STICKER");
+  $: inlineKeyboardAttach = effectiveAttaches?.find((x) => x._type === "INLINE_KEYBOARD");
+  $: stickerAttach = effectiveAttaches?.find((x) => x._type === "STICKER");
   $: isStickerOnly = stickerAttach && (!lines || lines.length === 0 || (lines.length === 1 && !lines[0]?.trim())) && (!effectiveAttaches || effectiveAttaches.length === 1) && !linkedMsg;
-  $: isVideoNoteOnly = effectiveAttaches?.some(x => x._type === "VIDEO" && x.videoType === 1) && (!lines || lines.length === 0 || (lines.length === 1 && !lines[0]?.trim())) && (!effectiveAttaches || effectiveAttaches.length === 1) && !linkedMsg;
-  $: isPollOnly = effectiveAttaches?.some(x => (x._type || x.type) === "POLL") && (!lines || lines.length === 0 || (lines.length === 1 && !lines[0]?.trim())) && effectiveAttaches.length === 1 && !linkedMsg;
+  $: isVideoNoteOnly = effectiveAttaches?.some((x) => x._type === "VIDEO" && x.videoType === 1) && (!lines || lines.length === 0 || (lines.length === 1 && !lines[0]?.trim())) && (!effectiveAttaches || effectiveAttaches.length === 1) && !linkedMsg;
+  $: isPollOnly = effectiveAttaches?.some((x) => (x._type || x.type) === "POLL") && (!lines || lines.length === 0 || (lines.length === 1 && !lines[0]?.trim())) && effectiveAttaches.length === 1 && !linkedMsg;
 
   let pressTimer = null;
   let isLongPress = false;
@@ -251,12 +292,6 @@
     }
   }
 
-  function handleMouseDown() {}
-
-  function handleMouseMove() {}
-
-  function handleMouseUp() {}
-
   function handleContextMenu(e) {
     if (e.target.closest("input, textarea, a, .rich-link, .link-dropout-card, .dropout-backdrop, .poll-container")) return;
     e.preventDefault();
@@ -277,177 +312,242 @@
       dispatch("toggleSelect", { id: msg.id });
       return;
     }
-    if (e.target.closest("button, a, .rich-link, .link-dropout-card, .dropout-backdrop, input, textarea, .avatar-msg-btn, .avatar-wrapper, .media-download-badge, .voice-play-btn, .edited-badge, .sticker-wrapper, .poll-container, .poll-result-bar, .poll-option-btn, .poll-cancel-btn")) return;
+    if (e.target.closest("button, a, .rich-link, .link-dropout-card, .dropout-backdrop, input, textarea, .avatar-msg-btn, .author-header-btn, .media-download-badge, .voice-play-btn, .edited-badge, .sticker-wrapper, .poll-container, .poll-result-bar, .poll-option-btn, .poll-cancel-btn")) return;
     const windowSel = typeof window !== "undefined" ? window.getSelection() : null;
     if (windowSel && !windowSel.isCollapsed && windowSel.toString().trim()) return;
     dispatch("messageClick", { msg, e });
   }
+
+  function handleSystemClick(e) {
+    const userLink = e.target.closest(".user-link");
+    if (userLink && userLink.dataset.userId) {
+      e.stopPropagation();
+      openProfile({ userId: Number(userLink.dataset.userId) });
+      return;
+    }
+    const control = msg.attaches?.find((x) => x._type === "CONTROL");
+    const pinId = control?.pinnedMessage?.id || control?.messageId || control?.pinnedMessageId;
+    if (pinId && makeVisible) {
+      e.stopPropagation();
+      makeVisible(pinId);
+    }
+  }
+
+  function formatCommentsLabel(count) {
+    if (!count || count <= 0) return "Обсудить";
+    const mod10 = count % 10;
+    const mod100 = count % 100;
+    if (mod100 >= 11 && mod100 <= 19) return `${count} комментариев`;
+    if (mod10 === 1) return `${count} комментарий`;
+    if (mod10 >= 2 && mod10 <= 4) return `${count} комментария`;
+    return `${count} комментариев`;
+  }
 </script>
 
-<div
-  class="message-row"
-  class:is-me={isMe}
-  class:is-system={isSystem}
-  class:is-deleted={msg.deleted}
-  class:is-sticker={isStickerOnly}
-  class:is-video-note={isVideoNoteOnly}
-  class:is-poll={isPollOnly}
-  class:is-channel={chat.type === "CHANNEL"}
-  class:is-selected={selected}
-  class:selection-active={selectionMode}
-  class:inactive={dropoutActiveAt && dropoutActiveAt?.msg?.id !== msg.id}
-  on:dragstart|preventDefault
-  on:touchstart|passive={handleTouchStart}
-  on:touchmove|passive={handleTouchMove}
-  on:touchend={handleTouchEnd}
-  on:mousedown={handleMouseDown}
-  on:mousemove={handleMouseMove}
-  on:mouseup={handleMouseUp}
-  on:contextmenu={handleContextMenu}
-  on:click={handleClick}
->
-  <div class="indent">
-    {#if showAvatar}
-      <button
-        type="button"
-        class="avatar-msg-btn"
-        on:mousedown|stopPropagation
-        on:mouseup|stopPropagation
-        on:touchend|stopPropagation
-        on:click|stopPropagation={() => {
-          if (msg.sender) {
-            openProfile({ userId: Number(msg.sender) });
-          }
-        }}
-      >
-        <Avatar size={32} contactId={msg.sender} style="chat" />
-      </button>
-    {/if}
+{#if isSystem}
+  <div
+    class="message-system-row"
+    class:inactive={dropoutActiveAt && dropoutActiveAt?.msg?.id !== msg.id}
+    on:click={handleSystemClick}
+    on:contextmenu={handleContextMenu}
+  >
+    <div class="message-system-pill">
+      {@html getSystemText(msg) || (msg.text ? msg.text : "")}
+    </div>
   </div>
-
-  <div class="message-bubble-container">
-    {#each $pluginMessageHeaders as item (item.id)}
-      <div class="plugin-mount-block plugin-message-header" data-plugin-mount={item.pluginId || item.id}>
-        {@html item.html}
-      </div>
-    {/each}
-    {#each $pluginMessageDecorations as item (item.id)}
-      <div class="plugin-mount-inline plugin-message-decoration" data-plugin-mount={item.pluginId || item.id}>
-        {@html item.html}
-      </div>
-    {/each}
-    {#if isStickerOnly}
-      <div class="message-bubble sticker-bubble">
-        <div class="sticker-wrapper" on:click|stopPropagation={() => dispatch("openStickerPack", { sticker: stickerAttach })}>
-          <StickerMedia
-            url={stickerAttach.baseUrl || stickerAttach.url}
-            lottieUrl={stickerAttach.lottieUrl}
-            size={160}
-            autoplay={true}
-            loop={true}
-          />
-          <div class="sticker-floating-meta">
-            <span class="timestamp"
-              >{new Date(msg.time).toLocaleTimeString([], {
-                hour: "2-digit",
-                minute: "2-digit",
-              })}</span
-            >
-            {#if isMe && !isSystem}
-              <div class="status-ticks">
-                {#if isSending}
-                  <svg class="status-icon is-sending" viewBox="0 0 16 16">
-                    <circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" stroke-width="1.6" />
-                    <polyline points="8,4.5 8,8 10.5,9.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
-                  </svg>
-                {:else if isRead}
-                  <svg class="status-icon is-read" viewBox="0 0 20 12">
-                    <path fill="currentColor" d="M4.5 10.5L0 6l1.4-1.4L4.5 7.7 12.6 0l1.4 1.4z" />
-                    <path fill="currentColor" d="M9.5 10.5L5 6l1.4-1.4L9.5 7.7 17.6 0l1.4 1.4z" />
-                  </svg>
-                {:else}
-                  <svg class="status-icon is-sent" viewBox="0 0 16 12">
-                    <path fill="currentColor" d="M5.5 10.5L1 6l1.4-1.4L5.5 7.7 13.6 0l1.4 1.4z" />
-                  </svg>
-                {/if}
-              </div>
-            {/if}
-          </div>
-        </div>
-        {#if msg.reactionInfo?.totalCount}
-          <div class="sticker-reactions">
-            <Reactions info={msg.reactionInfo} {isMe} msgId={msg.id} on:react={(e) => dispatch("react", e.detail)} />
-          </div>
+{:else}
+  <div
+    class="message-row"
+    class:is-me={isMe}
+    class:is-consecutive={isConsecutive}
+    class:is-deleted={msg.deleted}
+    class:is-sticker={isStickerOnly}
+    class:is-video-note={isVideoNoteOnly}
+    class:is-poll={isPollOnly}
+    class:is-channel={isChannel}
+    class:is-selected={selected}
+    class:selection-active={selectionMode}
+    class:inactive={dropoutActiveAt && dropoutActiveAt?.msg?.id !== msg.id}
+    on:dragstart|preventDefault
+    on:touchstart|passive={handleTouchStart}
+    on:touchmove|passive={handleTouchMove}
+    on:touchend={handleTouchEnd}
+    on:contextmenu={handleContextMenu}
+    on:click={handleClick}
+  >
+    {#if selectionMode}
+      <div class="selection-checkbox" class:is-checked={selected}>
+        {#if selected}
+          <svg viewBox="0 0 16 16" class="selection-check-icon">
+            <path d="M13.5 4.5L6.5 11.5L2.5 7.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
         {/if}
       </div>
-    {:else}
-      <div class="message-bubble" class:is-row={isInlineRow} class:is-poll={isPollOnly}>
-        <div class="bubble-content">
-          {#if linkedMsg}
-            {#if linkedType === "FORWARD"}
-              <div class="forward-block">
-                <div
-                  class="forward-header"
-                  on:click|stopPropagation={handleForwardHeaderClick}
-                >
-                  <div class="forward-avatar-placeholder">
-                    <Avatar
-                      contactId={isForwardChannel ? null : (isForwardFromMe ? Number($currentUser) : (linkedMsg?.sender ? Number(linkedMsg.sender) : null))}
-                      chat={isForwardChannel ? (forwardChat || { title: forwardAuthorName }) : forwardChat}
-                      src={forwardAvatarUrl}
-                      title={forwardAuthorName}
-                      size={22}
-                    />
-                  </div>
-                  <div class="forward-info">
-                    <span class="forward-name">{forwardAuthorName}</span>
-                    <span class="forward-label">Пересланное сообщение</span>
-                  </div>
-                  <svg class="forward-arrow" viewBox="0 0 24 24"
-                    ><path
-                      d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"
-                    /></svg
-                  >
-                </div>
+    {/if}
 
-                {#if forwardLines}
-                  <div class="forward-content">
-                    {#each forwardLines as fLine}
-                      <p class="line allow-selection">{fLine}</p>
-                    {/each}
-                  </div>
-                {/if}
+    <div class="indent" class:is-grouped-indent={isGroupChat && !isMe && !isSystem}>
+      {#if showAvatar}
+        <button
+          type="button"
+          class="avatar-msg-btn"
+          on:mousedown|stopPropagation
+          on:mouseup|stopPropagation
+          on:touchend|stopPropagation
+          on:click|stopPropagation={() => {
+            if (msg.sender) {
+              openProfile({ userId: Number(msg.sender) });
+            }
+          }}
+        >
+          <Avatar size={32} contactId={msg.sender} style="chat" showOnline={false} allowStories={false} />
+        </button>
+      {/if}
+    </div>
 
-                {#if linkedMsg.attaches}
-                  <Attachments
-                    {getFile}
-                    attaches={linkedMsg.attaches}
-                    {handleMediaClick}
-                    chatId={linkedMsg.chatId || chat?.id}
-                    messageId={linkedMsg.id}
-                  />
-                {/if}
-              </div>
-            {:else if linkedType === "REPLY"}
-              <div on:click|stopPropagation={openReply} class="reply-block">
-                <div class="reply-content">
-                  <p class="line allow-selection">
-                    <b>{replyAuthorName}</b>
-                    <MessagePreview {chat} msg={linkedMsg} cut={true} />
-                  </p>
+    <div class="message-bubble-container">
+      {#each $pluginMessageHeaders as item (item.id)}
+        <div class="plugin-mount-block plugin-message-header" data-plugin-mount={item.pluginId || item.id}>
+          {@html item.html}
+        </div>
+      {/each}
+      {#each $pluginMessageDecorations as item (item.id)}
+        <div class="plugin-mount-inline plugin-message-decoration" data-plugin-mount={item.pluginId || item.id}>
+          {@html item.html}
+        </div>
+      {/each}
+
+      {#if isStickerOnly}
+        <div class="message-bubble sticker-bubble">
+          <div class="sticker-wrapper" on:click|stopPropagation={() => dispatch("openStickerPack", { sticker: stickerAttach })}>
+            <StickerMedia
+              url={stickerAttach.baseUrl || stickerAttach.url}
+              lottieUrl={stickerAttach.lottieUrl}
+              size={160}
+              autoplay={true}
+              loop={true}
+            />
+            <div class="sticker-floating-meta">
+              <span class="timestamp"
+                >{new Date(msg.time).toLocaleTimeString("ru-RU", {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                  hour12: false,
+                })}</span
+              >
+              {#if isMe}
+                <div class="status-ticks">
+                  {#if isFailed}
+                    <button
+                      type="button"
+                      class="failed-status-btn"
+                      title={msg.error || "Ошибка отправки"}
+                      on:click|stopPropagation={() => dispatch("failedClick", msg)}
+                    >
+                      <span class="mask-icon" style="-webkit-mask-image: url('/icons/warning.svg'); mask-image: url('/icons/warning.svg'); width: 14px; height: 14px;"></span>
+                    </button>
+                  {:else if isSending}
+                    <svg class="status-icon is-sending" viewBox="0 0 16 16">
+                      <circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" stroke-width="1.6" />
+                      <polyline points="8,4.5 8,8 10.5,9.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
+                    </svg>
+                  {:else if isRead}
+                    <svg class="status-icon is-read" viewBox="0 0 20 12">
+                      <path fill="currentColor" d="M4.5 10.5L0 6l1.4-1.4L4.5 7.7 12.6 0l1.4 1.4z" />
+                      <path fill="currentColor" d="M9.5 10.5L5 6l1.4-1.4L9.5 7.7 17.6 0l1.4 1.4z" />
+                    </svg>
+                  {:else}
+                    <svg class="status-icon is-sent" viewBox="0 0 16 12">
+                      <path fill="currentColor" d="M5.5 10.5L1 6l1.4-1.4L5.5 7.7 13.6 0l1.4 1.4z" />
+                    </svg>
+                  {/if}
                 </div>
-              </div>
-            {/if}
+              {/if}
+            </div>
+          </div>
+          {#if msg.reactionInfo?.totalCount}
+            <div class="sticker-reactions">
+              <Reactions info={msg.reactionInfo} {isMe} msgId={msg.id} on:react={(e) => dispatch("react", e.detail)} />
+            </div>
           {/if}
-
-          {#if isSystem}
-            {@const sysText = getSystemText(msg) || ""}
-            {#if sysText}
-              {#each sysText.split("\n") as line}
-                <p class="line system">{@html line}</p>
-              {/each}
+        </div>
+      {:else}
+        <div class="message-bubble" class:is-row={isInlineRow} class:is-poll={isPollOnly} class:is-first-group={isFirstInGroup} class:is-last-group={isLastInGroup}>
+          <div class="bubble-content">
+            {#if showGroupHeader}
+              <div class="author-header">
+                <button
+                  type="button"
+                  class="author-header-btn"
+                  style="color: var(--msg-author-color-{authorColorIdx}, #5daaff);"
+                  on:click|stopPropagation={() => {
+                    if (msg.sender) openProfile({ userId: Number(msg.sender) });
+                  }}
+                >
+                  <span class="author-name">{senderAuthorName}</span>
+                </button>
+                {#if roleLabel}
+                  <span class="role-badge">{roleLabel}</span>
+                {/if}
+              </div>
             {/if}
-          {:else}
+
+            {#if linkedMsg}
+              {#if linkedType === "FORWARD"}
+                <div class="forward-block">
+                  <div
+                    class="forward-header"
+                    on:click|stopPropagation={handleForwardHeaderClick}
+                  >
+                    <div class="forward-avatar-placeholder">
+                      <Avatar
+                        contactId={isForwardChannel ? null : (isForwardFromMe ? Number($currentUser) : (linkedMsg?.sender ? Number(linkedMsg.sender) : null))}
+                        chat={isForwardChannel ? (forwardChat || { title: forwardAuthorName }) : forwardChat}
+                        src={forwardAvatarUrl}
+                        title={forwardAuthorName}
+                        size={22}
+                      />
+                    </div>
+                    <div class="forward-info">
+                      <span class="forward-name">{forwardAuthorName}</span>
+                      <span class="forward-label">{isForwardChannel ? "Переслано из канала" : "Пересланное сообщение"}</span>
+                    </div>
+                    <svg class="forward-arrow" viewBox="0 0 24 24"
+                      ><path
+                        d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"
+                      /></svg
+                    >
+                  </div>
+
+                  {#if forwardLines}
+                    <div class="forward-content">
+                      {#each forwardLines as fLine}
+                        <p class="line allow-selection">{fLine}</p>
+                      {/each}
+                    </div>
+                  {/if}
+
+                  {#if linkedMsg.attaches}
+                    <Attachments
+                      {getFile}
+                      attaches={linkedMsg.attaches}
+                      {handleMediaClick}
+                      chatId={linkedMsg.chatId || chat?.id}
+                      messageId={linkedMsg.id}
+                    />
+                  {/if}
+                </div>
+              {:else if linkedType === "REPLY"}
+                <div on:click|stopPropagation={openReply} class="reply-block">
+                  <div class="reply-content">
+                    <p class="line allow-selection">
+                      <b class="reply-author-name">{replyAuthorName}</b>
+                      <MessagePreview {chat} msg={linkedMsg} cut={true} />
+                    </p>
+                  </div>
+                </div>
+              {/if}
+            {/if}
+
             {#if msg.deleted}
               <div class="deleted-notice">
                 <svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor">
@@ -455,7 +555,7 @@
                 </svg>
                 <span>Сообщение удалено</span>
                 {#if msg.deleted_at || msg.deletedAt}
-                  <span class="deleted-notice-time">({new Date(msg.deleted_at || msg.deletedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })})</span>
+                  <span class="deleted-notice-time">({new Date(msg.deleted_at || msg.deletedAt).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit", hour12: false })})</span>
                 {/if}
               </div>
             {/if}
@@ -487,116 +587,211 @@
                 {isMe}
               />
             {/if}
-          {/if}
-        </div>
+          </div>
 
-        <div class="message-footer">
-          {#if msg.reactionInfo?.totalCount}
-            <Reactions info={msg.reactionInfo} {isMe} msgId={msg.id} on:react={(e) => dispatch("react", e.detail)} />
-          {/if}
+          <div class="message-footer">
+            {#if msg.reactionInfo?.totalCount}
+              <Reactions info={msg.reactionInfo} {isMe} msgId={msg.id} on:react={(e) => dispatch("react", e.detail)} />
+            {/if}
 
-          <div class="message-status">
-            {#if msg.stats?.views}
-              <span class="views">
-                <svg viewBox="0 0 24 24" class="views-icon"
-                  ><path
-                    d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"
-                  /></svg
+            <div class="message-status">
+              {#if msg.stats?.views}
+                <span class="views">
+                  <svg viewBox="0 0 24 24" class="views-icon"
+                    ><path
+                      d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"
+                    /></svg
+                  >
+                  {msg.stats.views}
+                </span>
+              {/if}
+              {#if msg.deleted}
+                <span class="deleted-badge" title="Удалено">удалено</span>
+              {:else if msg.edited || msg.status === 'EDITED' || (Array.isArray(msg.history) && msg.history.length > 0)}
+                <button
+                  type="button"
+                  class="edited-badge"
+                  title="История изменений"
+                  on:click|stopPropagation={() => dispatch('openHistory', { msg })}
                 >
-                {msg.stats.views}
-              </span>
-            {/if}
-            {#if msg.deleted}
-              <span class="deleted-badge" title="Удалено">удалено</span>
-            {:else if msg.edited || msg.status === 'EDITED' || (Array.isArray(msg.history) && msg.history.length > 0)}
-              <button
-                type="button"
-                class="edited-badge"
-                title="История изменений"
-                on:click|stopPropagation={() => dispatch('openHistory', { msg })}
+                  изм.
+                </button>
+              {/if}
+              {#if decoded?.obf && !isE2eDisable}
+                <span class="obf-type" title="Шифрование: {decoded.obf}">{decoded.obf}</span>
+              {/if}
+              <span class="timestamp"
+                >{new Date(msg.time).toLocaleTimeString("ru-RU", {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                  hour12: false,
+                })}</span
               >
-                изм.
-              </button>
-            {/if}
-            {#if !isSystem && decoded?.obf && !isE2eDisable}
-              <span class="obf-type" title="Шифрование: {decoded.obf}">{decoded.obf}</span>
-            {/if}
-            <span class="timestamp"
-              >{new Date(msg.time).toLocaleTimeString([], {
-                hour: "2-digit",
-                minute: "2-digit",
-              })}</span
-            >
-            {#if isMe && !isSystem}
-              <span class="status-ticks">
-                {#if isSending}
-                  <svg class="status-icon is-sending" viewBox="0 0 16 16">
-                    <circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" stroke-width="1.6" />
-                    <polyline points="8,4.5 8,8 10.5,9.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
-                  </svg>
-                {:else if isRead}
-                  <svg class="status-icon is-read" viewBox="0 0 20 12">
-                    <path fill="currentColor" d="M4.5 10.5L0 6l1.4-1.4L4.5 7.7 12.6 0l1.4 1.4z" />
-                    <path fill="currentColor" d="M9.5 10.5L5 6l1.4-1.4L9.5 7.7 17.6 0l1.4 1.4z" />
-                  </svg>
-                {:else}
-                  <svg class="status-icon is-sent" viewBox="0 0 16 12">
-                    <path fill="currentColor" d="M5.5 10.5L1 6l1.4-1.4L5.5 7.7 13.6 0l1.4 1.4z" />
-                  </svg>
-                {/if}
-              </span>
-            {/if}
+              {#if isMe}
+                <span class="status-ticks">
+                  {#if isFailed}
+                    <button
+                      type="button"
+                      class="failed-status-btn"
+                      title={msg.error || "Ошибка отправки"}
+                      on:click|stopPropagation={() => dispatch("failedClick", msg)}
+                    >
+                      <span class="mask-icon" style="-webkit-mask-image: url('/icons/warning.svg'); mask-image: url('/icons/warning.svg'); width: 14px; height: 14px;"></span>
+                    </button>
+                  {:else if isSending}
+                    <svg class="status-icon is-sending" viewBox="0 0 16 16">
+                      <circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" stroke-width="1.6" />
+                      <polyline points="8,4.5 8,8 10.5,9.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
+                    </svg>
+                  {:else if isRead}
+                    <svg class="status-icon is-read" viewBox="0 0 20 12">
+                      <path fill="currentColor" d="M4.5 10.5L0 6l1.4-1.4L4.5 7.7 12.6 0l1.4 1.4z" />
+                      <path fill="currentColor" d="M9.5 10.5L5 6l1.4-1.4L9.5 7.7 17.6 0l1.4 1.4z" />
+                    </svg>
+                  {:else}
+                    <svg class="status-icon is-sent" viewBox="0 0 16 12">
+                      <path fill="currentColor" d="M5.5 10.5L1 6l1.4-1.4L5.5 7.7 13.6 0l1.4 1.4z" />
+                    </svg>
+                  {/if}
+                </span>
+              {/if}
+            </div>
           </div>
         </div>
-      </div>
-    {/if}
 
-    {#each $pluginMessageFooters as item (item.id)}
-      <div class="plugin-mount-block plugin-message-footer" data-plugin-mount={item.pluginId || item.id}>
-        {@html item.html}
-      </div>
-    {/each}
+        {#if isChannel}
+          <div class="channel-action-bar">
+            <button
+              type="button"
+              class="channel-comments-btn"
+              on:click|stopPropagation={() => dispatch("openComments", { msg })}
+            >
+              <svg viewBox="0 0 24 24" class="channel-btn-icon" width="16" height="16">
+                <path fill="currentColor" d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H5.17L4 17.17V4h16v12z"/>
+              </svg>
+              <span>{formatCommentsLabel(channelCommentsCount)}</span>
+            </button>
+            <button
+              type="button"
+              class="channel-share-btn"
+              title="Поделиться"
+              on:click|stopPropagation={() => dispatch("forward", { msg })}
+            >
+              <svg viewBox="0 0 24 24" class="channel-btn-icon" width="16" height="16">
+                <path fill="currentColor" d="M14 9V5l7 7-7 7v-4.1c-5 0-8.5 1.6-11 5.1 1-5 4-10 11-11z"/>
+              </svg>
+            </button>
+          </div>
+        {/if}
+      {/if}
 
-  {#if transcription && transcription.expanded}
-    <div class="transcription-card" class:is-me={isMe}>
-      <div class="transcription-header">
-        <div class="transcription-title">
-          <svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor">
-            <path d="M12.87 15.07l-2.54-2.51.03-.03c1.74-1.94 2.98-4.17 3.71-6.53H17V4h-7V2H8v2H1v1.99h11.17C11.5 7.92 10.44 9.75 9 11.35 8.07 10.32 7.3 9.19 6.69 8h-2c.73 1.63 1.73 3.17 2.98 4.56l-5.09 5.02L4 19l5-5 3.11 3.11.76-2.04zM18.5 10h-2L12 22h2l1.12-3h4.75L21 22h2l-4.5-12zm-2.62 7l1.62-4.33L19.12 17h-3.24z"/>
-          </svg>
-          <span>Транскрипция</span>
+      {#each $pluginMessageFooters as item (item.id)}
+        <div class="plugin-mount-block plugin-message-footer" data-plugin-mount={item.pluginId || item.id}>
+          {@html item.html}
         </div>
-        <button
-          type="button"
-          class="transcription-close-btn"
-          on:click|stopPropagation={() => toggleTranscriptionExpanded(msg.id)}
-          title="Скрыть"
-        >✕</button>
-      </div>
-      {#if transcription.status === 'loading'}
-        <div class="transcription-loading">
-          <div class="transcription-spinner"></div>
-          <span>Распознавание речи...</span>
+      {/each}
+
+      {#if transcription && transcription.expanded}
+        <div class="transcription-card" class:is-me={isMe}>
+          <div class="transcription-header">
+            <div class="transcription-title">
+              <svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor">
+                <path d="M12.87 15.07l-2.54-2.51.03-.03c1.74-1.94 2.98-4.17 3.71-6.53H17V4h-7V2H8v2H1v1.99h11.17C11.5 7.92 10.44 9.75 9 11.35 8.07 10.32 7.3 9.19 6.69 8h-2c.73 1.63 1.73 3.17 2.98 4.56l-5.09 5.02L4 19l5-5 3.11 3.11.76-2.04zM18.5 10h-2L12 22h2l1.12-3h4.75L21 22h2l-4.5-12zm-2.62 7l1.62-4.33L19.12 17h-3.24z"/>
+              </svg>
+              <span>Транскрипция</span>
+            </div>
+            <button
+              type="button"
+              class="transcription-close-btn"
+              on:click|stopPropagation={() => toggleTranscriptionExpanded(msg.id)}
+              title="Скрыть"
+            >✕</button>
+          </div>
+          {#if transcription.status === 'loading'}
+            <div class="transcription-loading">
+              <div class="transcription-spinner"></div>
+              <span>Распознавание речи...</span>
+            </div>
+          {:else}
+            <div class="transcription-text">{transcription.text}</div>
+          {/if}
         </div>
-      {:else}
-        <div class="transcription-text">{transcription.text}</div>
+      {/if}
+
+      {#if inlineKeyboardAttach}
+        <InlineKeyboard {chat} {msg} attach={inlineKeyboardAttach} />
       {/if}
     </div>
-  {/if}
-
-  {#if inlineKeyboardAttach}
-    <InlineKeyboard {chat} {msg} attach={inlineKeyboardAttach} />
-  {/if}
-</div>
-</div>
+  </div>
+{/if}
 
 <style>
+  /* System message pill */
+  .message-system-row {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    width: 100%;
+    margin: 4px 0;
+    user-select: text;
+    -webkit-user-select: text;
+    transition: opacity 0.2s;
+  }
+
+  .message-system-row.inactive {
+    opacity: 0.5;
+  }
+
+  .message-system-pill {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 22px;
+    padding: var(--msg-system-padding, 2px 10px);
+    border-radius: var(--msg-system-radius, 11px);
+    background: var(--msg-system-bg, rgba(40, 44, 66, 0.70));
+    color: var(--msg-system-text, #ffffff);
+    font-size: var(--msg-system-font-size, 12px);
+    font-weight: 400;
+    line-height: 1.2;
+    text-align: center;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    max-width: min(280px, 90%);
+    word-break: break-word;
+    cursor: default;
+    box-sizing: border-box;
+    white-space: pre-wrap;
+  }
+
+  .message-system-pill :global(.user-link) {
+    display: inline;
+    color: inherit;
+    text-decoration: underline;
+    cursor: pointer;
+    font-weight: 500;
+    margin-right: 0.28em;
+    transition: opacity 0.15s ease;
+  }
+
+  .message-system-pill :global(.user-link:hover) {
+    opacity: 0.85;
+  }
+
+  /* Standard message row */
   .message-row {
     display: flex;
     align-items: flex-end;
     width: 100%;
-    transition: opacity 0.2s;
-    border-radius: 0;
+    transition: opacity 0.2s, background-color 0.15s ease;
+    border-radius: 4px;
+    padding: 3px 6px;
+    box-sizing: border-box;
+  }
+
+  .message-row.is-consecutive {
+    padding: 1px 6px;
   }
 
   .message-row.selection-active,
@@ -608,53 +803,158 @@
   }
 
   .message-row.is-selected {
-    background: transparent;
+    background: var(--msg-selection-bg, rgba(56, 189, 248, 0.14));
   }
 
   .message-row.inactive {
     opacity: 0.5;
   }
 
+  /* Selection checkbox */
+  .selection-checkbox {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    border: 2px solid var(--msg-selection-checkbox-border, rgba(255, 255, 255, 0.4));
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-left: 8px;
+    margin-right: 4px;
+    flex-shrink: 0;
+    align-self: center;
+    box-sizing: border-box;
+    transition: all 0.15s ease;
+  }
+
+  .selection-checkbox.is-checked {
+    background: var(--msg-selection-checkbox-active, #38bdf8);
+    border-color: var(--msg-selection-checkbox-active, #38bdf8);
+  }
+
+  .selection-check-icon {
+    width: 12px;
+    height: 12px;
+    color: #ffffff;
+  }
+
   .indent {
-    margin: 0 12px 0 9px;
+    margin: 0 6px 0 0;
+    flex-shrink: 0;
+    width: 32px;
   }
 
-  @media screen and (max-width: 500px) {
-    .message-row.is-me .indent {
-      display: none;
-    }
-    .message-bubble-container {
-      max-width: 85%;
-    }
+  .indent.is-grouped-indent {
+    width: 32px;
+    min-height: 1px;
+    display: block !important;
   }
 
-  .indent:empty {
+  .indent:empty:not(.is-grouped-indent) {
+    display: none;
+  }
+
+  .message-row:not(.is-me) .indent:empty:not(.is-grouped-indent) + .message-bubble-container {
+    margin-left: 6px;
+  }
+
+  .message-row.is-me .indent {
     display: none;
   }
 
   .message-bubble-container {
     display: flex;
     flex-direction: column;
-    max-width: min(480px, 72%);
-    min-width: 100px;
-    margin-right: 10px;
+    max-width: min(520px, 78%);
+    min-width: 60px;
+    margin-right: 0;
     position: relative;
     width: fit-content;
   }
 
+  /* Incoming alignment */
+  .message-row:not(.is-me) {
+    justify-content: flex-start;
+  }
+
+  .message-row:not(.is-me) .message-bubble-container {
+    align-items: flex-start;
+  }
+
+  /* Outgoing alignment: ALWAYS on the right, mobile and desktop */
+  .message-row.is-me {
+    justify-content: flex-end;
+  }
+
+  .message-row.is-me .message-bubble-container {
+    align-items: flex-end;
+    margin-right: 0;
+    margin-left: auto;
+  }
+
+  /* Channel alignment */
+  .message-row.is-channel {
+    justify-content: flex-start;
+  }
+
+  .message-row.is-channel .indent {
+    display: none;
+  }
+
+  .message-row.is-channel .message-bubble-container {
+    align-items: flex-start;
+    margin-left: 14px;
+    max-width: min(640px, 90%);
+  }
+
+  /* Message bubble styling: pure rounded corners, no broken SVG pseudo-tails */
   .message-bubble {
-    color: #fff;
-    padding: 7px 10px 6px 12px;
-    border-radius: 16px 16px 16px 0;
-    min-width: 90px;
-    width: 100%;
+    color: var(--msg-bubble-in-text, #ffffff);
+    background: var(--msg-bubble-in-bg, #373a4e);
+    padding: 8px 10px;
+    border-radius: var(--msg-bubble-radius, 16px);
+    border-bottom-left-radius: 4px;
+    min-width: 60px;
+    width: fit-content;
+    max-width: 100%;
     box-sizing: border-box;
-    font-size: 13px;
+    font-size: 15px;
     position: relative;
     user-select: text;
     -webkit-user-select: text;
     display: flex;
     flex-direction: column;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
+  }
+
+  .message-bubble:not(.is-first-group) {
+    border-top-left-radius: 6px;
+  }
+
+  .message-bubble:not(.is-last-group) {
+    border-bottom-left-radius: 6px;
+  }
+
+  .message-row.is-me .message-bubble {
+    color: var(--msg-bubble-out-text, #ffffff);
+    background: var(--msg-bubble-out-bg, linear-gradient(135deg, #4f6cf7 0%, #894df8 52%, #b57dfa 100%));
+    border-radius: var(--msg-bubble-radius, 16px);
+    border-bottom-right-radius: 4px;
+    border-bottom-left-radius: var(--msg-bubble-radius, 16px);
+  }
+
+  .message-row.is-me .message-bubble:not(.is-first-group) {
+    border-top-right-radius: 6px;
+    border-top-left-radius: var(--msg-bubble-radius, 16px);
+  }
+
+  .message-row.is-me .message-bubble:not(.is-last-group) {
+    border-bottom-right-radius: 6px;
+    border-bottom-left-radius: var(--msg-bubble-radius, 16px);
+  }
+
+  .message-row.is-channel .message-bubble {
+    border-radius: var(--msg-bubble-radius, 16px);
   }
 
   .message-bubble.is-row {
@@ -677,143 +977,64 @@
     width: auto;
   }
 
-  .message-row .message-bubble::before {
-    content: "";
-    left: -10px;
-    clip-path: path("M10 0 Q5 10 0 10 Q0 10 10 10 Z");
-    width: 10px;
-    height: 10px;
-    position: absolute;
-    bottom: 0;
-    background: inherit;
+  /* Group author header */
+  .author-header {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 6px;
+    width: fit-content;
+    max-width: 100%;
+    margin-bottom: 2px;
   }
 
-  .message-row.is-system {
-    display: flex;
-    justify-content: center !important;
-    align-items: center !important;
-    width: 100%;
-    margin: 6px 0;
-  }
-
-  .message-row.is-system .indent {
-    display: none !important;
-  }
-
-  .message-row.is-system .message-bubble-container {
-    margin: 0 auto;
-    align-items: center;
-    justify-content: center;
-    max-width: 90%;
-    width: auto;
-  }
-
-  .message-row.is-system .message-bubble::before {
-    display: none !important;
-  }
-
-  .message-row.is-system .message-bubble {
-    border-radius: 12px;
-    padding: 6px 14px;
-    background: rgba(45, 48, 60, 0.85);
-    width: auto;
+  .author-header-btn {
+    display: inline-flex;
+    align-items: baseline;
+    background: none;
+    border: none;
+    padding: 0;
+    margin: 0;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 1.25;
+    text-align: left;
     min-width: 0;
-    text-align: center;
+    transition: opacity 0.15s ease;
   }
 
-  .message-row.is-system .bubble-content {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-    text-align: center;
-    width: 100%;
+  .author-header-btn:hover {
+    opacity: 0.85;
+    text-decoration: underline;
   }
 
-  .message-row.is-me:not(.is-system) {
-    justify-content: flex-end;
+  .author-name {
+    color: inherit;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 220px;
   }
 
-  .message-row.is-me:not(.is-system) .message-bubble-container {
-    align-items: flex-end;
+  .role-badge {
+    font-size: 13px;
+    font-weight: 400;
+    color: rgba(255, 255, 255, 0.52);
+    text-transform: lowercase;
+    line-height: 1.25;
+    background: transparent;
+    border: none;
+    padding: 0;
+    flex-shrink: 0;
+    white-space: nowrap;
   }
 
-  .message-row.is-me:not(.is-system) .message-bubble {
-    border-radius: 16px 16px 0px 16px;
-    background: #7b4cd6;
-  }
-
-  .message-row.is-me:not(.is-system) .message-bubble::before {
-    left: inherit;
-    right: -10px;
-    clip-path: path("M0 0 Q5 10 10 10 Q10 10 0 10 Z");
-  }
-
-  .message-row.is-me:not(.is-system) .indent {
-    display: none;
-  }
-
-  @media screen and (min-width: 501px) {
-    .message-row.is-me:not(.is-system) {
-      justify-content: flex-start;
-      flex-direction: row;
-    }
-
-    .message-row.is-me:not(.is-system) .message-bubble-container {
-      align-items: flex-start;
-    }
-
-    .message-row.is-me:not(.is-system) .message-bubble {
-      border-radius: 16px 16px 16px 0;
-    }
-
-    .message-row.is-me:not(.is-system) .message-bubble::before {
-      left: -10px;
-      right: inherit;
-      clip-path: path("M10 0 Q5 10 0 10 Q0 10 10 10 Z");
-    }
-
-    .message-row.is-me:not(.is-system) .indent {
-      display: block;
-    }
-  }
-
-  .message-row.is-channel:not(.is-system) {
-    justify-content: flex-start;
-  }
-
-  .message-row.is-channel:not(.is-system) .indent {
-    display: none;
-  }
-
-  .message-row.is-channel:not(.is-system) .message-bubble-container {
-    align-items: flex-start;
-    margin-left: 14px;
-  }
-
-  .message-row.is-channel:not(.is-system) .message-bubble {
-    border-radius: 16px 16px 16px 0;
-  }
-
-  .message-row.is-channel:not(.is-system) .message-bubble::before {
-    left: -10px;
-    right: inherit;
-    clip-path: path("M10 0 Q5 10 0 10 Q0 10 10 10 Z");
-  }
-
-  .message-row:not(.is-me, .is-system) .message-bubble {
-      background: #3a3c55;
-  }
-
-  .message-row.is-deleted .message-bubble {
-    background-color: #c99;
-  }
-
+  /* Forward block */
   .forward-block {
-    border-left: 2px solid #34b7f1;
+    border-left: 2px solid var(--msg-quote-border, #38bdf8);
     padding: 4px 8px;
     margin-bottom: 6px;
-    background: rgba(255, 255, 255, 0.05);
+    background: var(--msg-quote-bg, rgba(255, 255, 255, 0.05));
     border-radius: 4px 8px 8px 4px;
     overflow: hidden;
     width: 100%;
@@ -855,31 +1076,36 @@
 
   .forward-name {
     font-weight: 600;
-    color: #34b7f1;
+    color: var(--msg-quote-border, #38bdf8);
     font-size: 12px;
     overflow: hidden;
     text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .forward-arrow {
     width: 14px;
     height: 14px;
-    fill: #34b7f1;
+    fill: var(--msg-quote-border, #38bdf8);
     flex-shrink: 0;
     margin-left: auto;
   }
 
+  /* Reply block */
   .reply-block {
-    border-left: 3px solid #38bdf8;
+    border-left: 3px solid var(--msg-quote-border, #38bdf8);
     padding: 4px 8px;
     margin-bottom: 6px;
     border-radius: 4px 8px 8px 4px;
-    opacity: 0.9;
     font-size: 12px;
-    background-color: rgba(255, 255, 255, 0.06);
+    background: var(--msg-quote-bg, rgba(255, 255, 255, 0.06));
     cursor: pointer;
     width: 100%;
     box-sizing: border-box;
+  }
+
+  .reply-author-name {
+    color: var(--msg-quote-border, #38bdf8);
   }
 
   .reply-content {
@@ -888,10 +1114,47 @@
     gap: 4px;
   }
 
-  .message-row.is-system .reply-block {
-    border-left: 3px solid rgba(255, 255, 255, 0.4);
+  /* Channel Action Bar (Comments + Forward) */
+  .channel-action-bar {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 4px;
+    width: 100%;
   }
 
+  .channel-comments-btn,
+  .channel-share-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: var(--msg-bubble-in-bg, #2b2e3e);
+    border: none;
+    border-radius: 12px;
+    padding: 6px 12px;
+    color: var(--msg-views-color, rgba(255, 255, 255, 0.75));
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.15s ease, opacity 0.15s ease;
+  }
+
+  .channel-comments-btn:hover,
+  .channel-share-btn:hover {
+    opacity: 0.9;
+    background: rgba(255, 255, 255, 0.12);
+  }
+
+  .channel-share-btn {
+    padding: 6px 10px;
+    margin-left: auto;
+  }
+
+  .channel-btn-icon {
+    flex-shrink: 0;
+  }
+
+  /* Message Footer */
   .message-footer {
     display: flex;
     align-items: flex-end;
@@ -925,15 +1188,15 @@
   .views {
     display: inline-flex;
     align-items: center;
-    gap: 2px;
-    font-size: 10px;
-    opacity: 0.65;
+    gap: 3px;
+    font-size: 11px;
+    color: var(--msg-views-color, rgba(255, 255, 255, 0.65));
     line-height: 1;
   }
 
   .views-icon {
-    width: 12px;
-    height: 12px;
+    width: 13px;
+    height: 13px;
     fill: currentColor;
     display: block;
   }
@@ -965,7 +1228,7 @@
     border: none;
     font-size: 10px;
     line-height: 1;
-    color: rgba(255, 255, 255, 0.6);
+    color: var(--msg-time-color, rgba(255, 255, 255, 0.6));
     cursor: pointer;
     padding: 0;
     border-radius: 3px;
@@ -975,7 +1238,7 @@
   }
 
   .edited-badge:hover {
-    color: #38bdf8;
+    color: var(--msg-tick-read-color, #38bdf8);
     text-decoration: underline;
   }
 
@@ -991,8 +1254,16 @@
   .timestamp {
     font-size: 11px;
     line-height: 1;
-    opacity: 0.65;
+    color: var(--msg-time-color, rgba(255, 255, 255, 0.65));
     display: inline-block;
+  }
+
+  .message-row:not(.is-me) .timestamp {
+    color: var(--msg-time-color, #8e93a6);
+  }
+
+  .message-row.is-me .timestamp {
+    color: rgba(255, 255, 255, 0.7);
   }
 
   .status-ticks {
@@ -1008,22 +1279,46 @@
     height: 10px;
     display: block;
     fill: currentColor;
-    color: rgba(255, 255, 255, 0.65);
+    color: rgba(255, 255, 255, 0.8) !important;
   }
 
   .status-icon.is-sending {
     width: 11px;
     height: 11px;
-    color: rgba(255, 255, 255, 0.65);
+    color: rgba(255, 255, 255, 0.65) !important;
     stroke: currentColor;
     fill: none;
     display: block;
   }
 
+  .failed-status-btn {
+    border: none;
+    background: transparent;
+    color: #ef4444;
+    padding: 0;
+    margin: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    line-height: 1;
+  }
+
+  .failed-status-btn .mask-icon {
+    display: inline-block;
+    background-color: currentColor;
+    -webkit-mask-repeat: no-repeat;
+    mask-repeat: no-repeat;
+    -webkit-mask-position: center;
+    mask-position: center;
+    -webkit-mask-size: contain;
+    mask-size: contain;
+  }
+
   .status-icon.is-sent {
     width: 13px;
     height: 10px;
-    color: rgba(255, 255, 255, 0.65);
+    color: rgba(255, 255, 255, 0.8) !important;
     fill: currentColor;
     display: block;
   }
@@ -1031,7 +1326,7 @@
   .status-icon.is-read {
     width: 16px;
     height: 10px;
-    color: #38bdf8;
+    color: rgba(255, 255, 255, 0.8) !important;
     fill: currentColor;
     display: block;
   }
@@ -1046,19 +1341,15 @@
     cursor: text;
   }
 
-  .line.system {
-    text-align: center;
-  }
-
   @keyframes pulseHighlight {
     0% {
-      background: rgba(255,255,255,0);
+      background: rgba(255, 255, 255, 0);
     }
     30% {
-      background: rgba(255,255,255,0.12);
+      background: rgba(255, 255, 255, 0.12);
     }
     100% {
-      background: rgba(255,255,255,0);
+      background: rgba(255, 255, 255, 0);
     }
   }
 
@@ -1100,10 +1391,6 @@
     box-shadow: none !important;
     border: none !important;
     padding: 0 !important;
-  }
-
-  .message-row.is-video-note .message-bubble::before {
-    display: none !important;
   }
 
   .sticker-bubble {
@@ -1167,7 +1454,7 @@
 
   .sticker-floating-meta .status-ticks svg.is-read {
     width: 16px;
-    color: #34b7f1;
+    color: var(--msg-tick-read-color, #38bdf8);
     fill: currentColor;
   }
 
@@ -1272,5 +1559,11 @@
 
   @keyframes spin {
     to { transform: rotate(360deg); }
+  }
+
+  @media screen and (max-width: 500px) {
+    .message-bubble-container {
+      max-width: 86%;
+    }
   }
 </style>

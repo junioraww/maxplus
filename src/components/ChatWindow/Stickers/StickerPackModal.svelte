@@ -1,9 +1,8 @@
 <script>
   import { onMount, createEventDispatcher } from "svelte";
-  import { fade, scale } from "svelte/transition";
+  import BottomSheet from "$components/main/BottomSheet.svelte";
   import {
     favoriteSetIds,
-    stickerSets,
     stickersById,
     ensureSet,
     favoriteSet,
@@ -17,6 +16,7 @@
   export let setId = null;
   export let stickerId = null;
   export let link = null;
+  export let close = null;
 
   const dispatch = createEventDispatcher();
 
@@ -26,7 +26,7 @@
 
   $: isFavorite = pack ? $favoriteSetIds.includes(pack.id) : false;
   $: packStickers = pack
-    ? (pack.stickerIds || []).map(id => $stickersById.get(id)).filter(Boolean)
+    ? (pack.stickerIds || []).map((id) => $stickersById.get(id)).filter(Boolean)
     : [];
 
   onMount(async () => {
@@ -53,6 +53,13 @@
       loading = false;
     }
   });
+
+  function handleClose() {
+    dispatch("close");
+    if (typeof close === "function") {
+      close();
+    }
+  }
 
   async function toggleFavorite() {
     if (!pack || busy) return;
@@ -89,17 +96,13 @@
 
   function handleStickerClick(sticker) {
     dispatch("select", { sticker });
-    close();
-  }
-
-  function close() {
-    dispatch("close");
+    handleClose();
   }
 </script>
 
-<div class="modal-backdrop" transition:fade={{ duration: 180 }} on:click|self={close}>
-  <div class="modal-card" transition:scale={{ start: 0.95, duration: 200 }}>
-    <div class="modal-header">
+<BottomSheet maxHeight="82vh" showClose={false} showHandle={true} close={handleClose}>
+  <div class="pack-sheet-content">
+    <div class="pack-sheet-header">
       <div class="info-group">
         {#if pack?.iconUrl}
           <img src={pack.iconUrl} alt="" class="pack-icon" />
@@ -113,14 +116,20 @@
           {/if}
         </div>
       </div>
-      <button class="close-btn" type="button" on:click={close}>
-        <svg viewBox="0 0 24 24" width="20" height="20">
-          <path fill="currentColor" d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
-        </svg>
-      </button>
+
+      <div class="header-actions">
+        {#if pack?.link}
+          <button type="button" class="icon-action-btn" on:click={copyLink} title="Скопировать ссылку">
+            <span class="mask-icon" style="-webkit-mask-image: url('/icons/link.svg'); mask-image: url('/icons/link.svg'); width: 20px; height: 20px;"></span>
+          </button>
+        {/if}
+        <button type="button" class="icon-action-btn" on:click={handleClose} aria-label="Закрыть">
+          <span class="mask-icon" style="-webkit-mask-image: url('/icons/close.svg'); mask-image: url('/icons/close.svg'); width: 18px; height: 18px;"></span>
+        </button>
+      </div>
     </div>
 
-    <div class="modal-body">
+    <div class="pack-sheet-body">
       {#if loading}
         <div class="loading-state">
           <div class="spinner"></div>
@@ -153,7 +162,7 @@
     </div>
 
     {#if pack}
-      <div class="modal-footer">
+      <div class="pack-sheet-footer">
         <button
           type="button"
           class="btn-fav"
@@ -163,54 +172,33 @@
         >
           {#if busy}
             <span class="btn-spinner"></span>
+          {:else if isFavorite}
+            Удалить {pack.stickerIds?.length || 0} стикеров
           {:else}
-            {isFavorite ? "Убрать из моих стикеров" : "Добавить стикеры"}
+            Добавить {pack.stickerIds?.length || 0} стикеров
           {/if}
         </button>
-
-        {#if pack.link}
-          <button type="button" class="btn-copy" on:click={copyLink} title="Скопировать ссылку">
-            <svg viewBox="0 0 24 24" width="20" height="20">
-              <path fill="currentColor" d="M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H7c-2.76 0-5 2.24-5 5s2.24 5 5 5h4v-1.9H7c-1.71 0-3.1-1.39-3.1-3.1zM8 13h8v-2H8v2zm9-6h-4v1.9h4c1.71 0 3.1 1.39 3.1 3.1s-1.39 3.1-3.1 3.1h-4V17h4c2.76 0 5-2.24 5-5s-2.24-5-5-5z"/>
-            </svg>
-          </button>
-        {/if}
       </div>
     {/if}
   </div>
-</div>
+</BottomSheet>
 
 <style>
-  .modal-backdrop {
-    position: fixed;
-    inset: 0;
-    background: rgba(0, 0, 0, 0.75);
-    z-index: var(--z-modal, 7);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 16px;
-  }
-
-  .modal-card {
-    background: #1e2126;
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 20px;
-    width: 100%;
-    max-width: 480px;
-    max-height: 82vh;
+  .pack-sheet-content {
     display: flex;
     flex-direction: column;
-    box-shadow: 0 24px 48px rgba(0, 0, 0, 0.5);
+    max-height: 76vh;
     overflow: hidden;
   }
 
-  .modal-header {
+  .pack-sheet-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 12px 20px;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    gap: 12px;
+    padding: 4px 16px 12px;
+    border-bottom: 1px solid var(--border-color, rgba(255, 255, 255, 0.08));
+    flex-shrink: 0;
   }
 
   .info-group {
@@ -218,28 +206,29 @@
     align-items: center;
     gap: 12px;
     min-width: 0;
+    flex: 1;
   }
 
   .pack-icon {
-    width: 44px;
-    height: 44px;
+    width: 40px;
+    height: 40px;
     border-radius: 10px;
     object-fit: contain;
-    background: rgba(255, 255, 255, 0.04);
+    background: rgba(255, 255, 255, 0.06);
     flex-shrink: 0;
   }
 
   .titles {
     display: flex;
     flex-direction: column;
+    gap: 2px;
     min-width: 0;
   }
 
   .pack-title {
-    font-size: 17px;
-    font-weight: 700;
-    color: #fff;
     margin: 0;
+    font-size: 16px;
+    font-weight: 600;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -247,70 +236,39 @@
 
   .pack-count {
     font-size: 13px;
-    color: #8b929e;
-    margin-top: 2px;
+    color: var(--text-secondary, rgba(255, 255, 255, 0.55));
   }
 
-  .close-btn {
-    background: rgba(255, 255, 255, 0.06);
-    border: none;
-    color: #8b929e;
-    width: 34px;
-    height: 34px;
-    border-radius: 50%;
+  .header-actions {
     display: flex;
     align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    transition: background-color 0.15s, color 0.15s;
+    gap: 4px;
     flex-shrink: 0;
   }
 
-  .close-btn:hover {
-    background: rgba(255, 255, 255, 0.12);
-    color: #fff;
-  }
-
-  .modal-body {
-    flex: 1;
-    overflow-y: auto;
-    overflow-x: hidden;
-    padding: 16px;
-    scrollbar-width: thin;
-    scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
-  }
-
-  .stickers-grid {
-    display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 8px;
-    width: 100%;
-    box-sizing: border-box;
-  }
-
-  .sticker-grid-item {
-    background: none;
+  .icon-action-btn {
+    width: 34px;
+    height: 34px;
     border: none;
-    padding: 4px;
-    border-radius: 12px;
-    cursor: pointer;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--text-primary, #ffffff);
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 100%;
-    aspect-ratio: 1 / 1;
-    box-sizing: border-box;
-    overflow: hidden;
-    transition: transform 0.15s ease, background-color 0.15s ease;
+    cursor: pointer;
+    transition: background-color 0.15s ease;
   }
 
-  .sticker-grid-item:hover {
-    background: rgba(255, 255, 255, 0.06);
-    transform: scale(1.08);
+  .icon-action-btn:hover {
+    background: rgba(255, 255, 255, 0.14);
   }
 
-  .sticker-grid-item:active {
-    transform: scale(0.96);
+  .pack-sheet-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 14px 16px;
+    min-height: 180px;
   }
 
   .loading-state,
@@ -320,18 +278,19 @@
     align-items: center;
     justify-content: center;
     gap: 12px;
-    padding: 40px 0;
-    color: #8b929e;
+    padding: 40px 16px;
+    color: var(--text-secondary, rgba(255, 255, 255, 0.55));
     font-size: 14px;
   }
 
-  .spinner {
-    width: 28px;
-    height: 28px;
-    border: 3px solid rgba(255, 255, 255, 0.1);
-    border-top-color: #248bfe;
+  .spinner,
+  .btn-spinner {
+    width: 22px;
+    height: 22px;
+    border: 2.5px solid rgba(255, 255, 255, 0.2);
+    border-top-color: #ffffff;
     border-radius: 50%;
-    animation: spin 0.8s linear infinite;
+    animation: spin 0.7s linear infinite;
   }
 
   @keyframes spin {
@@ -340,80 +299,70 @@
     }
   }
 
-  .modal-footer {
+  .stickers-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  .sticker-grid-item {
+    aspect-ratio: 1;
+    border: none;
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.03);
+    padding: 6px;
+    cursor: pointer;
     display: flex;
     align-items: center;
-    gap: 10px;
-    padding: 14px 20px;
-    border-top: 1px solid rgba(255, 255, 255, 0.06);
+    justify-content: center;
+    transition: transform 0.12s ease, background-color 0.15s ease;
+  }
+
+  .sticker-grid-item:hover {
+    background: rgba(255, 255, 255, 0.08);
+    transform: scale(1.04);
+  }
+
+  .pack-sheet-footer {
+    padding: 12px 16px calc(14px + env(safe-area-inset-bottom, 0px));
+    border-top: 1px solid var(--border-color, rgba(255, 255, 255, 0.08));
+    flex-shrink: 0;
   }
 
   .btn-fav {
-    flex: 1;
+    width: 100%;
     height: 44px;
-    background: #248bfe;
-    color: #fff;
     border: none;
     border-radius: 12px;
+    background: var(--accent-color, #2563eb);
+    color: #ffffff;
     font-size: 15px;
     font-weight: 600;
     cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: background-color 0.15s, opacity 0.15s;
-  }
-
-  .btn-fav:hover {
-    background: #1b74d9;
+    transition: opacity 0.15s ease, background-color 0.15s ease;
   }
 
   .btn-fav.is-remove {
-    background: rgba(255, 75, 75, 0.15);
-    color: #ff5e5e;
+    background: rgba(239, 68, 68, 0.16);
+    color: #ef4444;
   }
 
-  .btn-fav.is-remove:hover {
-    background: rgba(255, 75, 75, 0.25);
+  .btn-fav:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
   }
 
-  .btn-copy {
-    width: 44px;
-    height: 44px;
-    background: rgba(255, 255, 255, 0.06);
-    border: none;
-    border-radius: 12px;
-    color: #fff;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    transition: background-color 0.15s;
-  }
-
-  .btn-copy:hover {
-    background: rgba(255, 255, 255, 0.12);
-  }
-
-  @media (max-width: 480px) {
-    .modal-backdrop {
-      padding: 8px;
-    }
-    .modal-card {
-      border-radius: 16px;
-      max-height: 88vh;
-    }
-    .modal-header {
-      padding: 12px 14px;
-    }
-    .modal-body {
-      padding: 10px;
-    }
-    .stickers-grid {
-      gap: 6px;
-    }
-    .modal-footer {
-      padding: 10px 14px;
-    }
+  .mask-icon {
+    display: inline-block;
+    background-color: currentColor;
+    -webkit-mask-repeat: no-repeat;
+    mask-repeat: no-repeat;
+    -webkit-mask-position: center;
+    mask-position: center;
+    -webkit-mask-size: contain;
+    mask-size: contain;
   }
 </style>

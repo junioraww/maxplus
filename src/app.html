@@ -22,23 +22,6 @@
           }
           return el;
         };
-        const observer = new MutationObserver((mutations) => {
-          for (const m of mutations) {
-            for (const node of m.addedNodes) {
-              if (node.nodeType === 1) {
-                if (node.tagName === "VIDEO" && !node.getAttribute("poster")) {
-                  node.setAttribute("poster", blankPoster);
-                } else if (node.querySelectorAll) {
-                  const vids = node.querySelectorAll("video:not([poster])");
-                  for (const v of vids) {
-                    v.setAttribute("poster", blankPoster);
-                  }
-                }
-              }
-            }
-          }
-        });
-        observer.observe(document.documentElement, { childList: true, subtree: true });
         window.addEventListener("scroll", () => {
           if (window.scrollY !== 0 || window.scrollX !== 0) {
             window.scrollTo(0, 0);

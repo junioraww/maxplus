@@ -1,0 +1,62 @@
+<svg width="360" height="360" viewBox="0 0 360 360" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <g stroke="white" stroke-opacity="0.045" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round">
+    <!-- Rocket 1 -->
+    <path d="M48 32 C54 26 68 28 72 38 C74 44 70 54 62 58 L46 62 L42 46 Z"/>
+    <path d="M42 46 L34 44 L36 36 L44 38"/>
+    <path d="M62 58 L64 66 L56 68 L54 60"/>
+    <circle cx="56" cy="42" r="3"/>
+    
+    <!-- Planet with ring -->
+    <circle cx="180" cy="50" r="14"/>
+    <ellipse cx="180" cy="50" rx="24" ry="6" transform="rotate(-20 180 50)"/>
+    
+    <!-- Cat astronaut outline -->
+    <path d="M290 40 L284 26 L298 32 C304 30 312 30 318 32 L332 26 L326 40 C332 46 334 54 330 62 C324 72 308 74 298 70 C290 64 286 52 290 40 Z"/>
+    <circle cx="302" cy="48" r="2" fill="white" fill-opacity="0.045"/>
+    <circle cx="316" cy="48" r="2" fill="white" fill-opacity="0.045"/>
+    <path d="M306 54 Q309 56 312 54"/>
+    
+    <!-- Stars & sparkles -->
+    <path d="M110 80 L112 72 L114 80 L122 82 L114 84 L112 92 L110 84 L102 82 Z"/>
+    <circle cx="230" cy="95" r="1.5" fill="white" fill-opacity="0.045"/>
+    <circle cx="20" cy="110" r="1.2" fill="white" fill-opacity="0.045"/>
+    <circle cx="340" cy="120" r="1.5" fill="white" fill-opacity="0.045"/>
+    
+    <!-- Constellation / Moon -->
+    <path d="M60 140 C52 142 46 150 48 160 C50 170 60 176 70 172 C62 170 58 162 60 152 C61 146 64 142 60 140 Z"/>
+    
+    <!-- UFO -->
+    <ellipse cx="200" cy="160" rx="18" ry="6"/>
+    <path d="M192 160 C192 152 208 152 208 160"/>
+    <circle cx="196" cy="160" r="1" fill="white" fill-opacity="0.045"/>
+    <circle cx="200" cy="160" r="1" fill="white" fill-opacity="0.045"/>
+    <circle cx="204" cy="160" r="1" fill="white" fill-opacity="0.045"/>
+    
+    <!-- Starburst -->
+    <path d="M300 180 L301 174 L303 180 L309 181 L303 183 L301 189 L300 183 L294 181 Z"/>
+    <circle cx="130" cy="190" r="1.5" fill="white" fill-opacity="0.045"/>
+    
+    <!-- Satellite -->
+    <rect x="70" y="240" width="12" height="8" rx="1" transform="rotate(30 70 240)"/>
+    <line x1="64" y1="236" x2="86" y2="248"/>
+    <line x1="60" y1="230" x2="68" y2="242"/>
+    <line x1="82" y1="242" x2="90" y2="254"/>
+    
+    <!-- Cute paw / Planet small -->
+    <circle cx="180" cy="270" r="8"/>
+    <circle cx="174" cy="258" r="2.5"/>
+    <circle cx="186" cy="258" r="2.5"/>
+    <circle cx="168" cy="265" r="2"/>
+    <circle cx="192" cy="265" r="2"/>
+    
+    <!-- Rocket 2 -->
+    <path d="M280 280 C274 272 276 258 286 254 C292 252 302 256 306 264 L310 280 L294 284 Z"/>
+    <circle cx="292" cy="270" r="2.5"/>
+    
+    <!-- Little stars -->
+    <path d="M40 310 L41 306 L43 310 L47 311 L43 312 L41 316 L40 312 L36 311 Z"/>
+    <circle cx="110" cy="330" r="1.5" fill="white" fill-opacity="0.045"/>
+    <circle cx="230" cy="320" r="1.5" fill="white" fill-opacity="0.045"/>
+    <circle cx="340" cy="340" r="1.2" fill="white" fill-opacity="0.045"/>
+  </g>
+</svg>

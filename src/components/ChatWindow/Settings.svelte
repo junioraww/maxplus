@@ -5,6 +5,7 @@
   import API from "$lib/stores/api";
   import { isChatMuted } from "$lib/utils/notifications";
   import { autoDownloadEncryptedMedia } from "$lib/stores/e2eSettings";
+  import Switch from "$components/common/Switch.svelte";
 
   export let chat;
   export let messages;
@@ -288,9 +289,7 @@
             <div class="tg-row-title">Уведомления</div>
             <div class="tg-row-subtitle">{muted ? "Отключены" : "Включены"}</div>
           </div>
-          <div class="tg-switch" class:active={!muted}>
-            <div class="tg-switch-thumb"></div>
-          </div>
+          <Switch checked={!muted} ariaLabel="Уведомления" />
         </div>
 
         <div class="tg-row tg-toggle-row" on:click={swapReader}>
@@ -303,9 +302,7 @@
             <div class="tg-row-title">Помечать прочитанным</div>
             <div class="tg-row-subtitle">{$chatSettings.reader ? "Автоматически" : "Вручную"}</div>
           </div>
-          <div class="tg-switch" class:active={$chatSettings.reader}>
-            <div class="tg-switch-thumb"></div>
-          </div>
+          <Switch checked={$chatSettings.reader} ariaLabel="Помечать прочитанным" />
         </div>
 
         <div class="tg-row tg-toggle-row" on:click={toggleAutoDownload}>
@@ -320,9 +317,7 @@
             <div class="tg-row-title">Автозагрузка зашифрованных медиа</div>
             <div class="tg-row-subtitle">{$autoDownloadEncryptedMedia ? "Разрешена" : "Выключена"}</div>
           </div>
-          <div class="tg-switch" class:active={$autoDownloadEncryptedMedia}>
-            <div class="tg-switch-thumb"></div>
-          </div>
+          <Switch checked={$autoDownloadEncryptedMedia} ariaLabel="Автозагрузка зашифрованных медиа" />
         </div>
 
         <div class="tg-row tg-disabled-row">
@@ -765,36 +760,6 @@
   .tg-seg-btn.active .tg-seg-title,
   .tg-seg-btn.active .tg-seg-sub {
     color: #ffffff;
-  }
-
-  .tg-switch {
-    width: 44px;
-    height: 24px;
-    border-radius: 12px;
-    background: #3d3d3d;
-    position: relative;
-    transition: background 0.22s ease;
-    flex-shrink: 0;
-  }
-
-  .tg-switch.active {
-    background: #3390ec;
-  }
-
-  .tg-switch-thumb {
-    width: 20px;
-    height: 20px;
-    border-radius: 50%;
-    background: #ffffff;
-    position: absolute;
-    top: 2px;
-    left: 2px;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
-    transition: transform 0.22s cubic-bezier(0.3, 0, 0.1, 1);
-  }
-
-  .tg-switch.active .tg-switch-thumb {
-    transform: translateX(20px);
   }
 
   .tg-disabled-row {

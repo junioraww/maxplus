@@ -12,6 +12,7 @@
   import { callRecordSettings } from "$lib/services/callRecorder";
   import { getCurrentAccount, setAccountMeta } from "$lib/stores/accounts";
   import API from "$lib/stores/api";
+  import Switch from "$components/common/Switch.svelte";
 
   export let isTab = false;
   export let onClose = null;
@@ -104,12 +105,7 @@
             >Передавать статус активности на сервер. При выключении вас не видно онлайн</span
           >
         </div>
-        <div class="toggle-track" class:active={presenceEnabled}>
-          <div
-            class="toggle-thumb"
-            class:active={presenceEnabled}
-          ></div>
-        </div>
+        <Switch checked={presenceEnabled} ariaLabel="Presence (статус в сети)" />
       </div>
 
       <div class="card-divider"></div>
@@ -146,12 +142,7 @@
               >Отображать «У вас новые сообщения (X)» вместо текста и имени отправителя, когда приложение заблокировано</span
             >
           </div>
-          <div class="toggle-track" class:active={hideLockedNotifications}>
-            <div
-              class="toggle-thumb"
-              class:active={hideLockedNotifications}
-            ></div>
-          </div>
+          <Switch checked={hideLockedNotifications} ariaLabel="Скрывать содержимое при блокировке" />
         </div>
       </div>
     {/if}
@@ -171,12 +162,7 @@
             >Показывать только стандартные аватарки Max, игнорировать кастомные и анимированные</span
           >
         </div>
-        <div class="toggle-track" class:active={$disableMaxPlusAvatars}>
-          <div
-            class="toggle-thumb"
-            class:active={$disableMaxPlusAvatars}
-          ></div>
-        </div>
+        <Switch checked={$disableMaxPlusAvatars} ariaLabel="Отключить аватарки Max+" />
       </div>
     </div>
 
@@ -195,12 +181,7 @@
             >Автоматически скачивать зашифрованные файлы и изображения</span
           >
         </div>
-        <div class="toggle-track" class:active={$autoDownloadEncryptedMedia}>
-          <div
-            class="toggle-thumb"
-            class:active={$autoDownloadEncryptedMedia}
-          ></div>
-        </div>
+        <Switch checked={$autoDownloadEncryptedMedia} ariaLabel="Автозагрузка зашифрованных медиа" />
       </div>
     </div>
 
@@ -219,12 +200,7 @@
             >Оставлять в чате сообщения, удаленные собеседником</span
           >
         </div>
-        <div class="toggle-track" class:active={$saveOthersDeletedMessages}>
-          <div
-            class="toggle-thumb"
-            class:active={$saveOthersDeletedMessages}
-          ></div>
-        </div>
+        <Switch checked={$saveOthersDeletedMessages} ariaLabel="Сохранять чужие удаленные сообщения" />
       </div>
 
       <div class="card-divider"></div>
@@ -239,12 +215,7 @@
             >Не показывать удаленные вами сообщения в истории чата</span
           >
         </div>
-        <div class="toggle-track" class:active={$hideMyDeletedMessages}>
-          <div
-            class="toggle-thumb"
-            class:active={$hideMyDeletedMessages}
-          ></div>
-        </div>
+        <Switch checked={$hideMyDeletedMessages} ariaLabel="Скрывать мои удаленные сообщения" />
       </div>
     </div>
 
@@ -263,12 +234,7 @@
             >Автоматически начинать запись при ответе на входящий или исходящий звонок</span
           >
         </div>
-        <div class="toggle-track" class:active={alwaysRecord}>
-          <div
-            class="toggle-thumb"
-            class:active={alwaysRecord}
-          ></div>
-        </div>
+        <Switch checked={alwaysRecord} ariaLabel="Всегда записывать звонки" />
       </div>
 
       <div class="card-divider"></div>
@@ -283,12 +249,7 @@
             >Записывать видеоряд и экран звонка. Если отключено, пишется только аудио</span
           >
         </div>
-        <div class="toggle-track" class:active={saveVideoCall}>
-          <div
-            class="toggle-thumb"
-            class:active={saveVideoCall}
-          ></div>
-        </div>
+        <Switch checked={saveVideoCall} ariaLabel="Сохранять видео при записи видеозвонка" />
       </div>
 
       <div class="card-divider"></div>
@@ -303,13 +264,7 @@
             >Сохранять даже звонки без видео как .webm (с аватарами). Если выключено — звонки без видео сохраняются как .ogg</span
           >
         </div>
-        <div class="toggle-track" class:active={alwaysSaveVideo}>
-          <div
-            class="toggle-thumb"
-            class:active={alwaysSaveVideo}
-          ></div>
-        </div>
-      </div>
+        <Switch checked={alwaysSaveVideo} ariaLabel="Всегда сохранять звонки как видеофайл" />
     </div>
 
     <div class="section-header">
@@ -414,35 +369,6 @@
   .toggle-desc {
     font-size: 0.82rem;
     color: #888;
-  }
-
-  .toggle-track {
-    width: 44px;
-    height: 24px;
-    background: #3a3a3c;
-    border-radius: 12px;
-    position: relative;
-    transition: background-color 0.2s ease;
-    flex-shrink: 0;
-  }
-
-  .toggle-track.active {
-    background: #248bfe;
-  }
-
-  .toggle-thumb {
-    width: 20px;
-    height: 20px;
-    background: white;
-    border-radius: 50%;
-    position: absolute;
-    top: 2px;
-    left: 2px;
-    transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-  }
-
-  .toggle-thumb.active {
-    transform: translateX(20px);
   }
 
   .section-header {

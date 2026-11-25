@@ -6,6 +6,7 @@
   import { pluginSettingsStore } from "$lib/stores/plugins";
   import { applyPluginUpdate } from "$lib/plugins/updater";
   import ConfirmModal from "$components/main/ConfirmModal.svelte";
+  import Switch from "$components/common/Switch.svelte";
 
   export let plugin;
 
@@ -113,10 +114,7 @@
           Недоступно
         </button>
       {:else}
-        <label class="toggle">
-          <input type="checkbox" checked={plugin.enabled} on:change={toggleEnabled} />
-          <span class="slider"></span>
-        </label>
+        <Switch checked={plugin.enabled} on:change={toggleEnabled} ariaLabel="Включить плагин" />
       {/if}
       <button class="expand-btn" class:expanded on:click={toggleExpand}>
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -373,52 +371,6 @@
 
   .expand-btn.expanded svg {
     transform: rotate(180deg);
-  }
-
-  .toggle {
-    position: relative;
-    display: inline-block;
-    width: 44px;
-    height: 24px;
-  }
-
-  .toggle input {
-    opacity: 0;
-    width: 0;
-    height: 0;
-  }
-
-  .slider {
-    position: absolute;
-    cursor: pointer;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background-color: var(--bg-surface-2);
-    transition: 150ms ease;
-    border-radius: 24px;
-  }
-
-  .slider:before {
-    position: absolute;
-    content: "";
-    height: 18px;
-    width: 18px;
-    left: 3px;
-    bottom: 3px;
-    background-color: var(--text-primary);
-    transition: 150ms ease;
-    border-radius: 50%;
-  }
-
-  input:checked + .slider {
-    background-color: var(--accent-primary);
-  }
-
-  input:checked + .slider:before {
-    transform: translateX(20px);
-    background-color: #fff;
   }
 
   .card-details {

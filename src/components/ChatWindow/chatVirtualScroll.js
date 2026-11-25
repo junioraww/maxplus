@@ -1,33 +1,204 @@
 import { writable, get } from "svelte/store";
 import { saveChatScroll } from "$lib/stores/chatScroll";
 
-export const DEFAULT_HEIGHT = 120;
-export const OVERSCAN = 1500;
+export const DEFAULT_HEIGHT = 48;
+export const MESSAGE_GAP = 8;
+export const TOP_SPACER = 10;
+export const OVERSCAN = 1000;
+
+const globalMeasuredHeights = new Map();
+
+export function getWidthBucket(clientWidth = 800) {
+  return clientWidth >= 600 ? "wide" : String(Math.round(clientWidth / 40) * 40);
+}
+
+export function getCacheKey(id, clientWidth = 800) {
+  return `${id}_${getWidthBucket(clientWidth)}`;
+}
+
+export function estimateHeight(msg, clientWidth = 800, hasDateSeparator = false) {
+  if (!msg) return 46;
+  const attaches = msg.attaches || [];
+
+  const isSystem = Boolean(attaches.some((a) => (a._type || a.type) === "CONTROL"));
+  if (isSystem) return 36;
+
+  let attachHeight = 0;
+
+  // 1. Photo & Video grid matching Attachments.svelte layout
+  const mediaItems = attaches.filter((a) => {
+    const t = a._type || a.type;
+    return t === "PHOTO" || (t === "VIDEO" && a.videoType !== 1 && !a.isNote);
+  });
+  if (mediaItems.length > 0) {
+    const n = mediaItems.length;
+    if (n === 1) {
+      const item = mediaItems[0];
+      const w = item.width || 1;
+      const h = item.height || 1;
+      const maxWidth = 320;
+      const maxHeight = 450;
+      attachHeight += Math.min(maxWidth / (w / h), maxHeight) + 14;
+    } else if (n === 2) {
+      attachHeight += 200 + 14;
+    } else if (n === 3 || n === 4) {
+      attachHeight += 302 + 14;
+    } else {
+      const rows = Math.ceil(n / 3);
+      attachHeight += rows * 150 + (rows - 1) * 2 + 14;
+    }
+  }
+
+  // 2. Video notes (round video bubbles)
+  const videoNotes = attaches.filter((a) => {
+    const t = a._type || a.type;
+    return t === "VIDEO" && (a.videoType === 1 || a.isNote);
+  });
+  if (videoNotes.length > 0) {
+    attachHeight += videoNotes.length * 256;
+  }
+
+  // 3. Polls (header + title + options + footer)
+  const polls = attaches.filter((a) => (a._type || a.type) === "POLL");
+  for (const poll of polls) {
+    const answersCount = (poll.answers && poll.answers.length) || 3;
+    const titleLength = (poll.title || "").length;
+    const titleLines = Math.max(1, Math.ceil(titleLength / 35));
+    attachHeight += 44 + (titleLines * 24 + 8) + answersCount * 54 + 36;
+  }
+
+  // 4. File attachments
+  const files = attaches.filter((a) => (a._type || a.type) === "FILE");
+  if (files.length > 0) {
+    attachHeight += files.length * 56 + 14;
+  }
+
+  // 5. Audio / Voice attachments
+  const audioList = attaches.filter((a) => {
+    const t = a._type || a.type;
+    return t === "AUDIO" || t === "VOICE";
+  });
+  if (audioList.length > 0) {
+    attachHeight += audioList.length * 85;
+  }
+
+  // 6. Stickers
+  if (attaches.some((a) => (a._type || a.type) === "STICKER")) {
+    attachHeight += 162;
+  }
+
+  // 7. Calls
+  if (attaches.some((a) => (a._type || a.type) === "CALL")) {
+    attachHeight += 52;
+  }
+
+  // 8. Contact & Location cards
+  const contactOrLoc = attaches.filter((a) => {
+    const t = a._type || a.type;
+    return t === "CONTACT" || t === "LOCATION";
+  });
+  if (contactOrLoc.length > 0) {
+    attachHeight += contactOrLoc.length * 60;
+  }
+
+  // 9. Text message lines calculation
+  const text = msg.text || "";
+  let textHeight = 0;
+  let totalLines = 0;
+  if (text) {
+    const bubbleMaxW = clientWidth <= 500 ? clientWidth * 0.85 : Math.min(480, clientWidth * 0.72);
+    const charsPerLine = Math.max(20, Math.floor((bubbleMaxW - 32) / 7.2));
+    const rawLines = text.split("\n");
+    for (const l of rawLines) {
+      totalLines += Math.max(1, Math.ceil(l.length / charsPerLine));
+    }
+    if (totalLines === 1) {
+      textHeight = 48.6;
+    } else {
+      textHeight = totalLines * 18.5 + 38;
+    }
+  }
+
+  let h;
+  if (attachHeight > 0 && textHeight > 0) {
+    h = attachHeight + textHeight;
+  } else if (attachHeight > 0) {
+    h = attachHeight;
+  } else {
+    h = Math.max(48.6, textHeight || 48.6);
+  }
+
+  if (msg.reactionInfo?.totalCount) h += (totalLines <= 1 ? 14 : 26);
+  if (msg.link && textHeight > 49) h += 20;
+  if (hasDateSeparator) h += 45;
+
+  return Math.round(h);
+}
 
 export function createVirtualScrollManager() {
+  const heightsMap = globalMeasuredHeights;
   const messageHeights = writable({});
+  const msgMap = new Map();
   let cumulativeHeights = [];
   let pendingHeightUpdates = {};
   let resizeObserver = null;
+  let activeScrollElement = null;
+  let currentDateSeparators = null;
 
-  function setupResizeObserver() {
+  function setDateSeparators(map) {
+    currentDateSeparators = map;
+  }
+
+  function getClientWidth() {
+    return activeScrollElement?.clientWidth || 800;
+  }
+
+  function getHeight(msg, clientWidth, hasDateSeparator = false) {
+    if (!msg) return 46;
+    const cw = clientWidth || getClientWidth();
+    const measured = heightsMap.get(getCacheKey(msg.id, cw));
+    if (measured && measured > 0) return measured;
+    const hasSep = hasDateSeparator || Boolean(currentDateSeparators && currentDateSeparators[msg.id]);
+    return estimateHeight(msg, cw, hasSep);
+  }
+
+  function setupResizeObserver(getScrollElement, canAnchor) {
     if (resizeObserver || typeof ResizeObserver === "undefined") return;
     resizeObserver = new ResizeObserver((entries) => {
+      const scrollEl = typeof getScrollElement === "function" ? getScrollElement() : activeScrollElement;
+      if (scrollEl) activeScrollElement = scrollEl;
+      const containerRect = scrollEl ? scrollEl.getBoundingClientRect() : null;
+      const shouldAnchor = typeof canAnchor === "function" ? canAnchor() : false;
+      const cw = scrollEl ? scrollEl.clientWidth : 800;
+
       for (const entry of entries) {
         const el = entry.target;
-        const wrapper = el.closest(".message-wrapper");
-        if (!wrapper) continue;
-        const id = wrapper.id?.replace("m-", "");
+        const id = el.dataset.msgId || el.closest(".message-wrapper")?.id?.replace("m-", "");
         if (!id) continue;
-        const height = entry.contentRect.height;
-        if (height > 0) {
-          pendingHeightUpdates[id] = height;
+        const rawH = entry.borderBoxSize?.[0]?.blockSize || entry.contentRect.height;
+        if (rawH > 0) {
+          const height = rawH;
+          const cacheKey = getCacheKey(id, cw);
+          const prev = heightsMap.get(cacheKey);
+
+          const msg = msgMap.get(String(id));
+          const hasSep = Boolean(currentDateSeparators && currentDateSeparators[id]);
+          const baselineHeight = prev !== undefined ? prev : (msg ? estimateHeight(msg, cw, hasSep) : height);
+          const diff = height - baselineHeight;
+
+          if (prev === undefined || Math.abs(height - prev) >= 0.2) {
+            heightsMap.set(cacheKey, height);
+            pendingHeightUpdates[cacheKey] = { id, height };
+          }
         }
       }
     });
   }
 
-  function observeResize(node) {
+  function observeResize(node, msgId) {
+    if (msgId != null) {
+      node.dataset.msgId = String(msgId);
+    }
     if (resizeObserver) resizeObserver.observe(node);
     return {
       destroy() {
@@ -36,26 +207,36 @@ export function createVirtualScrollManager() {
     };
   }
 
-  function applyPendingHeights(messagesList = []) {
+  function applyPendingHeights(messagesList = [], clientWidth) {
     const updates = pendingHeightUpdates;
     pendingHeightUpdates = {};
     const keys = Object.keys(updates);
     if (keys.length === 0) return;
-    messageHeights.update((h) => {
-      const newH = { ...h };
-      for (const id of keys) newH[id] = updates[id];
-      return newH;
-    });
-    computeCumulativeHeights(messagesList);
+
+    const cw = clientWidth || getClientWidth();
+    for (const key of keys) {
+      const item = updates[key];
+      heightsMap.set(key, item.height);
+    }
+
+    computeCumulativeHeights(messagesList, cw, currentDateSeparators);
   }
 
-  function computeCumulativeHeights(messagesList = []) {
+  function computeCumulativeHeights(messagesList = [], clientWidth, dateSeparatorsMap = null) {
+    const cw = clientWidth || getClientWidth();
+    if (dateSeparatorsMap) currentDateSeparators = dateSeparatorsMap;
+    const dateMap = dateSeparatorsMap || currentDateSeparators;
+    msgMap.clear();
     const heights = [];
-    let sum = 0;
-    const currentHeights = get(messageHeights);
-    for (const msg of messagesList) {
-      const h = currentHeights[msg.id] || DEFAULT_HEIGHT;
-      sum += h;
+    let sum = TOP_SPACER;
+    for (let i = 0; i < messagesList.length; i++) {
+      const msg = messagesList[i];
+      if (msg?.id != null) {
+        msgMap.set(String(msg.id), msg);
+      }
+      const hasDateSeparator = Boolean(dateMap && dateMap[msg.id]);
+      const h = getHeight(msg, cw, hasDateSeparator);
+      sum += h + MESSAGE_GAP;
       heights.push(sum);
     }
     cumulativeHeights = heights;
@@ -73,63 +254,89 @@ export function createVirtualScrollManager() {
     return lo;
   }
 
-  function measureAllHeights(innerList) {
+  function measureAllHeights(innerList, clientWidth) {
     if (!innerList) return;
+    const cw = clientWidth || getClientWidth();
     const wrappers = innerList.querySelectorAll(".message-wrapper");
-    const updates = {};
     for (const wrapper of wrappers) {
       const id = wrapper.id?.replace("m-", "");
       if (!id) continue;
-      const content =
-        wrapper.querySelector("#clickable-area") ||
-        wrapper.querySelector(".observer-area") ||
-        wrapper;
+      const content = wrapper.querySelector(".observer-area");
       if (content) {
         const height = content.getBoundingClientRect().height;
-        if (height > 0) updates[id] = height;
+        if (height > 0) heightsMap.set(getCacheKey(id, cw), height);
       }
-    }
-    if (Object.keys(updates).length) {
-      messageHeights.update((h) => ({ ...h, ...updates }));
     }
   }
 
-  function captureScrollAnchor(scrollElement, visibleMessages) {
+  function captureScrollAnchor(scrollElement) {
     if (!scrollElement) return null;
     const containerRect = scrollElement.getBoundingClientRect();
 
-    for (const id in visibleMessages) {
-      const el = visibleMessages[id];
-      if (!el) continue;
-
+    // Iterate message wrappers in visual DOM order from top to bottom
+    const wrappers = scrollElement.querySelectorAll(".message-wrapper");
+    for (let i = 0; i < wrappers.length; i++) {
+      const el = wrappers[i];
       const rect = el.getBoundingClientRect();
       if (rect.bottom > containerRect.top) {
         return {
           id: el.id,
           offset: rect.top - containerRect.top,
+          scrollHeight: scrollElement.scrollHeight,
+          scrollTop: scrollElement.scrollTop,
         };
       }
     }
-    return null;
+
+    return {
+      id: null,
+      offset: 0,
+      scrollHeight: scrollElement.scrollHeight,
+      scrollTop: scrollElement.scrollTop,
+    };
   }
 
   function restoreScrollAnchor(scrollElement, scrollAnchor) {
     if (!scrollAnchor || !scrollElement) return;
-    const el = document.getElementById(scrollAnchor.id);
-    if (!el) return;
 
-    const containerRect = scrollElement.getBoundingClientRect();
-    const rect = el.getBoundingClientRect();
-    const delta = rect.top - containerRect.top - scrollAnchor.offset;
+    if (scrollAnchor.id) {
+      const el = document.getElementById(scrollAnchor.id);
+      if (el) {
+        const containerRect = scrollElement.getBoundingClientRect();
+        const rect = el.getBoundingClientRect();
+        const currentOffset = rect.top - containerRect.top;
+        const delta = currentOffset - scrollAnchor.offset;
 
-    if (delta !== 0) {
-      scrollElement.scrollTop += delta;
+        if (Math.abs(delta) >= 0.5) {
+          scrollElement.scrollTop += delta;
+        }
+        return;
+      }
+    }
+
+    if (scrollAnchor.scrollHeight && scrollAnchor.scrollTop !== undefined) {
+      const deltaHeight = scrollElement.scrollHeight - scrollAnchor.scrollHeight;
+      if (deltaHeight > 0) {
+        scrollElement.scrollTop = scrollAnchor.scrollTop + deltaHeight;
+      }
     }
   }
 
-  function calculateVisibleMessages({ scrollElement, messagesList = [] }) {
-    if (!scrollElement) return {};
-    applyPendingHeights(messagesList);
+  let lastStartIdx = -1;
+  let lastEndIdx = -1;
+  let lastMessagesCount = -1;
+  let cachedVisible = {};
+
+  function calculateVisibleMessages({ scrollElement, messagesList = [], dateSeparatorsMap = null }) {
+    if (!scrollElement || !messagesList.length) return {};
+    activeScrollElement = scrollElement;
+    const clientWidth = scrollElement.clientWidth || 800;
+
+    if (cumulativeHeights.length !== messagesList.length) {
+      computeCumulativeHeights(messagesList, clientWidth, dateSeparatorsMap);
+    } else {
+      applyPendingHeights(messagesList, clientWidth);
+    }
 
     const { scrollTop, clientHeight } = scrollElement;
     const totalHeight = cumulativeHeights.length ? cumulativeHeights[cumulativeHeights.length - 1] : 0;
@@ -154,13 +361,19 @@ export function createVirtualScrollManager() {
       if (startIdx > endIdx) endIdx = startIdx;
     }
 
+    if (startIdx === lastStartIdx && endIdx === lastEndIdx && messagesList.length === lastMessagesCount) {
+      return cachedVisible;
+    }
+
+    lastStartIdx = startIdx;
+    lastEndIdx = endIdx;
+    lastMessagesCount = messagesList.length;
+
     const newVisible = {};
     for (let i = startIdx; i <= endIdx && i < messagesList.length; i++) {
-      const id = messagesList[i].id;
-      if (!newVisible[id]) {
-        newVisible[id] = document.getElementById("m-" + id);
-      }
+      newVisible[messagesList[i].id] = true;
     }
+    cachedVisible = newVisible;
     return newVisible;
   }
 
@@ -194,7 +407,8 @@ export function createVirtualScrollManager() {
     let maxBottom = -Infinity;
 
     for (const id in visibleMessages) {
-      const el = visibleMessages[id];
+      if (!visibleMessages[id]) continue;
+      const el = document.getElementById("m-" + id);
       if (!el) continue;
       const rect = el.getBoundingClientRect();
       if (rect.top < containerRect.bottom && rect.bottom > maxBottom) {
@@ -237,6 +451,8 @@ export function createVirtualScrollManager() {
 
   return {
     messageHeights,
+    getHeight,
+    estimateHeight,
     getCumulativeHeights: () => cumulativeHeights,
     setupResizeObserver,
     observeResize,
@@ -248,6 +464,7 @@ export function createVirtualScrollManager() {
     restoreScrollAnchor,
     calculateVisibleMessages,
     savePosition,
+    setDateSeparators,
     destroy,
   };
 }

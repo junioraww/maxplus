@@ -13,10 +13,34 @@ pub struct AppNetworkSettings {
     pub vpn_bypass_enabled: bool,
 }
 
+pub fn default_bypass_hosts() -> Vec<String> {
+    vec![
+        "maxplus.dev".to_string(),
+        "*.maxplus.dev".to_string(),
+        "localhost".to_string(),
+        "127.0.0.1".to_string(),
+    ]
+}
+
+pub fn ensure_essential_bypass(hosts: &mut Vec<String>) {
+    if hosts.is_empty() {
+        *hosts = default_bypass_hosts();
+        return;
+    }
+    if !hosts.iter().any(|h| h.eq_ignore_ascii_case("localhost")) {
+        hosts.push("localhost".to_string());
+    }
+    if !hosts.iter().any(|h| h.eq_ignore_ascii_case("127.0.0.1")) {
+        hosts.push("127.0.0.1".to_string());
+    }
+}
+
 impl Default for AppNetworkSettings {
     fn default() -> Self {
+        let mut proxy = ProxyConfig::default();
+        proxy.bypass_hosts = default_bypass_hosts();
         Self {
-            proxy: ProxyConfig::default(),
+            proxy,
             vpn_bypass_enabled: false,
         }
     }
@@ -49,7 +73,8 @@ pub fn load_initial_settings(app: &AppHandle) {
     let path = app_dir.join("data").join("common").join("proxy_settings");
     let storage = crate::stores::storage::Storage::new(None);
     if let Some(val) = storage.load(&path) {
-        if let Ok(settings) = serde_json::from_value::<AppNetworkSettings>(val) {
+        if let Ok(mut settings) = serde_json::from_value::<AppNetworkSettings>(val) {
+            ensure_essential_bypass(&mut settings.proxy.bypass_hosts);
             apply_network_settings(&settings);
             if let Ok(mut lock) = CURRENT_SETTINGS.write() {
                 *lock = Some(settings);
@@ -93,6 +118,8 @@ pub async fn update_proxy_config(
     state: State<'_, AppState>,
     settings: AppNetworkSettings,
 ) -> Result<(), String> {
+    let mut settings = settings;
+    ensure_essential_bypass(&mut settings.proxy.bypass_hosts);
     apply_network_settings(&settings);
 
     if settings.proxy.is_enabled() {

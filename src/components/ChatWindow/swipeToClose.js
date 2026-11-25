@@ -59,10 +59,10 @@ export function swipeToClose(node, options = {}) {
     const diffY = currentY - touchStartY;
 
     if (!isSwipingChat) {
-      if (Math.abs(diffX) > 10 || Math.abs(diffY) > 10) {
-        if (diffX > 10 && diffX > Math.abs(diffY) * 1.1) {
+      if (Math.abs(diffX) > 8 || Math.abs(diffY) > 20) {
+        if (diffX > 8 && diffX > Math.abs(diffY) * 0.75) {
           isSwipingChat = true;
-        } else {
+        } else if (Math.abs(diffY) > 24 || diffX < -12) {
           isScrollingChat = true;
           return;
         }

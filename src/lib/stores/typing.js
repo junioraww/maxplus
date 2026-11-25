@@ -76,7 +76,7 @@ export function setChatTyping(chatId, userId, userName = "", action = "typing") 
     return next;
   });
 
-  // 6 seconds TTL matching official Max py6.java
+  // 6 seconds TTL matching official Max
   const timer = setTimeout(() => {
     clearChatTyping(chatId, userId);
   }, 6000);

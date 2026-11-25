@@ -39,20 +39,20 @@
   }
 
   $: groupCounts = (() => {
-    if (activeChat?.type !== "CHAT") return null;
+    if (activeChat?.type !== "CHAT" && activeChat?.type !== "GROUP") return null;
     const parts = activeChat.participants || {};
     const total = activeChat.participantsCount || Object.keys(parts).length || 0;
     const online = Object.keys(parts).filter(id => {
       const p = $currentPresence[id];
       return p?.status === 1 || p?.on === "ON" || Boolean($currentRealContacts?.[id]?.online);
     }).length;
-    return { total, online };
+    return { total, online: Math.max(1, online) };
   })();
 </script>
 
-{#if activeChat?.type === "CHAT"}
-  {#if groupCounts}
-    {formatMembersCount(groupCounts.total)}{#if groupCounts.online > 0}, {formatOnlineCount(groupCounts.online)}{/if}
+{#if activeChat?.type === "CHAT" || activeChat?.type === "GROUP"}
+  {#if groupCounts && groupCounts.total > 0}
+    {groupCounts.online} из {groupCounts.total} в сети
   {:else}
     групповой чат
   {/if}
@@ -80,7 +80,7 @@
     return joined.charAt(0).toUpperCase() + joined.slice(1);
   })()}
 {:else if c}
-  {c.gender === 2 ? "Была" : "Был"} недавно
+  {c.gender === 2 ? "была" : "был"} недавно
 {:else if activeChat?.type === "DIALOG"}
   личный чат
 {:else}
@@ -89,6 +89,7 @@
 
 <style>
   .online-text {
-    color: #4fc3f7;
+    color: var(--online, #4fc3f7);
+    font-weight: 400;
   }
 </style>

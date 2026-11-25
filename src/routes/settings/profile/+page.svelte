@@ -336,7 +336,7 @@
     cursor: pointer;
     box-shadow: 0 3px 8px rgba(0, 0, 0, 0.35);
     transition: background 0.15s, transform 0.12s, opacity 0.15s;
-    z-index: var(--z-floating);
+    z-index: 2;
   }
 
   .avatar-camera-badge:hover {

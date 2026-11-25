@@ -68,11 +68,11 @@ export async function sendMessage(
   const id = Date.now();
   const cid = -id;
 
-  const plainEntry = (isE2eActive || isDisableControl) ? {
-    text: isDisableControl ? "<b>Вы отключили сквозное шифрование</b>" : originalPlaintext,
+  const plainEntry = isE2eActive ? {
+    text: originalPlaintext,
     media: effectiveMedia,
-    is_encrypted: isE2eActive && !isDisableControl,
-    obf: isE2eActive && !isDisableControl ? obf : null,
+    is_encrypted: !isDisableControl,
+    obf: !isDisableControl ? obf : null,
     error: null,
   } : null;
 
@@ -87,7 +87,8 @@ export async function sendMessage(
   const displayMessageEarlyEntry = {
     id,
     cid,
-    text: isDisableControl ? "<b>Вы отключили сквозное шифрование</b>" : text,
+    chatId: chat.id,
+    text,
     sender: get(currentUser),
     reactionInfo: {},
     attaches: (attaches || []).map((a, idx) => {
@@ -105,6 +106,14 @@ export async function sendMessage(
     ...(replyTo && { link: { type: "REPLY", messageId: replyTo } }),
     status: 0,
     sending: true,
+    retryPayload: {
+      text: originalPlaintext,
+      replyTo,
+      attaches,
+      elements,
+      forceObfuscation,
+      mediaDescriptor,
+    },
   };
 
   if (messages?.update) {
@@ -121,40 +130,42 @@ export async function sendMessage(
     elements,
   };
 
+  const markFailed = (errorText = "Не удалось отправить сообщение") => {
+    let failedSnapshot = null;
+    if (messages?.update) {
+      messages.update((msgs) => {
+        const idx = msgs.findIndex((x) => String(x.id) === String(id));
+        if (idx !== -1) {
+          failedSnapshot = {
+            ...msgs[idx],
+            sending: false,
+            status: "failed",
+            error: errorText,
+          };
+          msgs[idx] = failedSnapshot;
+        }
+        return [...msgs];
+      });
+    }
+    if (failedSnapshot) {
+      chatCache.receivedMessage.set(failedSnapshot);
+    }
+  };
+
   let response;
   try {
     response = await get(API).sendMessage(text, chatId, params);
   } catch (err) {
     console.error(err);
-    if (messages?.update) {
-      messages.update((msgs) => {
-        const target = msgs.find((x) => x.id === id);
-        if (target) {
-          target.sending = false;
-          target.deleted = true;
-          target.status = "failed";
-        }
-        return [...msgs];
-      });
-    }
-    showAlert(parseApiError(err));
+    const errText = parseApiError(err);
+    markFailed(errText);
+    showAlert(errText);
     throw err;
   }
 
   if (response?.error) {
     const errorText = parseApiError(response);
-    if (messages?.update) {
-      messages.update((msgs) => {
-        const target = msgs.find((x) => x.id === id);
-        if (target) {
-          target.sending = false;
-          target.deleted = true;
-          target.status = "failed";
-          target.error = errorText;
-        }
-        return [...msgs];
-      });
-    }
+    markFailed(errorText);
     showAlert(errorText);
     return response;
   }
@@ -162,17 +173,7 @@ export async function sendMessage(
   const message = response?.message;
 
   if (!message || typeof message !== "object") {
-    if (messages?.update) {
-      messages.update((msgs) => {
-        const target = msgs.find((x) => x.id === id);
-        if (target) {
-          target.sending = false;
-          target.deleted = true;
-          target.status = "failed";
-        }
-        return [...msgs];
-      });
-    }
+    markFailed("Сервер не подтвердил отправку");
   }
   else {
     if (decodedMessagesStore && plainEntry && message.id) {
@@ -189,7 +190,7 @@ export async function sendMessage(
       elements: (message?.elements && message.elements.length > 0)
         ? message.elements
         : (displayMessageEarlyEntry.elements || []),
-      text: isDisableControl ? "<b>Вы отключили сквозное шифрование</b>" : (message.text || text),
+      text: message.text || text,
       sender: message.sender || get(currentUser),
       chatId: chat.id,
       time: message.time || Date.now(),
@@ -440,4 +441,40 @@ export async function forwardMessages(targetChatId, messagesToForward, optionalT
     }
   }
   return true;
+}
+
+export function removeFailedMessage(messages, failedMsg) {
+  if (!messages?.update || !failedMsg) return;
+  messages.update((msgs) => msgs.filter((m) => String(m.id) !== String(failedMsg.id)));
+}
+
+export async function retryFailedMessage(
+  chat,
+  chatSettings,
+  messages,
+  failedMsg,
+  decodedMessagesStore = null
+) {
+  if (!chat || !failedMsg) return;
+  const payload = failedMsg.retryPayload || {
+    text: failedMsg.text || "",
+    replyTo: failedMsg.link?.messageId || null,
+    attaches: failedMsg.attaches || [],
+    elements: failedMsg.elements || [],
+    forceObfuscation: false,
+    mediaDescriptor: null,
+  };
+  removeFailedMessage(messages, failedMsg);
+  return sendMessage(
+    chat,
+    chatSettings,
+    messages,
+    payload.text,
+    payload.replyTo,
+    payload.attaches,
+    payload.elements,
+    payload.forceObfuscation,
+    payload.mediaDescriptor,
+    decodedMessagesStore
+  );
 }

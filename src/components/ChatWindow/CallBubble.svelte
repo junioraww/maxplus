@@ -12,7 +12,13 @@
   $: isMissed = hangup === 'MISSED' || hangup === 'TIMEOUT';
   $: isCanceled = hangup === 'CANCELED';
   $: isRejected = hangup === 'REJECTED' || hangup === 'BUSY';
-  $: isMissedCall = !isMe && isMissed;
+
+  // In Max decompiled (s90.java):
+  // z24 = !isMe && (missed || timeout || canceled) -> "Пропущенный звонок"
+  // z25 = isMe && (rejected || canceled) -> "Отклонённый звонок"
+  $: isMissedIncoming = !isMe && (isMissed || isCanceled);
+  $: isRejectedCall = isRejected || (isMe && isCanceled);
+  $: isNegative = isMissedIncoming || isRejectedCall;
 
   $: durationText = formatCallDuration(attach.duration);
 
@@ -38,42 +44,38 @@
     return `${fn} ${ln}`.trim() || $contactStore.name || 'Собеседник';
   })();
 
+  // Exact strings from MAX-decompiled R.string:
+  // chat_screen_message_call_title_missed = "Пропущенный звонок"
+  // chat_screen_message_call_title_reject = "Отклонённый звонок"
+  // chat_screen_message_call_title_incoming = "Входящий звонок"
+  // chat_screen_message_call_title_outgoing = "Исходящий звонок"
+  // chat_screen_message_group_call_title = "Групповой звонок"
   $: titleText = (() => {
     if (attach.joinLink) {
-      return isVideo ? 'Видеовстреча' : 'Групповой звонок';
+      return 'Групповой звонок';
+    }
+    if (isRejectedCall) {
+      return 'Отклонённый звонок';
+    }
+    if (isMissedIncoming) {
+      return 'Пропущенный звонок';
     }
     if (isMe) {
-      if (isCanceled) {
-        return isVideo ? 'Отменённый видеозвонок' : 'Отменённый звонок';
-      }
-      return isVideo ? 'Исходящий видеозвонок' : 'Исходящий звонок';
+      return 'Исходящий звонок';
     }
-    if (isMissed || isCanceled) {
-      return isVideo ? 'Пропущенный видеозвонок' : 'Пропущенный звонок';
-    }
-    if (isRejected) {
-      return isVideo ? 'Отклонённый видеозвонок' : 'Отклонённый звонок';
-    }
-    return isVideo ? 'Входящий видеозвонок' : 'Входящий звонок';
+    return 'Входящий звонок';
   })();
 
+  // Subtitle from MAX-decompiled (s90.java):
+  // chat_screen_message_call_subtitle_video = "Видеозвонок"
+  // chat_screen_message_call_subtitle_audio = "Аудиозвонок"
+  // chat_screen_message_group_call = "Групповой звонок"
+  // + duration string om5.b(j5)
+  $: callTypeStr = isVideo ? 'Видеозвонок' : 'Аудиозвонок';
   $: subText = (() => {
-    if (attach.joinLink) {
-      return 'По ссылке';
-    }
-    if (durationText) {
-      return durationText;
-    }
-    if (isMe) {
-      if (isCanceled) return 'Отменён';
-      if (isRejected) return 'Занято';
-      if (isMissed) return 'Нет ответа';
-      return 'Завершён';
-    }
-    if (isMissed) return 'Не отвечен';
-    if (isCanceled) return 'Отменён';
-    if (isRejected) return 'Отклонён';
-    return 'Завершён';
+    if (attach.joinLink) return 'По ссылке';
+    if (durationText) return `${callTypeStr}, ${durationText}`;
+    return callTypeStr;
   })();
 
   function formatCallDuration(raw) {
@@ -109,50 +111,67 @@
 <div
   class="call-bubble-row"
   class:is-me={isMe}
-  class:is-missed={isMissedCall}
+  class:is-negative={isNegative}
   on:click={handleAction}
   role="button"
   tabindex="0"
 >
-  <div class="call-icon-circle" class:missed={isMissedCall}>
+  <div class="call-icon-badge" class:negative={isNegative}>
     {#if attach.joinLink}
-      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
         <circle cx="9" cy="7" r="4"/>
         <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
         <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
       </svg>
     {:else if isVideo}
-      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <polygon points="23 7 16 12 23 17 23 7"/>
-        <rect x="1" y="5" width="15" height="14" rx="2" ry="2"/>
-      </svg>
+      {#if isNegative}
+        <!-- Missed Video Call icon (Max icon_video_call_missed_fill style) -->
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polygon points="23 7 16 12 23 17 23 7"/>
+          <rect x="1" y="5" width="15" height="14" rx="2" ry="2"/>
+          <line x1="1" y1="1" x2="23" y2="23" stroke="currentColor" stroke-width="2"/>
+        </svg>
+      {:else}
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polygon points="23 7 16 12 23 17 23 7"/>
+          <rect x="1" y="5" width="15" height="14" rx="2" ry="2"/>
+        </svg>
+      {/if}
     {:else}
-      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/>
-      </svg>
+      {#if isNegative}
+        <!-- Missed Phone Call icon (Max icon_call_missed_fill style) -->
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M16 2v4m0 0h4m-4 0l5-5"/>
+          <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/>
+        </svg>
+      {:else if isMe}
+        <!-- Outgoing Phone Call icon -->
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M7 7l10 10M17 7v10H7"/>
+          <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/>
+        </svg>
+      {:else}
+        <!-- Incoming Phone Call icon -->
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/>
+        </svg>
+      {/if}
     {/if}
   </div>
 
-  <div class="call-text-col">
-    <span class="call-title-line">{titleText}</span>
-    <div class="call-sub-line">
-      {#if !attach.joinLink}
-        <svg class="call-direction-svg" class:missed={isMissedCall} viewBox="0 0 14 14" width="11" height="11">
-          {#if isMe}
-            <path d="M3 11L11 3M11 3H5M11 3V9" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
-          {:else}
-            <path d="M11 3L3 11M3 11H9M3 11V5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
-          {/if}
-        </svg>
-      {/if}
-      <span class="call-duration-text">{subText}</span>
+  <div class="call-info-col">
+    <div class="call-title-text" class:negative={isNegative}>
+      {titleText}
+    </div>
+    <div class="call-subtitle-text">
+      {subText}
     </div>
   </div>
 
   {#if attach.joinLink}
-    <button class="call-handset-btn" on:click={handleAction} title="Присоединиться">
-      <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+    <button class="call-join-btn" on:click={handleAction} title="Присоединиться">
+      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
         <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/>
       </svg>
     </button>
@@ -163,11 +182,10 @@
   .call-bubble-row {
     display: flex;
     align-items: center;
-    gap: 8px;
-    padding: 1px 0;
+    gap: 12px;
+    padding: 2px 2px;
     width: 100%;
-    min-width: 0;
-    max-width: 100%;
+    min-width: 180px;
     box-sizing: border-box;
     cursor: pointer;
     user-select: none;
@@ -176,82 +194,73 @@
   }
 
   .call-bubble-row:active {
-    opacity: 0.82;
+    opacity: 0.85;
   }
 
-  .call-icon-circle {
-    width: 30px;
-    height: 30px;
-    min-width: 30px;
+  /* 40x40 circular icon matching wy1.java in MAX-decompiled */
+  .call-icon-badge {
+    width: 40px;
+    height: 40px;
     border-radius: 50%;
     display: flex;
     align-items: center;
     justify-content: center;
-    background: rgba(255, 255, 255, 0.12);
-    color: rgba(255, 255, 255, 0.95);
+    background: var(--call-icon-bg, rgba(255, 255, 255, 0.1));
+    color: var(--text-primary, #ffffff);
     flex-shrink: 0;
+    transition: background 0.15s ease, color 0.15s ease;
   }
 
-  .call-bubble-row.is-me .call-icon-circle {
+  .call-bubble-row.is-me .call-icon-badge {
     background: rgba(255, 255, 255, 0.16);
     color: #ffffff;
   }
 
-  .call-icon-circle.missed {
-    background: rgba(255, 255, 255, 0.1);
-    color: #f87171;
+  .call-icon-badge.negative {
+    background: rgba(239, 68, 68, 0.14) !important;
+    color: #ef4444 !important;
   }
 
-  .call-text-col {
+  .call-info-col {
     display: flex;
     flex-direction: column;
     min-width: 0;
     flex: 1 1 auto;
-    overflow: hidden;
+    gap: 2px;
   }
 
-  .call-title-line {
+  /* Title text matching g9k.j in MAX-decompiled (15px semibold) */
+  .call-title-text {
+    font-size: 15px;
+    font-weight: 600;
+    line-height: 1.25;
+    color: var(--text-primary, #ffffff);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* Negative red text for missed/rejected calls matching text_negative in Max */
+  .call-title-text.negative {
+    color: #ef4444;
+  }
+
+  /* Subtitle matching g9k.t in MAX-decompiled (13px secondary) */
+  .call-subtitle-text {
     font-size: 13px;
-    font-weight: 500;
-    line-height: 1.15;
-    color: #ffffff;
+    line-height: 1.2;
+    color: var(--text-secondary, rgba(255, 255, 255, 0.6));
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
   }
 
-  .call-sub-line {
-    display: flex;
-    align-items: center;
-    gap: 3px;
-    margin-top: 1px;
-    min-width: 0;
-  }
-
-  .call-direction-svg {
-    flex-shrink: 0;
-    color: rgba(255, 255, 255, 0.65);
-  }
-
-  .call-direction-svg.missed {
-    color: #f87171;
-  }
-
-  .call-duration-text {
-    font-size: 11.5px;
-    line-height: 1.1;
-    color: rgba(255, 255, 255, 0.65);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-
-  .call-handset-btn {
-    width: 28px;
-    height: 28px;
+  .call-join-btn {
+    width: 32px;
+    height: 32px;
     border-radius: 50%;
     border: none;
-    background: var(--accent-primary, #248bfe);
+    background: var(--accent-primary, #007aff);
     color: #ffffff;
     display: flex;
     align-items: center;
@@ -262,12 +271,12 @@
     transition: background 0.15s ease, transform 0.1s ease;
   }
 
-  .call-handset-btn:hover {
-    background: var(--accent-primary-hover, #1b74dc);
+  .call-join-btn:hover {
+    background: var(--accent-primary-hover, #0066dd);
     transform: scale(1.05);
   }
 
-  .call-handset-btn:active {
-    transform: scale(0.92);
+  .call-join-btn:active {
+    transform: scale(0.95);
   }
 </style>

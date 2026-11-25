@@ -576,8 +576,8 @@ pub fn start_video_proxy() {
         if let Some(proxy_cfg) = rumax::get_global_proxy_config() {
             if let Some(url_str) = proxy_cfg.to_connection_uri() {
                 if let Ok(mut proxy) = reqwest::Proxy::all(&url_str) {
-                    if !proxy_cfg.proxy_maxplus_site {
-                        proxy = proxy.no_proxy(reqwest::NoProxy::from_string("maxplus.dev,*.maxplus.dev,localhost,127.0.0.1"));
+                    if let Some(np) = proxy_cfg.no_proxy() {
+                        proxy = proxy.no_proxy(Some(np));
                     }
                     builder = builder.proxy(proxy);
                 }

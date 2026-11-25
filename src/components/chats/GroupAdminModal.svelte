@@ -4,6 +4,7 @@
   import API, { currentUser } from "$lib/stores/api";
   import Avatar from "$components/main/Avatar.svelte";
   import ConfirmModal from "$components/main/ConfirmModal.svelte";
+  import Switch from "$components/common/Switch.svelte";
   import { getContact } from "$lib/utils/caching";
 
   export let chat;
@@ -235,9 +236,7 @@
               <span class="perm-label">{perm.label}</span>
               <span class="perm-desc">{perm.desc}</span>
             </div>
-            <div class="toggle-switch" class:active={checked} class:disabled={isReadOnly}>
-              <div class="toggle-thumb"></div>
-            </div>
+            <Switch checked={checked} disabled={isReadOnly} ariaLabel={perm.label} />
           </div>
         {/each}
       </div>
@@ -486,40 +485,6 @@
   .perm-desc {
     font-size: 12.5px;
     color: var(--text-secondary, #8b929e);
-  }
-
-  .toggle-switch {
-    width: 44px;
-    height: 26px;
-    border-radius: 13px;
-    background: rgba(255, 255, 255, 0.16);
-    position: relative;
-    transition: background 0.2s cubic-bezier(0.2, 0, 0, 1);
-    flex-shrink: 0;
-  }
-
-  .toggle-switch.active {
-    background: var(--accent-primary, #248bfe);
-  }
-
-  .toggle-switch.disabled {
-    opacity: 0.55;
-  }
-
-  .toggle-thumb {
-    width: 22px;
-    height: 22px;
-    border-radius: 50%;
-    background: #ffffff;
-    position: absolute;
-    top: 2px;
-    left: 2px;
-    transition: transform 0.2s cubic-bezier(0.2, 0, 0, 1);
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.25);
-  }
-
-  .toggle-switch.active .toggle-thumb {
-    transform: translateX(18px);
   }
 
   .btn-transfer-owner {

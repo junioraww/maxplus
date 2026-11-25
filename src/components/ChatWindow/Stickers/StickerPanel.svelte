@@ -14,8 +14,10 @@
   } from "$lib/stores/stickers";
   import StickerMedia from "./StickerMedia.svelte";
   import StickerSection from "./StickerSection.svelte";
-  import StickerCatalogModal from "./StickerCatalogModal.svelte";
   import StickerPackModal from "./StickerPackModal.svelte";
+  import StickerSettingsScreen from "./StickerSettingsScreen.svelte";
+  import StickerCatalogScreen from "./StickerCatalogScreen.svelte";
+  import { openScreen } from "$lib/services/layerManager";
   import { getMountStore } from "$lib/plugins/mount-registry";
 
   const dispatch = createEventDispatcher();
@@ -36,16 +38,22 @@
   let manualEmojiScrollTimer = null;
   let emojiScrollRaf = null;
 
-  let showCatalogModal = false;
   let showPackModal = false;
   let openedSetId = null;
+
+  function handleOpenSettings() {
+    openScreen(StickerSettingsScreen, {}, { canSwipe: true });
+  }
+
+  function handleOpenCatalog() {
+    openScreen(StickerCatalogScreen, {}, { canSwipe: true });
+  }
 
   let peekSticker = null;
   let peekTimer = null;
 
   let unregPeek = null;
   let unregPack = null;
-  let unregCatalog = null;
 
   $: if (peekSticker) {
     if (!unregPeek) {
@@ -76,24 +84,9 @@
     }
   }
 
-  $: if (showCatalogModal) {
-    if (!unregCatalog) {
-      unregCatalog = registerBackHandler(() => {
-        showCatalogModal = false;
-        return true;
-      });
-    }
-  } else {
-    if (unregCatalog) {
-      unregCatalog();
-      unregCatalog = null;
-    }
-  }
-
   onDestroy(() => {
     if (unregPeek) unregPeek();
     if (unregPack) unregPack();
-    if (unregCatalog) unregCatalog();
     if (manualEmojiScrollTimer) clearTimeout(manualEmojiScrollTimer);
     if (emojiScrollRaf) cancelAnimationFrame(emojiScrollRaf);
   });
@@ -480,60 +473,6 @@
 <svelte:window on:mouseup={endPeek} on:touchend={endPeek} />
 
 <div class="sticker-panel-wrapper">
-  <div class="panel-mode-toggle" on:click={handleModeToggleClick}>
-    <button
-      type="button"
-      class="mode-btn"
-      class:active={activeTab === "emoji"}
-      on:click={() => (activeTab = "emoji")}
-    >
-      <svg
-        class="mode-icon-svg"
-        viewBox="0 0 24 24"
-        width="16"
-        height="16"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="2"
-        stroke-linecap="round"
-        stroke-linejoin="round"
-      >
-        <circle cx="12" cy="12" r="10" />
-        <path d="M8 14s1.5 2 4 2 4-2 4-2" />
-        <line x1="9" y1="9" x2="9.01" y2="9" />
-        <line x1="15" y1="9" x2="15.01" y2="9" />
-      </svg>
-      <span class="mode-text">Эмодзи</span>
-    </button>
-    <button
-      type="button"
-      class="mode-btn"
-      class:active={activeTab === "stickers"}
-      on:click={() => (activeTab = "stickers")}
-    >
-      <svg
-        class="mode-icon-svg"
-        viewBox="0 0 24 24"
-        width="16"
-        height="16"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="2"
-        stroke-linecap="round"
-        stroke-linejoin="round"
-      >
-        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-        <path d="M14 2v6h6" />
-      </svg>
-      <span class="mode-text">Стикеры</span>
-    </button>
-    {#each $pluginTabs as item (item.id)}
-      <div class="plugin-tab-btn-wrap" class:active={isPluginActive(item, activeTab)} data-plugin-tab={item.pluginId || item.id}>
-        {@html item.html}
-      </div>
-    {/each}
-  </div>
-
   {#if activeTab === "emoji"}
     <div class="emoji-view">
       <div class="emoji-tabs-bar" bind:this={emojiTabsBarEl}>
@@ -578,12 +517,7 @@
     <div class="stickers-view">
       <div class="search-bar">
         <div class="search-input-box">
-          <svg class="search-icon" viewBox="0 0 24 24" width="16" height="16">
-            <path
-              fill="currentColor"
-              d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"
-            />
-          </svg>
+          <span class="mask-icon search-icon" style="-webkit-mask-image: url('/icons/search.svg'); mask-image: url('/icons/search.svg'); width: 16px; height: 16px;"></span>
           <input
             type="text"
             placeholder="Поиск по стикерам"
@@ -592,12 +526,7 @@
           />
           {#if query}
             <button type="button" class="clear-btn" on:click={clearSearch}>
-              <svg viewBox="0 0 24 24" width="14" height="14">
-                <path
-                  fill="currentColor"
-                  d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"
-                />
-              </svg>
+              <span class="mask-icon" style="-webkit-mask-image: url('/icons/close.svg'); mask-image: url('/icons/close.svg'); width: 14px; height: 14px;"></span>
             </button>
           {/if}
         </div>
@@ -614,12 +543,7 @@
                 on:click={() => scrollToSection("recents")}
                 title="Недавние"
               >
-                <svg viewBox="0 0 24 24" width="20" height="20">
-                  <path
-                    fill="currentColor"
-                    d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67z"
-                  />
-                </svg>
+                <span class="mask-icon" style="-webkit-mask-image: url('/icons/recent.svg'); mask-image: url('/icons/recent.svg'); width: 20px; height: 20px;"></span>
               </button>
             {/if}
 
@@ -642,17 +566,10 @@
             <button
               type="button"
               class="pack-tab-item add-pack-tab"
-              on:click={() => {
-                showCatalogModal = true;
-              }}
+              on:click={handleOpenCatalog}
               title="Каталог стикеров"
             >
-              <svg viewBox="0 0 24 24" width="20" height="20">
-                <path
-                  fill="currentColor"
-                  d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"
-                />
-              </svg>
+              <span class="mask-icon" style="-webkit-mask-image: url('/icons/plus.svg'); mask-image: url('/icons/plus.svg'); width: 20px; height: 20px;"></span>
             </button>
           </div>
         </div>
@@ -764,17 +681,68 @@
     </div>
   {/if}
 
-  {#if showCatalogModal}
-    <StickerCatalogModal
-      on:close={() => {
-        showCatalogModal = false;
-      }}
-      on:openPack={(e) => {
-        openedSetId = e.detail.setId;
-        showPackModal = true;
-      }}
-    />
-  {/if}
+  <div class="media-keyboard-bottom-panel">
+    <div class="bottom-left-actions">
+      {#if activeTab === "stickers"}
+        <button
+          type="button"
+          class="bottom-action-btn settings-btn"
+          title="Настройки стикеров"
+          on:click={handleOpenSettings}
+        >
+          <span class="mask-icon" style="-webkit-mask-image: url('/icons/settings.svg'); mask-image: url('/icons/settings.svg'); width: 20px; height: 20px;"></span>
+        </button>
+      {/if}
+    </div>
+
+    <div class="bottom-tabs-segmented" on:click={handleModeToggleClick}>
+      <button
+        type="button"
+        class="bottom-tab-pill"
+        class:active={activeTab === "emoji"}
+        on:click={() => (activeTab = "emoji")}
+      >
+        <span>Эмодзи</span>
+      </button>
+
+      <button
+        type="button"
+        class="bottom-tab-pill"
+        class:active={activeTab === "stickers"}
+        on:click={() => (activeTab = "stickers")}
+      >
+        <span>Стикеры</span>
+      </button>
+
+      {#each $pluginTabs as item (item.id)}
+        <div class="plugin-tab-btn-wrap" class:active={isPluginActive(item, activeTab)} data-plugin-tab={item.pluginId || item.id}>
+          {@html item.html}
+        </div>
+      {/each}
+    </div>
+
+    <div class="bottom-right-actions">
+      {#if activeTab === "emoji"}
+        <button
+          type="button"
+          class="bottom-action-btn backspace-btn"
+          title="Удалить"
+          on:click={() => dispatch("backspace")}
+        >
+          <span class="mask-icon" style="-webkit-mask-image: url('/icons/backspace.svg'); mask-image: url('/icons/backspace.svg'); width: 20px; height: 20px;"></span>
+        </button>
+      {:else}
+        <button
+          type="button"
+          class="bottom-action-btn showcase-btn"
+          title="Каталог стикеров"
+          on:click={handleOpenCatalog}
+        >
+          <span class="mask-icon" style="-webkit-mask-image: url('/icons/store.svg'); mask-image: url('/icons/store.svg'); width: 20px; height: 20px;"></span>
+        </button>
+      {/if}
+    </div>
+  </div>
 
   {#if showPackModal && openedSetId}
     <StickerPackModal
@@ -833,97 +801,112 @@
     }
   }
 
-  .panel-mode-toggle {
+  .plugin-tab-view {
+    flex: 1;
+    min-height: 0;
+    height: 100%;
     display: flex;
-    align-items: center;
-    justify-content: safe center;
-    gap: 4px;
-    padding: 4px 8px;
-    min-height: 44px;
-    border-bottom: 1px solid var(--border-card);
-    background: var(--bg-topbar);
+    flex-direction: column;
+    overflow-y: auto;
+    overflow-x: hidden;
     width: 100%;
     box-sizing: border-box;
-    overflow-x: auto;
-    overflow-y: hidden;
-    scrollbar-width: none;
-    scroll-snap-type: x mandatory;
-    overscroll-behavior-x: contain;
-    -webkit-overflow-scrolling: touch;
+  }
+
+  .media-keyboard-bottom-panel {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 48px;
+    min-height: 48px;
+    padding: 0 12px;
+    background: var(--bg-topbar, var(--bg-surface, #1e2025));
+    border-top: 0.5px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
+    width: 100%;
+    box-sizing: border-box;
+    flex-shrink: 0;
+    z-index: var(--z-panel, 10);
+  }
+
+  .bottom-left-actions {
+    display: flex;
+    align-items: center;
+    width: 36px;
     flex-shrink: 0;
   }
 
-  .panel-mode-toggle::-webkit-scrollbar {
-    display: none;
-  }
-
-  @media (min-width: 601px) {
-    .panel-mode-toggle {
-      scrollbar-width: thin;
-      scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
-    }
-
-    .panel-mode-toggle::-webkit-scrollbar {
-      display: block;
-      height: 4px;
-    }
-
-    .panel-mode-toggle::-webkit-scrollbar-track {
-      background: transparent;
-    }
-
-    .panel-mode-toggle::-webkit-scrollbar-thumb {
-      background: rgba(255, 255, 255, 0.2);
-      border-radius: 4px;
-    }
-  }
-
-  .plugin-tab-view {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    min-height: 0;
-    overflow-y: auto;
-  }
-
-  .mode-btn {
+  .bottom-action-btn {
+    width: 28px;
+    height: 28px;
+    padding: 4px;
+    border: none;
+    background: transparent;
+    border-radius: 50%;
+    color: var(--text-muted, #8e8e93);
+    cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 6px;
-    padding: 8px 16px;
-    min-height: 36px;
+    flex-shrink: 0;
+    transition: color 0.15s ease, background-color 0.15s ease, transform 0.1s ease;
+  }
+
+  .bottom-action-btn:hover {
+    color: var(--text-primary, #ffffff);
+    background: rgba(255, 255, 255, 0.08);
+  }
+
+  .bottom-action-btn:active {
+    transform: scale(0.92);
+  }
+
+  .bottom-tabs-segmented {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    align-items: center;
+    gap: 2px;
     background: transparent;
+    padding: 0;
+  }
+
+  .bottom-tab-pill {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 6px 14px;
     border: none;
-    border-radius: 20px;
-    color: var(--text-muted);
+    background: transparent;
+    border-radius: 16px;
+    color: var(--text-secondary, #8e8e93);
     font-size: 14px;
-    font-weight: 600;
+    font-weight: 500;
     cursor: pointer;
     transition: all 0.15s ease;
-    box-sizing: border-box;
-    flex-shrink: 0;
-    scroll-snap-align: start;
     white-space: nowrap;
+  }
+
+  .bottom-tab-pill:hover {
+    color: var(--text-primary, #ffffff);
+  }
+
+  .bottom-tab-pill.active,
+  :global(.plugin-tab-btn-wrap.active .bottom-tab-pill) {
+    background: rgba(255, 255, 255, 0.10);
+    color: var(--text-primary, #ffffff);
   }
 
   .plugin-tab-btn-wrap {
     flex-shrink: 0;
-    scroll-snap-align: start;
   }
 
-  .mode-btn:hover {
-    color: #fff;
-    background: rgba(255, 255, 255, 0.04);
-  }
-
-  .mode-btn.active,
-  :global(.plugin-tab-btn-wrap.active .mode-btn) {
-    color: #fff;
-    background: var(--accent-subtle-hover);
-  }
-
-  .mode-icon-svg {
+  .bottom-right-actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    width: 36px;
     flex-shrink: 0;
   }
 
@@ -937,6 +920,7 @@
   .emoji-tabs-bar {
     display: flex;
     align-items: center;
+    height: 44px;
     padding: 4px 8px;
     overflow-x: auto;
     border-bottom: 1px solid var(--border-card);
@@ -988,7 +972,7 @@
   .emoji-scroll-area {
     flex: 1;
     overflow-y: auto;
-    padding: 12px 16px;
+    padding: 12px 16px 54px 16px;
     display: flex;
     flex-direction: column;
     scrollbar-width: thin;
@@ -1178,7 +1162,7 @@
     flex: 1;
     overflow-y: auto;
     overflow-x: hidden;
-    padding: 10px 8px;
+    padding: 10px 8px 54px 8px;
     width: 100%;
     box-sizing: border-box;
     scrollbar-width: thin;
@@ -1276,7 +1260,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    z-index: 100;
+    z-index: var(--z-viewer, 100);
     animation: peekFadeIn 0.15s ease;
     pointer-events: none;
   }

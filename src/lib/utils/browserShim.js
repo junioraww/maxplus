@@ -332,6 +332,8 @@ export function initBrowserShim() {
         return 0;
       case "batch_decrypt_messages":
         return {};
+      case "get_recent_media":
+        return [];
       default:
         return null;
     }

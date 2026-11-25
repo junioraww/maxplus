@@ -18,6 +18,11 @@ export function registerMount(mountPoint, item) {
   return handle;
 }
 
+if (typeof window !== 'undefined') {
+  window.__mxpRegisterMount = registerMount;
+  window.__mxpUnregisterMount = unregisterMount;
+}
+
 export function unregisterMount(handle) {
   if (!handle) return;
   registry.update(map => {

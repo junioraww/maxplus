@@ -1215,3 +1215,139 @@ pub async fn download_to_path(
     file.flush().await.map_err(|e| e.to_string())?;
     Ok(())
 }
+
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
+pub struct RecentMediaItem {
+    pub path: String,
+    pub name: String,
+    pub size: u64,
+    pub modified: u64,
+    pub is_video: bool,
+    pub mime_type: String,
+}
+
+#[tauri::command]
+pub async fn get_recent_media(
+    limit: Option<usize>,
+) -> Result<Vec<RecentMediaItem>, String> {
+    tokio::task::spawn_blocking(move || {
+        let max_items = limit.unwrap_or(36);
+        let mut candidates = Vec::new();
+
+        if let Some(p) = dirs::picture_dir() {
+            candidates.push(p.clone());
+            candidates.push(p.join("Screenshots"));
+            candidates.push(p.join("Снимки экрана"));
+            candidates.push(p.join("Telegram Desktop"));
+        }
+        if let Some(d) = dirs::download_dir() {
+            candidates.push(d.clone());
+            candidates.push(d.join("Telegram Desktop"));
+        }
+        if let Some(v) = dirs::video_dir() {
+            candidates.push(v);
+        }
+
+        if let Some(home) = dirs::home_dir() {
+            candidates.push(home.join("Pictures"));
+            candidates.push(home.join("Изображения"));
+            candidates.push(home.join("Изображения/Снимки экрана"));
+            candidates.push(home.join("Downloads"));
+            candidates.push(home.join("Загрузки"));
+            candidates.push(home.join("Videos"));
+            candidates.push(home.join("Видео"));
+        }
+
+        let mut all_dirs = Vec::new();
+        for dir in candidates {
+            if !dir.is_dir() {
+                continue;
+            }
+            all_dirs.push(dir.clone());
+            if let Ok(sub_entries) = std::fs::read_dir(&dir) {
+                for sub in sub_entries.flatten() {
+                    let p = sub.path();
+                    let name = p.file_name().and_then(|s| s.to_str()).unwrap_or("");
+                    if p.is_dir() && !name.starts_with('.') && name != "node_modules" && name != "target" {
+                        all_dirs.push(p);
+                    }
+                }
+            }
+        }
+
+        let mut seen_paths = std::collections::HashSet::new();
+        let mut results = Vec::new();
+
+        let image_exts = ["jpg", "jpeg", "png", "webp", "gif", "bmp"];
+        let video_exts = ["mp4", "mov", "webm", "mkv", "avi"];
+
+        for dir in all_dirs {
+            let entries = match std::fs::read_dir(&dir) {
+                Ok(e) => e,
+                Err(_) => continue,
+            };
+
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if !path.is_file() {
+                    continue;
+                }
+
+                let ext = match path.extension().and_then(|s| s.to_str()) {
+                    Some(e) => e.to_lowercase(),
+                    None => continue,
+                };
+
+                let is_image = image_exts.contains(&ext.as_str());
+                let is_video = video_exts.contains(&ext.as_str());
+
+                if !is_image && !is_video {
+                    continue;
+                }
+
+                let path_str = path.to_string_lossy().to_string();
+                if seen_paths.contains(&path_str) {
+                    continue;
+                }
+                seen_paths.insert(path_str.clone());
+
+                let metadata = match entry.metadata() {
+                    Ok(m) => m,
+                    Err(_) => continue,
+                };
+
+                let modified_time = metadata
+                    .modified()
+                    .ok()
+                    .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                    .map(|d| d.as_secs())
+                    .unwrap_or(0);
+
+                let file_name = path
+                    .file_name()
+                    .map(|s| s.to_string_lossy().to_string())
+                    .unwrap_or_else(|| "file".to_string());
+
+                let mime_type = mime_guess::from_path(&path)
+                    .first_or_octet_stream()
+                    .to_string();
+
+                results.push(RecentMediaItem {
+                    path: path_str,
+                    name: file_name,
+                    size: metadata.len(),
+                    modified: modified_time,
+                    is_video,
+                    mime_type,
+                });
+            }
+        }
+
+        results.sort_by(|a, b| b.modified.cmp(&a.modified));
+        results.truncate(max_items);
+
+        Ok(results)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}

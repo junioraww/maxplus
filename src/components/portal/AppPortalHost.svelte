@@ -129,9 +129,11 @@
         ? 4
         : layer.type === "dialog"
         ? 6
+        : layer.type === "dropout"
+        ? 15
         : layer.type === "viewer"
-        ? 8
-        : 9;
+        ? 20
+        : 25;
     return `calc(var(--z-modal) + ${idx * 10 + offset})`;
   }
 
@@ -158,17 +160,22 @@
   function onScreenPointerDown(e, layer) {
     if ((layer.type !== "screen" && layer.type !== "drawer") || layer.isClosing || layer.options?.canSwipe === false) return;
     if (e.pointerType === "mouse" && e.button !== 0) return;
-    if (isInteractiveElement(e.target)) return;
 
+    const winWidth = typeof window !== "undefined" ? window.innerWidth : 380;
     const targetRect = e.currentTarget.getBoundingClientRect();
-    const isEdge = (e.clientX - targetRect.left) <= Math.min(targetRect.width * 0.35, 140);
-    const isHeader = Boolean(e.target.closest(".settings-topbar, .toolbar, .top-nav, header, .tg-topbar, .settings-header"));
+    const edgeThreshold = Math.max(88, winWidth * 0.22);
+    const isEdge = (e.clientX - targetRect.left) <= edgeThreshold;
+    const isHeader = Boolean(e.target.closest("header, [class*='topbar'], [class*='toolbar'], [class*='header'], .nav-bar, .settings-topbar, .toolbar, .top-nav, .tg-topbar, .settings-header"));
 
     if (!isEdge && !isHeader) return;
 
-    try {
-      e.currentTarget.setPointerCapture(e.pointerId);
-    } catch {}
+    if (isHeader && !isEdge && Boolean(e.target.closest("button, a, input, select, textarea, [role='button']"))) {
+      return;
+    }
+
+    if (isEdge && Boolean(e.target.closest("input, select, textarea"))) {
+      return;
+    }
 
     swipeStartX = e.clientX;
     swipeStartY = e.clientY;
@@ -185,9 +192,12 @@
     const dy = e.clientY - swipeStartY;
 
     if (!isSwiping) {
-      if (dx > 7 && dx > Math.abs(dy) * 0.85) {
+      if (dx > 7 && dx > Math.abs(dy) * 0.75) {
         isSwiping = true;
-      } else if (Math.abs(dy) > 28 && Math.abs(dy) > dx * 1.5) {
+        try {
+          e.currentTarget.setPointerCapture(e.pointerId);
+        } catch {}
+      } else if (Math.abs(dy) > 38 || dx < -14) {
         activeSwipeLayerId = null;
         return;
       }
@@ -248,7 +258,7 @@
     if (isInteractiveElement(e.target)) return;
 
     const target = e.target;
-    const isHandle = target.closest(".bottom-sheet-handle, .drag-pill, .sheet-header, .bottom-sheet-header, .sheet-drag-handle, .modal-header");
+    const isHandle = target.closest(".bottom-sheet-handle, .drag-pill, .sheet-header, .bottom-sheet-header, .sheet-drag-handle, .modal-header, .sheet-handle");
     const scrollParent = target.closest(".bottom-sheet-content, .scrollable, .sheet-content, .modal-content");
     const isAtTop = !scrollParent || scrollParent.scrollTop <= 0;
 
@@ -320,6 +330,7 @@
   }
 
   function onTransitionEnd(e, layer) {
+    if (e && e.target !== e.currentTarget) return;
     if (layer.isClosing) {
       finalizeLayer(layer.id, layer.result);
     }
@@ -363,13 +374,14 @@
           class:layer-no-anim={layer.options?.noAnimation}
           class:swiping={activeSwipeLayerId === layer.id && isSwiping}
           inert={isDormant || layer.isClosing ? true : null}
-          style="z-index: {getLayerZIndex(layer, idx)}; {activeSwipeLayerId === layer.id && isSwiping ? `transform: translate3d(${swipeOffsetX}px, 0, 0); opacity: ${isFinishingSwipe && swipeOffsetX > 0 ? 0 : Math.max(0, 1 - (swipeOffsetX / (typeof window !== 'undefined' ? window.innerWidth : 380)) * 0.9)}; ${isFinishingSwipe ? 'transition: transform 210ms cubic-bezier(0.15, 0.9, 0.25, 1), opacity 210ms ease;' : 'transition: none;'}` : isDirectlyUnderSwiping ? `transform: translate3d(${-28 + (swipeOffsetX / (typeof window !== 'undefined' ? window.innerWidth : 380)) * 28}px, 0, 0); opacity: ${0.4 + (swipeOffsetX / (typeof window !== 'undefined' ? window.innerWidth : 380)) * 0.6}; visibility: visible; ${isFinishingSwipe ? 'transition: transform 210ms cubic-bezier(0.15, 0.9, 0.25, 1), opacity 210ms ease;' : 'transition: none;'}` : ''}"
+          style="z-index: {getLayerZIndex(layer, idx)}; {activeSwipeLayerId === layer.id && isSwiping ? `transform: translate3d(${swipeOffsetX}px, 0, 0); opacity: ${isFinishingSwipe && swipeOffsetX > 0 ? 0 : Math.max(0, 1 - (swipeOffsetX / (typeof window !== 'undefined' ? window.innerWidth : 380)) * 0.9)}; ${isFinishingSwipe ? 'transition: transform 210ms cubic-bezier(0.15, 0.9, 0.25, 1), opacity 210ms ease;' : 'transition: none;'}` : isDirectlyUnderSwiping ? `transform: translate3d(${-14 + (swipeOffsetX / (typeof window !== 'undefined' ? window.innerWidth : 380)) * 14}px, 0, 0); opacity: 1; visibility: visible; ${isFinishingSwipe ? 'transition: transform 210ms cubic-bezier(0.15, 0.9, 0.25, 1);' : 'transition: none;'}` : ''}"
           on:pointerdown={(e) => onScreenPointerDown(e, layer)}
           on:pointermove={(e) => onScreenPointerMove(e, layer)}
           on:pointerup={(e) => onScreenPointerUp(e, layer)}
           on:pointercancel={(e) => onScreenPointerUp(e, layer)}
           on:transitionend={(e) => onTransitionEnd(e, layer)}
           on:animationend={(e) => {
+            if (e.target !== e.currentTarget) return;
             markEntered(layer.id);
             onTransitionEnd(e, layer);
           }}
@@ -599,7 +611,7 @@
     animation: none;
   }
 
-  .portal-layer-screen > :global(*) {
+  .portal-layer-screen > :global(*:not(.profile-toast):not(.toast-popup):not(.tg-toast):not(.toast-notification)) {
     width: 100%;
     height: 100%;
   }
@@ -609,7 +621,7 @@
   }
 
   .portal-layer-screen.layer-dormant {
-    transform: translate3d(-30px, 0, 0);
+    transform: translate3d(-14px, 0, 0);
     pointer-events: none;
   }
 

@@ -46,12 +46,12 @@
     left: 8px;
     right: 8px;
     max-width: 600px;
-    background: #1e2025;
-    border: none;
-    border-radius: 14px;
+    background: var(--bg-surface, #1e2025);
+    border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
+    border-radius: var(--oneme-card-radius, 16px);
     padding: 6px 10px 8px;
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
-    z-index: 50;
+    z-index: var(--z-dropdown, 6);
     display: flex;
     flex-direction: column;
     gap: 4px;

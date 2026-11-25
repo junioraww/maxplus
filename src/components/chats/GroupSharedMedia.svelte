@@ -860,15 +860,19 @@
   .shared-media-block {
     display: flex;
     flex-direction: column;
-    margin-top: 10px;
+    margin-top: 6px;
+    width: 100%;
+    min-height: 100%;
+    box-sizing: border-box;
   }
 
   .media-tabs-bar {
     display: flex;
     gap: 4px;
-    background: rgba(0, 0, 0, 0.22);
+    background: var(--bg-surface-elevated, #24252b);
+    border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.06));
     padding: 3px;
-    border-radius: 10px;
+    border-radius: 12px;
     margin-bottom: 12px;
   }
 
@@ -876,18 +880,19 @@
     flex: 1;
     background: none;
     border: none;
-    color: #8b98a5;
+    color: var(--text-secondary, #8b929e);
     font-size: 13px;
     font-weight: 500;
-    padding: 7px 8px;
-    border-radius: 7px;
+    padding: 8px 10px;
+    border-radius: 9px;
     cursor: pointer;
-    transition: 0.15s;
+    transition: background 0.15s, color 0.15s;
+    text-align: center;
   }
 
   .media-tab-btn.active {
-    background: rgba(255, 255, 255, 0.12);
-    color: #fff;
+    background: var(--accent-primary, #248bfe);
+    color: #ffffff;
     font-weight: 600;
   }
 
@@ -897,28 +902,27 @@
   }
 
   .media-group-header {
-    font-size: 12px;
+    font-size: 13px;
     font-weight: 600;
-    color: #8b98a5;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    padding: 8px 4px 6px;
-    margin-top: 6px;
+    color: var(--text-secondary, #8b929e);
+    letter-spacing: 0.2px;
+    padding: 10px 4px 6px;
+    margin-top: 4px;
   }
 
   .media-grid {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
-    gap: 4px;
+    gap: 3px;
     margin-bottom: 8px;
   }
 
   .media-tile {
     position: relative;
     aspect-ratio: 1;
-    border-radius: 8px;
+    border-radius: 4px;
     overflow: hidden;
-    background: rgba(0, 0, 0, 0.3);
+    background: var(--bg-surface-elevated, rgba(0, 0, 0, 0.3));
     cursor: pointer;
   }
 
@@ -996,8 +1000,9 @@
     display: flex;
     flex-direction: column;
     gap: 2px;
-    background: rgba(0, 0, 0, 0.15);
-    border-radius: 12px;
+    background: var(--bg-surface-elevated, #24252b);
+    border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.06));
+    border-radius: var(--oneme-card-radius, 16px);
     overflow: hidden;
     margin-bottom: 8px;
   }
@@ -1018,9 +1023,9 @@
   .icon-bubble {
     width: 36px;
     height: 36px;
-    border-radius: 9px;
-    background: rgba(43, 130, 246, 0.12);
-    color: #3b82f6;
+    border-radius: 10px;
+    background: var(--accent-subtle, rgba(36, 139, 254, 0.12));
+    color: var(--accent-primary, #248bfe);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -1035,9 +1040,9 @@
   }
 
   .row-title {
-    font-size: 13.5px;
+    font-size: 14px;
     font-weight: 500;
-    color: #f1f5f9;
+    color: var(--text-primary, #ffffff);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -1045,11 +1050,11 @@
 
   .row-meta {
     font-size: 12px;
-    color: #8b98a5;
+    color: var(--text-secondary, #8b929e);
   }
 
   .row-enc-badge {
-    color: #60a5fa;
+    color: var(--accent-primary, #248bfe);
     display: flex;
     align-items: center;
     margin-left: 6px;
@@ -1058,32 +1063,32 @@
   .media-empty {
     padding: 32px 16px;
     text-align: center;
-    color: #64748b;
+    color: var(--text-secondary, #8b929e);
     font-size: 13px;
   }
 
   .loading-bar {
     padding: 16px;
     text-align: center;
-    color: #8b98a5;
+    color: var(--text-secondary, #8b929e);
     font-size: 13px;
   }
 
   .btn-more {
     margin: 10px auto;
-    background: rgba(255, 255, 255, 0.06);
+    background: var(--accent-subtle, rgba(36, 139, 254, 0.12));
     border: none;
-    color: #3b82f6;
+    color: var(--accent-primary, #248bfe);
     font-size: 13px;
-    font-weight: 500;
-    padding: 8px 16px;
-    border-radius: 8px;
+    font-weight: 600;
+    padding: 8px 18px;
+    border-radius: 10px;
     cursor: pointer;
     transition: background 0.15s;
   }
 
   .btn-more:hover {
-    background: rgba(255, 255, 255, 0.12);
+    background: var(--accent-subtle-hover, rgba(36, 139, 254, 0.22));
   }
 
   .scroll-sentinel {

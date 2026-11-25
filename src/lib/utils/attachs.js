@@ -92,9 +92,13 @@ export function getSystemText(msg, html = true) {
   const attaches = Array.isArray(msg.attaches) ? msg.attaches : [];
   const control = attaches.find((x) => x._type === "CONTROL");
   if (!control) {
+    if (msg.type === "SYSTEM" && msg.text) {
+      return html ? escapeHtml(msg.text) : msg.text;
+    }
     return null;
   }
 
+  const wrapUser = (val, id) => (html ? `<b class="user-link" data-user-id="${id || ''}">${escapeHtml(val)}</b>` : val);
   const wrap = (val) => (html ? `<b>${escapeHtml(val)}</b>` : val);
   const esc = (val) => (html ? escapeHtml(val) : val);
 
@@ -111,7 +115,7 @@ export function getSystemText(msg, html = true) {
       ids = [control.userId];
     }
     if (!ids.length) return "";
-    return ids.map((id) => getUserName(id)).join(", ");
+    return ids.map((id) => wrapUser(getUserName(id), id)).join(", ");
   };
 
   switch (event) {
@@ -119,61 +123,65 @@ export function getSystemText(msg, html = true) {
       const targets = getTargetNames();
       if (targets) {
         return isMe
-          ? `Вы добавили ${wrap(targets)}`
-          : `${wrap(senderName)} добавил(а) ${wrap(targets)}`;
+          ? `Вы добавили ${targets}`
+          : `${wrapUser(senderName, senderId)} добавил(-а) ${targets}`;
       }
       return isMe
         ? "Вы добавили нового участника"
-        : `${wrap(senderName)} добавил(а) нового участника`;
+        : `${wrapUser(senderName, senderId)} добавил(-а) нового участника`;
     }
     case "remove":
     case "kick": {
       const targets = getTargetNames();
       if (targets) {
         return isMe
-          ? `Вы исключили ${wrap(targets)}`
-          : `${wrap(senderName)} исключил(а) ${wrap(targets)}`;
+          ? `Вы исключили ${targets}`
+          : `${wrapUser(senderName, senderId)} исключил(-а) ${targets}`;
       }
       return isMe
         ? "Вы исключили участника"
-        : `${wrap(senderName)} исключил(а) участника`;
+        : `${wrapUser(senderName, senderId)} исключил(-а) участника`;
     }
     case "leave": {
       return isMe
         ? "Вы покинули чат"
-        : `${wrap(senderName)} покинул(а) чат`;
+        : `${wrapUser(senderName, senderId)} покинул(-а) чат`;
     }
     case "joinByLink": {
       return isMe
         ? "Вы присоединились к чату по ссылке"
-        : `${wrap(senderName)} присоединился(-ась) к чату по ссылке`;
+        : `${wrapUser(senderName, senderId)} присоединился(-ась) к чату по ссылке`;
     }
     case "pin": {
       return isMe
         ? "Вы закрепили сообщение"
-        : `${wrap(senderName)} закрепил(а) сообщение`;
+        : `${wrapUser(senderName, senderId)} закрепил(-а) сообщение`;
     }
     case "botStarted": {
       return isMe
         ? "Вы запустили бота"
-        : `${wrap(senderName)} запустил(а) бота`;
+        : `${wrapUser(senderName, senderId)} запустил(-а) бота`;
     }
     case "new": {
-      const title = control.title ? ` ${wrap(control.title)}` : "";
       return isMe
-        ? `Вы создали чат${title}`
-        : `${wrap(senderName)} создал(а) чат${title}`;
+        ? "Вы создали чат"
+        : `${wrapUser(senderName, senderId)} создал(-а) чат`;
     }
     case "icon": {
       return isMe
-        ? "Вы обновили фото чата"
-        : `${wrap(senderName)} обновил(а) фото чата`;
+        ? "Вы изменили фото чата"
+        : `${wrapUser(senderName, senderId)} изменил(-а) фото чата`;
     }
     case "title": {
       const title = control.title ? ` на ${wrap(control.title)}` : "";
       return isMe
         ? `Вы изменили название чата${title}`
-        : `${wrap(senderName)} изменил(а) название чата${title}`;
+        : `${wrapUser(senderName, senderId)} изменил(-а) название чата${title}`;
+    }
+    case "hello": {
+      return isMe
+        ? "Вы поприветствовали участников"
+        : `${wrapUser(senderName, senderId)} приветствует участников`;
     }
     case "system": {
       if (control.message) return esc(control.message);

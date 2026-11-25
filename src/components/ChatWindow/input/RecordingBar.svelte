@@ -179,12 +179,12 @@
     border-radius: 50%;
     background: rgba(255, 255, 255, 0.08);
     color: #94a3b8;
-    transition: all 0.2s ease;
+    transition: all 0.2s var(--motion-curve, cubic-bezier(0.25, 0.1, 0.25, 1.0));
     flex-shrink: 0;
   }
 
   .rec-lock-slide.reached {
-    background: #248bfe;
+    background: var(--accent-primary, #248bfe);
     color: #fff;
   }
 

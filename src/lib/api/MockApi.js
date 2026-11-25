@@ -334,7 +334,7 @@ export default class MockApi extends BaseAPI {
     return this.getMessages(chatId, from_time, 0, forward);
   }
 
-  async sendMessage(message, chatId) {
+  async sendMessage(message, chatId, params = {}) {
     if (!this.messages[chatId]) {
       this.messages[chatId] = [];
     }
@@ -347,7 +347,7 @@ export default class MockApi extends BaseAPI {
       text: typeof message === "string" ? message : (message?.text || ""),
       time: Date.now(),
       status: 1,
-      attaches: message?.attaches || [],
+      attaches: (typeof message === "object" && Array.isArray(message?.attaches) ? message.attaches : null) || params?.attaches || [],
       history: [],
     };
 
@@ -745,5 +745,15 @@ export default class MockApi extends BaseAPI {
     const list = this.mockStories.get(this.currentUserId) || [];
     this.mockStories.set(this.currentUserId, [newStory, ...list]);
     return { stories: [newStory] };
+  }
+
+  async getChat(chatId) {
+    const rawId = Number(typeof chatId === "object" && chatId !== null ? chatId.id : chatId);
+    const chat = this.chats.find((c) => Number(c.id) === rawId);
+    return { chats: chat ? [chat] : [] };
+  }
+
+  async getFileById(chatId, messageId, fileId) {
+    return "";
   }
 }

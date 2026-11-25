@@ -114,7 +114,7 @@
 </script>
 
 <div class="video-review-circle-wrap" transition:scale={{ duration: 220, start: 0.85 }}>
-  <svg class="review-progress-ring" width={ringSize} height={ringSize} style="position:absolute;top:0;left:0;z-index:10;transform:rotate(-90deg);pointer-events:none;">
+  <svg class="review-progress-ring" width={ringSize} height={ringSize} style="position:absolute;top:0;left:0;z-index:var(--z-panel, 2);transform:rotate(-90deg);pointer-events:none;">
     <circle cx={ringSize/2} cy={ringSize/2} r={ringRadius} stroke="rgba(255,255,255,0.15)" stroke-width={ringStroke} fill="none" />
     <circle cx={ringSize/2} cy={ringSize/2} r={ringRadius} stroke="#38bdf8" stroke-width={ringStroke} fill="none"
       stroke-linecap="round"
@@ -212,7 +212,7 @@
     transform: translateX(-50%);
     width: 200px;
     height: 200px;
-    z-index: 50;
+    z-index: var(--z-floating, 5);
     display: flex;
     align-items: center;
     justify-content: center;
