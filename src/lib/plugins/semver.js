@@ -1,14 +1,45 @@
 function parseVersion(v) {
-  const parts = String(v || '0').split('.').map(Number);
-  return [parts[0] || 0, parts[1] || 0, parts[2] || 0];
+  const clean = String(v || '0').trim().replace(/^v/i, '').split('+')[0];
+  const dashIdx = clean.indexOf('-');
+  const coreStr = dashIdx === -1 ? clean : clean.slice(0, dashIdx);
+  const preStr = dashIdx === -1 ? '' : clean.slice(dashIdx + 1);
+
+  const coreParts = coreStr.split('.').map((p) => parseInt(p, 10) || 0);
+  const pre = preStr
+    ? preStr.split('.').map((p) => (/^\d+$/.test(p) ? Number(p) : p.toLowerCase()))
+    : [];
+
+  return {
+    core: [coreParts[0] || 0, coreParts[1] || 0, coreParts[2] || 0],
+    pre,
+  };
 }
 
 function compareVersions(a, b) {
-  const [a0, a1, a2] = parseVersion(a);
-  const [b0, b1, b2] = parseVersion(b);
-  if (a0 !== b0) return a0 - b0;
-  if (a1 !== b1) return a1 - b1;
-  return a2 - b2;
+  const pa = parseVersion(a);
+  const pb = parseVersion(b);
+
+  for (let i = 0; i < 3; i++) {
+    if (pa.core[i] !== pb.core[i]) return pa.core[i] - pb.core[i];
+  }
+
+  if (pa.pre.length === 0 && pb.pre.length === 0) return 0;
+  if (pa.pre.length > 0 && pb.pre.length === 0) return -1;
+  if (pa.pre.length === 0 && pb.pre.length > 0) return 1;
+
+  const len = Math.min(pa.pre.length, pb.pre.length);
+  for (let i = 0; i < len; i++) {
+    const sa = pa.pre[i];
+    const sb = pb.pre[i];
+    if (sa === sb) continue;
+    const na = typeof sa === 'number';
+    const nb = typeof sb === 'number';
+    if (na && nb) return sa - sb;
+    if (na !== nb) return na ? -1 : 1;
+    return sa < sb ? -1 : 1;
+  }
+
+  return pa.pre.length - pb.pre.length;
 }
 
 export function satisfies(appVersion, minVersion, maxVersion) {

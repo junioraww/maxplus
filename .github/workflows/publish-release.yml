@@ -19,6 +19,15 @@ on:
         description: 'Optional comma-separated Run ID(s) to download from manually instead of auto-discovery'
         required: false
         type: string
+      prerelease:
+        description: 'Pre-release mode (auto detects -alpha/-beta/-rc in tag)'
+        required: false
+        default: 'auto'
+        type: choice
+        options:
+          - auto
+          - 'true'
+          - 'false'
 
 jobs:
   publish:
@@ -140,13 +149,19 @@ jobs:
       - name: Publish Release to Web
         env:
           CI_SECRET: ${{ secrets.SITE_CI_SECRET }}
+          PRERELEASE_MODE: ${{ inputs.prerelease || 'auto' }}
         run: |
-          echo "Initializing release tag: $TAG ($TITLE)"
+          echo "Initializing release tag: $TAG ($TITLE, prerelease=$PRERELEASE_MODE)"
+          EXTRA_ARGS=()
+          if [ "$PRERELEASE_MODE" = "true" ] || [ "$PRERELEASE_MODE" = "false" ]; then
+            EXTRA_ARGS+=(-F "is_prerelease=$PRERELEASE_MODE")
+          fi
           curl -sS --fail-with-body -X POST "$CI_ENDPOINT" \
             -H "X-CI-Secret: $CI_SECRET" \
             -F "tag_name=$TAG" \
             -F "name=$TITLE" \
-            -F "body=$NOTES"
+            -F "body=$NOTES" \
+            "${EXTRA_ARGS[@]}"
 
           for file in release_assets/*; do
             if [ -f "$file" ]; then
