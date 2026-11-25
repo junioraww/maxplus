@@ -119,6 +119,7 @@ pub fn run() {
         .plugin(tauri_plugin_os::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_biometry::init())
+        .plugin(tauri_plugin_addressbook::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(CamouflageBootPlugin::default());
 
@@ -285,6 +286,7 @@ pub fn run() {
             commands::fetch_history,
             commands::get_by_phone,
             commands::add_contact,
+            commands::import_phonebook_contacts,
             commands::remove_contact,
             commands::get_contact_photos,
             commands::remove_contact_photo,

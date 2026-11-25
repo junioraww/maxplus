@@ -282,6 +282,11 @@ export async function openStartConversation() {
   return openScreen(mod.default || mod);
 }
 
+export async function openContactsImport(props = {}) {
+  const mod = await import("$components/contacts/ContactsImportScreen.svelte");
+  return openScreen(mod.default || mod, props);
+}
+
 let contactsLayerId = null;
 export async function openContactsModal() {
   const mod = await import("$components/main/ContactsModal.svelte");

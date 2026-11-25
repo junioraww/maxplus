@@ -18,6 +18,7 @@ const DEFAULTS = {
   stickersAutoPlay: true,
   reducedMotion: false,
   language: "ru",
+  contactsImportPromptedByAccount: {},
 };
 
 export const clientSettings = writable({ ...DEFAULTS });

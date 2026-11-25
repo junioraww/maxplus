@@ -19,8 +19,13 @@
   import { panelSlider } from "$lib/utils/panelSlider";
 
   import * as Caching from "$lib/utils/caching";
-  import Session, { openChat } from "$lib/stores/session";
+  import Session, { openChat, openContactsImport } from "$lib/stores/session";
   import { currentUser } from "$lib/stores/api";
+  import {
+    hasPromptedAddressBook,
+    isMobileAddressBookSupported,
+    markAddressBookPrompted,
+  } from "$lib/services/addressBook";
   import { getCurrentAccount, getAccounts, setCurrentAccount } from "$lib/stores/accounts";
   import { openLockScreen } from "$lib/stores/lockScreen";
   import { page } from "$app/stores";
@@ -186,6 +191,24 @@
     }
     return set;
   })();
+
+  let checkedAddressBookForUser = null;
+
+  $: if ($currentUser && checkedAddressBookForUser !== $currentUser) {
+    checkedAddressBookForUser = $currentUser;
+    maybePromptAddressBook($currentUser);
+  }
+
+  async function maybePromptAddressBook(accountId) {
+    try {
+      const supported = await isMobileAddressBookSupported();
+      if (!supported) return;
+      const alreadyPrompted = await hasPromptedAddressBook(accountId);
+      if (alreadyPrompted) return;
+      await markAddressBookPrompted(accountId);
+      await openContactsImport();
+    } catch {}
+  }
 
   onMount(() => {
     const cleanupNav = setPanelNavigation({
