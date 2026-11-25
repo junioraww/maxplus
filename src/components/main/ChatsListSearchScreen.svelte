@@ -177,8 +177,30 @@
     handleClose();
   }
 
-  function openFoundChat(id) {
-    openChat(id);
+  function escapeRegex(str) {
+    return String(str).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  }
+
+  function formatHighlight(text, hl) {
+    const safeText = escapeHtml(text || "");
+    if (!hl) return safeText;
+    try {
+      return safeText.replace(new RegExp(escapeRegex(hl), "gi"), (m) => `<b>${m}</b>`);
+    } catch {
+      return safeText;
+    }
+  }
+
+  function openFoundChat(id, msg = null) {
+    if (msg && (msg.id != null || msg.time != null)) {
+      openChat(id, {
+        messageId: msg.id,
+        time: msg.time,
+        highlightQuery: searchQuery.trim(),
+      });
+    } else {
+      openChat(id);
+    }
     handleClose();
   }
 </script>
@@ -284,11 +306,9 @@
               {chat}
               replace={{
                 message: item.message,
-                text: hl
-                  ? escapeHtml(item.message.text).replace(new RegExp(hl, "gi"), `<b>${hl}</b>`)
-                  : escapeHtml(item.message.text),
+                text: formatHighlight(item.message.text, hl),
               }}
-              on:open={() => openFoundChat(item.chatId)}
+              on:open={() => openFoundChat(item.chatId, item.message)}
             />
           {/if}
         {/each}

@@ -325,53 +325,91 @@ export function createVirtualScrollManager() {
   let lastStartIdx = -1;
   let lastEndIdx = -1;
   let lastMessagesCount = -1;
+  let lastFirstId = null;
+  let lastLastId = null;
   let cachedVisible = {};
+
+  function findWrapperIndexByOffset(wrappers, targetY) {
+    let lo = 0;
+    let hi = wrappers.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      const el = wrappers[mid];
+      if (el.offsetTop + el.offsetHeight < targetY) {
+        lo = mid + 1;
+      } else {
+        hi = mid;
+      }
+    }
+    return lo;
+  }
 
   function calculateVisibleMessages({ scrollElement, messagesList = [], dateSeparatorsMap = null }) {
     if (!scrollElement || !messagesList.length) return {};
     activeScrollElement = scrollElement;
     const clientWidth = scrollElement.clientWidth || 800;
+    if (dateSeparatorsMap) currentDateSeparators = dateSeparatorsMap;
 
-    if (cumulativeHeights.length !== messagesList.length) {
-      computeCumulativeHeights(messagesList, clientWidth, dateSeparatorsMap);
-    } else {
-      applyPendingHeights(messagesList, clientWidth);
+    for (let i = 0; i < messagesList.length; i++) {
+      const msg = messagesList[i];
+      if (msg?.id != null) msgMap.set(String(msg.id), msg);
     }
 
-    const { scrollTop, clientHeight } = scrollElement;
-    const totalHeight = cumulativeHeights.length ? cumulativeHeights[cumulativeHeights.length - 1] : 0;
-    if (totalHeight === 0) {
-      return {};
+    const wrappers = scrollElement.getElementsByClassName("message-wrapper");
+    const count = Math.min(wrappers.length, messagesList.length);
+    if (count === 0) {
+      // Fallback before initial DOM wrappers exist
+      const end = messagesList.length - 1;
+      const start = Math.max(0, end - 30);
+      const initial = {};
+      for (let i = start; i <= end; i++) {
+        initial[messagesList[i].id] = true;
+      }
+      cachedVisible = initial;
+      lastStartIdx = start;
+      lastEndIdx = end;
+      lastMessagesCount = messagesList.length;
+      return initial;
     }
 
-    const isNearBottom = totalHeight - scrollTop - clientHeight < 50;
-    let startIdx;
-    let endIdx;
+    const { scrollTop, clientHeight, scrollHeight } = scrollElement;
+    const viewTop = Math.max(0, scrollTop - OVERSCAN);
+    const viewBottom = Math.min(scrollHeight, scrollTop + clientHeight + OVERSCAN);
 
-    if (isNearBottom) {
-      const targetOffset = Math.max(0, totalHeight - clientHeight - OVERSCAN);
-      startIdx = findIndexByOffset(targetOffset);
-      endIdx = messagesList.length - 1;
-    } else {
-      const viewTop = Math.max(0, scrollTop - OVERSCAN);
-      const viewBottom = scrollTop + clientHeight + OVERSCAN;
-      startIdx = findIndexByOffset(viewTop);
-      endIdx = findIndexByOffset(viewBottom);
-      endIdx = Math.min(endIdx, messagesList.length - 1);
-      if (startIdx > endIdx) endIdx = startIdx;
+    let startIdx = findWrapperIndexByOffset(wrappers, viewTop);
+    let endIdx = findWrapperIndexByOffset(wrappers, viewBottom);
+
+    if (startIdx >= count) startIdx = Math.max(0, count - 1);
+    endIdx = Math.min(count - 1, Math.max(startIdx, endIdx));
+
+    // If near bottom, always include up to the last message
+    if (scrollHeight - scrollTop - clientHeight < 120) {
+      endIdx = count - 1;
     }
 
-    if (startIdx === lastStartIdx && endIdx === lastEndIdx && messagesList.length === lastMessagesCount) {
+    const firstId = messagesList[0]?.id ?? null;
+    const lastId = messagesList[messagesList.length - 1]?.id ?? null;
+
+    if (
+      startIdx === lastStartIdx &&
+      endIdx === lastEndIdx &&
+      messagesList.length === lastMessagesCount &&
+      firstId === lastFirstId &&
+      lastId === lastLastId
+    ) {
       return cachedVisible;
     }
 
     lastStartIdx = startIdx;
     lastEndIdx = endIdx;
     lastMessagesCount = messagesList.length;
+    lastFirstId = firstId;
+    lastLastId = lastId;
 
     const newVisible = {};
-    for (let i = startIdx; i <= endIdx && i < messagesList.length; i++) {
-      newVisible[messagesList[i].id] = true;
+    for (let i = startIdx; i <= endIdx; i++) {
+      const id = messagesList[i]?.id;
+      if (id != null) newVisible[id] = true;
     }
     cachedVisible = newVisible;
     return newVisible;

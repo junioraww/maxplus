@@ -105,7 +105,8 @@ export async function checkForEncryptionRequest(
   chatSettings,
   decryptedBatch,
   newMessages = [],
-  decodedMessagesStore = null
+  decodedMessagesStore = null,
+  allMessages = []
 ) {
   if (!chat || !decryptedBatch || chat.type === "CHAT") return null;
 
@@ -145,6 +146,26 @@ export async function checkForEncryptionRequest(
     Number(account?.id),
     Number(account?.contact?.id),
   ].filter((n) => !isNaN(n) && n > 0));
+
+  let latestMyMessageTime = 0;
+  const combinedForMyCheck = Array.isArray(allMessages) && allMessages.length > 0
+    ? [...allMessages, ...newMessages]
+    : newMessages;
+  for (const m of combinedForMyCheck) {
+    if (!m || m.deleted) continue;
+    const sId = Number(m.sender?.id || m.sender);
+    if (myIds.has(sId)) {
+      const t = Number(m.time || m.created_at || 0);
+      if (t > latestMyMessageTime) latestMyMessageTime = t;
+    }
+  }
+  if (chat?.lastMessage && !chat.lastMessage.deleted) {
+    const lastSender = Number(chat.lastMessage.sender?.id || chat.lastMessage.sender);
+    if (myIds.has(lastSender)) {
+      const t = Number(chat.lastMessage.time || chat.lastMessage.created_at || 0);
+      if (t > latestMyMessageTime) latestMyMessageTime = t;
+    }
+  }
 
   const recipientMessages = newMessages
     .filter((msg) => {
@@ -257,8 +278,12 @@ export async function checkForEncryptionRequest(
         continue;
       }
 
+      const msgTime = Number(msg.time || msg.created_at || 0);
+      if (!isSavedMessagesChat && latestMyMessageTime > 0 && (!msgTime || msgTime <= latestMyMessageTime)) {
+        continue;
+      }
+
       if (isSessionActive) {
-        const msgTime = Number(msg.time || msg.created_at || 0);
         if (!msgTime || !establishedAt || msgTime <= establishedAt) {
           continue;
         }

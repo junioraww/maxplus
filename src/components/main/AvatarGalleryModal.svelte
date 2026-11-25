@@ -909,7 +909,7 @@
     if (movedDist > 6) {
       wasGestureMoved = true;
       if (!dragAxis && scale <= 1.02) {
-        dragAxis = Math.abs(dx) > Math.abs(dy) * 1.1 ? "x" : "y";
+        dragAxis = (items.length > 1 && Math.abs(dx) > Math.abs(dy) * 1.1) ? "x" : "y";
       }
     }
 
@@ -922,10 +922,15 @@
     }
 
     if (scale <= 1.02 && dragAxis === "y") {
-      x = dx * 0.35;
+      slideOffset = 0;
+      x = 0;
       y = dy;
       const progress = Math.min(Math.abs(y) / (window.innerHeight * 0.45), 1);
       backdropOpacity = Math.max(0.2, 1 - progress * 0.75);
+      return;
+    }
+
+    if (scale <= 1.02) {
       return;
     }
 

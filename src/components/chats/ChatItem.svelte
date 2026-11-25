@@ -126,14 +126,20 @@
     const hang = (callAttach.hangupType || "").toUpperCase();
     const isMissed = hang === "MISSED" || hang === "CANCELED" || hang === "REJECTED";
     const isVideo = Boolean(callAttach.video || callAttach.isVideo);
-    const durationSec = callAttach.duration || 0;
+    const rawDur = Number(callAttach.duration || 0);
+    const durationSec = rawDur > 0 ? Math.max(1, Math.round(rawDur / 1000)) : 0;
     let label = isMissed 
       ? (isVideo ? "Пропущенный видеозвонок" : "Пропущенный") 
       : (hang === "CANCELED" ? "Отменённый" : "Звонок");
     if (!isMissed && durationSec > 0) {
-      const mins = Math.floor(durationSec / 60);
+      const h = Math.floor(durationSec / 3600);
+      const mins = Math.floor((durationSec % 3600) / 60);
       const secs = durationSec % 60;
-      label += ` · ${mins > 0 ? `${mins} мин ` : ""}${secs} сек`;
+      if (h > 0) {
+        label += ` · ${h} ч ${mins} мин`;
+      } else {
+        label += ` · ${mins > 0 ? `${mins} мин ` : ""}${secs} сек`;
+      }
     }
     return {
       isMissed,

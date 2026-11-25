@@ -113,6 +113,14 @@
   // Channel details
   $: isChannel = chat?.type === "CHANNEL";
   $: channelCommentsCount = msg.commentsCounter ?? msg.stats?.commentsCount ?? (Array.isArray(msg.comments) ? msg.comments.length : 0);
+  $: hasChannelComments = isChannel && (
+    msg.commentsCounter != null ||
+    msg.stats?.commentsCount != null ||
+    (Array.isArray(msg.comments) && msg.comments.length > 0) ||
+    chat?.linkedChatId != null ||
+    chat?.options?.COMMENTS_ENABLED === true ||
+    chat?.options?.commentsEnabled === true
+  );
 
   function handleMediaClick(attach, originEl = null) {
     dispatch("openMedia", { attach, originEl });
@@ -248,6 +256,10 @@
   $: isStickerOnly = stickerAttach && (!lines || lines.length === 0 || (lines.length === 1 && !lines[0]?.trim())) && (!effectiveAttaches || effectiveAttaches.length === 1) && !linkedMsg;
   $: isVideoNoteOnly = effectiveAttaches?.some((x) => x._type === "VIDEO" && x.videoType === 1) && (!lines || lines.length === 0 || (lines.length === 1 && !lines[0]?.trim())) && (!effectiveAttaches || effectiveAttaches.length === 1) && !linkedMsg;
   $: isPollOnly = effectiveAttaches?.some((x) => (x._type || x.type) === "POLL") && (!lines || lines.length === 0 || (lines.length === 1 && !lines[0]?.trim())) && effectiveAttaches.length === 1 && !linkedMsg;
+  $: isMediaOnly = !isSystem && !isStickerOnly && !isVideoNoteOnly && !isPollOnly && !effectiveText?.trim() && !linkedMsg && !msg.deleted && !msg.reactionInfo?.totalCount && !inlineKeyboardAttach && effectiveAttaches?.length > 0 && effectiveAttaches.every((x) => {
+    const t = x._type || x.type;
+    return t === "PHOTO" || (t === "VIDEO" && x.videoType !== 1 && !x.isNote);
+  });
 
   let pressTimer = null;
   let isLongPress = false;
@@ -471,7 +483,8 @@
           {/if}
         </div>
       {:else}
-        <div class="message-bubble" class:is-row={isInlineRow} class:is-poll={isPollOnly} class:is-first-group={isFirstInGroup} class:is-last-group={isLastInGroup}>
+        <div class="bubble-and-share" class:is-channel={isChannel}>
+        <div class="message-bubble" class:is-row={isInlineRow} class:is-poll={isPollOnly} class:is-media-only={isMediaOnly} class:is-first-group={isFirstInGroup} class:is-last-group={isLastInGroup}>
           <div class="bubble-content">
             {#if showGroupHeader}
               <div class="author-header">
@@ -498,31 +511,24 @@
                     class="forward-header"
                     on:click|stopPropagation={handleForwardHeaderClick}
                   >
-                    <div class="forward-avatar-placeholder">
-                      <Avatar
-                        contactId={isForwardChannel ? null : (isForwardFromMe ? Number($currentUser) : (linkedMsg?.sender ? Number(linkedMsg.sender) : null))}
-                        chat={isForwardChannel ? (forwardChat || { title: forwardAuthorName }) : forwardChat}
-                        src={forwardAvatarUrl}
-                        title={forwardAuthorName}
-                        size={22}
-                      />
-                    </div>
-                    <div class="forward-info">
+                    <span class="forward-label">{isForwardChannel ? "Переслано из канала:" : "Переслано:"}</span>
+                    <div class="forward-author-row">
+                      <div class="forward-avatar-placeholder">
+                        <Avatar
+                          contactId={isForwardChannel ? null : (isForwardFromMe ? Number($currentUser) : (linkedMsg?.sender ? Number(linkedMsg.sender) : null))}
+                          chat={isForwardChannel ? (forwardChat || { title: forwardAuthorName }) : forwardChat}
+                          src={forwardAvatarUrl}
+                          title={forwardAuthorName}
+                          size={18}
+                        />
+                      </div>
                       <span class="forward-name">{forwardAuthorName}</span>
-                      <span class="forward-label">{isForwardChannel ? "Переслано из канала" : "Пересланное сообщение"}</span>
                     </div>
-                    <svg class="forward-arrow" viewBox="0 0 24 24"
-                      ><path
-                        d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"
-                      /></svg
-                    >
                   </div>
 
-                  {#if forwardLines}
+                  {#if linkedMsg.text}
                     <div class="forward-content">
-                      {#each forwardLines as fLine}
-                        <p class="line allow-selection">{fLine}</p>
-                      {/each}
+                      <FormattedText text={linkedMsg.text} elements={linkedMsg.elements || []} />
                     </div>
                   {/if}
 
@@ -585,11 +591,12 @@
                 chatId={msg?.chatId ?? chat?.id}
                 messageId={msg?.id}
                 {isMe}
+                mediaOnly={isMediaOnly}
               />
             {/if}
           </div>
 
-          <div class="message-footer">
+          <div class="message-footer" class:is-floating-pill={isMediaOnly}>
             {#if msg.reactionInfo?.totalCount}
               <Reactions info={msg.reactionInfo} {isMe} msgId={msg.id} on:react={(e) => dispatch("react", e.detail)} />
             {/if}
@@ -660,6 +667,21 @@
         </div>
 
         {#if isChannel}
+          <button
+            type="button"
+            class="channel-share-btn"
+            title="Поделиться"
+            aria-label="Поделиться"
+            on:click|stopPropagation={() => dispatch("forward", { msg })}
+          >
+            <svg viewBox="0 0 24 24" class="channel-btn-icon" width="16" height="16">
+              <path fill="currentColor" d="M14 9V5l7 7-7 7v-4.1c-5 0-8.5 1.6-11 5.1 1-5 4-10 11-11z"/>
+            </svg>
+          </button>
+        {/if}
+        </div>
+
+        {#if hasChannelComments}
           <div class="channel-action-bar">
             <button
               type="button"
@@ -670,15 +692,8 @@
                 <path fill="currentColor" d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H5.17L4 17.17V4h16v12z"/>
               </svg>
               <span>{formatCommentsLabel(channelCommentsCount)}</span>
-            </button>
-            <button
-              type="button"
-              class="channel-share-btn"
-              title="Поделиться"
-              on:click|stopPropagation={() => dispatch("forward", { msg })}
-            >
-              <svg viewBox="0 0 24 24" class="channel-btn-icon" width="16" height="16">
-                <path fill="currentColor" d="M14 9V5l7 7-7 7v-4.1c-5 0-8.5 1.6-11 5.1 1-5 4-10 11-11z"/>
+              <svg viewBox="0 0 24 24" class="channel-comments-arrow" width="14" height="14">
+                <path fill="currentColor" d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/>
               </svg>
             </button>
           </div>
@@ -719,7 +734,9 @@
       {/if}
 
       {#if inlineKeyboardAttach}
-        <InlineKeyboard {chat} {msg} attach={inlineKeyboardAttach} />
+        <div class="inline-keyboard-wrap" class:has-side-share={isChannel && !isSystem && !isStickerOnly}>
+          <InlineKeyboard {chat} {msg} attach={inlineKeyboardAttach} />
+        </div>
       {/if}
     </div>
   </div>
@@ -1029,66 +1046,56 @@
     white-space: nowrap;
   }
 
-  /* Forward block */
+  /* Forward block (matches MAX-decompiled clean forwarded header) */
   .forward-block {
-    border-left: 2px solid var(--msg-quote-border, #38bdf8);
-    padding: 4px 8px;
-    margin-bottom: 6px;
-    background: var(--msg-quote-bg, rgba(255, 255, 255, 0.05));
-    border-radius: 4px 8px 8px 4px;
-    overflow: hidden;
+    padding: 0;
+    margin-bottom: 2px;
     width: 100%;
     box-sizing: border-box;
   }
 
   .forward-header {
     display: flex;
-    align-items: center;
-    gap: 6px;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
     cursor: pointer;
     margin-bottom: 4px;
   }
 
+  .forward-author-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    max-width: 100%;
+  }
+
   .forward-avatar-placeholder {
-    width: 22px;
-    height: 22px;
+    width: 18px;
+    height: 18px;
     flex-shrink: 0;
     display: flex;
     align-items: center;
     justify-content: center;
     border-radius: 50%;
-  }
-
-  .forward-info {
-    display: flex;
-    flex-direction: column;
-    min-width: 0;
-    line-height: 1.25;
+    overflow: hidden;
   }
 
   .forward-label {
-    font-size: 10px;
-    opacity: 0.65;
+    font-size: 12px;
+    opacity: 0.78;
     color: inherit;
-    text-transform: uppercase;
-    letter-spacing: 0.3px;
+    line-height: 1.2;
   }
 
   .forward-name {
     font-weight: 600;
-    color: var(--msg-quote-border, #38bdf8);
-    font-size: 12px;
+    color: inherit;
+    font-size: 13px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-  }
-
-  .forward-arrow {
-    width: 14px;
-    height: 14px;
-    fill: var(--msg-quote-border, #38bdf8);
-    flex-shrink: 0;
-    margin-left: auto;
   }
 
   /* Reply block */
@@ -1108,13 +1115,44 @@
     color: var(--msg-quote-border, #38bdf8);
   }
 
+  .message-row.is-me .forward-block,
+  .message-row.is-me .reply-block {
+    border-left-color: rgba(255, 255, 255, 0.85);
+    background: rgba(255, 255, 255, 0.14);
+  }
+
+  .message-row.is-me .forward-name,
+  .message-row.is-me .reply-author-name {
+    color: #ffffff;
+  }
+
+  .message-row.is-me .forward-arrow {
+    fill: rgba(255, 255, 255, 0.85);
+  }
+
   .reply-content {
     display: flex;
     flex-direction: column;
     gap: 4px;
   }
 
-  /* Channel Action Bar (Comments + Forward) */
+  /* Channel Action Bar (Comments + Side Share Button) */
+  .bubble-and-share {
+    display: flex;
+    align-items: flex-end;
+    gap: 6px;
+    max-width: 100%;
+  }
+
+  .inline-keyboard-wrap {
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  .inline-keyboard-wrap.has-side-share {
+    padding-right: 36px;
+  }
+
   .channel-action-bar {
     display: flex;
     align-items: center;
@@ -1123,8 +1161,7 @@
     width: 100%;
   }
 
-  .channel-comments-btn,
-  .channel-share-btn {
+  .channel-comments-btn {
     display: inline-flex;
     align-items: center;
     gap: 6px;
@@ -1139,15 +1176,38 @@
     transition: background 0.15s ease, opacity 0.15s ease;
   }
 
-  .channel-comments-btn:hover,
-  .channel-share-btn:hover {
+  .channel-comments-btn:hover {
     opacity: 0.9;
     background: rgba(255, 255, 255, 0.12);
   }
 
+  .channel-comments-arrow {
+    opacity: 0.7;
+    margin-left: 2px;
+  }
+
   .channel-share-btn {
-    padding: 6px 10px;
-    margin-left: auto;
+    flex: 0 0 auto;
+    width: 30px;
+    height: 30px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--msg-bubble-in-bg, rgba(43, 46, 62, 0.85));
+    border: none;
+    border-radius: 50%;
+    padding: 0;
+    color: var(--msg-views-color, rgba(255, 255, 255, 0.85));
+    cursor: pointer;
+    transition: background 0.15s ease, transform 0.1s ease;
+  }
+
+  .channel-share-btn:hover {
+    background: rgba(255, 255, 255, 0.16);
+  }
+
+  .channel-share-btn:active {
+    transform: scale(0.94);
   }
 
   .channel-btn-icon {
@@ -1163,6 +1223,32 @@
     margin-top: 3px;
     width: 100%;
     line-height: 1;
+  }
+
+  .message-bubble.is-media-only {
+    padding: 2px;
+    overflow: hidden;
+  }
+
+  .message-footer.is-floating-pill {
+    position: absolute;
+    bottom: 8px;
+    right: 8px;
+    width: auto;
+    margin-top: 0;
+    padding: 2px 7px;
+    border-radius: 10px;
+    background: rgba(0, 0, 0, 0.48);
+    backdrop-filter: blur(4px);
+    color: #ffffff;
+    z-index: var(--z-base, 1);
+    pointer-events: auto;
+  }
+
+  .message-footer.is-floating-pill .timestamp,
+  .message-footer.is-floating-pill .edited-badge,
+  .message-footer.is-floating-pill .views {
+    color: rgba(255, 255, 255, 0.92);
   }
 
   .message-bubble.is-row .message-footer {

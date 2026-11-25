@@ -58,8 +58,8 @@
   {/if}
 {:else if activeChat?.type === "CHANNEL"}
   {activeChat.participantsCount || 0} подписчиков
-{:else if targetContactId && Number(targetContactId) === Number($currentUser)}
-  Вы
+{:else if activeChat?.id === 0 || (targetContactId && Number(targetContactId) === Number($currentUser))}
+  Сообщения для себя
 {:else if resolvedPresence?.status === 1 || resolvedPresence?.on === "ON" || Boolean(c?.online)}
   <span class="online-text">в сети</span>
 {:else if resolvedPresence?.seen}

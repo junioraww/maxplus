@@ -15,10 +15,11 @@ import {
   getFallbackAvatarLocalPath
 } from "$lib/utils/images";
 import API, { currentUser } from "$lib/stores/api";
-import { getChat } from "$lib/stores/messages";
+import { getChat, getChatSettings } from "$lib/stores/messages";
 import { getCurrentAccount } from "$lib/stores/accounts";
 import { getContactDirect } from "$lib/stores/contacts";
 import { getMessagePreview } from "$lib/utils/text";
+import { batchDecrypt } from "$lib/crypto/messages";
 import Session from "$lib/stores/session";
 import { lockScreenState } from "$lib/stores/lockScreen";
 
@@ -134,7 +135,12 @@ export function applyUserConfig(userConfig, accountId) {
     lsSet(NOTIFICATIONS_KEY, on ? 'true' : 'false', accountId);
   }
   if (userConfig.PUSH_DETAILS !== undefined) {
-    const preview = Boolean(userConfig.PUSH_DETAILS);
+    const preview =
+      userConfig.PUSH_DETAILS !== false &&
+      userConfig.PUSH_DETAILS !== 0 &&
+      userConfig.PUSH_DETAILS !== "0" &&
+      userConfig.PUSH_DETAILS !== "OFF" &&
+      userConfig.PUSH_DETAILS !== "false";
     messagePreviewEnabled.set(preview);
     lsSet(PREVIEW_KEY, preview ? 'true' : 'false', accountId);
   }
@@ -243,22 +249,38 @@ export async function setNewContactsServer(enabled) {
   }
 }
 
+function readDontDisturbUntil(obj) {
+  if (!obj || typeof obj !== "object") return undefined;
+  return (
+    obj.dontDisturbUntil ??
+    obj.settings?.dontDisturbUntil ??
+    obj.chatSettings?.dontDisturbUntil ??
+    obj.options?.sound?.dontDisturbUntil ??
+    obj.options?.dontDisturbUntil
+  );
+}
+
 export function isChatMuted(chat) {
   if (!chat) return false;
   let chatObj = typeof chat === "object" && chat !== null && typeof chat.getInfo === "function" ? chat.getInfo() : chat;
   const id = typeof chat === "number" || typeof chat === "string" ? Number(chat) : Number(chatObj?.id);
 
-  let ddu = chatObj?.dontDisturbUntil ?? chatObj?.settings?.dontDisturbUntil ?? (typeof chat === "object" ? chat?.dontDisturbUntil : undefined);
+  let ddu = readDontDisturbUntil(chatObj) ?? (typeof chat === "object" ? readDontDisturbUntil(chat) : undefined);
   if ((ddu === undefined || ddu === null) && !isNaN(id)) {
     try {
       const found = getChat(id)?.getInfo?.();
-      if (found?.dontDisturbUntil !== undefined) ddu = found.dontDisturbUntil;
+      const foundDdu = readDontDisturbUntil(found);
+      if (foundDdu !== undefined) ddu = foundDdu;
       if (found && !chatObj) chatObj = found;
     } catch {}
   }
-  if (ddu === -1) return true;
-  if (ddu != null && ddu !== 0) {
-    return Number(ddu) > Date.now();
+  if (ddu === -1 || ddu === "-1") return true;
+  if (ddu != null && ddu !== 0 && ddu !== "0") {
+    let ts = Number(ddu);
+    if (!Number.isNaN(ts) && ts > 0) {
+      if (ts < 1e12) ts *= 1000;
+      return ts > Date.now();
+    }
   }
   return Boolean(
     chatObj?.muted ||
@@ -383,9 +405,37 @@ export async function newMessage(chatId, chat, contact, message) {
     senderName = title;
   }
 
+  let resolvedMsg = message;
+  if (resolvedMsg && typeof resolvedMsg === "object" && resolvedMsg.id != null) {
+    try {
+      const acc = await getCurrentAccount().catch(() => null);
+      if (acc?.id) {
+        const settingsStore = getChatSettings(Number(chatId));
+        const password = (settingsStore ? get(settingsStore)?.password : null) || null;
+        const decMap = await batchDecrypt(Number(acc.id), Number(chatId), [resolvedMsg], password).catch(() => null);
+        const dec = decMap?.[String(resolvedMsg.id)];
+        if (dec?.text) {
+          resolvedMsg = { ...resolvedMsg, text: dec.text };
+        }
+      }
+    } catch {}
+  }
+
   const previewAllowed = get(messagePreviewEnabled);
-  const rawBody = typeof message === "string" ? message : (getMessagePreview(message) || message?.text || "Новое сообщение");
-  const bodyText = previewAllowed ? rawBody : "Новое сообщение";
+  const rawBody = typeof resolvedMsg === "string"
+    ? resolvedMsg
+    : (
+      getMessagePreview(resolvedMsg) ||
+      resolvedMsg?.text ||
+      (resolvedMsg?.link?.message ? getMessagePreview(resolvedMsg.link.message) || resolvedMsg.link.message.text : "") ||
+      "Новое сообщение"
+    );
+  const isGroupChat = (chatInfo.type === "CHAT" || chatInfo.type === "GROUP") && senderName && senderName !== title;
+  const formattedPreview = isGroupChat && rawBody !== "Новое сообщение" ? `${senderName}: ${rawBody}` : rawBody;
+  const bodyText = previewAllowed ? formattedPreview : "Новое сообщение";
+  if (!previewAllowed || rawBody === "Новое сообщение") {
+    console.debug("[notifications] fallback body", { chatId, previewAllowed, rawBody, hasText: Boolean(resolvedMsg?.text), attaches: resolvedMsg?.attaches?.length ?? 0 });
+  }
 
   if (!currentOs) currentOs = type();
 
