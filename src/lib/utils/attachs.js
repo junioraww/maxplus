@@ -24,57 +24,59 @@ export function getAttachText(chatOrMsg, maybeMsg) {
   const chat = maybeMsg !== undefined ? chatOrMsg : null;
   if (!msg) return null;
 
-  const attaches = Array.isArray(msg.attaches) ? msg.attaches : [];
+  const rawAttaches = msg.attaches || msg.attachments;
+  const attaches = Array.isArray(rawAttaches) ? rawAttaches : [];
+  const typeOf = (x) => (x?._type || x?.type || "").toUpperCase();
 
-  const photos = attaches.filter((x) => x._type === "PHOTO");
+  const photos = attaches.filter((x) => typeOf(x) === "PHOTO");
   if (photos.length > 1) return "Изображения";
   if (photos.length === 1) return "Изображение";
 
-  const video = attaches.find((x) => x._type === "VIDEO");
+  const video = attaches.find((x) => typeOf(x) === "VIDEO");
   if (video) {
-    if (video.videoType === "ROUND" || video.isRound) return "Видео-сообщение";
+    if (video.videoType === "ROUND" || video.videoType === 1 || video.isRound || video.isNote) return "Видео-сообщение";
     return "Видео";
   }
 
-  const audio = attaches.find((x) => x._type === "AUDIO");
+  const audio = attaches.find((x) => typeOf(x) === "AUDIO" || typeOf(x) === "VOICE");
   if (audio) return "Голосовое сообщение";
 
-  const file = attaches.find((x) => x._type === "FILE");
+  const file = attaches.find((x) => typeOf(x) === "FILE");
   if (file) {
     return file.name ? `Файл: ${file.name}` : "Файл";
   }
 
-  const sticker = attaches.find((x) => x._type === "STICKER");
+  const sticker = attaches.find((x) => typeOf(x) === "STICKER");
   if (sticker) return "Стикер";
 
-  const share = attaches.find((x) => x._type === "SHARE");
+  const share = attaches.find((x) => typeOf(x) === "SHARE");
   if (share) {
     return share.title ? `Ссылка: ${share.title}` : "Ссылка";
   }
 
-  const poll = attaches.find((x) => x._type === "POLL");
+  const poll = attaches.find((x) => typeOf(x) === "POLL");
   if (poll) {
     return poll.title ? `Опрос: ${poll.title}` : "Опрос";
   }
 
-  const location = attaches.find((x) => x._type === "LOCATION");
+  const location = attaches.find((x) => typeOf(x) === "LOCATION");
   if (location) {
     return "Геопозиция";
   }
 
-  const contact = attaches.find((x) => x._type === "CONTACT");
+  const contact = attaches.find((x) => typeOf(x) === "CONTACT");
   if (contact) {
     return "Контакт";
   }
 
-  const call = attaches.find((x) => x._type === "CALL" || x.hangupType != null);
+  const call = attaches.find((x) => typeOf(x) === "CALL" || x.hangupType != null);
   if (call) {
     const hang = (call.hangupType || "").toUpperCase();
     if (hang === "MISSED" || hang === "CANCELED") return "Пропущенный звонок";
     return "Звонок";
   }
 
-  const control = attaches.find((x) => x._type === "CONTROL");
+  const control = attaches.find((x) => typeOf(x) === "CONTROL");
   if (control) {
     return null;
   }

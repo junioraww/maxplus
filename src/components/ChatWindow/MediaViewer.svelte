@@ -909,25 +909,27 @@
       clearTimeout(pressTimer);
       playbackRate = 1;
       if (!dragAxis && scale <= 1.02) {
-        dragAxis = Math.abs(dx) > Math.abs(dy) * 1.1 ? "x" : "y";
+        dragAxis = (allMedia.length > 1 && Math.abs(dx) > Math.abs(dy) * 1.1) ? "x" : "y";
       }
     }
 
     if (scale <= 1.02) {
-      if (dragAxis === "x") {
+      if (dragAxis === "x" && allMedia.length > 1) {
         let rawOffset = e.clientX - dragStartX;
         if ((index === 0 && rawOffset > 0) || (index >= allMedia.length - 1 && rawOffset < 0)) {
           rawOffset *= 0.28;
         }
         slideOffset = rawOffset;
-        y = (e.clientY - dragStartY) * 0.15;
+        x = 0;
+        y = 0;
       } else if (dragAxis === "y") {
         slideOffset = 0;
-        x = (e.clientX - pointerDownX) * 0.25;
+        x = 0;
         y = e.clientY - dragStartY;
       } else {
-        slideOffset = e.clientX - dragStartX;
-        y = e.clientY - dragStartY;
+        slideOffset = 0;
+        x = 0;
+        y = 0;
       }
     } else {
       x = e.clientX - dragStartX;

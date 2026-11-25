@@ -80,15 +80,16 @@
 
   function formatCallDuration(raw) {
     if (!raw || raw <= 0) return '';
-    let sec = Math.round(Number(raw));
-    if (sec > 10000) {
-      sec = Math.round(sec / 1000);
-    }
+    const sec = Math.max(1, Math.round(Number(raw) / 1000));
     if (sec < 60) {
       return `${sec} сек`;
     }
-    const m = Math.floor(sec / 60);
+    const h = Math.floor(sec / 3600);
+    const m = Math.floor((sec % 3600) / 60);
     const s = sec % 60;
+    if (h > 0) {
+      return `${h} ч ${m} мин`;
+    }
     return s === 0 ? `${m} мин` : `${m} мин ${s} сек`;
   }
 
@@ -148,7 +149,7 @@
       {:else if isMe}
         <!-- Outgoing Phone Call icon -->
         <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M7 7l10 10M17 7v10H7"/>
+          <path d="M15 9l6-6M16 3h5v5"/>
           <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/>
         </svg>
       {:else}
@@ -217,8 +218,13 @@
   }
 
   .call-icon-badge.negative {
-    background: rgba(239, 68, 68, 0.14) !important;
-    color: #ef4444 !important;
+    background: rgba(239, 68, 68, 0.16);
+    color: #ef4444;
+  }
+
+  .call-bubble-row.is-me .call-icon-badge.negative {
+    background: rgba(255, 255, 255, 0.22);
+    color: #ffd6d6;
   }
 
   .call-info-col {
@@ -243,6 +249,10 @@
   /* Negative red text for missed/rejected calls matching text_negative in Max */
   .call-title-text.negative {
     color: #ef4444;
+  }
+
+  .call-bubble-row.is-me .call-title-text.negative {
+    color: #ffe2e2;
   }
 
   /* Subtitle matching g9k.t in MAX-decompiled (13px secondary) */

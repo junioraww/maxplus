@@ -176,6 +176,7 @@ export function createChatScrollController(options) {
 
     setUnreadAnchorId(firstUnread ? firstUnread.id : null);
     setShowUnreadSeparator(Boolean(firstUnread && unreadCount > 0));
+    setUnreadBadgeCount(Math.max(0, Number(unreadCount || 0)));
 
     if (firstUnread) {
       unreadStartTime = Number(firstUnread.time || 0);
@@ -247,21 +248,23 @@ export function createChatScrollController(options) {
 
     let remaining;
     const l = loader();
-    if (l?.all_loaded_newer) {
-      const unreadPeerMsgs = peerMessages.filter(
-        (m) => Number(m.time || 0) >= unreadStartTime
-      );
+    const unreadPeerMsgs = peerMessages.filter(
+      (m) => Number(m.time || 0) >= unreadStartTime
+    );
+    if (l?.all_loaded_newer && unreadPeerMsgs.length >= sessionInitialUnread) {
       remaining = unreadPeerMsgs.filter(
         (m) => Number(m.time || 0) > readMarkTime
       ).length;
     } else {
-      const unreadPeerMsgs = peerMessages.filter(
-        (m) => Number(m.time || 0) >= unreadStartTime
-      );
       const readCount = unreadPeerMsgs.filter(
         (m) => Number(m.time || 0) <= readMarkTime
       ).length;
       remaining = Math.max(0, sessionInitialUnread - readCount);
+      if (l?.all_loaded_newer && distanceFromBottom <= 30) {
+        remaining = unreadPeerMsgs.filter(
+          (m) => Number(m.time || 0) > readMarkTime
+        ).length;
+      }
     }
 
     setUnreadBadgeCount(remaining);
@@ -343,6 +346,8 @@ export function createChatScrollController(options) {
         isProgrammaticScroll = true;
         try {
           await l?.loadNewer?.();
+          await tick();
+          await updateVisibleMessages?.();
         } finally {
           isProgrammaticScroll = false;
           scrollBottomLoaderTimeout = null;
@@ -351,7 +356,7 @@ export function createChatScrollController(options) {
     }
   }
 
-  function startAutoScrollIfAtBottom(hasSavedScroll, initialUnreadCount) {
+  function startAutoScrollIfAtBottom(hasSavedScroll, initialUnreadCount, hasTargetJump = false) {
     const scrollEl = getScrollElement?.();
     if (!scrollEl) return;
     const innerList = getInnerList?.();
@@ -366,7 +371,7 @@ export function createChatScrollController(options) {
       const { scrollTop, scrollHeight, clientHeight } = el;
       const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
 
-      if (!userHasScrolled && !hasSavedScroll && initialUnreadCount === 0) {
+      if (!userHasScrolled && !hasSavedScroll && !hasTargetJump && initialUnreadCount === 0) {
         el.scrollTop = scrollHeight;
         setShowScrollDown(false);
         return;
@@ -442,11 +447,12 @@ export function createChatScrollController(options) {
     const scrollEl = getScrollElement?.();
     if (!scrollEl || !targetMsgId) return false;
     await tick();
+    await makeVisible?.(targetMsgId);
     let targetEl = document.getElementById("m-" + targetMsgId);
     if (!targetEl) return false;
 
     isProgrammaticScroll = true;
-    const { offset = 40 } = options;
+    const { offset = 80 } = options;
     const containerRect = scrollEl.getBoundingClientRect();
     let elRect = targetEl.getBoundingClientRect();
     let currentScroll = scrollEl.scrollTop;
@@ -454,6 +460,7 @@ export function createChatScrollController(options) {
 
     await tick();
     await updateVisibleMessages?.();
+    await makeVisible?.(targetMsgId);
     await tick();
 
     targetEl = document.getElementById("m-" + targetMsgId);
@@ -466,10 +473,48 @@ export function createChatScrollController(options) {
       }
     }
 
+    const distanceFromBottom = scrollEl.scrollHeight - scrollEl.scrollTop - scrollEl.clientHeight;
+    const l = loader();
+    setShowScrollDown(!l?.all_loaded_newer || unreadBadgeCount > 0 || distanceFromBottom > 50);
+
     setTimeout(() => {
       isProgrammaticScroll = false;
     }, 150);
     return true;
+  }
+
+  async function jumpToMessage(targetMsgId, targetMsgTime = null, options = {}) {
+    const scrollEl = getScrollElement?.();
+    if (!scrollEl || targetMsgId == null) return false;
+
+    const targetIdStr = String(targetMsgId);
+    let msgs = getMessages?.() || [];
+    let found = msgs.find((m) => String(m.id) === targetIdStr);
+
+    if (!found && targetMsgTime != null && Number(targetMsgTime) > 0) {
+      const l = loader();
+      if (l) {
+        isProgrammaticScroll = true;
+        l.all_loaded = false;
+        l.all_loaded_newer = false;
+        await l.loadHistory(true, Number(targetMsgTime) + 1, 20, 20);
+        await tick();
+        const cw = scrollEl.clientWidth || 800;
+        virtualScroll.computeCumulativeHeights(getMessages?.() || [], cw, getDateSeparators?.());
+        await tick();
+      }
+      msgs = getMessages?.() || [];
+      found = msgs.find((m) => String(m.id) === targetIdStr);
+    }
+
+    if (!found && !document.getElementById("m-" + targetIdStr)) {
+      isProgrammaticScroll = false;
+      return false;
+    }
+
+    userHasScrolled = true;
+    onUserScrolled?.();
+    return await scrollToMessage(targetIdStr, options);
   }
 
   async function jumpToBottom() {
@@ -572,6 +617,7 @@ export function createChatScrollController(options) {
     scrollToBottomDirect,
     scrollToUnreadBanner,
     scrollToMessage,
+    jumpToMessage,
     jumpToBottom,
     destroy,
   };

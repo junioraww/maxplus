@@ -11,9 +11,11 @@
   import { fly, slide } from "svelte/transition";
   import { registerBackHandler } from "$lib/utils/backButton";
   import { parseApiError } from "$lib/utils/errors";
+  import { canPinInChat } from "$lib/utils/chatPermissions";
 
   import Message from "$components/ChatWindow/Message.svelte";
   import PinnedMessage from "$components/ChatWindow/PinnedMessage.svelte";
+  import MessagePreview from "$components/main/MessagePreview.svelte";
   import Avatar from "$components/main/Avatar.svelte";
   import "$lib/styles/AnimatedPanel.css";
   import API, {
@@ -34,6 +36,8 @@
     closeChat,
     openProfile,
     get as sessionGet,
+    pendingChatJump,
+    clearPendingChatJump,
   } from "$lib/stores/session";
   import {
     handleReaction,
@@ -384,9 +388,92 @@
     virtualScroll.setDateSeparators(newSeparators);
   }
 
+  let highlightedMessageId = null;
+  let highlightTimer = null;
+
+  function highlightMessage(id) {
+    if (!id) return;
+    highlightedMessageId = String(id);
+    if (highlightTimer) clearTimeout(highlightTimer);
+    highlightTimer = setTimeout(() => {
+      highlightedMessageId = null;
+      highlightTimer = null;
+    }, 2200);
+  }
+
+  async function jumpAndHighlightMessage(messageId, messageTime = null) {
+    if (!messageId) return false;
+    const ok = await scrollController.jumpToMessage(messageId, messageTime, { offset: 80 });
+    if (ok) {
+      highlightMessage(messageId);
+    }
+    return ok;
+  }
+
+  let isSearchOpen = false;
+  let searchQuery = "";
+  let searchMatches = [];
+  let searchMatchIndex = 0;
+
+  function updateSearchMatches(query) {
+    const q = (query || "").trim().toLowerCase();
+    if (!q) {
+      searchMatches = [];
+      searchMatchIndex = 0;
+      return;
+    }
+    const list = $messages || [];
+    const matched = [];
+    for (let i = list.length - 1; i >= 0; i--) {
+      const m = list[i];
+      if (!m || m.deleted) continue;
+      const text = ($decodedMessages[m.id]?.text ?? m.text ?? "").toLowerCase();
+      if (text.includes(q)) {
+        matched.push({ id: m.id, time: m.time });
+      }
+    }
+    searchMatches = matched;
+    searchMatchIndex = 0;
+    if (matched.length > 0) {
+      jumpAndHighlightMessage(matched[0].id, matched[0].time);
+    }
+  }
+
+  function handleSearchOpen() {
+    isSearchOpen = true;
+  }
+
+  function handleSearchClose() {
+    isSearchOpen = false;
+    searchQuery = "";
+    searchMatches = [];
+    searchMatchIndex = 0;
+  }
+
+  function handleSearchQueryChange(e) {
+    searchQuery = e.detail ?? "";
+    updateSearchMatches(searchQuery);
+  }
+
+  function handleSearchNext() {
+    if (!searchMatches.length) return;
+    searchMatchIndex = (searchMatchIndex + 1) % searchMatches.length;
+    const target = searchMatches[searchMatchIndex];
+    jumpAndHighlightMessage(target.id, target.time);
+  }
+
+  function handleSearchPrev() {
+    if (!searchMatches.length) return;
+    searchMatchIndex = (searchMatchIndex - 1 + searchMatches.length) % searchMatches.length;
+    const target = searchMatches[searchMatchIndex];
+    jumpAndHighlightMessage(target.id, target.time);
+  }
+
   async function makeVisible(id) {
-    if (!visibleMessages[id]) {
-      visibleMessages[id] = document.getElementById("m-" + id);
+    if (!id) return;
+    const key = String(id);
+    if (!visibleMessages[key]) {
+      visibleMessages = { ...visibleMessages, [key]: true };
       await tick();
     }
   }
@@ -395,20 +482,12 @@
     if (scrollElement) {
       containerWidth = scrollElement.clientWidth || 800;
     }
-    const anchor = scrollElement && !scrollController?.isProgrammaticScroll
-      ? virtualScroll.captureScrollAnchor(scrollElement)
-      : null;
 
     visibleMessages = virtualScroll.calculateVisibleMessages({
       scrollElement,
       messagesList: uniqueMessages,
       dateSeparatorsMap: dateSeparators,
     });
-
-    if (anchor && scrollElement && !scrollController?.isProgrammaticScroll) {
-      await tick();
-      virtualScroll.restoreScrollAnchor(scrollElement, anchor);
-    }
 
     if (scrollController?.userHasScrolled) {
       scrollController.checkUnreadMessagesOnScroll();
@@ -842,6 +921,16 @@
     }
   }
 
+  let isMountedReady = false;
+  $: if (isMountedReady && $pendingChatJump) {
+    const activeId = String(chat?.id ?? chatId ?? "");
+    if (activeId && String($pendingChatJump.chatId) === activeId) {
+      const jump = $pendingChatJump;
+      clearPendingChatJump(activeId);
+      jumpAndHighlightMessage(jump.messageId, jump.time);
+    }
+  }
+
   onMount(async () => {
     scrollController.isInitialMounting = true;
     scrollController.isProgrammaticScroll = true;
@@ -851,6 +940,16 @@
     const unreadCount = Number(currentChat?.newMessages || 0);
     const savedPos = getChatScroll(targetChatId);
     const hasSavedScroll = savedPos && !savedPos.wasAtBottom && savedPos.bottomMessageTime;
+
+    const initialJump = get(pendingChatJump);
+    const hasTargetJump = Boolean(
+      initialJump &&
+      String(initialJump.chatId) === String(targetChatId) &&
+      (initialJump.messageId != null || initialJump.time != null)
+    );
+    if (hasTargetJump) {
+      clearPendingChatJump(targetChatId);
+    }
 
     clearChatNotification(targetChatId);
 
@@ -862,10 +961,15 @@
       () => scrollElement,
       () => !scrollController.isInitialMounting && !scrollController.isProgrammaticScroll && scrollController.userHasScrolled
     );
-    scrollController.startAutoScrollIfAtBottom(hasSavedScroll, unreadCount);
+    scrollController.startAutoScrollIfAtBottom(hasSavedScroll, unreadCount, hasTargetJump);
 
     let initialFrom = Date.now() + sessionGet("drift");
-    if (hasSavedScroll) {
+    if (hasTargetJump && initialJump.time != null) {
+      initialFrom = Number(initialJump.time) + 1;
+      loader.all_loaded_newer = false;
+      showScrollDown = true;
+      await loader.loadHistory(true, initialFrom, 20, 20);
+    } else if (hasSavedScroll) {
       initialFrom = Number(savedPos.bottomMessageTime) + 1;
       loader.all_loaded_newer = false;
       showScrollDown = true;
@@ -895,7 +999,12 @@
     scrollController.resolveUnreadState(unreadCount);
 
     let positioned = false;
-    if (hasSavedScroll) {
+    if (hasTargetJump && initialJump.messageId) {
+      positioned = await scrollController.scrollToMessage(initialJump.messageId, { offset: 80 });
+      if (positioned) {
+        highlightMessage(initialJump.messageId);
+      }
+    } else if (hasSavedScroll) {
       const isSavedScrollOlderThanUnread = !scrollController.unreadStartTime || Number(savedPos.bottomMessageTime) < scrollController.unreadStartTime;
       if (isSavedScrollOlderThanUnread) {
         let targetId = savedPos.bottomMessageId;
@@ -950,12 +1059,13 @@
     await new Promise((r) => setTimeout(r, 60));
     allRendered = true;
     await tick();
-    if (!hasSavedScroll && unreadCount === 0 && scrollElement) {
+    if (!hasSavedScroll && !hasTargetJump && unreadCount === 0 && scrollElement) {
       scrollElement.scrollTop = scrollElement.scrollHeight;
       showScrollDown = false;
     }
     scrollController.isInitialMounting = false;
     scrollController.isProgrammaticScroll = false;
+    isMountedReady = true;
     window.addEventListener("mouseup", stopDrag);
     window.addEventListener("blur", stopDrag);
   });
@@ -1428,6 +1538,27 @@
     }
   }
 
+  let pinnedMessagesList = [];
+  let showPinnedListModal = false;
+  let lastPinnedFetchKey = "";
+
+  $: {
+    const cid = chat?.id ?? chatId;
+    const state = chat?.pinnedMessagesState;
+    const count = Number(state?.count || 0);
+    const key = `${cid}_${count}_${state?.lastMessageId || chat?.pinnedMessage?.id || ""}`;
+    if (cid && count > 1 && key !== lastPinnedFetchKey && typeof $API?.getPinnedMessages === "function") {
+      lastPinnedFetchKey = key;
+      $API.getPinnedMessages(cid).then((res) => {
+        if (Array.isArray(res?.pinnedMessages) && res.pinnedMessages.length > 0) {
+          pinnedMessagesList = res.pinnedMessages;
+        }
+      }).catch(() => {});
+    } else if (count <= 1) {
+      pinnedMessagesList = chat?.pinnedMessage ? [chat.pinnedMessage] : [];
+    }
+  }
+
   async function handleUnpinMessage(msgId) {
     try {
       await $API.unpinMessage(chat.id);
@@ -1674,8 +1805,17 @@
       {chat}
       {avatarUserId}
       {title}
+      {isSearchOpen}
+      {searchQuery}
+      searchMatchCount={searchMatches.length}
+      {searchMatchIndex}
       on:close={handleCloseChat}
       on:openSettings={openSettings}
+      on:search={handleSearchOpen}
+      on:closeSearch={handleSearchClose}
+      on:searchQueryChange={handleSearchQueryChange}
+      on:searchPrev={handleSearchPrev}
+      on:searchNext={handleSearchNext}
     />
     {#if $isSelecting}
       <div class="action-header" transition:fly={{ y: -56, duration: 180 }}>
@@ -1712,6 +1852,18 @@
       </div>
     {/if}
   </div>
+
+  {#if chat?.pinnedMessage || pinnedMessagesList.length > 0}
+    <PinnedMessage
+      msg={chat?.pinnedMessage}
+      messages={pinnedMessagesList}
+      {chat}
+      canUnpin={canPinInChat(chat, $currentUser)}
+      on:jump={(e) => jumpAndHighlightMessage(e.detail.id, e.detail.time ?? chat?.pinnedMessage?.time)}
+      on:unpin={(e) => handleUnpinMessage(e.detail.id)}
+      on:openList={() => (showPinnedListModal = true)}
+    />
+  {/if}
 
   {#if $activeMedia}
     <MediaPlaybackHeader isChatHeader={true} />
@@ -1766,16 +1918,12 @@
       </div>
     {/each}
 
-    {#if chat.pinnedMessage}
-      <PinnedMessage msg={chat.pinnedMessage} {chat} on:unpin={(e) => handleUnpinMessage(e.detail.id)} />
-    {/if}
-
     <div
       class="message-list-inner"
       style={"opacity: " + (allRendered ? "1;" : "0;")}
       bind:this={innerList}
     >
-      <div style={"flex-shrink: 0; height: " + (chat.pinnedMessage ? "60px" : "10px")}></div>
+      <div style="flex-shrink: 0; height: 10px;"></div>
 
       {#if (chat?.type === "CHAT" || chat?.type === "GROUP")}
         <div class="group-hero-card">
@@ -1803,6 +1951,7 @@
         <div
           class="message-wrapper"
           class:is-selected={$selectionState.selected.has(String(msg.id))}
+          class:is-highlighted={highlightedMessageId === String(msg.id)}
           id={"m-" + msg.id}
           on:click={() => {
             if (justLongPressed) return;
@@ -2018,6 +2167,49 @@
       {/if}
     </ConfirmModal>
   {/if}
+
+  {#if showPinnedListModal}
+    <BottomSheet
+      title="Закреплённые сообщения ({pinnedMessagesList.length})"
+      on:close={() => (showPinnedListModal = false)}
+    >
+      <div class="pinned-list-sheet">
+        {#each pinnedMessagesList as pmsg (pmsg.id)}
+          <div
+            class="pinned-list-item"
+            role="button"
+            tabindex="0"
+            on:click={() => {
+              showPinnedListModal = false;
+              jumpAndHighlightMessage(pmsg.id, pmsg.time);
+            }}
+            on:keydown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                showPinnedListModal = false;
+                jumpAndHighlightMessage(pmsg.id, pmsg.time);
+              }
+            }}
+          >
+            <div class="pinned-list-preview">
+              <MessagePreview {chat} msg={pmsg} />
+            </div>
+            {#if canPinInChat(chat, $currentUser)}
+              <button
+                type="button"
+                class="pinned-list-unpin"
+                title="Открепить"
+                aria-label="Открепить"
+                on:click|stopPropagation={() => handleUnpinMessage(pmsg.id)}
+              >
+                <span class="mask-icon" style="-webkit-mask-image: url('/icons/close.svg'); mask-image: url('/icons/close.svg'); width: 16px; height: 16px;"></span>
+              </button>
+            {/if}
+          </div>
+        {/each}
+      </div>
+    </BottomSheet>
+  {/if}
 </div>
 
 <style>
@@ -2125,6 +2317,73 @@
   .message-wrapper.is-selected {
     background: rgba(123, 76, 214, 0.22);
     border-radius: 0;
+  }
+
+  .message-wrapper.is-highlighted {
+    animation: msgJumpHighlight 2.2s ease-out forwards;
+  }
+
+  .pinned-list-sheet {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    max-height: 60vh;
+    overflow-y: auto;
+  }
+
+  .pinned-list-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 12px;
+    border-radius: 10px;
+    cursor: pointer;
+    transition: background-color 0.15s ease;
+  }
+
+  .pinned-list-item:hover {
+    background: var(--hover-bg, rgba(255, 255, 255, 0.06));
+  }
+
+  .pinned-list-preview {
+    flex: 1;
+    min-width: 0;
+    font-size: 14px;
+    color: var(--text-primary, #f4f4f6);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .pinned-list-unpin {
+    flex: 0 0 auto;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    border-radius: 50%;
+    background: transparent;
+    color: var(--text-secondary, rgba(255, 255, 255, 0.6));
+    cursor: pointer;
+  }
+
+  .pinned-list-unpin:hover {
+    background: var(--hover-bg, rgba(255, 255, 255, 0.1));
+    color: var(--text-primary, #ffffff);
+  }
+
+  @keyframes msgJumpHighlight {
+    0% {
+      background: rgba(123, 76, 214, 0.32);
+    }
+    70% {
+      background: rgba(123, 76, 214, 0.14);
+    }
+    100% {
+      background: transparent;
+    }
   }
 
   .observer-area {

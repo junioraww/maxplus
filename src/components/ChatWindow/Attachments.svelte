@@ -1,7 +1,8 @@
 <script>
   import { convertFileSrc, invoke } from '@tauri-apps/api/core';
   import { save } from "@tauri-apps/plugin-dialog";
-  import { openPath } from "@tauri-apps/plugin-opener";
+  import { openPath, openUrl } from "@tauri-apps/plugin-opener";
+  import { openProfile } from "$lib/stores/session";
   import { onDestroy } from 'svelte';
   import { get } from 'svelte/store';
 
@@ -22,6 +23,18 @@
   export let chatId = null;
   export let messageId = null;
   export let isMe = false;
+  export let mediaOnly = false;
+
+  function formatDuration(msRaw) {
+    const totalSec = Math.max(0, Math.round((Number(msRaw) || 0) / 1000));
+    const h = Math.floor(totalSec / 3600);
+    const m = Math.floor((totalSec % 3600) / 60);
+    const s = totalSec % 60;
+    if (h > 0) {
+      return `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+    }
+    return `${m}:${String(s).padStart(2, "0")}`;
+  }
 
   let downloadingMap = {};
 
@@ -101,16 +114,25 @@
 
     if (n === 1) {
       const item = items[0];
-      const w = item.width || 1;
-      const h = item.height || 1;
+      const w = Number(item.width) || 320;
+      const h = Number(item.height) || 240;
       const maxWidth = 320;
       const maxHeight = 450;
+      const aspect = w / h;
 
-      const computedHeight = Math.min((maxWidth / (w / h)), maxHeight);
+      let computedWidth = maxWidth;
+      let computedHeight = computedWidth / aspect;
+      if (computedHeight > maxHeight) {
+        computedHeight = maxHeight;
+        computedWidth = Math.max(140, computedHeight * aspect);
+      }
+      computedWidth = Math.round(computedWidth);
+      computedHeight = Math.round(computedHeight);
+
       return {
-        gridTemplateColumns: '1fr',
-        gridTemplateRows: 'auto',
-        items: [{ style: `height: ${computedHeight}px;` }]
+        gridTemplateColumns: `${computedWidth}px`,
+        gridTemplateRows: `${computedHeight}px`,
+        items: [{ style: `width: ${computedWidth}px; max-width: 100%; height: ${computedHeight}px;` }]
       };
     }
 
@@ -479,6 +501,7 @@
 
 <div
   class="media-grid"
+  class:media-only={mediaOnly}
   style="grid-template-columns: {layout.gridTemplateColumns}; grid-template-rows: {layout.gridTemplateRows};"
 >
   {#each mediaItems as attach, i}
@@ -570,7 +593,14 @@
                 height={attach.height}
               />
             {/if}
-            <div class="play-icon">▶</div>
+            <div class="play-icon">
+              <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
+                <path d="M8 5v14l11-7z"/>
+              </svg>
+            </div>
+            {#if attach.duration}
+              <div class="video-duration-pill">{formatDuration(attach.duration)}</div>
+            {/if}
           </div>
         {/if}
       {/if}
@@ -586,8 +616,17 @@
     on:click|stopPropagation={() => handleFileClick(attach)}
   >
     <div class="file-icon">
-      {#if isDownloading(attach)}<div class="spinner"></div>
-      {:else if isDownloaded(attach)}📄{:else}⬇️{/if}
+      {#if isDownloading(attach)}
+        <div class="spinner"></div>
+      {:else if isDownloaded(attach)}
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6zm1 7V3.5L18.5 9H15z"/>
+        </svg>
+      {:else}
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
+          <path d="M12 3v10.17l3.59-3.58L17 11l-5 5-5-5 1.41-1.41L11 13.17V3h2zm-7 16h14v2H5v-2z"/>
+        </svg>
+      {/if}
     </div>
     <div class="file-info">
       <div class="file-name">{attach.name}</div>
@@ -625,32 +664,54 @@
 {/each}
 
 {#each attaches.filter(a => (a._type || a.type) === "LOCATION") as attach}
-  <div class="location-bubble-attach" on:click={() => {
-    const lat = attach.latitude || attach.lat || 0;
-    const lng = attach.longitude || attach.lng || 0;
-    window.open(`https://www.openstreetmap.org/?mlat=${lat}&mlon=${lng}#map=16/${lat}/${lng}`, '_blank');
-  }}>
+  <div
+    class="location-bubble-attach"
+    role="button"
+    tabindex="0"
+    on:mousedown|stopPropagation
+    on:mouseup|stopPropagation
+    on:click|stopPropagation={async () => {
+      const lat = attach.latitude ?? attach.lat ?? 0;
+      const lng = attach.longitude ?? attach.lng ?? 0;
+      const url = `https://www.openstreetmap.org/?mlat=${lat}&mlon=${lng}#map=16/${lat}/${lng}`;
+      try {
+        await openUrl(url);
+      } catch {
+        window.open(url, "_blank");
+      }
+    }}
+  >
     <div class="location-bubble-icon" class:live={Boolean(attach.livePeriod)}>
-      <span class="mask-icon" style="-webkit-mask-image: url('/icons/location.svg'); mask-image: url('/icons/location.svg'); width: 24px; height: 24px; background-color: #248bfe; display: inline-block;"></span>
+      <span class="mask-icon" style="-webkit-mask-image: url('/icons/location.svg'); mask-image: url('/icons/location.svg'); width: 22px; height: 22px; background-color: currentColor; display: inline-block;"></span>
     </div>
     <div class="location-bubble-info">
       <div class="location-bubble-title">
         {attach.livePeriod ? "Трансляция геопозиции" : "Геопозиция"}
       </div>
       <div class="location-bubble-coords">
-        {attach.address || `${attach.latitude?.toFixed?.(6) ?? attach.latitude}, ${attach.longitude?.toFixed?.(6) ?? attach.longitude}`}
+        {attach.address || `${Number(attach.latitude ?? attach.lat ?? 0).toFixed(6)}, ${Number(attach.longitude ?? attach.lng ?? 0).toFixed(6)}`}
       </div>
     </div>
   </div>
 {/each}
 
 {#each attaches.filter(a => (a._type || a.type) === "CONTACT") as attach}
-  <div class="contact-bubble-attach">
+  <div
+    class="contact-bubble-attach"
+    role="button"
+    tabindex="0"
+    on:mousedown|stopPropagation
+    on:mouseup|stopPropagation
+    on:click|stopPropagation={() => {
+      const uid = attach.contactId ?? attach.id;
+      if (uid) openProfile({ userId: Number(uid) });
+    }}
+  >
     <div class="contact-bubble-icon">
-      <span class="mask-icon" style="-webkit-mask-image: url('/icons/user.svg'); mask-image: url('/icons/user.svg'); width: 24px; height: 24px; background-color: #248bfe; display: inline-block;"></span>
+      <span class="mask-icon" style="-webkit-mask-image: url('/icons/user.svg'); mask-image: url('/icons/user.svg'); width: 22px; height: 22px; background-color: currentColor; display: inline-block;"></span>
     </div>
     <div class="contact-bubble-info">
-      <div class="contact-bubble-name">{attach.name || "Контакт"}</div>
+      <div class="contact-bubble-name">{attach.name || attach.firstName || "Контакт"}</div>
       {#if attach.phone}
         <div class="contact-bubble-phone">{attach.phone}</div>
       {/if}
@@ -672,7 +733,8 @@
     t !== "CALL" &&
     t !== "POLL" &&
     t !== "LOCATION" &&
-    t !== "CONTACT";
+    t !== "CONTACT" &&
+    t !== "SHARE";
 }) as attach}
   <div class="unsupported-attach">{attach._type || attach.type} не поддерживается</div>
 {/each}
@@ -687,6 +749,26 @@
     overflow: hidden;
     width: 100%;
     max-width: 320px;
+  }
+
+  .media-grid.media-only {
+    margin: 0;
+    border-radius: 14px;
+  }
+
+  .video-duration-pill {
+    position: absolute;
+    bottom: 6px;
+    left: 6px;
+    padding: 2px 7px;
+    border-radius: 10px;
+    background: rgba(0, 0, 0, 0.48);
+    backdrop-filter: blur(4px);
+    color: #ffffff;
+    font-size: 11px;
+    font-weight: 500;
+    line-height: 1.25;
+    pointer-events: none;
   }
 
   .grid-item {
@@ -788,29 +870,28 @@
     display: flex;
     align-items: center;
     gap: 10px;
-    padding: 8px 12px;
+    padding: 6px 8px;
     border-radius: var(--msg-system-radius, 12px);
     cursor: pointer;
-    background: var(--msg-quote-bg, rgba(255, 255, 255, 0.07));
-    margin-top: 4px;
+    background: transparent;
+    margin-top: 2px;
     transition: background 0.15s ease;
   }
 
   .file-attach:hover {
-    background: rgba(255, 255, 255, 0.12);
+    background: rgba(255, 255, 255, 0.08);
   }
 
   .file-icon {
-    min-width: 36px;
-    max-width: 36px;
-    height: 36px;
+    min-width: 40px;
+    max-width: 40px;
+    height: 40px;
     border-radius: 50%;
-    background: var(--msg-quote-border, #38bdf8);
+    background: var(--accent-color, rgba(255, 255, 255, 0.18));
     color: #ffffff;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 16px;
     flex-shrink: 0;
   }
 
@@ -893,17 +974,17 @@
     display: flex;
     align-items: center;
     gap: 12px;
-    padding: 10px 14px;
-    background: var(--msg-quote-bg, rgba(255, 255, 255, 0.07));
+    padding: 6px 8px;
+    background: transparent;
     border-radius: var(--msg-system-radius, 12px);
-    margin-top: 4px;
+    margin-top: 2px;
     cursor: pointer;
     transition: background 0.15s ease;
   }
 
   .location-bubble-attach:hover,
   .contact-bubble-attach:hover {
-    background: rgba(255, 255, 255, 0.12);
+    background: rgba(255, 255, 255, 0.08);
   }
 
   .location-bubble-icon,
@@ -911,7 +992,8 @@
     width: 40px;
     height: 40px;
     border-radius: 50%;
-    background: rgba(56, 189, 248, 0.18);
+    background: rgba(255, 255, 255, 0.16);
+    color: #ffffff;
     display: flex;
     align-items: center;
     justify-content: center;

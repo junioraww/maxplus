@@ -114,6 +114,62 @@
       return;
     }
 
+    if (bType === "MESSAGE") {
+      const textToSend = button.text || button.payload || "";
+      if (textToSend && chat?.id != null && typeof $API.sendMessage === "function") {
+        loadingKey = key;
+        try {
+          await $API.sendMessage(textToSend, chat.id, { notify: true });
+        } catch (e) {
+          console.error("Message button error:", e);
+        } finally {
+          loadingKey = null;
+        }
+      }
+      return;
+    }
+
+    if (bType === "REQUEST_CONTACT") {
+      if (chat?.id != null && typeof $API.sendMessage === "function") {
+        // Send own contact or trigger callback if server expects it
+        try {
+          await $API.sendButtonCallback(chat.id, msg.id, callbackId, button.payload);
+        } catch (e) {
+          console.error("Request contact error:", e);
+        }
+      }
+      return;
+    }
+
+    if (bType === "REQUEST_GEO_LOCATION") {
+      if (typeof navigator !== "undefined" && navigator.geolocation && chat?.id != null) {
+        loadingKey = key;
+        navigator.geolocation.getCurrentPosition(
+          async (pos) => {
+            try {
+              await $API.sendMessage("", chat.id, {
+                notify: true,
+                attaches: [{
+                  _type: "LOCATION",
+                  latitude: pos.coords.latitude,
+                  longitude: pos.coords.longitude,
+                }],
+              });
+            } catch (e) {
+              console.error("Send location error:", e);
+            } finally {
+              loadingKey = null;
+            }
+          },
+          () => {
+            loadingKey = null;
+          },
+          { enableHighAccuracy: true, timeout: 10000 }
+        );
+      }
+      return;
+    }
+
     if (loadingKey) return;
     loadingKey = key;
 
@@ -167,9 +223,11 @@
         {#each row as button, colIdx}
           {@const bType = (button.type || button.buttonType || "").toUpperCase()}
           {@const isCurrentLoading = loadingKey === `${rowIdx}_${colIdx}`}
+          {@const hasCornerIcon = bType === "LINK" || bType === "CLIPBOARD" || bType === "OPEN_APP" || bType === "REQUEST_CONTACT" || bType === "REQUEST_GEO_LOCATION"}
           <button
             type="button"
             class="inline-btn"
+            class:has-corner-icon={hasCornerIcon}
             class:loading={isCurrentLoading}
             disabled={isCurrentLoading}
             onclick={(e) => {
@@ -182,19 +240,32 @@
             {:else}
               <span class="btn-text">{button.text}</span>
               {#if bType === "LINK"}
-                <svg class="btn-icon" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
                   <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
                   <polyline points="15 3 21 3 21 9"></polyline>
                   <line x1="10" y1="14" x2="21" y2="3"></line>
                 </svg>
               {:else if bType === "CLIPBOARD"}
-                <svg class="btn-icon" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
                   <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
                   <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
                 </svg>
               {:else if bType === "OPEN_APP"}
-                <svg class="btn-icon" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <polyline points="9 18 15 12 9 6"></polyline>
+                <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                  <rect x="3" y="3" width="7" height="7" rx="1.5"></rect>
+                  <rect x="14" y="3" width="7" height="7" rx="1.5"></rect>
+                  <rect x="3" y="14" width="7" height="7" rx="1.5"></rect>
+                  <rect x="14" y="14" width="7" height="7" rx="1.5"></rect>
+                </svg>
+              {:else if bType === "REQUEST_CONTACT"}
+                <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                  <circle cx="12" cy="7" r="4"></circle>
+                </svg>
+              {:else if bType === "REQUEST_GEO_LOCATION"}
+                <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path>
+                  <circle cx="12" cy="10" r="3"></circle>
                 </svg>
               {/if}
             {/if}
@@ -223,9 +294,10 @@
   }
 
   .inline-btn {
+    position: relative;
     flex: 1 1 0;
     min-width: 0;
-    min-height: 34px;
+    min-height: 36px;
     padding: 6px 10px;
     background: rgba(255, 255, 255, 0.12);
     border: none;
@@ -241,6 +313,10 @@
     transition: background-color 0.15s ease, transform 0.08s ease;
     user-select: none;
     box-sizing: border-box;
+  }
+
+  .inline-btn.has-corner-icon {
+    padding: 6px 20px;
   }
 
   .inline-btn:hover {
@@ -264,8 +340,13 @@
   }
 
   .btn-icon {
-    flex-shrink: 0;
-    opacity: 0.7;
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    width: 13px;
+    height: 13px;
+    opacity: 0.78;
+    pointer-events: none;
   }
 
   .btn-spinner {

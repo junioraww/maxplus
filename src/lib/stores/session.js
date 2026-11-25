@@ -10,6 +10,16 @@ const data = writable({
   loaded: false,
 });
 
+export const pendingChatJump = writable(null);
+
+export function clearPendingChatJump(chatId) {
+  pendingChatJump.update((cur) => {
+    if (!cur) return null;
+    if (chatId != null && String(cur.chatId) !== String(chatId)) return cur;
+    return null;
+  });
+}
+
 export default data;
 
 export function set(key, value) {
@@ -29,10 +39,20 @@ export const now = readable(Date.now(), (setVal) => {
   return () => clearInterval(interval);
 });
 
-export async function openChat(rawChatId) {
+export async function openChat(rawChatId, jumpTarget = null) {
   if (rawChatId == null) return;
   const chatId = typeof rawChatId === "object" && rawChatId !== null ? rawChatId.id : rawChatId;
   if (chatId == null) return;
+
+  if (jumpTarget && (jumpTarget.messageId != null || jumpTarget.time != null)) {
+    pendingChatJump.set({
+      chatId: String(chatId),
+      messageId: jumpTarget.messageId != null ? String(jumpTarget.messageId) : null,
+      time: jumpTarget.time != null ? Number(jumpTarget.time) : null,
+      highlightQuery: jumpTarget.highlightQuery || "",
+      ts: Date.now(),
+    });
+  }
 
   const currentData = getStoreValue(data) || {};
   const openedChats = Array.isArray(currentData.openedChats) ? currentData.openedChats : [];

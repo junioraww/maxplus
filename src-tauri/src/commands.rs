@@ -126,6 +126,28 @@ delegate_cmd!(remove_reaction(chat_id: i64, message_id: String) => remove_reacti
 
 delegate_cmd!(read_message(chat_id: i64, message_id: String, mark: Option<u64>) => read_message(chat_id, p(message_id)?, mark));
 delegate_cmd!(pin_message(chat_id: i64, message_id: String, notify: bool) => pin_message(chat_id, p(message_id)?, notify));
+delegate_cmd!(get_pinned_message_states(chat_ids: Vec<i64>) => get_pinned_message_states(chat_ids));
+delegate_cmd!(get_pinned_messages(chat_id: i64) => get_pinned_messages(chat_id));
+#[tauri::command]
+pub async fn update_pinned_messages(
+    state: State<'_, AppState>,
+    chat_id: i64,
+    action: u8,
+    message_ids: Vec<String>,
+    for_me: bool,
+    notify: bool,
+) -> Result<Value, Value> {
+    let mut ids = Vec::with_capacity(message_ids.len());
+    for s in message_ids {
+        ids.push(p(s)?);
+    }
+    let r = state
+        .client
+        .update_pinned_messages(chat_id, action, ids, for_me, notify)
+        .await
+        .map_err(|e| e.to_json())?;
+    Ok(r.payload)
+}
 delegate_cmd!(delete_message(chat_id: i64, message_id: String, for_me: bool) => delete_message(chat_id, p(message_id)?, for_me));
 #[tauri::command]
 pub async fn delete_messages(

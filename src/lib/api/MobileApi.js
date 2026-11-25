@@ -373,6 +373,17 @@ export default class MobileApi extends BaseAPI {
           this.notify[String(id)]?.();
           if (!isNaN(Number(id))) this.notify[Number(id)]?.();
         }
+      } else if (opc === 243) {
+        const p = response.payload;
+        const stateObj = p?.pinnedMessagesState;
+        const cid = stateObj?.chatId ?? p?.chatId;
+        if (cid != null && stateObj) {
+          const c = getChat(cid);
+          c.chatInfo.update((current) => {
+            if (!current) return current;
+            return { ...current, pinnedMessagesState: stateObj };
+          });
+        }
       } else if (opc === 277) {
         const p = response.payload;
         if (p?.folders) {
@@ -421,13 +432,43 @@ export default class MobileApi extends BaseAPI {
             }
           }
         }
+      } else if (opc === 134) {
+        const cfg = response.payload?.config || response.payload;
+        if (cfg?.chats && typeof cfg.chats === "object") {
+          const updatedList = [];
+          for (const [cidKey, chatConf] of Object.entries(cfg.chats)) {
+            if (!chatConf || typeof chatConf !== "object") continue;
+            const ddu = chatConf.dontDisturbUntil ?? chatConf.chatSettings?.dontDisturbUntil ?? chatConf.options?.sound?.dontDisturbUntil;
+            if (ddu === undefined) continue;
+            const chat = getChat(cidKey);
+            let updated = null;
+            chat.chatInfo.update((current) => {
+              if (!current) return current;
+              updated = { ...current, dontDisturbUntil: ddu };
+              return updated;
+            });
+            if (updated) updatedList.push(updated);
+          }
+          if (updatedList.length > 0) {
+            await saveChats(updatedList).catch(() => {});
+          }
+        }
+        if (cfg?.user) {
+          const acc = await getCurrentAccount().catch(() => null);
+          applyUserConfig(cfg.user, acc?.id);
+        }
       } else if (opc === 135) {
         const chatPayload = response.payload?.chat;
         if (chatPayload && chatPayload.id != null) {
+          const ddu = chatPayload.dontDisturbUntil ?? chatPayload.chatSettings?.dontDisturbUntil ?? chatPayload.options?.sound?.dontDisturbUntil;
           const chat = getChat(chatPayload.id);
           let mergedChat = null;
           chat.chatInfo.update((current) => {
-            mergedChat = { ...(current || {}), ...chatPayload };
+            mergedChat = {
+              ...(current || {}),
+              ...chatPayload,
+              ...(ddu !== undefined ? { dontDisturbUntil: ddu } : {}),
+            };
             return mergedChat;
           });
           if (mergedChat) {
@@ -1023,8 +1064,9 @@ export default class MobileApi extends BaseAPI {
         const configChats = config?.chats || {};
         const mergedChats = chats.map((chat) => {
           const chatConfig = configChats[String(chat.id)] || configChats[chat.id];
-          if (chatConfig && chatConfig.dontDisturbUntil != null) {
-            return { ...chat, dontDisturbUntil: chatConfig.dontDisturbUntil };
+          const ddu = chatConfig?.dontDisturbUntil ?? chatConfig?.chatSettings?.dontDisturbUntil ?? chatConfig?.options?.sound?.dontDisturbUntil ?? chat.dontDisturbUntil ?? chat.chatSettings?.dontDisturbUntil ?? chat.options?.sound?.dontDisturbUntil;
+          if (ddu != null) {
+            return { ...chat, dontDisturbUntil: ddu };
           }
           return chat;
         });
@@ -1056,8 +1098,9 @@ export default class MobileApi extends BaseAPI {
       const updatedExisting = [];
       const updatedCurrentChats = currentChats.map((c) => {
         const conf = configChats[String(c.id)] || configChats[c.id];
-        if (conf && conf.dontDisturbUntil != null && conf.dontDisturbUntil !== c.dontDisturbUntil) {
-          const updated = { ...c, dontDisturbUntil: conf.dontDisturbUntil };
+        const ddu = conf?.dontDisturbUntil ?? conf?.chatSettings?.dontDisturbUntil ?? conf?.options?.sound?.dontDisturbUntil;
+        if (ddu != null && ddu !== c.dontDisturbUntil) {
+          const updated = { ...c, dontDisturbUntil: ddu };
           updatedExisting.push(updated);
           return updated;
         }
@@ -1260,12 +1303,12 @@ export default class MobileApi extends BaseAPI {
     });
   }
 
-  async pinMessage(chatId, messageId) {
+  async pinMessage(chatId, messageId, notify = true) {
     await this.waitSync();
     return await invoke("pin_message", {
       chatId: Number(chatId),
       messageId: String(messageId ?? "0"),
-      notify: true,
+      notify: Boolean(notify),
     });
   }
 
@@ -1275,6 +1318,31 @@ export default class MobileApi extends BaseAPI {
       chatId: Number(chatId),
       messageId: "0",
       notify: false,
+    });
+  }
+
+  async getPinnedMessageStates(chatIds) {
+    await this.waitSync();
+    return await invoke("get_pinned_message_states", {
+      chatIds: (chatIds || []).map((id) => Number(id)),
+    });
+  }
+
+  async getPinnedMessages(chatId) {
+    await this.waitSync();
+    return await invoke("get_pinned_messages", {
+      chatId: Number(chatId),
+    });
+  }
+
+  async updatePinnedMessages(chatId, action, messageIds = [], { forMe = false, notify = true } = {}) {
+    await this.waitSync();
+    return await invoke("update_pinned_messages", {
+      chatId: Number(chatId),
+      action: Number(action),
+      messageIds: (messageIds || []).map((id) => String(id)),
+      forMe: Boolean(forMe),
+      notify: Boolean(notify),
     });
   }
 

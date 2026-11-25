@@ -122,7 +122,7 @@ img {
   --accent-subtle: rgba(36, 139, 254, 0.12);
   --accent-subtle-hover: rgba(36, 139, 254, 0.2);
 
-  --bubble-outgoing: #7b4cd6;
+  --bubble-outgoing: linear-gradient(135deg, #4f6cf7 0%, #7b4cd6 55%, #9d5df7 100%);
   --bubble-incoming: #3a3c55;
   --bubble-outgoing-text: #ffffff;
   --bubble-incoming-text: #ffffff;
@@ -310,7 +310,7 @@ img {
   --accent-subtle: rgba(36, 139, 254, 0.12);
   --accent-subtle-hover: rgba(36, 139, 254, 0.2);
 
-  --bubble-outgoing: #7b4cd6;
+  --bubble-outgoing: linear-gradient(135deg, #4f6cf7 0%, #7b4cd6 55%, #9d5df7 100%);
   --bubble-incoming: #3a3c55;
   --bubble-outgoing-text: #ffffff;
   --bubble-incoming-text: #ffffff;

@@ -9,6 +9,8 @@
   import { saveChats, getChat } from "$lib/stores/messages";
   import { reactionEmojis, ensureReactionsLoaded } from "$lib/stores/reactions";
   import { openProfile } from "$lib/stores/session";
+  import { canPinInChat } from "$lib/utils/chatPermissions";
+  import { showAlert } from "$lib/utils/alert";
   import SeenByItem from "./SeenByItem.svelte";
 
   export let activeAt;
@@ -270,14 +272,17 @@
         const updatedChat = { ...chat, pinnedMessage: null };
         getChat(chat.id).chatInfo.set(updatedChat);
         await saveChats([updatedChat]);
+        showAlert("Сообщение откреплено");
       } else {
-        await $API.pinMessage(chat.id, targetMsg.id);
+        await $API.pinMessage(chat.id, targetMsg.id, true);
         const updatedChat = { ...chat, pinnedMessage: targetMsg };
         getChat(chat.id).chatInfo.set(updatedChat);
         await saveChats([updatedChat]);
+        showAlert("Сообщение закреплено");
       }
     } catch (e) {
       console.error("Failed to toggle pin message:", e);
+      showAlert("Не удалось изменить закрепление");
     }
     dispatch("close", {});
     cleanupBack();
@@ -406,7 +411,7 @@
   {@const msgTime = Number(msg.time) || 0}
   {@const canEdit = isMe && !isDeleted && (msgTime > 0 ? (Date.now() - msgTime <= editTimeoutSec * 1000) : true)}
   {@const hasHistory = !!(msg.edited || msg.status === 'EDITED' || (Array.isArray(msg.history) && msg.history.length > 0))}
-  {@const canPin = !isDeleted && (chat?.type === "CHAT" || chat?.type === "GROUP" || chat?.type === "CHANNEL")}
+  {@const canPin = !isDeleted && canPinInChat(chat, $currentUser)}
   {@const hasText = !!(msg.text?.trim())}
   {@const isChannel = chat?.type === "CHANNEL"}
 
