@@ -1,53 +1,65 @@
 <script>
   import { onMount } from "svelte";
-  import { slide, fly } from "svelte/transition";
-  import { flip } from "svelte/animate";
+  import { slide } from "svelte/transition";
   import { page } from "$app/stores";
   import SettingsPageWrapper from "$components/settings/SettingsPageWrapper.svelte";
+  import SettingsSection from "$components/settings/SettingsSection.svelte";
+  import SettingsRow from "$components/settings/SettingsRow.svelte";
   import { getCurrentAccount } from "$lib/stores/accounts";
+  import { openQrScanner, closeQrScanner } from "$lib/stores/session";
   import API from "$lib/stores/api";
+  import { showAlert } from "$lib/utils/alert";
 
-  let sessions = [];
-  let current = null;
-  let loading = true;
-  let expandedId = null;
-
+  export let isTab = false;
   export let onClose = null;
   $: from = $page.url.searchParams.get("from") || "/?card=settings";
 
-  onMount(async () => {
-    sessions = [];
+  let sessions = [];
+  let loading = true;
+  let expandedId = null;
+  let isHandlingQR = false;
+
+  $: currentSession = sessions.find((x) => x.current) || null;
+  $: otherSessions = sessions.filter((x) => !x.current);
+
+  async function loadSessions() {
+    loading = true;
     try {
       const res = await $API.getSessions();
       sessions = res?.sessions || res || [];
-      current = sessions.find((x) => x.current);
     } catch (e) {
       console.error(e);
     } finally {
       loading = false;
     }
+  }
+
+  onMount(() => {
+    loadSessions();
   });
 
-  const toggleSession = (id) => {
+  function toggleSession(id) {
     expandedId = expandedId === id ? null : id;
-  };
+  }
 
   async function handleTerminateAll() {
     const account = await getCurrentAccount();
-    if (!account) throw new Error("Ошибка получения данных аккаунта");
+    if (!account) {
+      showAlert("Ошибка получения данных аккаунта");
+      return;
+    }
 
     if (account.meta.added + 1000 * 60 * 60 * 24 > Date.now()) {
-      alert("Должно пройти 24 часа со входа в аккаунт!");
+      showAlert("Должно пройти 24 часа со входа в аккаунт!");
       return;
     }
 
     try {
       await $API.closeAllSessions();
-      const res = await $API.getSessions();
-      sessions = res?.sessions || res || [];
+      await loadSessions();
     } catch (e) {
       console.error(e);
-      alert("Ошибка при завершении сессий.");
+      showAlert("Ошибка при завершении сессий.");
     }
   }
 
@@ -60,207 +72,223 @@
       date.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit", hour12: false })
     );
   }
+
+  function openScanner() {
+    openQrScanner({
+      onScan: handleQRScan,
+    });
+  }
+
+  function handleQRScan(content) {
+    closeQrScanner();
+    if (!content || isHandlingQR) return;
+    isHandlingQR = true;
+    if (content.includes(":auth")) {
+      $API.call(1, { interactive: true });
+      $API.call(96, {});
+      $API
+        .call(290, { qrLink: content })
+        .then((response) => {
+          if (response?.error) showAlert(response.title || "Ошибка авторизации");
+          else loadSessions();
+        })
+        .finally(() => {
+          isHandlingQR = false;
+        });
+    } else {
+      isHandlingQR = false;
+      showAlert(content);
+    }
+  }
 </script>
 
-<SettingsPageWrapper title="Активные сессии" {from} {onClose}>
-  <span class="count" slot="header-extra">{sessions.length}</span>
+<SettingsPageWrapper title="Устройства" {from} {isTab} {onClose}>
+  <span class="sessions-count" slot="header-extra">{sessions.length}</span>
 
-  <div class="sessions-container">
+  <div class="devices-page">
     {#if loading}
-      <div class="status-msg">Загрузка данных...</div>
+      <div class="devices-status">Загрузка данных...</div>
     {:else if sessions.length === 0}
-      <div class="status-msg">Список сессий пуст</div>
+      <div class="devices-status">Список сессий пуст</div>
     {:else}
-      {#each sessions as session, i (session.time + i)}
-        <div
-          animate:flip={{ duration: 300 }}
-          in:fly={{ x: 20, duration: 400, opacity: 0 }}
-          class="session-card"
-          class:expanded={expandedId === session.time}
-          on:click={() => toggleSession(session.time)}
-        >
-          <div class="session-header">
-            <div class="main-info">
-              <span class="client-name">{session.client || "Unknown Client"}</span>
-              <span class="location-brief">
-                {session.location
-                  ? session.location.split(",").slice(0, 2).join(",")
-                  : "Unknown Location"}
-              </span>
-            </div>
-            <div class="time-badge">
-              {formatDate(session.time).split(" ")[0]}
-            </div>
-          </div>
-
-          {#if expandedId === session.time}
-            <div class="session-details" transition:slide={{ duration: 200 }}>
+      {#if currentSession}
+        <SettingsSection title="Это устройство">
+          <SettingsRow
+            icon="devices.png"
+            title={currentSession.client || "Текущее устройство"}
+            subtitle={currentSession.location || "Неизвестная локация"}
+            value="В сети"
+            chevron={false}
+            on:click={() => toggleSession(currentSession.time)}
+          />
+          {#if expandedId === currentSession.time}
+            <div class="session-details" transition:slide={{ duration: 180 }}>
+              {#if currentSession.info}
+                <div class="detail-row">
+                  <span class="detail-label">Устройство</span>
+                  <span class="detail-val">{currentSession.info}</span>
+                </div>
+              {/if}
               <div class="detail-row">
-                <span class="label">Информация:</span>
-                <span class="val">{session.info}</span>
+                <span class="detail-label">Локация</span>
+                <span class="detail-val">{currentSession.location || "—"}</span>
               </div>
               <div class="detail-row">
-                <span class="label">Локация и IP:</span>
-                <span class="val">{session.location}</span>
-              </div>
-              <div class="detail-row">
-                <span class="label">Дата входа:</span>
-                <span class="val">{formatDate(session.time)}</span>
+                <span class="detail-label">Вход</span>
+                <span class="detail-val">{formatDate(currentSession.time)}</span>
               </div>
             </div>
           {/if}
-        </div>
-      {/each}
+
+          {#if otherSessions.length > 0}
+            <SettingsRow
+              title="Завершить все другие сеансы"
+              danger={true}
+              chevron={false}
+              on:click={handleTerminateAll}
+            />
+          {/if}
+        </SettingsSection>
+      {/if}
+
+      {#if otherSessions.length > 0}
+        <SettingsSection title="Активные сессии">
+          {#each otherSessions as session, i (session.time + "-" + i)}
+            {@const itemKey = session.time + "-" + i}
+            <SettingsRow
+              icon="devices.png"
+              title={session.client || "Неизвестный клиент"}
+              subtitle={session.location
+                ? session.location.split(",").slice(0, 2).join(",")
+                : "Неизвестная локация"}
+              value={formatDate(session.time).split(" ")[0]}
+              chevron={false}
+              on:click={() => toggleSession(itemKey)}
+            />
+            {#if expandedId === itemKey}
+              <div class="session-details" transition:slide={{ duration: 180 }}>
+                {#if session.info}
+                  <div class="detail-row">
+                    <span class="detail-label">Информация</span>
+                    <span class="detail-val">{session.info}</span>
+                  </div>
+                {/if}
+                <div class="detail-row">
+                  <span class="detail-label">Локация</span>
+                  <span class="detail-val">{session.location || "—"}</span>
+                </div>
+                <div class="detail-row">
+                  <span class="detail-label">Время входа</span>
+                  <span class="detail-val">{formatDate(session.time)}</span>
+                </div>
+              </div>
+            {/if}
+          {/each}
+        </SettingsSection>
+      {/if}
     {/if}
   </div>
 
-  <svelte:fragment slot="footer">
-    {#if sessions.length > 1}
-      <div class="actions-panel">
-        <button class="terminate-btn" on:click|stopPropagation={handleTerminateAll}>
-          Завершить все другие сессии
-        </button>
-      </div>
-    {/if}
-  </svelte:fragment>
+  <div class="devices-footer" slot="footer">
+    <button type="button" class="qr-scan-btn" on:click={openScanner}>
+      <img src="/icons/qr.svg" alt="" class="qr-btn-icon" />
+      <span>Сканировать QR-код</span>
+    </button>
+  </div>
 </SettingsPageWrapper>
 
 <style>
-  .count {
-    font-size: 0.75rem;
-    background: #2c2c35;
-    padding: 3px 9px;
-    border-radius: 999px;
-    color: #bbb;
+  .sessions-count {
+    min-width: 24px;
+    height: 24px;
+    padding: 0 8px;
+    border-radius: 12px;
+    background: var(--settings-card-elevated, #25262d);
+    color: var(--settings-text-secondary);
+    font-size: 13px;
     font-weight: 600;
-  }
-
-  .sessions-container {
-    flex: 1;
-    overflow-y: auto;
-    padding: 16px;
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-    box-sizing: border-box;
-  }
-
-  .session-card {
-    background: #24252a;
-    border-radius: 14px;
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    cursor: pointer;
-    transition: border-color 0.2s;
-    flex-shrink: 0;
-  }
-
-  .session-card.expanded {
-    border-color: #3390ec;
-  }
-
-  .session-header {
-    padding: 14px 16px;
-    display: flex;
-    justify-content: space-between;
+    display: inline-flex;
     align-items: center;
+    justify-content: center;
   }
 
-  .main-info {
+  .devices-page {
     display: flex;
     flex-direction: column;
-    gap: 3px;
+    gap: 16px;
+    padding: 16px 12px 8px;
   }
 
-  .client-name {
-    font-weight: 600;
-    color: #fff;
-    font-size: 0.95rem;
-  }
-
-  .location-brief {
-    font-size: 0.8rem;
-    color: #888;
-  }
-
-  .time-badge {
-    font-size: 0.75rem;
-    color: #666;
+  .devices-status {
+    text-align: center;
+    padding: 48px 16px;
+    color: var(--settings-text-muted);
+    font-size: 14px;
   }
 
   .session-details {
-    padding: 0 16px 14px 16px;
-    border-top: 1px solid rgba(255, 255, 255, 0.06);
+    padding: 10px 16px 14px 54px;
+    border-bottom: 1px solid var(--settings-separator);
     display: flex;
     flex-direction: column;
-    gap: 8px;
-    background: #1e1e24;
-    border-bottom-left-radius: 14px;
-    border-bottom-right-radius: 14px;
+    gap: 6px;
+    background: var(--settings-card-hover);
   }
 
   .detail-row {
     display: flex;
-    flex-direction: column;
-    padding-top: 8px;
+    justify-content: space-between;
+    gap: 12px;
+    font-size: 13px;
   }
 
-  .label {
-    font-size: 0.7rem;
-    color: #666;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-  }
-
-  .val {
-    font-size: 0.85rem;
-    color: #bbb;
-    line-height: 1.3;
-    word-break: break-all;
-  }
-
-  .status-msg {
-    text-align: center;
-    margin-top: 40px;
-    color: #666;
-  }
-
-  .actions-panel {
-    padding: 14px 16px calc(14px + var(--safe-bottom, 0px));
-    background: #212126;
-    border-top: 1px solid rgba(255, 255, 255, 0.08);
+  .detail-label {
+    color: var(--settings-text-muted);
     flex-shrink: 0;
   }
 
-  .terminate-btn {
+  .detail-val {
+    color: var(--settings-text-primary);
+    text-align: right;
+    word-break: break-word;
+  }
+
+  .devices-footer {
+    padding: 10px 12px max(16px, calc(16px + var(--safe-bottom, 0px)));
+    background: var(--settings-bg, #0f0f12);
+    border-top: 1px solid var(--settings-separator);
+    flex-shrink: 0;
+  }
+
+  .qr-scan-btn {
     width: 100%;
-    height: 44px;
-    background: rgba(239, 68, 68, 0.15);
-    color: #ff595a;
-    border: 1px solid rgba(239, 68, 68, 0.25);
-    border-radius: 12px;
+    height: 52px;
+    border: none;
+    border-radius: 14px;
+    background: var(--settings-accent, #007aff);
+    color: #ffffff;
+    font-family: var(--settings-font-title, var(--font-family-title));
+    font-size: 16px;
     font-weight: 600;
-    cursor: pointer;
-    font-size: 0.92rem;
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: transform 0.12s, opacity 0.15s, background 0.15s;
+    gap: 10px;
+    cursor: pointer;
+    transition: background-color 0.15s, transform 0.1s;
   }
 
-  .terminate-btn:hover {
-    background: rgba(239, 68, 68, 0.25);
+  .qr-scan-btn:hover {
+    background: var(--settings-accent-hover, #1a88ff);
   }
 
-  .terminate-btn:active {
-    transform: scale(0.98);
+  .qr-scan-btn:active {
+    transform: scale(0.985);
   }
 
-  .sessions-container::-webkit-scrollbar {
-    width: 4px;
-  }
-
-  .sessions-container::-webkit-scrollbar-thumb {
-    background: #333;
-    border-radius: 10px;
+  .qr-btn-icon {
+    width: 20px;
+    height: 20px;
+    filter: brightness(0) invert(1);
   }
 </style>

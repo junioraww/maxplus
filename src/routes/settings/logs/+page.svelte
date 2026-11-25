@@ -390,17 +390,18 @@
     justify-content: space-between;
     align-items: center;
     padding: calc(12px + var(--safe-top, 0px)) 16px 12px;
-    background: #212126;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    background: var(--settings-topbar-bg, #0f0f12);
+    border-bottom: 1px solid var(--settings-separator);
     flex-shrink: 0;
     gap: 8px;
   }
 
   .tab-header h1 {
     margin: 0;
-    font-size: 1.15rem;
+    font-family: var(--settings-font-title, var(--font-family-title));
+    font-size: 18px;
     font-weight: 600;
-    color: #fff;
+    color: var(--settings-text-primary);
     white-space: nowrap;
   }
 

@@ -218,7 +218,7 @@ img {
   /* Dropout / Context Menu variables */
   --dropout-bg: #1c1e24;
   --dropout-card-bg: #1c1e24;
-  --dropout-border: rgba(255, 255, 255, 0.08);
+  --dropout-border: transparent;
   --dropout-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
   --dropout-radius: 18px;
   --dropout-text: #ffffff;
@@ -260,6 +260,33 @@ img {
   --z-camouflage: 150;
   --z-camouflage-preview: 151;
   --z-camouflage-control: 152;
+
+  /* Settings UI tokens (1-to-1 with Space Dark) */
+  --settings-bg: #0f0f12;
+  --settings-surface: #17181c;
+  --settings-card-bg: #25262d;
+  --settings-card-elevated: #2e3038;
+  --settings-card-hover: rgba(255, 255, 255, 0.05);
+  --settings-card-active: rgba(255, 255, 255, 0.09);
+  --settings-card-radius: 16px;
+  --settings-separator: rgba(255, 255, 255, 0.09);
+  --settings-topbar-bg: #0f0f12;
+  --settings-topbar-height: 56px;
+  --settings-text-primary: #ffffff;
+  --settings-text-secondary: rgba(255, 255, 255, 0.68);
+  --settings-text-muted: rgba(255, 255, 255, 0.52);
+  --settings-accent: #007aff;
+  --settings-accent-hover: #1a88ff;
+  --settings-accent-subtle: rgba(0, 122, 255, 0.14);
+  --settings-danger: #ce4257;
+  --settings-danger-subtle: rgba(206, 66, 87, 0.12);
+  --settings-icon-primary: #ffffff;
+  --settings-icon-secondary: rgba(255, 255, 255, 0.80);
+  --settings-icon-muted: rgba(255, 255, 255, 0.64);
+  --settings-input-bg: #25262d;
+  --settings-input-border: rgba(255, 255, 255, 0.09);
+  --settings-font-body: var(--font-family-base);
+  --settings-font-title: var(--font-family-title);
 }
 
 [data-theme="dark"] {
@@ -379,7 +406,7 @@ img {
   /* Dropout / Context Menu variables */
   --dropout-bg: #1c1e24;
   --dropout-card-bg: #1c1e24;
-  --dropout-border: rgba(255, 255, 255, 0.08);
+  --dropout-border: transparent;
   --dropout-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
   --dropout-radius: 18px;
   --dropout-text: #ffffff;
@@ -399,6 +426,31 @@ img {
   --reaction-chip-text: #ffffff;
   --reaction-chip-active-bg: rgba(123, 76, 214, 0.45);
   --reaction-chip-active-border: rgba(167, 139, 250, 0.65);
+
+  /* Settings UI tokens (Space Dark) */
+  --settings-bg: #0f0f12;
+  --settings-surface: #17181c;
+  --settings-card-bg: #25262d;
+  --settings-card-elevated: #2e3038;
+  --settings-card-hover: rgba(255, 255, 255, 0.05);
+  --settings-card-active: rgba(255, 255, 255, 0.09);
+  --settings-card-radius: 16px;
+  --settings-separator: rgba(255, 255, 255, 0.09);
+  --settings-topbar-bg: #0f0f12;
+  --settings-topbar-height: 56px;
+  --settings-text-primary: #ffffff;
+  --settings-text-secondary: rgba(255, 255, 255, 0.68);
+  --settings-text-muted: rgba(255, 255, 255, 0.52);
+  --settings-accent: #007aff;
+  --settings-accent-hover: #1a88ff;
+  --settings-accent-subtle: rgba(0, 122, 255, 0.14);
+  --settings-danger: #ce4257;
+  --settings-danger-subtle: rgba(206, 66, 87, 0.12);
+  --settings-icon-primary: #ffffff;
+  --settings-icon-secondary: rgba(255, 255, 255, 0.80);
+  --settings-icon-muted: rgba(255, 255, 255, 0.64);
+  --settings-input-bg: #25262d;
+  --settings-input-border: rgba(255, 255, 255, 0.09);
 }
 
 [data-theme="light"],
@@ -494,7 +546,7 @@ body.light {
   /* Light mode dropout */
   --dropout-bg: #ffffff;
   --dropout-card-bg: #ffffff;
-  --dropout-border: rgba(0, 0, 0, 0.08);
+  --dropout-border: transparent;
   --dropout-shadow: 0 8px 24px rgba(0, 0, 0, 0.16);
   --dropout-text: #0f1419;
   --dropout-icon: #536471;
@@ -512,6 +564,31 @@ body.light {
   --reaction-chip-text: #0f1419;
   --reaction-chip-active-bg: rgba(36, 139, 254, 0.15);
   --reaction-chip-active-border: rgba(36, 139, 254, 0.45);
+
+  /* Settings UI tokens (Space Light) */
+  --settings-bg: #edeef2;
+  --settings-surface: #ffffff;
+  --settings-card-bg: #ffffff;
+  --settings-card-elevated: #f5f7fa;
+  --settings-card-hover: rgba(9, 9, 9, 0.04);
+  --settings-card-active: rgba(9, 9, 9, 0.08);
+  --settings-card-radius: 16px;
+  --settings-separator: rgba(9, 9, 9, 0.08);
+  --settings-topbar-bg: #edeef2;
+  --settings-topbar-height: 56px;
+  --settings-text-primary: rgba(6, 7, 8, 0.84);
+  --settings-text-secondary: rgba(6, 7, 8, 0.64);
+  --settings-text-muted: rgba(6, 7, 8, 0.48);
+  --settings-accent: #007aff;
+  --settings-accent-hover: #0066d6;
+  --settings-accent-subtle: rgba(0, 122, 255, 0.1);
+  --settings-danger: #ff303c;
+  --settings-danger-subtle: rgba(255, 48, 60, 0.1);
+  --settings-icon-primary: #060708;
+  --settings-icon-secondary: rgba(6, 7, 8, 0.68);
+  --settings-icon-muted: rgba(6, 7, 8, 0.48);
+  --settings-input-bg: #f5f7fa;
+  --settings-input-border: rgba(9, 9, 9, 0.08);
 }
 
 input[type="checkbox"] {

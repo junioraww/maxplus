@@ -12,6 +12,7 @@
   import { type } from "@tauri-apps/plugin-os";
 
   import { initTheme, activeThemeId } from '$lib/stores/theme';
+  import { initClientSettings } from '$lib/stores/clientSettings';
   import { initDrafts } from '$lib/stores/drafts';
   import API from '$lib/stores/api';
   import { add as addLog } from '$lib/stores/logs';
@@ -43,7 +44,7 @@
   import LockScreen from "$components/main/auth/LockScreen.svelte";
   import { isCamouflageLocked, loadCamouflageSettings } from "$lib/camouflage/store";
   import DecoyApp from "$components/camouflage/DecoyApp.svelte";
-  import VpnWarningSheet from "$components/main/VpnWarningSheet.svelte";
+  import { openVpnWarningSheet, closeVpnWarningSheet } from "$lib/stores/session";
   import { setupFetchProxyInterceptor } from "$lib/utils/network";
   import { loadProxyConfig, checkVpn, vpnStatus, vpnWarningDismissed } from "$lib/stores/proxySettings";
 
@@ -56,6 +57,11 @@
   const legacyUnregisterMap = new Map();
 
   $: isAuthRoute = $page?.url?.pathname?.startsWith('/auth');
+  $: if (!isAuthRoute && $vpnStatus.is_vpn && !$vpnWarningDismissed) {
+    openVpnWarningSheet(() => vpnWarningDismissed.set(true));
+  } else {
+    closeVpnWarningSheet();
+  }
   const onBack = new Proxy({}, {
     set(target, prop, fn) {
       if (legacyUnregisterMap.has(prop)) {
@@ -94,6 +100,7 @@
     loadCamouflageSettings().catch(() => {});
     initKeyboardTracker();
     initTheme();
+    initClientSettings();
     initDrafts();
     cleanupAutoLock = initAutoLockWatcher();
     await initProxyConfig();
@@ -320,11 +327,6 @@
     onCancel={() => closeVideoCropModal()}
   />
 {/if}
-
-<VpnWarningSheet
-  isOpen={!isAuthRoute && $vpnStatus.is_vpn && !$vpnWarningDismissed}
-  on:close={() => vpnWarningDismissed.set(true)}
-/>
 
 {#each $pluginGlobalModals as item (item.id)}
   <div class="plugin-global-modal" data-plugin-mount={item.pluginId || item.id}>

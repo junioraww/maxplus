@@ -5,8 +5,11 @@
   import { app } from "@tauri-apps/api";
   import { page } from "$app/stores";
   import SettingsPageWrapper from "$components/settings/SettingsPageWrapper.svelte";
+  import SettingsSection from "$components/settings/SettingsSection.svelte";
+  import SettingsRow from "$components/settings/SettingsRow.svelte";
   import CreditsModal from "$components/main/CreditsModal.svelte";
   import { unloadAllPlugins } from "$lib/plugins/runtime";
+  import { showAlert } from "$lib/utils/alert";
 
   let version = "...";
   let environment = "...";
@@ -14,6 +17,7 @@
   let checking = false;
   let showCredits = false;
 
+  export let isTab = false;
   export let onClose = null;
   $: from = $page.url.searchParams.get("from") || "/?card=settings";
 
@@ -25,20 +29,19 @@
       else doingStuff += ".";
     }, 100);
     try {
-      const response = await fetch(
-        "https://api.github.com/repos/me0wkie/maxplus/releases/latest",
-      );
+      const response = await fetch("https://api.github.com/repos/me0wkie/maxplus/releases/latest");
       const data = await response.json();
-      if (!data.tag_name) alert("Не удалось соединиться с GitHub!");
-      else {
-        if (data.tag_name !== version) {
-          await unloadAllPlugins();
-          openUrl(data.html_url);
-        } else alert("Обновлений нет!");
+      if (!data.tag_name) {
+        showAlert("Не удалось соединиться с GitHub!");
+      } else if (data.tag_name !== version) {
+        await unloadAllPlugins();
+        openUrl(data.html_url);
+      } else {
+        showAlert("Обновлений нет!");
       }
     } catch (e) {
       console.error(e);
-      alert("Не удалось соединиться с GitHub!");
+      showAlert("Не удалось соединиться с GitHub!");
     } finally {
       setTimeout(() => {
         checking = false;
@@ -51,11 +54,7 @@
   onMount(async () => {
     version = "v" + (await app.getVersion());
     const _platform = await platform();
-    environment =
-      _platform[0].toUpperCase() +
-      _platform.slice(1) +
-      " " +
-      (await getVersion());
+    environment = _platform[0].toUpperCase() + _platform.slice(1) + " " + (await getVersion());
   });
 
   function openGit() {
@@ -83,7 +82,6 @@
       "для любителей плюсов.",
       "с большим характером.",
     ];
-
     return phrases[Math.floor(Math.random() * phrases.length)];
   }
 
@@ -96,69 +94,44 @@
   }
 </script>
 
-<SettingsPageWrapper title="О приложении" {from} {onClose}>
-  <div class="content">
-    <div class="hero-section">
+<SettingsPageWrapper title="О приложении" {from} {isTab} {onClose}>
+  <div class="about-page">
+    <div class="about-hero">
+      <!-- svelte-ignore a11y-click-events-have-key-events -->
+      <!-- svelte-ignore a11y-no-static-element-interactions -->
       <div on:click={updatePhrase} class="app-icon-wrap">
         <img class="app-logo" src="/favicon.png" alt="Max+" />
       </div>
-      <h1>Max+</h1>
-      <p class="description">Клиент «Макс» {phrase}</p>
+      <h1 class="app-title">Max+</h1>
+      <p class="app-desc">Клиент «Макс» {phrase}</p>
     </div>
 
-    <div class="card sources-card">
-      <div class="card-title">Исходный код</div>
-      <div class="sources-list">
-        <div class="source-item" on:click={openGit}>
-          <img class="source-icon github-icon" src="/icons/web/github.svg" alt="GitHub" />
-          <span class="source-name">GitHub</span>
-          <svg class="chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <polyline points="9 18 15 12 9 6"></polyline>
-          </svg>
-        </div>
-        <div class="divider"></div>
-        <div class="source-item" on:click={openBerg}>
-          <img class="source-icon" src="/icons/web/codeberg.svg" alt="Codeberg" />
-          <span class="source-name">Codeberg</span>
-          <svg class="chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <polyline points="9 18 15 12 9 6"></polyline>
-          </svg>
-        </div>
-      </div>
-    </div>
+    <SettingsSection title="Исходный код">
+      <SettingsRow title="GitHub" on:click={openGit}>
+        <img slot="icon" class="src-icon github-icon" src="/icons/web/github.svg" alt="GitHub" />
+      </SettingsRow>
+      <SettingsRow title="Codeberg" on:click={openBerg}>
+        <img slot="icon" class="src-icon" src="/icons/web/codeberg.svg" alt="Codeberg" />
+      </SettingsRow>
+    </SettingsSection>
 
-    <div class="card info-card">
-      <div class="info-row">
-        <span>Версия приложения</span>
-        <strong>{version}</strong>
-      </div>
-      <div class="divider"></div>
-      <div class="info-row">
-        <span>Платформа</span>
-        <strong>{environment}</strong>
-      </div>
-      <div class="divider"></div>
-      <div class="info-row">
-        <span>Собрано</span>
-        <strong>{__BUILD_DATE__}</strong>
-      </div>
-    </div>
+    <SettingsSection title="Сведения">
+      <SettingsRow title="Версия приложения" value={version} chevron={false} clickable={false} />
+      <SettingsRow title="Платформа" value={environment} chevron={false} clickable={false} />
+      <SettingsRow title="Собрано" value={__BUILD_DATE__} chevron={false} clickable={false} />
+    </SettingsSection>
 
-    <div class="card credits-card" on:click={() => (showCredits = true)}>
-      <div class="source-item">
-        <svg class="source-icon star-icon" viewBox="0 0 24 24" fill="none" stroke="#eab308" stroke-width="2">
-          <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
+    <SettingsSection>
+      <SettingsRow title="Благодарности" on:click={() => (showCredits = true)}>
+        <svg slot="icon" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#eab308" stroke-width="2">
+          <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
         </svg>
-        <span class="source-name">Благодарности</span>
-        <svg class="chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <polyline points="9 18 15 12 9 6"></polyline>
-        </svg>
-      </div>
-    </div>
+      </SettingsRow>
+    </SettingsSection>
   </div>
 
-  <div class="actions-panel" slot="footer">
-    <button class="check-btn" on:click={checkUpdates} disabled={checking}>
+  <div class="about-footer" slot="footer">
+    <button type="button" class="check-btn" on:click={checkUpdates} disabled={checking}>
       Проверить обновления{doingStuff}
     </button>
   </div>
@@ -169,195 +142,99 @@
 {/if}
 
 <style>
-  .content {
-    flex: 1 1 auto;
-    min-height: 0;
-    overflow-y: auto;
-    -webkit-overflow-scrolling: touch;
-    padding: 20px 16px;
+  .about-page {
     display: flex;
     flex-direction: column;
     gap: 16px;
-    box-sizing: border-box;
+    padding: 20px 12px 12px;
   }
 
-  .hero-section {
+  .about-hero {
     display: flex;
     flex-direction: column;
     align-items: center;
-    padding: 10px 0 8px;
     text-align: center;
-    flex-shrink: 0;
+    padding: 8px 16px 8px;
   }
 
   .app-icon-wrap {
+    width: 84px;
+    height: 84px;
+    border-radius: 22px;
+    overflow: hidden;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28);
+    cursor: pointer;
+    transition: transform 0.14s ease;
     margin-bottom: 12px;
-    transition: 0.1s transform;
   }
 
   .app-icon-wrap:active {
-    transform: scale(0.97);
+    transform: scale(0.94);
   }
 
   .app-logo {
-    width: 72px;
-    height: 72px;
-    border-radius: 16px;
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.35);
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
   }
 
-  h1 {
-    color: #ffffff;
-    font-size: 24px;
+  .app-title {
+    margin: 0 0 4px;
+    font-family: var(--settings-font-title, var(--font-family-title));
+    font-size: 22px;
     font-weight: 700;
+    color: var(--settings-text-primary);
+  }
+
+  .app-desc {
     margin: 0;
+    font-size: 14px;
+    color: var(--settings-text-muted);
   }
 
-  .description {
-    color: #888;
-    margin: 6px 0 0;
-    font-size: 0.95rem;
-  }
-
-  .card {
-    background: #24252a;
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 14px;
-    overflow: hidden;
-    flex-shrink: 0;
-  }
-
-  .card-title {
-    padding: 12px 16px 8px;
-    font-size: 0.78rem;
-    color: #7b7b88;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    font-weight: 600;
-  }
-
-  .sources-list {
-    display: flex;
-    flex-direction: column;
-  }
-
-  .source-item {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    padding: 12px 16px;
-    min-height: 48px;
-    box-sizing: border-box;
-    cursor: pointer;
-    transition: background 0.12s;
-    user-select: none;
-    -webkit-tap-highlight-color: transparent;
-    touch-action: manipulation;
-  }
-
-  .source-item:hover {
-    background: rgba(255, 255, 255, 0.05);
-  }
-
-  .source-item:active {
-    background: rgba(255, 255, 255, 0.08);
-  }
-
-  .source-icon {
-    width: 24px;
-    height: 24px;
-    flex-shrink: 0;
+  .src-icon {
+    width: 22px;
+    height: 22px;
+    object-fit: contain;
+    display: block;
   }
 
   .github-icon {
-    background: #fff;
-    border-radius: 50%;
+    filter: brightness(0) invert(var(--icon-invert, 1));
   }
 
-  .source-name {
-    flex: 1;
-    color: #fff;
-    font-size: 0.95rem;
-    font-weight: 500;
-  }
-
-  .chevron {
-    color: #555;
+  .about-footer {
+    padding: 10px 12px max(16px, calc(16px + var(--safe-bottom, 0px)));
+    background: var(--settings-bg, #0f0f12);
+    border-top: 1px solid var(--settings-separator);
     flex-shrink: 0;
-  }
-
-  .divider {
-    height: 1px;
-    background: rgba(255, 255, 255, 0.06);
-    margin: 0 16px;
-    flex-shrink: 0;
-  }
-
-  .info-card {
-    display: flex;
-    flex-direction: column;
-  }
-
-  .info-row {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 13px 16px;
-    min-height: 44px;
-    box-sizing: border-box;
-    font-size: 0.92rem;
-    flex-shrink: 0;
-  }
-
-  .info-row span {
-    color: #888;
-  }
-
-  .info-row strong {
-    color: #fff;
-    font-weight: 500;
-  }
-
-  .actions-panel {
-    flex-shrink: 0;
-    padding: 14px 16px;
-    padding-bottom: max(14px, calc(14px + var(--safe-bottom, 0px)));
-    background: #212126;
-    border-top: 1px solid rgba(255, 255, 255, 0.08);
   }
 
   .check-btn {
     width: 100%;
-    height: 44px;
-    min-height: 44px;
-    flex-shrink: 0;
-    box-sizing: border-box;
-    background: #3390ec;
-    color: white;
+    height: 52px;
     border: none;
-    border-radius: 12px;
-    font-size: 0.95rem;
+    border-radius: 14px;
+    background: var(--settings-accent, #007aff);
+    color: #ffffff;
+    font-family: var(--settings-font-title, var(--font-family-title));
+    font-size: 16px;
     font-weight: 600;
     cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: transform 0.12s, opacity 0.15s, background 0.15s;
-    user-select: none;
-    -webkit-tap-highlight-color: transparent;
-    touch-action: manipulation;
+    transition: background-color 0.15s, transform 0.1s;
   }
 
-  .check-btn:hover {
-    background: #2b7ecf;
+  .check-btn:hover:not(:disabled) {
+    background: var(--settings-accent-hover, #1a88ff);
   }
 
-  .check-btn:active {
-    transform: scale(0.98);
+  .check-btn:active:not(:disabled) {
+    transform: scale(0.985);
   }
 
   .check-btn:disabled {
     opacity: 0.6;
-    cursor: not-allowed;
+    cursor: default;
   }
 </style>

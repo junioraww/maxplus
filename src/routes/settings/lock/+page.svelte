@@ -473,9 +473,8 @@
   }
 
   .settings-card {
-    background: #26262e;
-    border: 1px solid #333;
-    border-radius: 12px;
+    background: var(--settings-card-bg, #17181c);
+    border-radius: var(--settings-card-radius, 16px);
     overflow: hidden;
     display: flex;
     flex-direction: column;
@@ -491,7 +490,7 @@
   }
 
   .settings-row:hover {
-    background: rgba(255, 255, 255, 0.04);
+    background: var(--settings-card-hover, rgba(255, 255, 255, 0.05));
   }
 
   .row-info {

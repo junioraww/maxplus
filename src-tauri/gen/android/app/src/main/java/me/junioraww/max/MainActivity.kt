@@ -157,6 +157,19 @@ class MainActivity : TauriActivity() {
     }
 
     @JvmStatic
+    fun setScreenBrightnessStatic(brightness: Float) {
+      val inst = instance ?: return
+      inst.runOnUiThread {
+        try {
+          val w = inst.window ?: return@runOnUiThread
+          val attrs = w.attributes ?: return@runOnUiThread
+          attrs.screenBrightness = brightness
+          w.attributes = attrs
+        } catch (_: Throwable) {}
+      }
+    }
+
+    @JvmStatic
     fun updateTaskDescription(act: Activity, active: Boolean, aliasIndex: Int) {
       try {
         val pm = act.packageManager

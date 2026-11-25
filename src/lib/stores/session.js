@@ -101,10 +101,16 @@ const SETTINGS_LOADERS = {
   privacy: () => import("../../routes/settings/privacy/+page.svelte"),
   lock: () => import("../../routes/settings/lock/+page.svelte"),
   two_factor: () => import("../../routes/settings/two_factor/+page.svelte"),
+  appearance: () => import("../../routes/settings/appearance/+page.svelte"),
+  language: () => import("../../routes/settings/language/+page.svelte"),
+  messages: () => import("../../routes/settings/messages/+page.svelte"),
+  media: () => import("../../routes/settings/media/+page.svelte"),
+  battery: () => import("../../routes/settings/battery/+page.svelte"),
   dictionary: () => import("../../routes/settings/e2e/dictionary/+page.svelte"),
   logs: () => import("../../routes/settings/logs/+page.svelte"),
   about: () => import("../../routes/settings/about/+page.svelte"),
   sessions: () => import("../../routes/settings/sessions/+page.svelte"),
+  contacts: () => import("../../routes/settings/contacts/+page.svelte"),
   plugins: () => import("../../routes/settings/plugins/+page.svelte"),
   advanced: () => import("../../routes/settings/advanced/+page.svelte"),
   proxy: () => import("../../routes/settings/proxy/+page.svelte"),
@@ -343,6 +349,101 @@ export function closeQrScanner() {
     qrScannerLayerId = null;
     dismissLayer(id);
   }
+}
+
+let profileQrSheetLayerId = null;
+export async function openProfileQrSheet() {
+  if (profileQrSheetLayerId) return null;
+  const mod = await import("$components/settings/ProfileQrSheet.svelte");
+  let layerId = null;
+  const res = openSheet(
+    mod.default || mod,
+    {
+      onClose: () => {
+        if (layerId) dismissLayer(layerId);
+      },
+      close: () => {
+        if (layerId) dismissLayer(layerId);
+      }
+    },
+    {
+      onClose: () => {
+        profileQrSheetLayerId = null;
+      }
+    }
+  );
+  layerId = res.id;
+  profileQrSheetLayerId = res.id;
+  return res;
+}
+
+export function closeProfileQrSheet() {
+  if (profileQrSheetLayerId) {
+    const id = profileQrSheetLayerId;
+    profileQrSheetLayerId = null;
+    dismissLayer(id);
+  }
+}
+
+let vpnWarningSheetLayerId = null;
+export async function openVpnWarningSheet(onDismiss = null) {
+  if (vpnWarningSheetLayerId) return null;
+  const mod = await import("$components/main/VpnWarningSheet.svelte");
+  let layerId = null;
+  const res = openSheet(
+    mod.default || mod,
+    {
+      onClose: () => {
+        if (layerId) dismissLayer(layerId);
+      },
+      close: () => {
+        if (layerId) dismissLayer(layerId);
+      }
+    },
+    {
+      onClose: () => {
+        vpnWarningSheetLayerId = null;
+        if (onDismiss) onDismiss();
+      }
+    }
+  );
+  layerId = res.id;
+  vpnWarningSheetLayerId = res.id;
+  return res;
+}
+
+export function closeVpnWarningSheet() {
+  if (vpnWarningSheetLayerId) {
+    const id = vpnWarningSheetLayerId;
+    vpnWarningSheetLayerId = null;
+    dismissLayer(id);
+  }
+}
+
+let inactiveTtlSheetLayerId = null;
+export async function openInactiveTtlSheet() {
+  if (inactiveTtlSheetLayerId) return null;
+  const mod = await import("$components/settings/InactiveTtlSheet.svelte");
+  let layerId = null;
+  const res = openSheet(
+    mod.default || mod,
+    {
+      onClose: () => {
+        if (layerId) dismissLayer(layerId);
+      },
+      close: () => {
+        if (layerId) dismissLayer(layerId);
+      }
+    },
+    {
+      onClose: () => {
+        inactiveTtlSheetLayerId = null;
+      }
+    }
+  );
+  layerId = res.id;
+  inactiveTtlSheetLayerId = res.id;
+  return res;
 }
 
 export async function openFolderEdit(folder = { isNew: true }) {

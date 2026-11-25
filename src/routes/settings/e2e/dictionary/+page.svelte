@@ -187,26 +187,27 @@
   }
 
   input:focus {
-    border-color: #3390ec;
-    background: #20202a;
+    border-color: var(--settings-accent, #007aff);
+    background: var(--settings-input-bg, #25262d);
   }
 
   .actions-panel {
     flex-shrink: 0;
-    padding: 14px 16px calc(14px + var(--safe-bottom, 0px));
-    background: #212126;
-    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    padding: 12px 12px max(16px, calc(16px + var(--safe-bottom, 0px)));
+    background: var(--settings-bg, #0f0f12);
+    border-top: 1px solid var(--settings-separator);
   }
 
   .download-btn {
     width: 100%;
-    height: 44px;
+    height: 52px;
     border: none;
-    border-radius: 12px;
-    font-size: 0.95rem;
+    border-radius: 14px;
+    font-family: var(--settings-font-title, var(--font-family-title));
+    font-size: 16px;
     font-weight: 600;
     cursor: pointer;
-    color: white;
+    color: #ffffff;
     transition: transform 0.12s, opacity 0.15s;
   }
 
