@@ -26,7 +26,8 @@
     "jsqr": "^1.4.0",
     "lottie-web": "^5.13.0",
     "mp4-muxer": "^5.2.2",
-    "omggif": "^1.0.10"
+    "omggif": "^1.0.10",
+    "qrcode": "^1.5.4"
   },
   "devDependencies": {
     "@playwright/test": "^1.63.0",

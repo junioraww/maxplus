@@ -823,3 +823,28 @@ pub fn get_system_insets() -> SystemInsets {
     }
     SystemInsets::default()
 }
+
+#[tauri::command]
+pub fn set_screen_brightness(brightness: f32) {
+    #[cfg(target_os = "android")]
+    {
+        if let (Some(vm), Some(main_class)) = (
+            crate::notifications::GLOBAL_JVM.get(),
+            crate::notifications::GLOBAL_MAIN_ACTIVITY_CLASS.get(),
+        ) {
+            let _ = vm.attach_current_thread(|env| -> Result<(), jni::errors::Error> {
+                env.call_static_method(
+                    main_class,
+                    jni::jni_str!("setScreenBrightnessStatic"),
+                    jni::jni_sig!("(F)V"),
+                    &[jni::objects::JValue::Float(brightness)],
+                )?;
+                Ok(())
+            });
+        }
+    }
+    #[cfg(not(target_os = "android"))]
+    {
+        let _ = brightness;
+    }
+}

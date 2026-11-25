@@ -383,20 +383,22 @@
     display: flex;
     flex-direction: column;
     overflow: hidden;
-    background-color: var(--bg-app, #17181c);
-    color: var(--text-primary, #ffffff);
+    background-color: var(--settings-bg, #0f0f12);
+    color: var(--settings-text-primary, #ffffff);
+    font-family: var(--settings-font-body, var(--font-family-base));
     z-index: var(--z-panel, 2);
   }
 
   .toolbar {
     display: flex;
     align-items: center;
-    height: calc(52px + var(--safe-top, 0px));
+    height: calc(var(--settings-topbar-height, 56px) + var(--safe-top, 0px));
     padding: var(--safe-top, 0px) 12px 0;
-    background: var(--bg-topbar, #212126);
-    border-bottom: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
+    background: var(--settings-topbar-bg, #0f0f12);
+    border-bottom: 1px solid var(--settings-separator, rgba(255, 255, 255, 0.09));
     flex-shrink: 0;
     box-sizing: border-box;
+    z-index: var(--z-header, 4);
   }
 
   .icon-btn {
@@ -415,20 +417,22 @@
   }
 
   .icon-btn:hover {
-    background: rgba(255, 255, 255, 0.08);
+    background: var(--settings-card-hover, rgba(255, 255, 255, 0.05));
   }
 
   .back-arrow {
     width: 14px;
     height: 14px;
     transform: scaleX(-1);
+    filter: brightness(0) invert(var(--icon-invert, 1));
   }
 
   .toolbar-title {
-    margin: 0 0 0 14px;
-    font-size: 19px;
+    margin: 0 0 0 10px;
+    font-family: var(--settings-font-title, var(--font-family-title));
+    font-size: 18px;
     font-weight: 600;
-    color: var(--text-primary, #ffffff);
+    color: var(--settings-text-primary, #ffffff);
     letter-spacing: -0.2px;
     flex: 1;
     white-space: nowrap;
@@ -443,30 +447,29 @@
     -webkit-overflow-scrolling: touch;
     display: flex;
     flex-direction: column;
-    padding: 12px 16px calc(24px + var(--safe-bottom, 0px));
+    padding: 16px 12px calc(24px + var(--safe-bottom, 0px));
     gap: 16px;
     scrollbar-width: thin;
     box-sizing: border-box;
   }
 
   .card-block {
-    background: var(--bg-surface-secondary, #26262e);
-    border-radius: 16px;
+    background: var(--settings-card-bg, #17181c);
+    border-radius: var(--settings-card-radius, 16px);
     overflow: hidden;
     display: flex;
     flex-direction: column;
     flex-shrink: 0;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
   }
 
   .folder-row {
-    height: 48px;
-    min-height: 48px;
+    height: 52px;
+    min-height: 52px;
     flex-shrink: 0;
     padding: 0 16px;
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 14px;
     box-sizing: border-box;
     transition: background 0.14s ease;
   }
@@ -479,11 +482,11 @@
     cursor: pointer;
     user-select: none;
     -webkit-user-select: none;
-    border-bottom: 0.5px solid rgba(255, 255, 255, 0.08);
+    border-bottom: 1px solid var(--settings-separator, rgba(255, 255, 255, 0.09));
   }
 
   .draggable-row:hover {
-    background: rgba(255, 255, 255, 0.04);
+    background: var(--settings-card-hover, rgba(255, 255, 255, 0.05));
   }
 
   .draggable-row.is-dragging {
@@ -496,13 +499,13 @@
   }
 
   .create-row:hover {
-    background: rgba(255, 255, 255, 0.04);
+    background: var(--settings-card-hover, rgba(255, 255, 255, 0.05));
   }
 
   .row-divider {
-    height: 0.5px;
-    background: rgba(255, 255, 255, 0.08);
-    margin-left: 56px;
+    height: 1px;
+    background: var(--settings-separator, rgba(255, 255, 255, 0.09));
+    margin-left: 54px;
     flex-shrink: 0;
   }
 
@@ -511,13 +514,13 @@
   }
 
   .left-icon-box {
-    width: 28px;
-    height: 28px;
+    width: 24px;
+    height: 24px;
     display: flex;
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
-    color: var(--text-secondary, #8b929e);
+    color: var(--settings-icon-secondary, rgba(255, 255, 255, 0.8));
   }
 
   .left-icon-box.accent {

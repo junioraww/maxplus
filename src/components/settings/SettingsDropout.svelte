@@ -116,18 +116,17 @@
     align-items: center;
     justify-content: space-between;
     gap: 12px;
-    background: #202026;
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: var(--settings-card-elevated, #25262d);
+    border: none;
     border-radius: 12px;
     padding: 12px 14px;
     cursor: pointer;
     user-select: none;
-    transition: background 0.15s, border-color 0.15s;
+    transition: background 0.15s;
   }
 
   .dropout-header:hover {
-    background: #292933;
-    border-color: rgba(255, 255, 255, 0.14);
+    background: var(--settings-card-hover, rgba(255, 255, 255, 0.06));
   }
 
   .text-col {
@@ -154,7 +153,7 @@
     align-items: center;
     gap: 6px;
     background: rgba(255, 255, 255, 0.05);
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    border: none;
     border-radius: 8px;
     padding: 6px 10px;
     color: #3390ec;
@@ -191,8 +190,8 @@
     min-width: 190px;
     max-height: 260px;
     overflow-y: auto;
-    background: #24252a;
-    border: 1px solid rgba(255, 255, 255, 0.12);
+    background: var(--dropout-bg, #1c1e24);
+    border: none;
     border-radius: 12px;
     padding: 6px;
     box-shadow: 0 10px 28px rgba(0, 0, 0, 0.55);

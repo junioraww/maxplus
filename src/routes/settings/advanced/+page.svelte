@@ -2,13 +2,16 @@
   import { onMount } from "svelte";
   import { page } from "$app/stores";
   import SettingsPageWrapper from "$components/settings/SettingsPageWrapper.svelte";
+  import SettingsSection from "$components/settings/SettingsSection.svelte";
+  import SettingsRow from "$components/settings/SettingsRow.svelte";
   import { autoDownloadEncryptedMedia } from "$lib/stores/e2eSettings";
   import {
     saveOthersDeletedMessages,
     hideMyDeletedMessages,
   } from "$lib/stores/deletionSettings";
   import { disableMaxPlusAvatars } from "$lib/stores/avatarSettings";
-  import { set as sessionSet, openDevSettings } from "$lib/stores/session";
+  import { set as sessionSet, openDevSettings, openSettingsPage } from "$lib/stores/session";
+  import { proxyConfig, loadProxyConfig } from "$lib/stores/proxySettings";
   import { callRecordSettings } from "$lib/services/callRecorder";
   import { getCurrentAccount, setAccountMeta } from "$lib/stores/accounts";
   import API from "$lib/stores/api";
@@ -25,7 +28,15 @@
   let hideLockedNotifications = true;
   let isEncryptedAccount = false;
 
+  $: proxySummary =
+    $proxyConfig?.proxy_type && $proxyConfig.proxy_type !== "none" && $proxyConfig.host?.trim()
+      ? $proxyConfig.proxy_type === "socks5"
+        ? "SOCKS5"
+        : "HTTP"
+      : "Отключен";
+
   onMount(async () => {
+    loadProxyConfig();
     const acc = await getCurrentAccount().catch(() => null);
     if (acc?.id) {
       currentAccId = acc.id;
@@ -265,7 +276,22 @@
           >
         </div>
         <Switch checked={alwaysSaveVideo} ariaLabel="Всегда сохранять звонки как видеофайл" />
+      </div>
     </div>
+
+    <SettingsSection title="Сеть и шифрование">
+      <SettingsRow
+        icon="proxy.svg"
+        title="Прокси и сеть"
+        value={proxySummary}
+        on:click={() => openSettingsPage("proxy")}
+      />
+      <SettingsRow
+        icon="book.svg"
+        title="Словарь шифрования"
+        on:click={() => openSettingsPage("dictionary")}
+      />
+    </SettingsSection>
 
     <div class="section-header">
       <h2>Разработка и отладка</h2>
@@ -295,37 +321,37 @@
     display: flex;
     align-items: center;
     padding: 12px 16px;
-    background: #212126;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    background: var(--settings-topbar-bg, #0f0f12);
+    border-bottom: 1px solid var(--settings-separator);
     flex-shrink: 0;
   }
 
   .tab-header h1 {
     margin: 0;
-    font-size: 1.15rem;
+    font-family: var(--settings-font-title, var(--font-family-title));
+    font-size: 18px;
     font-weight: 600;
-    color: #fff;
+    color: var(--settings-text-primary);
   }
 
   .content-container {
     flex: 1;
     overflow-y: auto;
-    padding: 16px 20px;
+    padding: 16px 12px 24px;
     display: flex;
     flex-direction: column;
     gap: 16px;
   }
 
   .settings-card {
-    background: #26262e;
-    border-radius: 12px;
-    border: 1px solid #333;
+    background: var(--settings-card-bg, #17181c);
+    border-radius: var(--settings-card-radius, 16px);
     padding: 16px;
   }
 
   .card-divider {
     height: 1px;
-    background: rgba(255, 255, 255, 0.06);
+    background: var(--settings-separator);
     margin: 14px 0;
   }
 

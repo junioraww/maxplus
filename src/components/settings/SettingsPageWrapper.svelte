@@ -90,8 +90,8 @@
     display: flex;
     flex-direction: column;
     overflow: hidden;
-    background-color: var(--bg-app);
-    color: var(--text-primary);
+    background-color: var(--settings-bg, var(--bg-app));
+    color: var(--settings-text-primary, var(--text-primary));
   }
 
   .settings-page-wrapper {
@@ -105,29 +105,30 @@
     display: flex;
     flex-direction: column;
     overflow: hidden;
-    background-color: var(--bg-app);
-    color: var(--text-primary);
+    background-color: var(--settings-bg, var(--bg-app));
+    color: var(--settings-text-primary, var(--text-primary));
+    font-family: var(--settings-font-body, var(--font-family-base));
   }
 
   .settings-topbar {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    height: calc(52px + var(--safe-top, 0px));
+    height: calc(var(--settings-topbar-height, 56px) + var(--safe-top, 0px));
     padding: var(--safe-top, 0px) 12px 0;
-    background: var(--bg-topbar);
-    border-bottom: 1px solid var(--border-subtle);
+    background: var(--settings-topbar-bg, var(--bg-topbar));
+    border-bottom: 1px solid var(--settings-separator, var(--border-subtle));
     flex-shrink: 0;
     z-index: var(--z-header, 4);
   }
 
   .settings-back-btn {
-    width: 36px;
-    height: 36px;
+    width: 40px;
+    height: 40px;
     border: none;
     border-radius: 50%;
     background: transparent;
-    color: var(--text-muted);
+    color: var(--settings-icon-primary, var(--text-primary));
     display: flex;
     align-items: center;
     justify-content: center;
@@ -137,8 +138,7 @@
   }
 
   .settings-back-btn:hover {
-    background: rgba(255, 255, 255, 0.08);
-    color: var(--text-primary);
+    background: var(--settings-card-hover, rgba(255, 255, 255, 0.08));
   }
 
   .settings-back-btn:active {
@@ -146,12 +146,13 @@
   }
 
   .settings-topbar-title {
-    color: var(--text-primary);
-    font-size: 17px;
+    color: var(--settings-text-primary, var(--text-primary));
+    font-family: var(--settings-font-title, var(--font-family-title));
+    font-size: 18px;
     font-weight: 600;
     letter-spacing: -0.2px;
     flex: 1;
-    margin: 0 12px;
+    margin: 0 10px;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -160,7 +161,7 @@
   .settings-topbar-extra {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 6px;
     flex-shrink: 0;
   }
 
@@ -171,6 +172,6 @@
     -webkit-overflow-scrolling: touch;
     display: flex;
     flex-direction: column;
-    padding-bottom: max(16px, calc(16px + var(--safe-bottom, 0px)));
+    padding-bottom: max(20px, calc(20px + var(--safe-bottom, 0px)));
   }
 </style>

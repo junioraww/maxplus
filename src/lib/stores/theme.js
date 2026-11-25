@@ -12,15 +12,21 @@ async function persistTheme(mode) {
   if (!browser) return;
   try {
     await invoke("common_store_save", { store: STORE_NAME, data: { mode } });
-  } catch {
-    localStorage.setItem(STORE_NAME, mode);
+  } catch (e) {
+    console.error("Failed to persist theme:", e);
   }
+}
+
+function applyThemeAttr(id) {
+  if (!browser || typeof document === "undefined") return;
+  document.documentElement.setAttribute("data-theme", id);
 }
 
 export async function setTheme(id) {
   if (id !== "light" && id !== "dark") return;
   activeThemeId.set(id);
   themeMode.set(id);
+  applyThemeAttr(id);
   await persistTheme(id);
 }
 
@@ -38,8 +44,8 @@ export async function initTheme() {
   try {
     const res = await invoke("common_store_load", { store: STORE_NAME });
     if (res?.mode) saved = res.mode;
-  } catch {
-    saved = localStorage.getItem(STORE_NAME);
+  } catch (e) {
+    console.error("Failed to load theme:", e);
   }
 
   const systemDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
@@ -53,6 +59,7 @@ export async function initTheme() {
 
   activeThemeId.set(targetId);
   themeMode.set(saved || "system");
+  applyThemeAttr(targetId);
 
   window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", (e) => {
     let mode;
@@ -60,6 +67,7 @@ export async function initTheme() {
     if (!mode || mode === "system") {
       const nextId = e.matches ? "dark" : "light";
       activeThemeId.set(nextId);
+      applyThemeAttr(nextId);
     }
   });
 }

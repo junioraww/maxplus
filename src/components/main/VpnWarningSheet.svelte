@@ -5,7 +5,9 @@
   import { openSettingsPage } from "$lib/stores/session";
   import { slide } from "svelte/transition";
 
-  export let isOpen = false;
+  export let close = null;
+  export let onClose = null;
+  export let setBackHandler = null;
 
   const dispatch = createEventDispatcher();
   let showDetails = false;
@@ -14,9 +16,11 @@
   $: isAndroid = $vpnStatus?.vpn_bypass_supported;
   $: isBypassActive = $vpnStatus?.vpn_bypass_active;
 
-  function close() {
+  function dismiss() {
     vpnWarningDismissed.set(true);
     dispatch("close");
+    if (onClose) onClose();
+    else if (close) close();
   }
 
   async function handleToggleBypass() {
@@ -25,7 +29,7 @@
     try {
       await toggleVpnBypass(!isBypassActive);
       if (!isBypassActive) {
-        setTimeout(close, 400);
+        setTimeout(dismiss, 400);
       }
     } finally {
       isTogglingBypass = false;
@@ -33,13 +37,12 @@
   }
 
   function handleOpenProxySettings() {
-    close();
+    dismiss();
     openSettingsPage("proxy");
   }
 </script>
 
-{#if isOpen}
-  <BottomSheet title="" showClose={true} on:close={close}>
+<BottomSheet title="" showClose={true} {close} {setBackHandler} on:close={dismiss}>
     <div class="vpn-sheet">
       <div class="icon-badge">
         <svg class="signal-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -84,13 +87,12 @@
           Настроить прокси
         </button>
 
-        <button type="button" class="btn btn-ghost" on:click={close}>
+        <button type="button" class="btn btn-ghost" on:click={dismiss}>
           Понятно
         </button>
       </div>
     </div>
-  </BottomSheet>
-{/if}
+</BottomSheet>
 
 <style>
   .vpn-sheet {

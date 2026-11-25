@@ -571,8 +571,6 @@
     background: #000000;
     pointer-events: auto;
     transition: opacity 220ms cubic-bezier(0.2, 0, 0, 1);
-    backdrop-filter: blur(2px);
-    -webkit-backdrop-filter: blur(2px);
   }
 
   .portal-layer-screen {

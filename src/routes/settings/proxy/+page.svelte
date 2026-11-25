@@ -387,22 +387,23 @@
     display: flex;
     align-items: center;
     padding: 12px 16px;
-    background: #212126;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    background: var(--settings-topbar-bg, #0f0f12);
+    border-bottom: 1px solid var(--settings-separator);
     flex-shrink: 0;
   }
 
   .tab-header h1 {
     margin: 0;
-    font-size: 1.15rem;
+    font-family: var(--settings-font-title, var(--font-family-title));
+    font-size: 18px;
     font-weight: 600;
-    color: #fff;
+    color: var(--settings-text-primary);
   }
 
   .content-container {
     flex: 1;
     overflow-y: auto;
-    padding: 16px 20px;
+    padding: 16px 12px 24px;
     display: flex;
     flex-direction: column;
     gap: 16px;
@@ -411,9 +412,8 @@
   }
 
   .status-summary-card {
-    background: #26262e;
-    border-radius: 12px;
-    border: 1px solid #333;
+    background: var(--settings-card-bg, #17181c);
+    border-radius: var(--settings-card-radius, 16px);
     padding: 14px 16px;
     display: flex;
     align-items: center;

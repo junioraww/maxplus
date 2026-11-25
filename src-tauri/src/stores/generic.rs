@@ -22,6 +22,7 @@ fn common_store_path(app: &AppHandle, store: &str) -> Result<PathBuf, String> {
         "maxplus_custom_uplink" => Ok(app_dir.join("data").join("common").join("maxplus_custom_uplink")),
         "proxy_settings" => Ok(app_dir.join("data").join("common").join("proxy_settings")),
         "theme" => Ok(app_dir.join("data").join("common").join("theme")),
+        "client_settings" => Ok(app_dir.join("data").join("common").join("client_settings")),
         "chat_drafts" => {
             let acc = load_accounts(app).get("current").and_then(|x| x.as_u64()).unwrap_or(0);
             if acc > 0 {
