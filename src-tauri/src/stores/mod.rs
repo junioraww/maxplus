@@ -35,6 +35,29 @@ pub fn save_sync_state<T: serde::Serialize>(
     Storage::new(key).save(Paths::new(app, account).sync_state(), &val)
 }
 
+pub fn load_sync_state_disk<T: serde::de::DeserializeOwned>(
+    app_dir: &str,
+    local_id: u64,
+) -> Option<T> {
+    let root = resolve_app_root(app_dir);
+    let key = get_crypto_key(local_id);
+    let path = root.join("data").join(local_id.to_string()).join("sync_state");
+    let val = Storage::new(key).load(path)?;
+    serde_json::from_value(val).ok()
+}
+
+pub fn save_sync_state_disk<T: serde::Serialize>(
+    app_dir: &str,
+    local_id: u64,
+    state: &T,
+) -> Result<(), String> {
+    let root = resolve_app_root(app_dir);
+    let key = get_crypto_key(local_id);
+    let path = root.join("data").join(local_id.to_string()).join("sync_state");
+    let val = serde_json::to_value(state).map_err(|e| e.to_string())?;
+    Storage::new(key).save(path, &val)
+}
+
 pub fn save_user_settings(
     app: &AppHandle,
     account: u64,

@@ -24,7 +24,12 @@ use state::AppState;
 use std::sync::Arc;
 use tauri::{Emitter, Manager};
 #[cfg(desktop)]
-use tauri::webview::{PermissionKind, PermissionResponse};
+use tauri::{
+    menu::{Menu, MenuItem},
+    tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
+    webview::{PermissionKind, PermissionResponse},
+    WindowEvent,
+};
 
 #[derive(Default)]
 struct CamouflageBootPlugin {
@@ -126,12 +131,19 @@ pub fn run() {
     let builder = builder.plugin(tauri_plugin_android_fs::init());
 
     #[cfg(desktop)]
-    let builder = builder.on_permission_request(|_, kind| match kind {
-        PermissionKind::Microphone | PermissionKind::Camera | PermissionKind::DisplayCapture => {
-            PermissionResponse::Allow
-        }
-        _ => PermissionResponse::Default,
-    });
+    let builder = builder
+        .on_permission_request(|_, kind| match kind {
+            PermissionKind::Microphone | PermissionKind::Camera | PermissionKind::DisplayCapture => {
+                PermissionResponse::Allow
+            }
+            _ => PermissionResponse::Default,
+        })
+        .on_window_event(|window, event| {
+            if let WindowEvent::CloseRequested { api, .. } = event {
+                let _ = window.hide();
+                api.prevent_close();
+            }
+        });
 
     if let Err(err) = builder
         .setup(|app| {
@@ -141,7 +153,7 @@ pub fn run() {
                 let _ = app.deep_link().register_all();
             }
             let (client, mut event_stream) = tauri::async_runtime::block_on(async {
-                let client = rumax::MaxClient::new();
+                let client = state::shared_client().clone();
                 let stream = client.subscribe();
                 (client, stream)
             });
@@ -158,6 +170,49 @@ pub fn run() {
             webapp_proxy::set_app_handle(handle.clone());
             video::set_app_handle(handle.clone());
             proxy_manager::load_initial_settings(&handle);
+
+            #[cfg(desktop)]
+            {
+                let show_item = MenuItem::with_id(app, "tray_show", "Показать Max+", true, None::<&str>)?;
+                let quit_item = MenuItem::with_id(app, "tray_quit", "Выход", true, None::<&str>)?;
+                let tray_menu = Menu::with_items(app, &[&show_item, &quit_item])?;
+
+                let mut tray_builder = TrayIconBuilder::new()
+                    .menu(&tray_menu)
+                    .show_menu_on_left_click(false)
+                    .on_tray_icon_event(|tray, event| {
+                        if let TrayIconEvent::Click {
+                            button: MouseButton::Left,
+                            button_state: MouseButtonState::Up,
+                            ..
+                        } = event
+                        {
+                            if let Some(w) = tray.app_handle().get_webview_window("main") {
+                                let _ = w.show();
+                                let _ = w.unminimize();
+                                let _ = w.set_focus();
+                            }
+                        }
+                    })
+                    .on_menu_event(|app, event| match event.id.as_ref() {
+                        "tray_show" => {
+                            if let Some(w) = app.get_webview_window("main") {
+                                let _ = w.show();
+                                let _ = w.unminimize();
+                                let _ = w.set_focus();
+                            }
+                        }
+                        "tray_quit" => {
+                            app.exit(0);
+                        }
+                        _ => {}
+                    });
+
+                if let Some(icon) = app.default_window_icon() {
+                    tray_builder = tray_builder.icon(icon.clone());
+                }
+                let _tray = tray_builder.build(app)?;
+            }
 
             tauri::async_runtime::spawn(async move {
                 while let Ok(msg) = event_stream.recv().await {

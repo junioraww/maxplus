@@ -524,8 +524,10 @@ class MainActivity : TauriActivity() {
     NotificationHelper.customContext = applicationContext
     CallNotificationManager.customContext = applicationContext
     AppState.isAppAlive = true
-    MaxBackgroundService.start(applicationContext)
-    MaxDaemonWatchdogWorker.schedule(applicationContext)
+    if (BuildConfig.USE_PUSHLESS_DAEMON) {
+      MaxBackgroundService.start(applicationContext)
+      MaxDaemonWatchdogWorker.schedule(applicationContext)
+    }
     Log.d("MaxPlus", "MainActivity.onCreate")
 
     val animCallback = object : WindowInsetsAnimationCompat.Callback(DISPATCH_MODE_STOP) {

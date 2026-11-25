@@ -74,30 +74,6 @@ object NotificationDispatcher {
     }
 
     @JvmStatic
-    fun dispatchMessage(
-        ctx: Context,
-        chatId: Long,
-        mid: String,
-        text: String,
-        senderId: String,
-        account: Long,
-        senderName: String,
-        isGroup: Boolean
-    ) {
-        dispatchMessage(
-            ctx,
-            chatId,
-            mid,
-            text,
-            senderId,
-            account,
-            senderName,
-            senderName,
-            isGroup
-        )
-    }
-
-    @JvmStatic
     fun dispatchIncomingCall(ctx: Context, data: Map<String, String>) {
         val convId = data["conversationId"] ?: data["cid"] ?: data["vcId"] ?: ""
         val ledgerKey = "call_$convId"

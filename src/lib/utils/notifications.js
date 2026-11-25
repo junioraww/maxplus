@@ -46,6 +46,7 @@ export async function clearChatNotification(chatId) {
 
 const NOTIFICATIONS_KEY = 'client_notifications_enabled';
 const PREVIEW_KEY = 'client_preview_enabled';
+const DESKTOP_PREVIEW_KEY = 'client_desktop_preview_enabled';
 const SOUND_KEY = 'client_sound_enabled';
 const CALLS_KEY = 'client_calls_enabled';
 const CALL_SOUND_KEY = 'client_call_sound_enabled';
@@ -53,6 +54,22 @@ const CALL_VIBRATION_KEY = 'client_call_vibration_enabled';
 const NEW_CONTACTS_KEY = 'client_new_contacts_enabled';
 
 let _activeAccountId = null;
+let currentOs = null;
+
+function getOs() {
+  if (!currentOs) {
+    try {
+      currentOs = type();
+    } catch {
+      currentOs = 'linux';
+    }
+  }
+  return currentOs;
+}
+
+function getPreviewKey() {
+  return getOs() === 'android' ? PREVIEW_KEY : DESKTOP_PREVIEW_KEY;
+}
 
 function storageKey(key, accountId) {
   const id = accountId ?? _activeAccountId;
@@ -70,7 +87,7 @@ function lsSet(key, value, accountId) {
 }
 
 const initialEnabled = lsGet(NOTIFICATIONS_KEY) !== 'false';
-const initialPreview = lsGet(PREVIEW_KEY) !== 'false';
+const initialPreview = lsGet(getPreviewKey()) !== 'false';
 const initialSound = lsGet(SOUND_KEY) !== 'false';
 const initialCalls = lsGet(CALLS_KEY) !== 'false';
 const initialCallSound = lsGet(CALL_SOUND_KEY) !== 'false';
@@ -135,14 +152,19 @@ export function applyUserConfig(userConfig, accountId) {
     lsSet(NOTIFICATIONS_KEY, on ? 'true' : 'false', accountId);
   }
   if (userConfig.PUSH_DETAILS !== undefined) {
-    const preview =
-      userConfig.PUSH_DETAILS !== false &&
-      userConfig.PUSH_DETAILS !== 0 &&
-      userConfig.PUSH_DETAILS !== "0" &&
-      userConfig.PUSH_DETAILS !== "OFF" &&
-      userConfig.PUSH_DETAILS !== "false";
-    messagePreviewEnabled.set(preview);
-    lsSet(PREVIEW_KEY, preview ? 'true' : 'false', accountId);
+    if (!currentOs) currentOs = type();
+    // On Desktop, local notification previews are controlled locally (default: true)
+    // so mobile/server PUSH_DETAILS=false does not hide desktop message text.
+    if (currentOs === 'android') {
+      const preview =
+        userConfig.PUSH_DETAILS !== false &&
+        userConfig.PUSH_DETAILS !== 0 &&
+        userConfig.PUSH_DETAILS !== "0" &&
+        userConfig.PUSH_DETAILS !== "OFF" &&
+        userConfig.PUSH_DETAILS !== "false";
+      messagePreviewEnabled.set(preview);
+      lsSet(PREVIEW_KEY, preview ? 'true' : 'false', accountId);
+    }
   }
   if (userConfig.PUSH_SOUND !== undefined || userConfig.CHATS_PUSH_SOUND !== undefined) {
     const snd = Boolean(userConfig.PUSH_SOUND || userConfig.CHATS_PUSH_SOUND);
@@ -174,7 +196,7 @@ async function ensureActiveAccountId() {
 export function loadAccountNotificationSettings(accountId) {
   _activeAccountId = accountId;
   clientNotificationsEnabled.set(lsGet(NOTIFICATIONS_KEY, accountId) !== 'false');
-  messagePreviewEnabled.set(lsGet(PREVIEW_KEY, accountId) !== 'false');
+  messagePreviewEnabled.set(lsGet(getPreviewKey(), accountId) !== 'false');
   notificationSoundEnabled.set(lsGet(SOUND_KEY, accountId) !== 'false');
   callNotificationsEnabled.set(lsGet(CALLS_KEY, accountId) !== 'false');
   callSoundEnabled.set(lsGet(CALL_SOUND_KEY, accountId) !== 'false');
@@ -198,7 +220,8 @@ export async function setAllNotificationsServer(enabled) {
 export async function setMessagePreviewServer(enabled) {
   await ensureActiveAccountId();
   messagePreviewEnabled.set(enabled);
-  lsSet(PREVIEW_KEY, enabled ? 'true' : 'false');
+  lsSet(getPreviewKey(), enabled ? 'true' : 'false');
+  if (getOs() !== 'android') return;
   try {
     await get(API).updateUserSettings({
       PUSH_DETAILS: enabled,
@@ -292,7 +315,6 @@ export function isChatMuted(chat) {
 }
 
 let granted = false;
-let currentOs = null;
 
 export async function suggestNotifications() {
   let permissionGranted = await isPermissionGranted();
@@ -497,8 +519,7 @@ export async function newMessage(chatId, chat, contact, message) {
     id: notificationId,
     title: title,
     body: bodyText,
-    icon: avatarLocalPath,
-    largeIcon: avatarLocalPath,
+    ...(avatarLocalPath ? { icon: avatarLocalPath } : {}),
   };
 
   await sendNotification(entry);
