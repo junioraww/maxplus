@@ -6,10 +6,12 @@
   import { invoke } from "@tauri-apps/api/core";
   import API, { currentRealContacts, currentUser, currentUserDetails } from "$lib/stores/api";
   import { getCachedContacts, getContact, getContactDisplayName } from "$lib/stores/contacts";
-  import { openChat, openSafeAvatarPicker } from "$lib/stores/session";
+  import { openChat, openSafeAvatarPicker, openContactsImport } from "$lib/stores/session";
   import { openCallSheet } from "$lib/stores/calls";
   import { installSafeAvatar } from "$lib/services/AvatarInstallService";
+  import { isMobileAddressBookSupported } from "$lib/services/addressBook";
   import Avatar from "$components/main/Avatar.svelte";
+  import CircleCheckbox from "$components/common/CircleCheckbox.svelte";
   import Signature from "$components/main/Signature.svelte";
   import { showAlert } from "$lib/utils/alert";
   import { registerBackHandler } from "$lib/utils/backButton";
@@ -25,6 +27,7 @@
   let searchInputEl;
 
   let loadedContacts = [];
+  let canImportAddressBook = false;
 
   let groupTitle = "";
   let groupAvatar = null;
@@ -92,6 +95,11 @@
       });
     }
 
+    await refreshContacts();
+    canImportAddressBook = await isMobileAddressBookSupported();
+  });
+
+  async function refreshContacts() {
     try {
       const cached = await getCachedContacts();
       if (Array.isArray(cached) && cached.length > 0) {
@@ -104,7 +112,14 @@
       const ids = $currentRealContacts || [];
       loadedContacts = ids.map((id) => get(getContact(id))).filter(Boolean);
     }
-  });
+  }
+
+  async function handleImportContacts() {
+    const res = await openContactsImport();
+    if (res?.imported) {
+      await refreshContacts();
+    }
+  }
 
   onDestroy(() => {
     if (unregisterBack) unregisterBack();
@@ -349,6 +364,15 @@
             </div>
             <div class="action-text">Пригласить по ссылке</div>
           </div>
+
+          {#if canImportAddressBook}
+            <div class="action-item" on:click={handleImportContacts} role="button" tabindex="0">
+              <div class="action-icon action-icon--teal">
+                <img src="/icons/user-plus.svg" alt="" width="20" height="20" />
+              </div>
+              <div class="action-text">Импортировать контакты</div>
+            </div>
+          {/if}
         </div>
       {/if}
 
@@ -408,11 +432,7 @@
               <div class="contact-name">{getName(contact)}</div>
               <div class="contact-status"><Signature contactId={contact.id} /></div>
             </div>
-            <div class="checkbox" class:checked>
-              {#if checked}
-                <img src="/icons/check.svg" alt="" width="14" height="14" />
-              {/if}
-            </div>
+            <CircleCheckbox {checked} size={22} />
           </div>
         {/each}
       </div>
@@ -517,11 +537,7 @@
               <div class="contact-name">{getName(contact)}</div>
               <div class="contact-status"><Signature contactId={contact.id} /></div>
             </div>
-            <div class="checkbox" class:checked>
-              {#if checked}
-                <img src="/icons/check.svg" alt="" width="14" height="14" />
-              {/if}
-            </div>
+            <CircleCheckbox {checked} size={22} />
           </div>
         {/each}
       </div>
@@ -536,32 +552,33 @@
 </div>
 
 <style>
-  .start-conv-screen { position: fixed; inset: 0; background: var(--bg-app, #101114); z-index: var(--z-modal, 7); display: flex; flex-direction: column; color: var(--text-color, #fff); user-select: none; overflow: hidden; }
+  .start-conv-screen { position: fixed; inset: 0; background: var(--bg-app, #101114); z-index: var(--z-modal, 7); display: flex; flex-direction: column; color: var(--text-primary, #fff); user-select: none; overflow: hidden; }
   .view-stage, .content-scroll, .contacts-container { display: flex; flex-direction: column; }
   .view-stage { width: 100%; height: 100%; }
   .content-scroll { flex: 1; overflow-y: auto; overflow-x: hidden; -webkit-overflow-scrolling: touch; }
 
-  .toolbar { height: calc(56px + var(--safe-top, 0px)); display: flex; align-items: center; padding: var(--safe-top, 0px) 12px 0; gap: 12px; border-bottom: 1px solid rgba(255, 255, 255, 0.08); flex-shrink: 0; background: var(--bg-surface, #18191e); box-sizing: border-box; }
+  .toolbar { height: calc(56px + var(--safe-top, 0px)); display: flex; align-items: center; padding: var(--safe-top, 0px) 12px 0; gap: 12px; border-bottom: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08)); flex-shrink: 0; background: var(--bg-surface, #18191e); box-sizing: border-box; }
   .toolbar-title { font-size: 18px; font-weight: 600; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .toolbar-title-box { display: flex; flex-direction: column; flex: 1; min-width: 0; }
   .toolbar-sub { font-size: 13px; color: var(--text-muted, #8b929e); }
   .toolbar-search-input-wrap { flex: 1; }
-  .toolbar-search-input-wrap input { width: 100%; border: none; background: transparent; color: #fff; font-size: 16px; outline: none; }
+  .toolbar-search-input-wrap input { width: 100%; border: none; background: transparent; color: var(--text-primary, #fff); font-size: 16px; outline: none; }
 
   .icon-btn { width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; border: none; background: transparent; border-radius: 50%; cursor: pointer; color: inherit; transition: background 0.15s ease; }
-  .icon-btn:hover { background: rgba(255, 255, 255, 0.08); }
-  .back-arrow { width: 14px; height: 14px; transform: scaleX(-1); }
+  .icon-btn:hover { background: var(--border-subtle, rgba(255, 255, 255, 0.08)); }
+  .back-arrow { width: 14px; height: 14px; transform: scaleX(-1); filter: invert(var(--icon-invert, 1)); }
 
-  .actions-list { display: flex; flex-direction: column; padding: 8px 0; border-bottom: 8px solid rgba(0, 0, 0, 0.25); }
+  .actions-list { display: flex; flex-direction: column; padding: 8px 0; border-bottom: 8px solid var(--border-card, rgba(0, 0, 0, 0.25)); }
   .action-item, .contact-row { display: flex; align-items: center; cursor: pointer; transition: background 0.15s ease; }
   .action-item { padding: 10px 16px; gap: 16px; }
-  .action-item:hover, .contact-row:hover { background: rgba(255, 255, 255, 0.04); }
+  .action-item:hover, .contact-row:hover { background: var(--border-card, rgba(255, 255, 255, 0.04)); }
   .action-text { font-size: 15px; font-weight: 500; }
   .action-icon { width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
   .action-icon--blue { background: #3478f6; }
   .action-icon--orange { background: #e67e22; }
   .action-icon--green { background: #27ae60; }
   .action-icon--purple { background: #9b59b6; }
+  .action-icon--teal { background: var(--accent-primary, #248bfe); }
 
   .contacts-container { padding-bottom: max(24px, calc(16px + var(--safe-bottom, 0px))); }
   .section-letter { padding: 10px 16px 4px; font-size: 13px; font-weight: 600; color: var(--accent-primary, #3478f6); text-transform: uppercase; }
@@ -571,29 +588,26 @@
   .contact-status { font-size: 13px; color: var(--text-muted, #8b929e); }
 
   .sub-search-wrap { padding: 10px 16px; background: var(--bg-surface, #18191e); }
-  .sub-search-box { display: flex; align-items: center; background: rgba(255, 255, 255, 0.06); border-radius: 10px; padding: 0 12px; height: 38px; gap: 8px; }
-  .sub-search-icon { opacity: 0.6; }
-  .sub-search-box input { flex: 1; background: transparent; border: none; outline: none; color: #fff; font-size: 14px; }
+  .sub-search-box { display: flex; align-items: center; background: var(--bg-input, rgba(255, 255, 255, 0.06)); border-radius: 10px; padding: 0 12px; height: 38px; gap: 8px; }
+  .sub-search-icon { opacity: 0.6; filter: invert(var(--icon-invert, 1)); }
+  .sub-search-box input { flex: 1; background: transparent; border: none; outline: none; color: var(--text-primary, #fff); font-size: 14px; }
 
-  .chips-scroll { display: flex; gap: 8px; padding: 8px 16px; overflow-x: auto; border-bottom: 1px solid rgba(255, 255, 255, 0.05); }
-  .chip { display: flex; align-items: center; gap: 6px; background: rgba(255, 255, 255, 0.08); border-radius: 16px; padding: 4px 10px 4px 4px; font-size: 13px; cursor: pointer; white-space: nowrap; }
+  .chips-scroll { display: flex; gap: 8px; padding: 8px 16px; overflow-x: auto; border-bottom: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.05)); }
+  .chip { display: flex; align-items: center; gap: 6px; background: var(--bg-surface-secondary, rgba(255, 255, 255, 0.08)); border-radius: 16px; padding: 4px 10px 4px 4px; font-size: 13px; cursor: pointer; white-space: nowrap; }
   .chip-x { opacity: 0.7; margin-left: 2px; }
-
-  .checkbox { width: 22px; height: 22px; border-radius: 50%; border: 2px solid rgba(255, 255, 255, 0.25); display: flex; align-items: center; justify-content: center; transition: all 0.15s ease; }
-  .checkbox.checked { background: #0077ff; border-color: #0077ff; }
 
   .form-content { padding: 24px 16px; gap: 16px; }
   .step-hint { font-size: 14px; color: var(--text-muted, #8b929e); text-align: center; padding: 0 16px; }
   .avatar-center-wrap { display: flex; justify-content: center; padding: 12px 0; }
-  .avatar-picker-circle { width: 96px; height: 96px; border-radius: 50%; background: rgba(255, 255, 255, 0.08); border: 2px dashed rgba(255, 255, 255, 0.25); display: flex; align-items: center; justify-content: center; cursor: pointer; overflow: hidden; padding: 0; transition: border-color 0.15s ease, background 0.15s ease; }
-  .avatar-picker-circle:hover { border-color: #0077ff; background: rgba(0, 119, 255, 0.1); }
+  .avatar-picker-circle { width: 96px; height: 96px; border-radius: 50%; background: var(--bg-input, rgba(255, 255, 255, 0.08)); border: 2px dashed var(--border-subtle, rgba(255, 255, 255, 0.25)); display: flex; align-items: center; justify-content: center; cursor: pointer; overflow: hidden; padding: 0; transition: border-color 0.15s ease, background 0.15s ease; }
+  .avatar-picker-circle:hover { border-color: var(--accent-primary, #0077ff); background: var(--accent-subtle, rgba(0, 119, 255, 0.1)); }
   .avatar-preview-img { width: 100%; height: 100%; object-fit: cover; }
 
-  .form-input-card { background: rgba(255, 255, 255, 0.06); border-radius: 14px; padding: 4px 14px; border: 1px solid rgba(255, 255, 255, 0.08); }
-  .form-input-card input, .form-input-card textarea { width: 100%; background: transparent; border: none; outline: none; color: #fff; font-size: 15px; padding: 10px 0; resize: none; box-sizing: border-box; }
+  .form-input-card { background: var(--bg-input, rgba(255, 255, 255, 0.06)); border-radius: 14px; padding: 4px 14px; border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08)); }
+  .form-input-card input, .form-input-card textarea { width: 100%; background: transparent; border: none; outline: none; color: var(--text-primary, #fff); font-size: 15px; padding: 10px 0; resize: none; box-sizing: border-box; }
 
-  .bottom-action-bar { padding: 16px 16px calc(16px + var(--safe-bottom, 0px)); background: var(--bg-surface, #18191e); border-top: 1px solid rgba(255, 255, 255, 0.08); flex-shrink: 0; box-sizing: border-box; }
-  .main-action-btn { width: 100%; border-radius: 14px; font-weight: 600; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: background 0.15s ease, opacity 0.15s ease; height: 48px; border: none; background: #0077ff; color: #fff; font-size: 15px; }
-  .main-action-btn:hover:not(:disabled) { background: #0066dd; }
+  .bottom-action-bar { padding: 16px 16px calc(16px + var(--safe-bottom, 0px)); background: var(--bg-surface, #18191e); border-top: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08)); flex-shrink: 0; box-sizing: border-box; }
+  .main-action-btn { width: 100%; border-radius: 14px; font-weight: 600; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: background 0.15s ease, opacity 0.15s ease; height: 48px; border: none; background: var(--accent-primary, #0077ff); color: #fff; font-size: 15px; }
+  .main-action-btn:hover:not(:disabled) { background: var(--accent-primary-hover, #0066dd); }
   .main-action-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 </style>

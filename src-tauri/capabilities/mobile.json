@@ -4,6 +4,7 @@
   "windows": ["main"],
   "permissions": [
     "deep-link:default",
+    "addressbook:default",
     "biometry:default",
     {
       "identifier": "biometry:allow-get-data",

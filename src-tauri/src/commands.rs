@@ -34,6 +34,87 @@ delegate_cmd!(fetch_contacts(user_ids: Vec<u64>) => fetch_contacts(user_ids));
 delegate_cmd!(get_by_phone(phone: String) => get_by_phone(phone));
 delegate_cmd!(add_contact(contact_id: u64, first_name: String) => add_contact(contact_id, first_name));
 delegate_cmd!(remove_contact(contact_id: u64) => delete_contact(contact_id));
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PhonebookImportItem {
+    pub phone: String,
+    pub first_name: String,
+    #[serde(default)]
+    pub last_name: Option<String>,
+}
+
+/// Uploads user-approved phonebook contacts to the server in batches of 100 (opcode 21).
+#[tauri::command]
+pub async fn import_phonebook_contacts(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    contacts: Vec<PhonebookImportItem>,
+) -> Result<Value, Value> {
+    if contacts.is_empty() {
+        return Ok(json!({ "contacts": [], "phones": {} }));
+    }
+
+    let account_id = crate::stores::accounts::current_get(app.clone())
+        .ok()
+        .and_then(|v| v.as_u64());
+
+    let mut all_contacts: Vec<Value> = Vec::new();
+    let mut all_phones = serde_json::Map::new();
+
+    for chunk in contacts.chunks(100) {
+        let mut map = HashMap::with_capacity(chunk.len());
+        for item in chunk {
+            let phone = item.phone.trim();
+            if phone.is_empty() {
+                continue;
+            }
+            let first = if item.first_name.trim().is_empty() {
+                phone.to_string()
+            } else {
+                item.first_name.trim().to_string()
+            };
+            let mut entry = serde_json::Map::new();
+            entry.insert("firstName".to_string(), json!(first));
+            if let Some(last) = &item.last_name {
+                let last_trimmed = last.trim();
+                if !last_trimmed.is_empty() {
+                    entry.insert("lastName".to_string(), json!(last_trimmed));
+                }
+            }
+            map.insert(phone.to_string(), Value::Object(entry));
+        }
+
+        if map.is_empty() {
+            continue;
+        }
+
+        let resp = state
+            .client
+            .upload_phonebook_contacts(map)
+            .await
+            .map_err(|e| e.to_json())?;
+
+        if let Some(arr) = resp.payload.get("contacts").and_then(|v| v.as_array()) {
+            for c in arr {
+                if let (Some(acc), Some(cid)) = (account_id, c.get("id").and_then(|v| v.as_u64())) {
+                    let _ = crate::stores::chats::set_contact(app.clone(), acc, cid, c.clone()).await;
+                }
+                all_contacts.push(c.clone());
+            }
+        }
+        if let Some(obj) = resp.payload.get("phones").and_then(|v| v.as_object()) {
+            for (k, v) in obj {
+                all_phones.insert(k.clone(), v.clone());
+            }
+        }
+    }
+
+    Ok(json!({
+        "contacts": all_contacts,
+        "phones": all_phones,
+    }))
+}
 delegate_cmd!(get_contact_photos(contact_id: u64, from: Option<i64>, count: Option<i64>) => get_contact_photos(contact_id, from.unwrap_or(0), count.unwrap_or(50)));
 delegate_cmd!(remove_contact_photo(photo_id: u64) => remove_contact_photo(photo_id));
 delegate_cmd!(search_public(query: String, count: i32, type_: String) => search_public(query, count, type_));
