@@ -1,24 +1,25 @@
+const SHORT_MONTHS = [
+  "янв", "фев", "мар", "апр", "мая", "июн",
+  "июл", "авг", "сен", "окт", "ноя", "дек",
+];
+
+function pad2(n) {
+  return String(n).padStart(2, "0");
+}
+
+function formatHm(d) {
+  return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+}
+
 export function formatMs(ms) {
   const d = new Date(ms);
 
-  const day = String(d.getDate()).padStart(2, "0");
-  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const day = pad2(d.getDate());
+  const month = pad2(d.getMonth() + 1);
   const year = d.getFullYear();
 
-  const hours = String(d.getHours()).padStart(2, "0");
-  const minutes = String(d.getMinutes()).padStart(2, "0");
-
-  return `${day}.${month}.${year} в ${hours}:${minutes}`;
+  return `${day}.${month}.${year} в ${formatHm(d)}`;
 }
-
-const UNITS = [
-  { s: 31536000, f: ["год", "года", "лет"] },
-  { s: 2592000, f: ["месяц", "месяца", "месяцев"] },
-  { s: 86400, f: ["день", "дня", "дней"] },
-  { s: 3600, f: ["час", "часа", "часов"] },
-  { s: 60, f: ["минуту", "минуты", "минут"] },
-  { s: 1, f: ["секунду", "секунды", "секунд"] },
-];
 
 const getForm = (n, forms) => {
   const mod10 = n % 10;
@@ -29,23 +30,51 @@ const getForm = (n, forms) => {
   return forms[2];
 };
 
+function isSameDay(a, b) {
+  return (
+    a.getFullYear() === b.getFullYear() &&
+    a.getMonth() === b.getMonth() &&
+    a.getDate() === b.getDate()
+  );
+}
+
 export function formatTimeAgo(time, now = Date.now()) {
   if (time === 0) return "давно";
   if (!time) return "неизвестно";
 
   let t = +time;
+  if (!Number.isFinite(t) || t <= 0) return "давно";
   if (t < 1e12) t *= 1000;
 
-  let diff = Math.floor((now - t) / 1000);
-  if (diff < 0) diff = 0;
-  if (diff < 5) return "только что";
+  let diffMs = now - t;
+  if (diffMs < 0) diffMs = 0;
 
-  for (const { s, f } of UNITS) {
-    if (diff >= s) {
-      const count = Math.floor(diff / s);
-      return `${count} ${getForm(count, f)} назад`;
-    }
+  if (diffMs < 60_000) return "только что";
+
+  const seenDate = new Date(t);
+  const nowDate = new Date(now);
+  const sameDay = isSameDay(seenDate, nowDate);
+
+  if (diffMs < 3_600_000) {
+    const mins = Math.floor(diffMs / 60_000);
+    return `${mins} ${getForm(mins, ["минуту", "минуты", "минут"])} назад`;
   }
 
-  return "только что";
+  if (sameDay && diffMs < 86_400_000) {
+    const hours = Math.floor(diffMs / 3_600_000);
+    return `${hours} ${getForm(hours, ["час", "часа", "часов"])} назад`;
+  }
+
+  const yesterday = new Date(nowDate);
+  yesterday.setDate(nowDate.getDate() - 1);
+  if (isSameDay(seenDate, yesterday)) {
+    return `вчера в ${formatHm(seenDate)}`;
+  }
+
+  const monthName = SHORT_MONTHS[seenDate.getMonth()];
+  if (seenDate.getFullYear() === nowDate.getFullYear()) {
+    return `${seenDate.getDate()} ${monthName} в ${formatHm(seenDate)}`;
+  }
+
+  return `${seenDate.getDate()} ${monthName} ${seenDate.getFullYear()} в ${formatHm(seenDate)}`;
 }

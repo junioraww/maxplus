@@ -23,6 +23,16 @@
   $: activeChat = chat ?? (activeChatStore ? $activeChatStore : null);
 
   $: resolvedPresence = presence ?? (targetContactId ? $currentPresence[targetContactId] : (c?.id ? $currentPresence[c.id] : null));
+  $: isSpecialAccount = Boolean(c?.options?.includes("BOT") || c?.options?.includes("SERVICE_ACCOUNT"));
+
+  function formatSpecialLabel(opts) {
+    const list = [];
+    if (opts.includes("SERVICE_ACCOUNT")) list.push("сервисный аккаунт");
+    if (opts.includes("BOT")) list.push("бот");
+    if (opts.includes("OFFICIAL")) list.push("официальный");
+    const joined = list.join(", ");
+    return joined.charAt(0).toUpperCase() + joined.slice(1);
+  }
 
   function formatMembersCount(count) {
     const mod10 = count % 10;
@@ -60,25 +70,24 @@
   {activeChat.participantsCount || 0} подписчиков
 {:else if activeChat?.id === 0 || (targetContactId && Number(targetContactId) === Number($currentUser))}
   Сообщения для себя
+{:else if isSpecialAccount}
+  {formatSpecialLabel(c.options)}
 {:else if resolvedPresence?.status === 1 || resolvedPresence?.on === "ON" || Boolean(c?.online)}
   <span class="online-text">в сети</span>
+{:else if resolvedPresence?.status === 2}
+  {c?.gender === 2 ? "была" : "был"} недавно
+{:else if resolvedPresence?.status === 3}
+  {c?.gender === 2 ? "была" : "был"} давно
 {:else if resolvedPresence?.seen}
   {c?.gender === 2 ? "была" : "был"}
   <Timestamp
     gender={c?.gender || 1}
     unixTime={resolvedPresence.seen - (sessionGet("drift") || 0) / 1000}
   />
+{:else if resolvedPresence && resolvedPresence.status === 0 && resolvedPresence.seen === 0}
+  {c?.gender === 2 ? "была" : "был"} давно
 {:else if c?.options && c.options.length > 0}
-  {(() => {
-    const list = [];
-    const opts = c.options;
-    if (opts.includes("SERVICE_ACCOUNT")) list.push("сервисный аккаунт");
-    if (opts.includes("BOT")) list.push("бот");
-    if (opts.includes("OFFICIAL")) list.push("официальный");
-    if (!list.length) list.push(`Был${c?.gender === 2 ? 'а' : ''} недавно`);
-    const joined = list.join(", ");
-    return joined.charAt(0).toUpperCase() + joined.slice(1);
-  })()}
+  {formatSpecialLabel(c.options) || `Был${c?.gender === 2 ? 'а' : ''} недавно`}
 {:else if c}
   {c.gender === 2 ? "была" : "был"} недавно
 {:else if activeChat?.type === "DIALOG"}

@@ -12,6 +12,7 @@
   import { chatDrafts } from "$lib/stores/drafts";
   import { chatTypingStore } from "$lib/stores/typing";
   import Avatar from "$components/main/Avatar.svelte";
+  import { requestPresence } from "$lib/stores/presence";
 
   const pluginChatLeadings = getMountStore("chat-item:leading");
   const pluginChatBadges = getMountStore("chat-item:badge");
@@ -48,6 +49,17 @@
 
   $: muted = Boolean(isChatMuted(currentChat) || isChatMuted(chat) || currentChat?.muted || currentChat?.isMuted || chat?.muted || chat?.isMuted);
   $: isBot = $contact?.options?.includes("BOT") || chat?.options?.BOT === true || chat?.options?.IS_BOT === true;
+  let loadedPresencePeerId = null;
+  $: if (
+    peerId &&
+    Number(peerId) !== Number($currentUser) &&
+    !isBot &&
+    !$contact?.options?.includes("SERVICE_ACCOUNT") &&
+    peerId !== loadedPresencePeerId
+  ) {
+    loadedPresencePeerId = peerId;
+    requestPresence(peerId);
+  }
   export let isPinned = undefined;
   $: resolvedPinned = isPinned !== undefined
     ? Boolean(isPinned)

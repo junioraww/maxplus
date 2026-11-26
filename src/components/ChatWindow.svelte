@@ -33,6 +33,7 @@
   import {
     getContact
   } from "$lib/stores/contacts";
+  import { requestPresence } from "$lib/stores/presence";
   import Session, {
     openChat,
     closeChat,
@@ -905,6 +906,18 @@
   let botCommands = [];
   let botStarting = false;
   let loadedBotTarget = null;
+  let loadedPresenceTarget = null;
+
+  $: if (
+    chat?.type === "DIALOG" &&
+    avatarUserId &&
+    Number(avatarUserId) !== Number($currentUser) &&
+    !isBot &&
+    avatarUserId !== loadedPresenceTarget
+  ) {
+    loadedPresenceTarget = avatarUserId;
+    requestPresence(avatarUserId, { force: true });
+  }
 
   async function loadBotData(peerId, cId) {
     try {

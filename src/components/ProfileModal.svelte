@@ -44,6 +44,7 @@
     currentRealContacts,
     currentRealChats,
   } from "$lib/stores/api";
+  import { requestPresence } from "$lib/stores/presence";
 
   let showReportLeaveConfirm = false;
 
@@ -152,6 +153,18 @@
     return undefined;
   })();
   $: contact = getContact(chat?.type === "DIALOG" || (!chat && userId) ? userId : undefined);
+  let loadedPresenceUserId = null;
+  $: if (
+    (chat?.type === "DIALOG" || (!chat && userId)) &&
+    userId &&
+    Number(userId) !== Number($currentUser) &&
+    !$contact?.options?.includes("BOT") &&
+    !$contact?.options?.includes("SERVICE_ACCOUNT") &&
+    userId !== loadedPresenceUserId
+  ) {
+    loadedPresenceUserId = userId;
+    requestPresence(userId, { force: true });
+  }
   $: chatSettings = chat?.id != null ? getChatSettings(chat.id) : null;
   $: muted = chat ? isChatMuted(chat) : false;
   $: isChannel = chat?.type === "CHANNEL";

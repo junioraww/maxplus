@@ -289,6 +289,7 @@ pub fn run() {
             commands::get_detailed_reactions,
             commands::set_token,
             commands::fetch_contacts,
+            commands::fetch_presence,
             commands::fetch_history,
             commands::get_by_phone,
             commands::add_contact,
