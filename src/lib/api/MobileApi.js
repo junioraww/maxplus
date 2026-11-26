@@ -29,6 +29,7 @@ import { ensureReactionsLoaded } from "$lib/stores/reactions";
 import { preloadComplaintReasons } from "$lib/stores/complaints";
 import { handleTranscriptionPush } from "$lib/stores/transcription";
 import { setChatTyping, clearChatTyping } from "$lib/stores/typing";
+import { applyPresenceMap, flushPresenceQueue } from "$lib/stores/presence";
 import { setChatDraft, clearChatDraft, initDrafts } from "$lib/stores/drafts";
 import { vpnStatus } from "$lib/stores/proxySettings";
 import {
@@ -352,18 +353,8 @@ export default class MobileApi extends BaseAPI {
       } else if (opc === 132) {
         const p = response.payload;
         if (p?.userId) {
-          const userId = Number(p.userId);
-          const presence = p.presence || p;
-          const status = presence.status != null ? Number(presence.status) : 0;
-          const seen = presence.seen != null ? Number(presence.seen) : Date.now();
-          currentPresence.update(prev => ({
-            ...prev,
-            [userId]: {
-              status,
-              seen,
-              on: status === 1 ? "ON" : "OFF"
-            }
-          }));
+          const fallbackSeenSec = Math.floor((Date.now() + (sessionGet("drift") || 0)) / 1000);
+          applyPresenceMap({ [p.userId]: p.presence || p }, fallbackSeenSec);
         }
       } else if (opc === 136) {
         const { videoId, fileId } = response.payload;
@@ -1130,19 +1121,7 @@ export default class MobileApi extends BaseAPI {
       }
 
       if (synced.presence && typeof synced.presence === "object") {
-        const initialMap = {};
-        for (const [uid, pres] of Object.entries(synced.presence)) {
-          if (pres) {
-            const status = pres.status != null ? Number(pres.status) : 0;
-            const seen = pres.seen != null ? Number(pres.seen) : 0;
-            initialMap[Number(uid)] = {
-              status,
-              seen,
-              on: status === 1 ? "ON" : "OFF"
-            };
-          }
-        }
-        currentPresence.update(prev => ({ ...prev, ...initialMap }));
+        applyPresenceMap(synced.presence, 0);
       }
 
       if (config?.server) {
@@ -1180,6 +1159,7 @@ export default class MobileApi extends BaseAPI {
 
       setupPushNotifications();
       sessionSet("sync", true);
+      flushPresenceQueue();
     } catch (e) {
       sessionSet("sync", false);
       const text = e?.toString() || "";
@@ -1208,6 +1188,19 @@ export default class MobileApi extends BaseAPI {
   async fetchContacts(userIds) {
     await this.waitSync();
     return invoke("fetch_contacts", { userIds });
+  }
+
+  async fetchPresence(userIds) {
+    const ids = (Array.isArray(userIds) ? userIds : [userIds])
+      .map(Number)
+      .filter((id) => Number.isSafeInteger(id) && id > 0);
+    if (ids.length === 0) return { presence: {} };
+    await this.waitSync();
+    const res = await invoke("fetch_presence", { userIds: ids });
+    if (res?.presence && typeof res.presence === "object") {
+      applyPresenceMap(res.presence, 0);
+    }
+    return res;
   }
 
   async getMessages(chatId, from_time = Date.now() + sessionGet("drift"), backward = 40, forward = 0) {
@@ -2466,22 +2459,23 @@ export default class MobileApi extends BaseAPI {
     });
     const members = res?.members || [];
     const nextMarker = res?.marker ?? null;
+    this._syncMemberContactsAndPresence(members);
+    return { members, marker: nextMarker };
+  }
+
+  _syncMemberContactsAndPresence(members) {
     const presenceUpdates = {};
     for (const m of members) {
       if (m.contact) {
         updateContact(m.contact);
       }
       if (m.presence && m.contact?.id) {
-        presenceUpdates[m.contact.id] = {
-          status: m.presence.status ?? 0,
-          seen: m.presence.seen ?? 0
-        };
+        presenceUpdates[m.contact.id] = m.presence;
       }
     }
     if (Object.keys(presenceUpdates).length > 0) {
-      currentPresence.update(prev => ({ ...prev, ...presenceUpdates }));
+      applyPresenceMap(presenceUpdates, 0);
     }
-    return { members, marker: nextMarker };
   }
 
   async searchGroupMembers(chatId, query) {
@@ -2491,21 +2485,7 @@ export default class MobileApi extends BaseAPI {
       query: String(query || "")
     });
     const members = res?.members || [];
-    const presenceUpdates = {};
-    for (const m of members) {
-      if (m.contact) {
-        updateContact(m.contact);
-      }
-      if (m.presence && m.contact?.id) {
-        presenceUpdates[m.contact.id] = {
-          status: m.presence.status ?? 0,
-          seen: m.presence.seen ?? 0
-        };
-      }
-    }
-    if (Object.keys(presenceUpdates).length > 0) {
-      currentPresence.update(prev => ({ ...prev, ...presenceUpdates }));
-    }
+    this._syncMemberContactsAndPresence(members);
     return members;
   }
 

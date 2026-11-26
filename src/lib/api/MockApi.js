@@ -552,6 +552,10 @@ export default class MockApi extends BaseAPI {
     return true;
   }
 
+  async fetchPresence() {
+    return { presence: {} };
+  }
+
   async getCalls() {
     return { history: [], hasMore: false };
   }

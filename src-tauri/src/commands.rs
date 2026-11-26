@@ -31,6 +31,7 @@ delegate_cmd!(check_call_status(track_id: String) => check_call_status(track_id)
 delegate_cmd!(auth_by_track(track_id: String) => auth_by_track(track_id));
 delegate_cmd!(logout() => logout());
 delegate_cmd!(fetch_contacts(user_ids: Vec<u64>) => fetch_contacts(user_ids));
+delegate_cmd!(fetch_presence(user_ids: Vec<u64>) => fetch_presence(user_ids));
 delegate_cmd!(get_by_phone(phone: String) => get_by_phone(phone));
 delegate_cmd!(add_contact(contact_id: u64, first_name: String) => add_contact(contact_id, first_name));
 delegate_cmd!(remove_contact(contact_id: u64) => delete_contact(contact_id));

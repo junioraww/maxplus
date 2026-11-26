@@ -48,6 +48,7 @@ export default class API {
     readMessage() { throw "readMessage: Unimplemented" }
     markAsRead() { throw "markAsRead: Unimplemented" }
     setPresence() { throw "setPresence: Unimplemented" }
+    fetchPresence() { throw "fetchPresence: Unimplemented" }
     getCalls() { throw "getCalls: Unimplemented" }
     updateProfile() { throw "updateProfile: Unimplemented" }
     createGroup() { throw "createGroup: Unimplemented" }

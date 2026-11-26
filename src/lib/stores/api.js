@@ -4,12 +4,14 @@ import { writable, get } from "svelte/store";
 import { goto } from "$app/navigation";
 import { page } from "$app/stores";
 
+import { currentPresence, clearPresenceCache } from "$lib/stores/presence";
+
 export const currentUser = writable(undefined);
 export const currentUserDetails = writable(undefined);
 export const currentSessionCalls = writable(undefined);
 export const currentlySyncing = writable(false);
 export const currentFolders = writable([]);
-export const currentPresence = writable({});
+export { currentPresence };
 export const serverConfig = writable({});
 export const currentRealChats = writable([]);
 export const currentRealContacts = writable([]);
@@ -86,6 +88,7 @@ currentUser.subscribe(async userId => {
     sessionSet("sync", false);
     sessionSet("connected", false);
     API.latest_init = 0;
+    clearPresenceCache();
     invoke("disconnect").catch(() => {});
     await openAuth();
   }
