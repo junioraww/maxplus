@@ -625,7 +625,6 @@
     background: var(--bg-surface-elevated, #2a2b33);
     border-radius: 12px;
     padding: 6px;
-    box-shadow: 0 10px 28px rgba(0, 0, 0, 0.5);
     border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
     display: flex;
     flex-direction: column;

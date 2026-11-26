@@ -412,7 +412,6 @@
     position: relative;
     user-select: none;
     z-index: 40;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
     flex-shrink: 0;
   }
   .media-playback-header.chat-header {
@@ -453,7 +452,6 @@
     border-radius: 50%;
     background: #2b82d9;
     transform: translate(-50%, -50%);
-    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
     pointer-events: none;
     transition: transform 0.1s ease;
   }
@@ -589,7 +587,6 @@
     white-space: nowrap;
     pointer-events: none;
     z-index: 100;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
     border: 1px solid rgba(255, 255, 255, 0.1);
   }
   .close-btn {

@@ -3,116 +3,147 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::{HashMap, HashSet};
 
-const ZH_BASE: u32 = 0x4E00;
-const ZH_COUNT: usize = 2048;
+const RU_CHARS: [char; 64] = [
+    'а', 'б', 'в', 'г', 'д', 'е', 'ж', 'з', 'и', 'й', 'к', 'л', 'м', 'н', 'о', 'п',
+    'р', 'с', 'т', 'у', 'ф', 'х', 'ц', 'ч', 'ш', 'щ', 'ъ', 'ы', 'ь', 'э', 'ю', 'я',
+    'А', 'Б', 'В', 'Г', 'Д', 'Е', 'Ж', 'З', 'И', 'Й', 'К', 'Л', 'М', 'Н', 'О', 'П',
+    'Р', 'С', 'Т', 'У', 'Ф', 'Х', 'Ц', 'Ч', 'Ш', 'Щ', 'Ъ', 'Ы', 'Ь', 'Э', 'Ю', 'Я',
+];
 
-pub struct ChineseObfuscator;
+#[inline]
+fn ru_char_index(c: char) -> Option<usize> {
+    let cp = c as u32;
+    if (0x0430..=0x044F).contains(&cp) {
+        Some((cp - 0x0430) as usize)
+    } else if (0x0410..=0x042F).contains(&cp) {
+        Some((cp - 0x0410 + 32) as usize)
+    } else {
+        None
+    }
+}
 
-impl ChineseObfuscator {
+#[inline]
+fn keystream_block(seed: &[u8; 4], block_idx: u32) -> [u8; 32] {
+    let mut hasher = Sha256::new();
+    hasher.update(b"ru-obf-ws-v1");
+    hasher.update(seed);
+    hasher.update(block_idx.to_le_bytes());
+    let digest = hasher.finalize();
+    let mut out = [0u8; 32];
+    out.copy_from_slice(&digest);
+    out
+}
+
+pub struct RussianObfuscator;
+
+impl RussianObfuscator {
     pub fn detect(text: &str) -> bool {
-        let chars: Vec<char> = text.chars().take(5).collect();
-        if chars.len() < 5 {
-            return false;
-        }
-
-        for c in chars {
-            let cp = c as u32;
-            if cp < ZH_BASE || cp >= ZH_BASE + ZH_COUNT as u32 {
+        let mut count = 0usize;
+        for c in text.chars() {
+            if c == ' ' {
+                continue;
+            }
+            let Some(idx) = ru_char_index(c) else {
+                return false;
+            };
+            if count < 4 && (idx & 1) != 0 {
                 return false;
             }
-            let idx = cp - ZH_BASE;
-            if (idx & 1) != 0 {
-                return false;
-            }
+            count += 1;
         }
-
-        true
+        count >= 6
     }
 
     pub fn obfuscate(bytes: &[u8]) -> String {
         let mut rng = rand::thread_rng();
-        let mut marker = String::with_capacity(5);
-        let max_even = (ZH_COUNT - 1) / 2;
-        for _ in 0..5 {
-            let r = rng.gen_range(0..=max_even);
-            let idx = (r * 2) as u32;
-            if let Some(ch) = char::from_u32(ZH_BASE + idx) {
-                marker.push(ch);
-            }
+        let total_chars = 4 + (bytes.len() * 8 + 5) / 6;
+        let mut raw_letters = Vec::with_capacity(total_chars);
+
+        let mut seed = [0u8; 4];
+        for s in &mut seed {
+            let idx = rng.gen_range(0..32) * 2;
+            *s = idx as u8;
+            raw_letters.push(RU_CHARS[idx]);
         }
 
-        let len = bytes.len() as u16;
-        let mut payload_bytes = Vec::with_capacity(2 + bytes.len());
-        payload_bytes.extend_from_slice(&len.to_be_bytes());
-        payload_bytes.extend_from_slice(bytes);
-
-        let bits_per = 11;
-        let mut bit_buffer: u64 = 0;
+        let mut bit_buffer: u32 = 0;
         let mut bit_count = 0;
-        let mut out = marker;
+        let mut ks_block = [0u8; 32];
 
-        for &b in &payload_bytes {
-            bit_buffer = (bit_buffer << 8) | (b as u64);
+        for (i, &b) in bytes.iter().enumerate() {
+            let pos_in_block = i & 31;
+            if pos_in_block == 0 {
+                ks_block = keystream_block(&seed, (i >> 5) as u32);
+            }
+            let wb = b ^ ks_block[pos_in_block];
+            bit_buffer = (bit_buffer << 8) | (wb as u32);
             bit_count += 8;
-            while bit_count >= bits_per {
-                bit_count -= bits_per;
-                let idx = ((bit_buffer >> bit_count) & ((1 << bits_per) - 1)) as u32;
-                if let Some(ch) = char::from_u32(ZH_BASE + idx) {
-                    out.push(ch);
-                }
+            while bit_count >= 6 {
+                bit_count -= 6;
+                let idx = ((bit_buffer >> bit_count) & 0x3F) as usize;
+                raw_letters.push(RU_CHARS[idx]);
                 bit_buffer &= (1 << bit_count) - 1;
             }
         }
 
         if bit_count > 0 {
-            let idx = ((bit_buffer << (bits_per - bit_count)) & ((1 << bits_per) - 1)) as u32;
-            if let Some(ch) = char::from_u32(ZH_BASE + idx) {
-                out.push(ch);
-            }
+            let idx = ((bit_buffer << (6 - bit_count)) & 0x3F) as usize;
+            raw_letters.push(RU_CHARS[idx]);
         }
 
+        let mut out = String::with_capacity(raw_letters.len() * 2 + raw_letters.len() / 4);
+        let mut pos = 0;
+        while pos < raw_letters.len() {
+            if pos > 0 {
+                out.push(' ');
+            }
+            let word_len = rng.gen_range(3..=8).min(raw_letters.len() - pos);
+            for &ch in &raw_letters[pos..pos + word_len] {
+                out.push(ch);
+            }
+            pos += word_len;
+        }
         out
     }
 
     pub fn deobfuscate(text: &str) -> Result<Vec<u8>, String> {
-        let chars: Vec<char> = text.chars().collect();
-        if chars.len() < 5 {
-            return Err("Text too short for Chinese deobfuscation".into());
-        }
-
-        let payload_chars = &chars[5..];
-        let bits_per = 11;
-        let mut bit_buffer: u64 = 0;
+        let mut seed = [0u8; 4];
+        let mut seed_len = 0usize;
+        let mut bit_buffer: u32 = 0;
         let mut bit_count = 0;
-        let mut raw_bytes = Vec::new();
+        let mut raw_bytes = Vec::with_capacity(text.len() / 2);
+        let mut ks_block = [0u8; 32];
 
-        for &ch in payload_chars {
-            let cp = ch as u32;
-            if cp < ZH_BASE || cp >= ZH_BASE + ZH_COUNT as u32 {
+        for c in text.chars() {
+            if c == ' ' {
                 continue;
             }
-            let idx = cp - ZH_BASE;
-            bit_buffer = (bit_buffer << bits_per) | (idx as u64);
-            bit_count += bits_per;
-            while bit_count >= 8 {
+            let idx = ru_char_index(c).ok_or("Invalid character in Russian obfuscated text")?;
+            if seed_len < 4 {
+                seed[seed_len] = idx as u8;
+                seed_len += 1;
+                continue;
+            }
+            bit_buffer = (bit_buffer << 6) | (idx as u32);
+            bit_count += 6;
+            if bit_count >= 8 {
                 bit_count -= 8;
-                let byte = ((bit_buffer >> bit_count) & 0xFF) as u8;
-                raw_bytes.push(byte);
+                let wb = ((bit_buffer >> bit_count) & 0xFF) as u8;
                 bit_buffer &= (1 << bit_count) - 1;
+                let byte_idx = raw_bytes.len();
+                let pos_in_block = byte_idx & 31;
+                if pos_in_block == 0 {
+                    ks_block = keystream_block(&seed, (byte_idx >> 5) as u32);
+                }
+                raw_bytes.push(wb ^ ks_block[pos_in_block]);
             }
         }
 
-        if raw_bytes.len() < 2 {
-            return Err("Payload too short".into());
+        if seed_len < 4 || raw_bytes.is_empty() {
+            return Err("Text too short for Russian deobfuscation".into());
         }
 
-        let expected_len = u16::from_be_bytes([raw_bytes[0], raw_bytes[1]]) as usize;
-        let content = &raw_bytes[2..];
-        if content.len() < expected_len {
-            return Err("Corrupted payload length".into());
-        }
-
-        Ok(content[..expected_len].to_vec())
+        Ok(raw_bytes)
     }
 }
 
@@ -394,21 +425,21 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_chinese_roundtrip_various_lengths() {
+    fn test_russian_roundtrip_various_lengths() {
         for len in [1, 2, 3, 5, 7, 10, 11, 16, 22, 33, 64, 128] {
             let original: Vec<u8> = (0..len).map(|i| (i * 17) as u8).collect();
-            let obfuscated = ChineseObfuscator::obfuscate(&original);
-            assert!(ChineseObfuscator::detect(&obfuscated));
+            let obfuscated = RussianObfuscator::obfuscate(&original);
+            assert!(RussianObfuscator::detect(&obfuscated));
 
-            let deobfuscated = ChineseObfuscator::deobfuscate(&obfuscated).unwrap();
+            let deobfuscated = RussianObfuscator::deobfuscate(&obfuscated).unwrap();
             assert_eq!(deobfuscated, original, "Failed for length {}", len);
         }
     }
 
     #[test]
-    fn test_chinese_detect_rejects_plain_text() {
-        assert!(!ChineseObfuscator::detect("Hello world"));
-        assert!(!ChineseObfuscator::detect("Привет мир"));
-        assert!(!ChineseObfuscator::detect(""));
+    fn test_russian_detect_rejects_plain_text() {
+        assert!(!RussianObfuscator::detect("Hello world"));
+        assert!(!RussianObfuscator::detect("Привет мир, как дела?"));
+        assert!(!RussianObfuscator::detect(""));
     }
 }

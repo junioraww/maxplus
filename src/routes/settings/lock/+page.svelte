@@ -614,7 +614,6 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
     flex-shrink: 0;
   }
 
@@ -736,7 +735,6 @@
     flex-direction: column;
     gap: 14px;
     box-sizing: border-box;
-    box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.5);
   }
 
   .modal-backdrop.has-keyboard .modal-card {

@@ -156,7 +156,6 @@
     max-height: 82vh;
     display: flex;
     flex-direction: column;
-    box-shadow: 0 24px 48px rgba(0, 0, 0, 0.5);
     overflow: hidden;
   }
 

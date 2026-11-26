@@ -224,7 +224,6 @@
     height: 200px;
     border-radius: 50%;
     overflow: hidden;
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
     border: 3px solid #248bfe;
     cursor: pointer;
     background: #000;
@@ -362,7 +361,6 @@
     border-radius: 50%;
     background: #248bfe;
     cursor: ew-resize;
-    box-shadow: 0 0 6px rgba(0, 0, 0, 0.4);
     margin-top: -5px;
   }
 

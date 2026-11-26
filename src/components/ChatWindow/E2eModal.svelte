@@ -147,7 +147,6 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    box-shadow: 0 -10px 40px rgba(0, 0, 0, 0.5);
     user-select: none;
   }
 
@@ -170,7 +169,6 @@
     align-items: center;
     justify-content: center;
     margin-bottom: 14px;
-    box-shadow: 0 0 24px rgba(34, 197, 94, 0.12);
   }
 
   .sheet-title {

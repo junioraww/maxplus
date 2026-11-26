@@ -164,7 +164,6 @@
     border-radius: 50%;
     object-fit: cover;
     border: 4px solid var(--accent-primary, #248bfe);
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
     background: #000;
   }
 

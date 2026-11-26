@@ -1,21 +1,63 @@
 use crate::crypto::media::MediaDescriptor;
 use crate::crypto::symmetric;
-use flate2::read::DeflateDecoder;
-use flate2::write::DeflateEncoder;
-use flate2::Compression;
 use rand::{RngCore, thread_rng};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use std::io::{Read, Write};
 
-pub const PROTOCOL_VERSION: u8 = 0x00;
 pub const PROTOCOL_VERSION_V2: u8 = 0x01;
 
 pub const FLAG_SESSION: u8 = 1 << 5;
 pub const FLAG_PASSWORD: u8 = 1 << 4;
-pub const FLAG_COMPRESSED: u8 = 1 << 3;
-pub const FLAG_PQ_REKEY: u8 = 1 << 3; // In v2, bit 3 indicates embedded PQ ratchet rekey bytes
+pub const FLAG_PQ_REKEY: u8 = 1 << 3;
 pub const FLAG_CONTROL: u8 = 1 << 2;
+pub const FLAG_SENDER_ROLE: u8 = 1 << 1;
+pub const FLAG_EPOCH_ZERO: u8 = 1 << 0;
+
+fn write_varint(buf: &mut Vec<u8>, mut v: u64) {
+    while v >= 0x80 {
+        buf.push((v as u8 & 0x7F) | 0x80);
+        v >>= 7;
+    }
+    buf.push(v as u8);
+}
+
+fn read_varint(data: &[u8], pos: &mut usize) -> Result<u64, String> {
+    let mut result: u64 = 0;
+    let mut shift = 0u32;
+    loop {
+        if *pos >= data.len() {
+            return Err("Truncated varint".into());
+        }
+        let b = data[*pos];
+        *pos += 1;
+        result |= ((b & 0x7F) as u64) << shift;
+        if (b & 0x80) == 0 {
+            return Ok(result);
+        }
+        shift += 7;
+        if shift >= 64 {
+            return Err("Varint overflow".into());
+        }
+    }
+}
+
+fn derive_session_xnonce(
+    msg_key: &[u8; 32],
+    header_byte: u8,
+    chat_id: i64,
+    meta: &[u8],
+) -> [u8; 24] {
+    let mut hasher = Sha256::new();
+    hasher.update(b"maxplus-v2-det-nonce:");
+    hasher.update(msg_key);
+    hasher.update([header_byte]);
+    hasher.update(chat_id.to_be_bytes());
+    hasher.update(meta);
+    let digest = hasher.finalize();
+    let mut xnonce = [0u8; 24];
+    xnonce.copy_from_slice(&digest[..24]);
+    xnonce
+}
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub enum PayloadData {
@@ -27,47 +69,6 @@ pub enum PayloadData {
     Handshake(Vec<u8>),
 }
 
-pub struct Header {
-    pub version: u8,
-    pub has_session: bool,
-    pub has_password: bool,
-    pub is_compressed: bool,
-    pub is_control: bool,
-}
-
-impl Header {
-    pub fn encode(&self) -> u8 {
-        ((self.version & 0x03) << 6)
-            | if self.has_session { FLAG_SESSION } else { 0 }
-            | if self.has_password { FLAG_PASSWORD } else { 0 }
-            | if self.is_compressed { FLAG_COMPRESSED } else { 0 }
-            | if self.is_control { FLAG_CONTROL } else { 0 }
-    }
-
-    pub fn decode(byte: u8) -> Self {
-        Self {
-            version: (byte >> 6) & 0x03,
-            has_session: (byte & FLAG_SESSION) != 0,
-            has_password: (byte & FLAG_PASSWORD) != 0,
-            is_compressed: (byte & FLAG_COMPRESSED) != 0,
-            is_control: (byte & FLAG_CONTROL) != 0,
-        }
-    }
-}
-
-pub fn compress_bytes(bytes: &[u8]) -> Result<Vec<u8>, String> {
-    let mut encoder = DeflateEncoder::new(Vec::new(), Compression::best());
-    encoder.write_all(bytes).map_err(|e| e.to_string())?;
-    encoder.finish().map_err(|e| e.to_string())
-}
-
-pub fn decompress_bytes(bytes: &[u8]) -> Result<Vec<u8>, String> {
-    let mut decoder = DeflateDecoder::new(bytes);
-    let mut out = Vec::new();
-    decoder.read_to_end(&mut out).map_err(|e| e.to_string())?;
-    Ok(out)
-}
-
 pub fn derive_chat_salt(chat_id: i64) -> [u8; 16] {
     let mut salt = [0u8; 16];
     let mut hasher = Sha256::new();
@@ -76,185 +77,6 @@ pub fn derive_chat_salt(chat_id: i64) -> [u8; 16] {
     let hash = hasher.finalize();
     salt.copy_from_slice(&hash[..16]);
     salt
-}
-
-pub fn pack_message(
-    payload: PayloadData,
-    session_key: Option<&[u8; 32]>,
-    password: Option<&str>,
-    chat_id: Option<i64>,
-) -> Result<Vec<u8>, String> {
-    let is_control = matches!(payload, PayloadData::Handshake(_));
-    let mut raw_bytes = match payload {
-        PayloadData::Text(t) => {
-            let mut b = Vec::with_capacity(1 + t.len());
-            b.push(0x01);
-            b.extend_from_slice(t.as_bytes());
-            b
-        }
-        PayloadData::Media { text, media } => {
-            let mut b = Vec::new();
-            b.push(0x02);
-            let encoded = rmp_serde::to_vec(&(text, media)).map_err(|e| e.to_string())?;
-            b.extend_from_slice(&encoded);
-            b
-        }
-        PayloadData::Handshake(bytes) => bytes,
-    };
-
-    let should_compress = !is_control && raw_bytes.len() >= 64;
-    let mut is_compressed = false;
-    if should_compress {
-        if let Ok(compressed) = compress_bytes(&raw_bytes) {
-            if compressed.len() < raw_bytes.len() {
-                raw_bytes = compressed;
-                is_compressed = true;
-            }
-        }
-    }
-
-    let has_session = session_key.is_some();
-    if let Some(s_key) = session_key {
-        let mut nonce = [0u8; 12];
-        thread_rng().fill_bytes(&mut nonce);
-        let ciphertext = symmetric::encrypt(s_key, &nonce, &raw_bytes, None)?;
-        let mut session_payload = Vec::with_capacity(12 + ciphertext.len());
-        session_payload.extend_from_slice(&nonce);
-        session_payload.extend_from_slice(&ciphertext);
-        raw_bytes = session_payload;
-    }
-
-    let has_password = password.is_some();
-    if let Some(pwd) = password {
-        let mut salt = [0u8; 16];
-        if let Some(cid) = chat_id {
-            salt = derive_chat_salt(cid);
-        } else {
-            thread_rng().fill_bytes(&mut salt);
-        }
-        let mut nonce = [0u8; 12];
-        thread_rng().fill_bytes(&mut nonce);
-
-        let p_key = symmetric::derive_key(pwd, &salt)?;
-        let ciphertext = symmetric::encrypt(&p_key, &nonce, &raw_bytes, None)?;
-
-        let mut pass_payload = Vec::with_capacity(16 + 12 + ciphertext.len());
-        pass_payload.extend_from_slice(&salt);
-        pass_payload.extend_from_slice(&nonce);
-        pass_payload.extend_from_slice(&ciphertext);
-        raw_bytes = pass_payload;
-    }
-
-    let header = Header {
-        version: PROTOCOL_VERSION,
-        has_session,
-        has_password,
-        is_compressed,
-        is_control,
-    };
-
-    let mut out = Vec::with_capacity(1 + raw_bytes.len());
-    out.push(header.encode());
-    out.extend_from_slice(&raw_bytes);
-
-    Ok(out)
-}
-
-pub fn unpack_message(
-    bytes: &[u8],
-    session_key: Option<&[u8; 32]>,
-    password: Option<&str>,
-) -> Result<PayloadData, String> {
-    if bytes.is_empty() {
-        return Err("Empty packet".into());
-    }
-
-    let header = Header::decode(bytes[0]);
-    if header.version != PROTOCOL_VERSION {
-        return Err("Unsupported protocol version".into());
-    }
-
-    let mut current = bytes[1..].to_vec();
-
-    if header.has_password {
-        let pwd = password.ok_or("Password required to decrypt this message")?;
-        if current.len() < 16 + 12 + 16 {
-            return Err("Password payload too short".into());
-        }
-        let salt = &current[..16];
-        let mut nonce = [0u8; 12];
-        nonce.copy_from_slice(&current[16..28]);
-        let ciphertext = &current[28..];
-
-        let p_key = symmetric::derive_key(pwd, salt)?;
-        current = symmetric::decrypt(&p_key, &nonce, ciphertext, None)
-            .map_err(|_| "Wrong password".to_string())?;
-    }
-
-    if header.has_session {
-        let s_key = session_key.ok_or("Session key required to decrypt this message")?;
-        if current.len() < 12 + 16 {
-            return Err("Session payload too short".into());
-        }
-        let mut nonce = [0u8; 12];
-        nonce.copy_from_slice(&current[..12]);
-        let ciphertext = &current[12..];
-
-        current = symmetric::decrypt(s_key, &nonce, ciphertext, None)
-            .map_err(|_| "Failed to decrypt with session key".to_string())?;
-    }
-
-    if header.is_compressed {
-        current = decompress_bytes(&current)?;
-    }
-
-    if header.is_control {
-        return Ok(PayloadData::Handshake(current));
-    }
-
-    if current.is_empty() {
-        return Ok(PayloadData::Text(String::new()));
-    }
-
-    match current[0] {
-        0x01 => {
-            let s = String::from_utf8(current[1..].to_vec()).map_err(|e| e.to_string())?;
-            Ok(PayloadData::Text(s))
-        }
-        0x02 => {
-            let (text, media): (String, MediaDescriptor) =
-                rmp_serde::from_slice(&current[1..]).map_err(|e| e.to_string())?;
-            Ok(PayloadData::Media { text, media })
-        }
-        _ => {
-            if let Ok(s) = String::from_utf8(current.clone()) {
-                Ok(PayloadData::Text(s))
-            } else {
-                Err("Unknown payload format".into())
-            }
-        }
-    }
-}
-
-fn pad_plaintext_v2(raw: &[u8]) -> Vec<u8> {
-    let total_unpadded = 4 + raw.len();
-    let bucket = ((total_unpadded + 63) / 64) * 64;
-    let mut out = Vec::with_capacity(bucket);
-    out.extend_from_slice(&(raw.len() as u32).to_be_bytes());
-    out.extend_from_slice(raw);
-    out.resize(bucket, 0u8);
-    out
-}
-
-fn unpad_plaintext_v2(padded: &[u8]) -> Result<Vec<u8>, String> {
-    if padded.len() < 4 {
-        return Err("Padded v2 payload too short".into());
-    }
-    let len = u32::from_be_bytes([padded[0], padded[1], padded[2], padded[3]]) as usize;
-    if 4 + len > padded.len() {
-        return Err("Invalid v2 padded length".into());
-    }
-    Ok(padded[4..4 + len].to_vec())
 }
 
 fn encode_payload_inner(payload: PayloadData) -> Result<(bool, Vec<u8>), String> {
@@ -320,40 +142,45 @@ pub fn pack_message_v2(
     password: Option<&str>,
     chat_id: i64,
 ) -> Result<Vec<u8>, String> {
-    let (is_control, raw_inner) = encode_payload_inner(payload)?;
-    let mut current = if is_control {
-        raw_inner
-    } else {
-        pad_plaintext_v2(&raw_inner)
-    };
+    let (is_control, mut current) = encode_payload_inner(payload)?;
 
     let has_session = session_msg_key.is_some() && session_header.is_some();
     let has_pq_rekey = session_header
         .map(|h| !h.pq_rekey_bytes.is_empty())
         .unwrap_or(false);
     let has_password = password.is_some();
+    let sender_role_bit = session_header
+        .map(|h| h.sender_role != 0)
+        .unwrap_or(false);
+    let epoch_zero_bit = session_header
+        .map(|h| h.epoch == 0)
+        .unwrap_or(false);
 
     let header_byte = ((PROTOCOL_VERSION_V2 & 0x03) << 6)
         | if has_session { FLAG_SESSION } else { 0 }
         | if has_password { FLAG_PASSWORD } else { 0 }
         | if has_pq_rekey { FLAG_PQ_REKEY } else { 0 }
-        | if is_control { FLAG_CONTROL } else { 0 };
+        | if is_control { FLAG_CONTROL } else { 0 }
+        | if sender_role_bit { FLAG_SENDER_ROLE } else { 0 }
+        | if epoch_zero_bit { FLAG_EPOCH_ZERO } else { 0 };
 
     if let (Some(msg_key), Some(sh)) = (session_msg_key, session_header) {
-        let mut xnonce = [0u8; 24];
-        thread_rng().fill_bytes(&mut xnonce);
-
         let pq_len = sh.pq_rekey_bytes.len();
         if pq_len > u16::MAX as usize {
             return Err("PQ rekey payload too large".into());
         }
 
-        let mut meta = Vec::with_capacity(4 + 8 + 1 + 2 + pq_len);
-        meta.extend_from_slice(&sh.epoch.to_be_bytes());
-        meta.extend_from_slice(&sh.counter.to_be_bytes());
-        meta.push(sh.sender_role);
-        meta.extend_from_slice(&(pq_len as u16).to_be_bytes());
-        meta.extend_from_slice(&sh.pq_rekey_bytes);
+        let mut meta = Vec::with_capacity(8 + pq_len);
+        if sh.epoch != 0 {
+            write_varint(&mut meta, sh.epoch as u64);
+        }
+        write_varint(&mut meta, sh.counter);
+        if has_pq_rekey {
+            write_varint(&mut meta, pq_len as u64);
+            meta.extend_from_slice(&sh.pq_rekey_bytes);
+        }
+
+        let xnonce = derive_session_xnonce(msg_key, header_byte, chat_id, &meta);
 
         let mut aad = Vec::with_capacity(1 + 8 + meta.len());
         aad.push(header_byte);
@@ -362,9 +189,8 @@ pub fn pack_message_v2(
 
         let ct = symmetric::encrypt_xchacha(msg_key, &xnonce, &current, Some(&aad))?;
 
-        let mut session_payload = Vec::with_capacity(meta.len() + 24 + ct.len());
+        let mut session_payload = Vec::with_capacity(meta.len() + ct.len());
         session_payload.extend_from_slice(&meta);
-        session_payload.extend_from_slice(&xnonce);
         session_payload.extend_from_slice(&ct);
         current = session_payload;
     }
@@ -439,21 +265,29 @@ where
     }
 
     if has_session {
-        if current.len() < 15 + 24 + 16 {
+        let mut pos = 0usize;
+        let epoch = if (header_byte & FLAG_EPOCH_ZERO) != 0 {
+            0
+        } else {
+            read_varint(&current, &mut pos)? as u32
+        };
+        let counter = read_varint(&current, &mut pos)?;
+        let sender_role = if (header_byte & FLAG_SENDER_ROLE) != 0 { 1 } else { 0 };
+        let pq_rekey_bytes = if (header_byte & FLAG_PQ_REKEY) != 0 {
+            let pq_len = read_varint(&current, &mut pos)? as usize;
+            if pos + pq_len > current.len() {
+                return Err("v2 session payload truncated".into());
+            }
+            let bytes = current[pos..pos + pq_len].to_vec();
+            pos += pq_len;
+            bytes
+        } else {
+            Vec::new()
+        };
+        let meta_len = pos;
+        if current.len() < meta_len + 16 {
             return Err("v2 session payload too short".into());
         }
-        let epoch = u32::from_be_bytes([current[0], current[1], current[2], current[3]]);
-        let counter = u64::from_be_bytes([
-            current[4], current[5], current[6], current[7], current[8], current[9], current[10],
-            current[11],
-        ]);
-        let sender_role = current[12];
-        let pq_len = u16::from_be_bytes([current[13], current[14]]) as usize;
-        let meta_len = 15 + pq_len;
-        if current.len() < meta_len + 24 + 16 {
-            return Err("v2 session payload truncated".into());
-        }
-        let pq_rekey_bytes = current[15..meta_len].to_vec();
         let sh = V2SessionHeader {
             epoch,
             counter,
@@ -461,10 +295,8 @@ where
             pq_rekey_bytes,
         };
         let msg_key = resolve_session_key(&sh)?;
-
-        let mut xnonce = [0u8; 24];
-        xnonce.copy_from_slice(&current[meta_len..meta_len + 24]);
-        let ct = &current[meta_len + 24..];
+        let xnonce = derive_session_xnonce(&msg_key, header_byte, chat_id, &current[..meta_len]);
+        let ct = &current[meta_len..];
 
         let mut aad = Vec::with_capacity(1 + 8 + meta_len);
         aad.push(header_byte);
@@ -475,12 +307,7 @@ where
             .map_err(|_| "Failed to decrypt v2 ratcheted message".to_string())?;
     }
 
-    let unpadded = if is_control {
-        current
-    } else {
-        unpad_plaintext_v2(&current)?
-    };
-    decode_payload_inner(is_control, &unpadded)
+    decode_payload_inner(is_control, &current)
 }
 
 #[cfg(test)]
@@ -488,110 +315,19 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_plain_message_roundtrip() {
-        let text = "Synthetic plain message test".to_string();
-        let packed = pack_message(PayloadData::Text(text.clone()), None, None, None).unwrap();
-        let unpacked = unpack_message(&packed, None, None).unwrap();
-
-        match unpacked {
-            PayloadData::Text(t) => assert_eq!(t, text),
-            _ => panic!("Expected text payload"),
-        }
-    }
-
-    #[test]
-    fn test_session_encrypted_roundtrip() {
-        let session_key = [55u8; 32];
-        let text = "Synthetic session encrypted message".to_string();
-        let packed =
-            pack_message(PayloadData::Text(text.clone()), Some(&session_key), None, None).unwrap();
-        assert_ne!(&packed[1..], text.as_bytes());
-
-        let unpacked = unpack_message(&packed, Some(&session_key), None).unwrap();
-        match unpacked {
-            PayloadData::Text(t) => assert_eq!(t, text),
-            _ => panic!("Expected text payload"),
-        }
-    }
-
-    #[test]
-    fn test_password_encrypted_roundtrip() {
-        let password = "synthetic_password_xyz";
+    fn test_v2_plain_and_password_roundtrip() {
+        let chat_id = 42i64;
+        let pwd = "synthetic_password_xyz";
         let text = "Synthetic password encrypted message".to_string();
-        let packed = pack_message(PayloadData::Text(text.clone()), None, Some(password), Some(42)).unwrap();
+        let packed = pack_message_v2(PayloadData::Text(text.clone()), None, None, Some(pwd), chat_id).unwrap();
 
-        let unpacked = unpack_message(&packed, None, Some(password)).unwrap();
+        let unpacked = unpack_message_v2(&packed, Some(pwd), chat_id, |_| Err("no session".into())).unwrap();
         match unpacked {
             PayloadData::Text(t) => assert_eq!(t, text),
             _ => panic!("Expected text payload"),
         }
 
-        let wrong_unpacked = unpack_message(&packed, None, Some("wrong_password"));
-        assert!(wrong_unpacked.is_err());
-    }
-
-    #[test]
-    fn test_both_layers_roundtrip() {
-        let session_key = [99u8; 32];
-        let password = "dual_layer_secret";
-        let text = "Synthetic dual layer message".to_string();
-
-        let packed = pack_message(
-            PayloadData::Text(text.clone()),
-            Some(&session_key),
-            Some(password),
-            Some(42),
-        )
-        .unwrap();
-
-        let unpacked = unpack_message(&packed, Some(&session_key), Some(password)).unwrap();
-        match unpacked {
-            PayloadData::Text(t) => assert_eq!(t, text),
-            _ => panic!("Expected text payload"),
-        }
-    }
-
-    #[test]
-    fn test_media_descriptor_messagepack_roundtrip() {
-        let session_key = [77u8; 32];
-        let desc = MediaDescriptor {
-            attach_index: 0,
-            name: "synthetic_image.jpg".into(),
-            mime: "image/jpeg".into(),
-            media_type: "PHOTO".into(),
-            size: 1048576,
-            width: Some(1920),
-            height: Some(1080),
-            duration: None,
-            wave: None,
-            video_type: None,
-            color: None,
-        };
-
-        let caption = "Photo caption".to_string();
-        let payload = PayloadData::Media {
-            text: caption.clone(),
-            media: desc.clone(),
-        };
-
-        let packed = pack_message(payload, Some(&session_key), None, None).unwrap();
-        let unpacked = unpack_message(&packed, Some(&session_key), None).unwrap();
-
-        match unpacked {
-            PayloadData::Media {
-                text,
-                media: unpacked_media,
-            } => {
-                assert_eq!(text, caption);
-                assert_eq!(unpacked_media.name, desc.name);
-                assert_eq!(unpacked_media.mime, desc.mime);
-                assert_eq!(unpacked_media.media_type, desc.media_type);
-                assert_eq!(unpacked_media.size, desc.size);
-                assert_eq!(unpacked_media.width, desc.width);
-                assert_eq!(unpacked_media.height, desc.height);
-            }
-            _ => panic!("Expected media payload"),
-        }
+        assert!(unpack_message_v2(&packed, Some("wrong_password"), chat_id, |_| Err("no session".into())).is_err());
     }
 
     #[test]

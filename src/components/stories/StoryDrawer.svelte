@@ -429,7 +429,6 @@
     left: 0;
     margin-bottom: 8px;
     background: rgba(22, 23, 28, 0.98);
-    backdrop-filter: blur(16px);
     border: 1px solid rgba(255, 255, 255, 0.15);
     border-radius: 10px;
     padding: 6px;

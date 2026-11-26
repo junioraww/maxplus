@@ -870,7 +870,6 @@
     align-items: center;
     justify-content: center;
     box-sizing: border-box;
-    box-shadow: 0 0 0 2px var(--bg-surface, #17181c);
     margin-right: -4px;
     z-index: 2;
     flex-shrink: 0;
@@ -900,7 +899,6 @@
   }
 
   .badge.stacked {
-    box-shadow: 0 0 0 2px var(--bg-surface, #17181c);
     margin-left: 0;
     z-index: 1;
   }

@@ -357,9 +357,7 @@ export function closeSafeAvatarPicker() {
 let qrScannerLayerId = null;
 export async function openQrScanner(config = {}) {
   const mod = await import("$components/main/QRScannerModal.svelte");
-  const res = openDialog(mod.default || mod, config, {
-    dim: false,
-    closeDelay: 200,
+  const res = openSheet(mod.default || mod, config, {
     onClose: () => {
       qrScannerLayerId = null;
     }

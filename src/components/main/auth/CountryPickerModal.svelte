@@ -216,7 +216,6 @@
     display: flex;
     flex-direction: column;
     padding-bottom: max(16px, var(--safe-bottom, 0px));
-    box-shadow: 0 -4px 28px rgba(0, 0, 0, 0.18);
     transition: transform 0.22s cubic-bezier(0.2, 0.9, 0.3, 1), height 0.22s cubic-bezier(0.2, 0.9, 0.3, 1);
     will-change: transform, height;
     box-sizing: border-box;

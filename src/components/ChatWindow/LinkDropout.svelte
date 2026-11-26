@@ -172,7 +172,6 @@
     background: #1c1e2a;
     border: 1px solid rgba(255, 255, 255, 0.12);
     border-radius: var(--oneme-sheet-radius, 20px);
-    box-shadow: 0 12px 36px rgba(0, 0, 0, 0.6), 0 2px 10px rgba(0, 0, 0, 0.3);
     padding: 8px 0 6px;
     display: flex;
     flex-direction: column;

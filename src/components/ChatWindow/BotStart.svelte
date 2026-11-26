@@ -72,7 +72,6 @@
     flex-direction: column;
     align-items: center;
     text-align: center;
-    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
     pointer-events: auto;
   }
 
@@ -123,7 +122,6 @@
     align-items: center;
     justify-content: center;
     transition: background-color 0.15s ease, transform 0.08s ease;
-    box-shadow: 0 4px 14px rgba(36, 139, 254, 0.35);
   }
 
   .bot-start-btn:hover {

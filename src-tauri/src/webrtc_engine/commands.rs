@@ -284,11 +284,47 @@ pub async fn webrtc_create_data_channel(session_id: u32, label: String) -> Resul
     #[cfg(target_os = "linux")]
     {
         let session = NativeWebRtcSession::get(session_id).await?;
-        session.create_data_channel(&label)
+        session.create_data_channel(&label).await
     }
     #[cfg(not(target_os = "linux"))]
     {
         let _ = (session_id, label);
+        Ok(())
+    }
+}
+
+#[tauri::command]
+pub async fn webrtc_send_data_channel(
+    session_id: u32,
+    label: String,
+    data: Vec<u8>,
+) -> Result<(), String> {
+    #[cfg(target_os = "linux")]
+    {
+        let session = NativeWebRtcSession::get(session_id).await?;
+        session.send_data_channel(&label, &data).await
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        let _ = (session_id, label, data);
+        Ok(())
+    }
+}
+
+#[tauri::command]
+pub async fn webrtc_listen_data_channel(
+    session_id: u32,
+    channel: Channel<serde_json::Value>,
+) -> Result<(), String> {
+    #[cfg(target_os = "linux")]
+    {
+        let session = NativeWebRtcSession::get(session_id).await?;
+        session.set_data_channel_listener(channel).await;
+        Ok(())
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        let _ = (session_id, channel);
         Ok(())
     }
 }

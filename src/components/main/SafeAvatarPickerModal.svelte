@@ -536,7 +536,6 @@
     background: rgba(22, 22, 28, 0.96);
     border: 1px solid rgba(255, 255, 255, 0.08);
     border-radius: 24px;
-    box-shadow: 0 16px 50px rgba(0, 0, 0, 0.7);
     display: flex;
     flex-direction: column;
     overflow: hidden;
@@ -1054,7 +1053,6 @@
     overflow: hidden;
     background: #000000;
     border: 3px solid rgba(56, 189, 248, 0.4);
-    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
     margin-bottom: 14px;
   }
 

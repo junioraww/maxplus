@@ -72,9 +72,6 @@
     font-size: var(--msg-system-font-size, 12px);
     font-weight: 400;
     line-height: 1.2;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
     letter-spacing: 0.1px;
     text-align: center;
   }

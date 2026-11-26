@@ -5,6 +5,7 @@ use libwebrtc::{
     audio_source::{native::NativeAudioSource, AudioSourceOptions},
     audio_stream::native::NativeAudioStream,
     audio_track::RtcAudioTrack,
+    data_channel::{DataBuffer, DataChannel, DataChannelInit},
     ice_candidate::IceCandidate,
     media_stream_track::MediaStreamTrack,
     native::frame_cryptor::{
@@ -18,6 +19,7 @@ use libwebrtc::{
         native::PeerConnectionFactoryExt, ContinualGatheringPolicy, IceServer, IceTransportsType,
         PeerConnectionFactory, RtcConfiguration,
     },
+    rtp_receiver::RtpReceiver,
     rtp_sender::RtpSender,
     rtp_transceiver::{RtpTransceiverDirection, RtpTransceiverInit},
     session_description::{SdpType, SessionDescription},
@@ -81,8 +83,11 @@ pub struct NativeWebRtcSession {
     audio_channel: Arc<Mutex<Option<AudioSender>>>,
     candidate_channel: Arc<Mutex<Option<Channel<serde_json::Value>>>>,
     state_channel: Arc<Mutex<Option<Channel<String>>>>,
+    data_channels: Arc<Mutex<HashMap<String, DataChannel>>>,
+    data_channel_events: Arc<Mutex<Option<Channel<serde_json::Value>>>>,
     pending_candidates: Arc<Mutex<Vec<IceCandidate>>>,
     active_tracks: Arc<Mutex<std::collections::HashSet<String>>>,
+    remote_receivers: Arc<Mutex<Vec<(MediaStreamTrack, RtpReceiver)>>>,
     frame_key_provider: Mutex<Option<KeyProvider>>,
     sender_cryptors: Mutex<HashMap<String, FrameCryptor>>,
     receiver_cryptors: Mutex<HashMap<String, FrameCryptor>>,
@@ -147,10 +152,16 @@ impl NativeWebRtcSession {
         let candidate_channel: Arc<Mutex<Option<Channel<serde_json::Value>>>> =
             Arc::new(Mutex::new(None));
         let state_channel: Arc<Mutex<Option<Channel<String>>>> = Arc::new(Mutex::new(None));
+        let data_channels: Arc<Mutex<HashMap<String, DataChannel>>> =
+            Arc::new(Mutex::new(HashMap::new()));
+        let data_channel_events: Arc<Mutex<Option<Channel<serde_json::Value>>>> =
+            Arc::new(Mutex::new(None));
         let video_channel: Arc<Mutex<Option<FrameSender>>> = Arc::new(Mutex::new(None));
         let audio_channel: Arc<Mutex<Option<AudioSender>>> = Arc::new(Mutex::new(None));
         let pending_candidates = Arc::new(Mutex::new(Vec::new()));
         let active_tracks = Arc::new(Mutex::new(std::collections::HashSet::new()));
+        let remote_receivers: Arc<Mutex<Vec<(MediaStreamTrack, RtpReceiver)>>> =
+            Arc::new(Mutex::new(Vec::new()));
         let use_stubs = Arc::new(AtomicBool::new(false));
         let stub_audio_running = Arc::new(AtomicBool::new(false));
 
@@ -256,8 +267,19 @@ impl NativeWebRtcSession {
         let video_chan_clone = Arc::clone(&video_channel);
         let audio_chan_clone = Arc::clone(&audio_channel);
         let at_clone = Arc::clone(&active_tracks);
+        let rr_clone = Arc::clone(&remote_receivers);
         let h3 = handle.clone();
         pc.on_track(Some(Box::new(move |ev: TrackEvent| {
+            let track_for_list = ev.track.clone();
+            let receiver_for_list = ev.receiver;
+            let rr = rr_clone.clone();
+            h3.spawn(async move {
+                let tid = track_for_list.id();
+                let mut guard = rr.lock().await;
+                if !guard.iter().any(|(t, _)| t.id() == tid) {
+                    guard.push((track_for_list, receiver_for_list));
+                }
+            });
             start_remote_track(
                 ev.track,
                 audio_chan_clone.clone(),
@@ -265,6 +287,33 @@ impl NativeWebRtcSession {
                 at_clone.clone(),
                 h3.clone(),
             );
+        })));
+
+        let dc_map_clone = Arc::clone(&data_channels);
+        let dc_ev_clone = Arc::clone(&data_channel_events);
+        let h4 = handle.clone();
+        pc.on_data_channel(Some(Box::new(move |dc: DataChannel| {
+            let label = dc.label();
+            let dc_for_map = dc.clone();
+            let map_ref = dc_map_clone.clone();
+            let ev_ref = dc_ev_clone.clone();
+            let h_msg = h4.clone();
+            dc.on_message(Some(Box::new(move |buf: DataBuffer| {
+                let ev_inner = ev_ref.clone();
+                let lbl = label.clone();
+                let data_vec = buf.data.to_vec();
+                h_msg.spawn(async move {
+                    if let Some(ch) = ev_inner.lock().await.as_ref() {
+                        let _ = ch.send(serde_json::json!({
+                            "label": lbl,
+                            "data": data_vec,
+                        }));
+                    }
+                });
+            })));
+            h4.spawn(async move {
+                map_ref.lock().await.insert(dc_for_map.label(), dc_for_map);
+            });
         })));
 
         let session = Arc::new(Self {
@@ -287,8 +336,11 @@ impl NativeWebRtcSession {
             audio_channel,
             candidate_channel,
             state_channel,
+            data_channels,
+            data_channel_events,
             pending_candidates,
             active_tracks,
+            remote_receivers,
             frame_key_provider: Mutex::new(None),
             sender_cryptors: Mutex::new(HashMap::new()),
             receiver_cryptors: Mutex::new(HashMap::new()),
@@ -387,18 +439,6 @@ impl NativeWebRtcSession {
             .await
             .map_err(|e| e.to_string())?;
 
-        let handle = tokio::runtime::Handle::current();
-        for transceiver in self.pc.transceivers() {
-            if let Some(track) = transceiver.receiver().track() {
-                start_remote_track(
-                    track,
-                    self.audio_channel.clone(),
-                    self.video_channel.clone(),
-                    self.active_tracks.clone(),
-                    handle.clone(),
-                );
-            }
-        }
         self.sync_attached_frame_cryptors().await;
         Ok(())
     }
@@ -416,8 +456,41 @@ impl NativeWebRtcSession {
             .map_err(|e| e.to_string())
     }
 
-    pub fn create_data_channel(&self, _label: &str) -> Result<(), String> {
+    pub async fn create_data_channel(&self, label: &str) -> Result<(), String> {
+        let dc = self
+            .pc
+            .create_data_channel(label, DataChannelInit::default())
+            .map_err(|e| e.to_string())?;
+        let ev_ref = Arc::clone(&self.data_channel_events);
+        let lbl = label.to_string();
+        let handle = tokio::runtime::Handle::current();
+        dc.on_message(Some(Box::new(move |buf: DataBuffer| {
+            let ev_inner = ev_ref.clone();
+            let lbl_inner = lbl.clone();
+            let data_vec = buf.data.to_vec();
+            handle.spawn(async move {
+                if let Some(ch) = ev_inner.lock().await.as_ref() {
+                    let _ = ch.send(serde_json::json!({
+                        "label": lbl_inner,
+                        "data": data_vec,
+                    }));
+                }
+            });
+        })));
+        self.data_channels.lock().await.insert(label.to_string(), dc);
         Ok(())
+    }
+
+    pub async fn send_data_channel(&self, label: &str, data: &[u8]) -> Result<(), String> {
+        let guard = self.data_channels.lock().await;
+        let dc = guard
+            .get(label)
+            .ok_or_else(|| format!("DataChannel '{}' not found", label))?;
+        dc.send(data, true).map_err(|e| e.to_string())
+    }
+
+    pub async fn set_data_channel_listener(&self, channel: Channel<serde_json::Value>) {
+        *self.data_channel_events.lock().await = Some(channel);
     }
 
     pub async fn set_camera_enabled(&self, enabled: bool) -> Result<(), String> {
@@ -495,12 +568,8 @@ impl NativeWebRtcSession {
 
     pub async fn set_mic_muted(&self, muted: bool) -> Result<(), String> {
         self.mic_muted.store(muted, Ordering::SeqCst);
-        let sender_lock = self.audio_sender.lock().await;
-        if let Some(sender) = sender_lock.as_ref() {
-            if let Some(track) = sender.track() {
-                track.set_enabled(!muted);
-            }
-        }
+        self.device_audio_track.set_enabled(!muted);
+        self.stub_audio_track.set_enabled(!muted);
         Ok(())
     }
 
@@ -557,21 +626,19 @@ impl NativeWebRtcSession {
         {
             let mut sc = self.sender_cryptors.lock().await;
             if let Some(sender) = self.audio_sender.lock().await.as_ref() {
-                if sender.track().is_some() {
-                    let fc = sc.entry("audio_send".to_string()).or_insert_with(|| {
-                        FrameCryptor::new_for_rtp_sender(
-                            &self.factory,
-                            "audio_send".to_string(),
-                            EncryptionAlgorithm::AesGcm,
-                            kp.clone(),
-                            sender.clone(),
-                        )
-                    });
-                    fc.set_enabled(enabled);
-                }
+                let fc = sc.entry("audio_send".to_string()).or_insert_with(|| {
+                    FrameCryptor::new_for_rtp_sender(
+                        &self.factory,
+                        "audio_send".to_string(),
+                        EncryptionAlgorithm::AesGcm,
+                        kp.clone(),
+                        sender.clone(),
+                    )
+                });
+                fc.set_enabled(enabled);
             }
-            if let Some(sender) = self.video_sender.lock().await.as_ref() {
-                if sender.track().is_some() {
+            if self.video_track.lock().await.is_some() {
+                if let Some(sender) = self.video_sender.lock().await.as_ref() {
                     let fc = sc.entry("video_send".to_string()).or_insert_with(|| {
                         FrameCryptor::new_for_rtp_sender(
                             &self.factory,
@@ -588,25 +655,23 @@ impl NativeWebRtcSession {
 
         {
             let mut rc = self.receiver_cryptors.lock().await;
-            for transceiver in self.pc.transceivers() {
-                let receiver = transceiver.receiver();
-                if let Some(track) = receiver.track() {
-                    let tid = track.id();
-                    let (key_id, map_key) = match &track {
-                        MediaStreamTrack::Audio(_) => ("audio_recv", format!("audio_recv_{tid}")),
-                        MediaStreamTrack::Video(_) => ("video_recv", format!("video_recv_{tid}")),
-                    };
-                    let fc = rc.entry(map_key).or_insert_with(|| {
-                        FrameCryptor::new_for_rtp_receiver(
-                            &self.factory,
-                            key_id.to_string(),
-                            EncryptionAlgorithm::AesGcm,
-                            kp.clone(),
-                            receiver,
-                        )
-                    });
-                    fc.set_enabled(enabled);
-                }
+            let receivers = self.remote_receivers.lock().await;
+            for (track, receiver) in receivers.iter() {
+                let tid = track.id();
+                let (key_id, map_key) = match track {
+                    MediaStreamTrack::Audio(_) => ("audio_recv", format!("audio_recv_{tid}")),
+                    MediaStreamTrack::Video(_) => ("video_recv", format!("video_recv_{tid}")),
+                };
+                let fc = rc.entry(map_key).or_insert_with(|| {
+                    FrameCryptor::new_for_rtp_receiver(
+                        &self.factory,
+                        key_id.to_string(),
+                        EncryptionAlgorithm::AesGcm,
+                        kp.clone(),
+                        receiver.clone(),
+                    )
+                });
+                fc.set_enabled(enabled);
             }
         }
     }
@@ -649,15 +714,13 @@ impl NativeWebRtcSession {
         self.stub_audio_running.store(false, Ordering::SeqCst);
         let mut capturer = self.capturer.lock().await;
         capturer.stop();
-        if let Some(sender) = self.audio_sender.lock().await.as_ref() {
-            let _ = sender.set_track(None);
-        }
-        if let Some(sender) = self.video_sender.lock().await.as_ref() {
-            let _ = sender.set_track(None);
-        }
         let _ = self.factory.stop_recording();
         let _ = self.factory.stop_playout();
         self.factory.release_platform_adm();
+        self.sender_cryptors.lock().await.clear();
+        self.receiver_cryptors.lock().await.clear();
+        self.remote_receivers.lock().await.clear();
+        self.active_tracks.lock().await.clear();
         let _ = self.pc.close();
     }
 }

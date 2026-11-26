@@ -573,7 +573,6 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.4);
   }
 
   .video-loading-overlay {

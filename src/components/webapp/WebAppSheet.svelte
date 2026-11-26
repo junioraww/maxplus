@@ -885,7 +885,6 @@
     display: flex;
     flex-direction: column;
     overflow: hidden;
-    box-shadow: 0 -8px 28px rgba(0, 0, 0, 0.5);
     transition: height 0.28s cubic-bezier(0.22, 1, 0.36, 1), transform 0.28s cubic-bezier(0.22, 1, 0.36, 1);
   }
 
@@ -983,7 +982,6 @@
     background: #232629;
     border-radius: 12px;
     padding: 6px;
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
     border: 1px solid rgba(255, 255, 255, 0.1);
     display: flex;
     flex-direction: column;
@@ -1092,7 +1090,6 @@
     border-radius: 14px;
     padding: 20px;
     color: #fff;
-    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
     border: 1px solid rgba(255, 255, 255, 0.08);
   }
 

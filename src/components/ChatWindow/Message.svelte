@@ -47,7 +47,7 @@
   $: isSystem = Boolean(msg.attaches?.some((x) => x._type === "CONTROL") || msg.type === "SYSTEM");
 
   $: rawText = decoded ? (decoded.text ?? "") : (msg.text || "");
-  $: isE2eDisable = Boolean(rawText && (rawText === "__E2E_DISABLE__" || rawText.includes('"e2e_control":"disable"')));
+  $: isE2eDisable = Boolean(rawText && rawText.includes('"e2e_control":"disable"'));
   $: effectiveText = isE2eDisable ? (isMe ? "<b>Вы отключили сквозное шифрование</b>" : "<b>Собеседник отключил сквозное шифрование</b>") : rawText;
   $: matchedMessageCard = !isE2eDisable ? CryptoPluginRegistry.findMessageCard(effectiveText, msg) : null;
   $: lines = effectiveText ? effectiveText.split("\n") : [];
@@ -594,7 +594,7 @@
               />
             {/if}
 
-            {#if effectiveAttaches?.length}
+            {#if effectiveAttaches?.length && !decoded?.is_handshake_request && !decoded?.is_handshake_accept}
               <Attachments
                 {getFile}
                 attaches={effectiveAttaches}
@@ -783,9 +783,6 @@
     font-weight: 400;
     line-height: 1.2;
     text-align: center;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
     max-width: min(280px, 90%);
     word-break: break-word;
     cursor: default;
@@ -952,7 +949,6 @@
     -webkit-user-select: text;
     display: flex;
     flex-direction: column;
-    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
   }
 
   .message-bubble:not(.is-first-group) {
@@ -1246,7 +1242,6 @@
     padding: 2px 7px;
     border-radius: 10px;
     background: rgba(0, 0, 0, 0.48);
-    backdrop-filter: blur(4px);
     color: #ffffff;
     z-index: var(--z-base, 1);
     pointer-events: auto;
@@ -1481,14 +1476,12 @@
 
   .message-row.is-video-note .message-bubble {
     background: transparent !important;
-    box-shadow: none !important;
     border: none !important;
     padding: 0 !important;
   }
 
   .sticker-bubble {
     background: transparent !important;
-    box-shadow: none !important;
     border: none !important;
     padding: 0 !important;
     position: relative;
@@ -1584,7 +1577,6 @@
     border: 1px solid rgba(56, 189, 248, 0.25);
     border-radius: 12px;
     padding: 8px 12px;
-    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
     user-select: text;
   }
 

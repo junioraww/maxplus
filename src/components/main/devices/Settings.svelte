@@ -326,7 +326,6 @@
     background: #f4f5f8;
     color: #000000;
     border-radius: 20px 20px 0 0;
-    box-shadow: 0 -4px 32px rgba(0, 0, 0, 0.16);
     overflow: hidden;
     box-sizing: border-box;
     padding-bottom: max(16px, var(--safe-bottom, 0px));
@@ -426,7 +425,6 @@
     background: #ffffff;
     border-radius: 16px;
     padding: 2px 14px;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
   }
 
   .group-title {
@@ -539,7 +537,6 @@
 
   .overlay.dark-theme .card-group {
     background: #1e1f24;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
   }
 
   .overlay.dark-theme .item-row {

@@ -210,7 +210,6 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    box-shadow: 0 0 8px rgba(0, 0, 0, 0.4);
     box-sizing: border-box;
   }
   .bracket-left {
@@ -237,7 +236,6 @@
     transform: translateX(-50%);
     background: #ffffff;
     pointer-events: none;
-    box-shadow: 0 0 6px rgba(255, 255, 255, 0.9);
     z-index: var(--z-header, 4);
     will-change: left;
   }

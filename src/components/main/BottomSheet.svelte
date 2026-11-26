@@ -98,7 +98,6 @@
 
   .bottom-sheet-backdrop.is-portal-child .bottom-sheet-panel {
     animation: none;
-    box-shadow: none;
   }
 
   .bottom-sheet-panel {
@@ -110,7 +109,6 @@
     display: flex;
     flex-direction: column;
     overflow: hidden;
-    box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.5);
     padding-bottom: calc(16px + var(--safe-bottom, 0px));
     box-sizing: border-box;
     will-change: transform;

@@ -3,17 +3,24 @@ import { CryptoPluginRegistry } from "./plugins";
 
 import { dict } from "./text-codec";
 
-const ZH_BASE = 0x4E00;
-const ZH_COUNT = 2048;
+function ruCharIdx(cp) {
+  if (cp >= 0x0430 && cp <= 0x044F) return cp - 0x0430;
+  if (cp >= 0x0410 && cp <= 0x042F) return cp - 0x0410 + 32;
+  return -1;
+}
 
-function isChineseMarker(text) {
-  if (!text || typeof text !== "string" || text.length < 5) return false;
-  for (let i = 0; i < 5; i++) {
+function isRussianMarker(text) {
+  if (!text || typeof text !== "string") return false;
+  let count = 0;
+  for (let i = 0; i < text.length; i++) {
     const cp = text.charCodeAt(i);
-    if (cp < ZH_BASE || cp >= ZH_BASE + ZH_COUNT) return false;
-    if (((cp - ZH_BASE) & 1) !== 0) return false;
+    if (cp === 32) continue;
+    const idx = ruCharIdx(cp);
+    if (idx < 0) return false;
+    if (count < 4 && (idx & 1) !== 0) return false;
+    count++;
   }
-  return true;
+  return count >= 6;
 }
 
 export async function detectObfuscation(text) {
@@ -24,8 +31,8 @@ export async function detectObfuscation(text) {
     return { name: pluginMatch.name, plugin: true };
   }
 
-  if (isChineseMarker(text)) {
-    return { name: "zh", plugin: false };
+  if (isRussianMarker(text)) {
+    return { name: "ru", plugin: false };
   }
 
   const dictionary = await dict.getDictionary().catch(() => null);

@@ -683,7 +683,7 @@
     const settings = get(chatSettings) || {};
     const hasSession = Boolean(settings?.keys?.current || settings?.session);
     const password = settings?.password;
-    const obf = settings?.obfs || (hasSession || password ? "zh" : null);
+    const obf = settings?.obfs || (hasSession || password ? "ru" : null);
 
     if (hasSession || password || obf) {
       const account = await getCurrentAccount();
@@ -2453,7 +2453,6 @@
     color: #ffffff;
     background: var(--accent-primary, #248bfe);
     margin-left: 8px;
-    box-shadow: 0 2px 6px rgba(36, 139, 254, 0.35);
   }
 
   .send-button:hover {

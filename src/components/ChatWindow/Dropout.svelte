@@ -660,8 +660,6 @@
     bottom: 0;
     z-index: var(--z-dropdown-backdrop, 5);
     background: rgba(0, 0, 0, 0.55);
-    backdrop-filter: blur(2px);
-    -webkit-backdrop-filter: blur(2px);
   }
 
   .dropout-container {
@@ -683,14 +681,11 @@
     background: var(--reaction-capsule-bg, #202129);
     border: none;
     border-radius: var(--reaction-capsule-radius, 9999px);
-    box-shadow: var(--reaction-capsule-shadow, 0 8px 28px rgba(0, 0, 0, 0.5));
     padding: 4px 8px;
     box-sizing: border-box;
     white-space: nowrap;
     z-index: var(--z-panel, 2);
     margin-bottom: 8px;
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
   }
 
   .reaction-capsule.is-below {
@@ -772,10 +767,7 @@
     background: var(--dropout-card-bg, #23242d);
     border: none;
     border-radius: 14px;
-    box-shadow: var(--dropout-shadow, 0 12px 32px rgba(0, 0, 0, 0.55));
     box-sizing: border-box;
-    backdrop-filter: blur(16px);
-    -webkit-backdrop-filter: blur(16px);
   }
 
   .actions-group {
@@ -898,7 +890,6 @@
     background: var(--reaction-capsule-bg, #1a1c23);
     border: 1px solid var(--dropout-border, rgba(255, 255, 255, 0.08));
     border-radius: var(--dropout-radius, 18px);
-    box-shadow: var(--dropout-shadow, 0 12px 36px rgba(0, 0, 0, 0.6));
     padding: 12px 14px;
     width: 320px;
     max-width: calc(100vw - 24px);
@@ -911,8 +902,6 @@
     justify-items: center;
     align-items: center;
     box-sizing: border-box;
-    backdrop-filter: blur(16px);
-    -webkit-backdrop-filter: blur(16px);
   }
 
   .picker-pill {

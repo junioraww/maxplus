@@ -20,6 +20,7 @@ const inflightRetries = new Map();
 
 function notifyApiError(command, errObj) {
   if (isNo2FaError(errObj)) return;
+  if (command === "get_video_by_id" && errObj?.error === "video.not.found") return;
   const parsedMsg = parseApiError(errObj);
   const code = typeof errObj?.error === "string" ? errObj.error : "";
   const details = code && code !== parsedMsg ? `${command}: ${code}` : command;

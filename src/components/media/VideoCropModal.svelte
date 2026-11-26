@@ -542,7 +542,6 @@
     overflow: hidden;
     display: flex;
     flex-direction: column;
-    box-shadow: 0 24px 64px rgba(0, 0, 0, 0.6);
   }
 
   .header-bar {
@@ -704,7 +703,6 @@
     background: #4da3ff;
     border: 2px solid #fff;
     cursor: pointer;
-    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
   }
 
   .range-slider::-moz-range-thumb {
@@ -715,7 +713,6 @@
     background: #4da3ff;
     border: 2px solid #fff;
     cursor: pointer;
-    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
   }
 
   .zoom-row {

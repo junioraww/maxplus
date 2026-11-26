@@ -352,7 +352,6 @@
     background: #1e2025;
     border: 1px solid rgba(255, 255, 255, 0.1);
     border-radius: 16px;
-    box-shadow: 0 20px 48px rgba(0, 0, 0, 0.65);
     width: 280px;
     max-width: calc(100vw - 32px);
     display: flex;
@@ -381,7 +380,6 @@
     height: 14px;
     border-radius: 50%;
     border: 2px solid rgba(255, 255, 255, 0.6);
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
   }
 
   .header-title {
@@ -427,7 +425,6 @@
     height: 16px;
     border-radius: 50%;
     border: 2.5px solid #ffffff;
-    box-shadow: 0 0 4px rgba(0, 0, 0, 0.8), inset 0 0 2px rgba(0, 0, 0, 0.5);
     transform: translate(-50%, -50%);
     pointer-events: none;
   }
@@ -465,7 +462,6 @@
     border-radius: 50%;
     background: #ffffff;
     border: 2px solid rgba(0, 0, 0, 0.25);
-    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.45);
     transform: translate(-50%, -50%);
     pointer-events: none;
   }
@@ -511,12 +507,11 @@
     outline: none;
     box-sizing: border-box;
     width: 100%;
-    transition: border-color 0.15s, box-shadow 0.15s;
+    transition: border-color 0.15s;
   }
 
   .text-input:focus {
     border-color: #7b4cd6;
-    box-shadow: 0 0 0 2px rgba(123, 76, 214, 0.25);
   }
 
   .num-input::-webkit-outer-spin-button,
@@ -539,7 +534,7 @@
     border: 1.5px solid rgba(0, 0, 0, 0.2);
     cursor: pointer;
     padding: 0;
-    transition: transform 0.14s ease, box-shadow 0.14s ease;
+    transition: transform 0.14s ease;
   }
 
   .preset-chip:hover {
@@ -547,7 +542,6 @@
   }
 
   .preset-chip.is-active {
-    box-shadow: 0 0 0 2px #ffffff, 0 0 0 4px rgba(123, 76, 214, 0.4);
     transform: scale(1.1);
   }
 

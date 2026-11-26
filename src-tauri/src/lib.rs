@@ -141,8 +141,14 @@ pub fn run() {
         })
         .on_window_event(|window, event| {
             if let WindowEvent::CloseRequested { api, .. } = event {
-                let _ = window.hide();
-                api.prevent_close();
+                let close_to_tray = false;
+                if close_to_tray {
+                    window.hide().ok();
+                    api.prevent_close();
+                } else {
+                    crate::stores::storage::flush_pending_writes();
+                    window.app_handle().exit(0);
+                }
             }
         });
 
@@ -479,6 +485,8 @@ pub fn run() {
             crypto::commands::init_e2e_handshake,
             crypto::commands::accept_e2e_handshake,
             crypto::commands::process_e2e_accept,
+            crypto::commands::disable_e2e_session,
+            crypto::commands::verify_e2e_handshake_packet,
             crypto::commands::get_chat_encryption_info,
             crypto::commands::get_call_encryption_fingerprint,
             crypto::commands::make_dictionary,
@@ -528,6 +536,8 @@ pub fn run() {
             webrtc_engine::commands::webrtc_listen_candidates,
             webrtc_engine::commands::webrtc_listen_state,
             webrtc_engine::commands::webrtc_create_data_channel,
+            webrtc_engine::commands::webrtc_send_data_channel,
+            webrtc_engine::commands::webrtc_listen_data_channel,
             webrtc_engine::commands::webrtc_close,
             webrtc_engine::commands::webrtc_set_encryption_keys,
         ])

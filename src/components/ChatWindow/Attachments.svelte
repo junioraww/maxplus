@@ -763,7 +763,6 @@
     padding: 2px 7px;
     border-radius: 10px;
     background: rgba(0, 0, 0, 0.48);
-    backdrop-filter: blur(4px);
     color: #ffffff;
     font-size: 11px;
     font-weight: 500;
@@ -780,25 +779,7 @@
     width: 100%;
     height: 100%;
     box-sizing: border-box;
-    background: linear-gradient(
-      90deg,
-      rgba(255, 255, 255, 0.04) 0%,
-      rgba(255, 255, 255, 0.12) 35%,
-      rgba(79, 195, 247, 0.16) 50%,
-      rgba(255, 255, 255, 0.12) 65%,
-      rgba(255, 255, 255, 0.04) 100%
-    );
-    background-size: 200% 100%;
-    animation: shimmer 1.6s infinite linear;
-  }
-
-  @keyframes shimmer {
-    0% {
-      background-position: 200% 0;
-    }
-    100% {
-      background-position: -200% 0;
-    }
+    background: rgba(255, 255, 255, 0.04);
   }
 
   .media-download-badge {
@@ -1002,16 +983,13 @@
 
   .location-bubble-icon.live {
     background: rgba(56, 189, 248, 0.28);
-    box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.35);
     animation: live-pulse 2s infinite ease-in-out;
   }
 
   @keyframes live-pulse {
     0%, 100% {
-      box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.4);
     }
     50% {
-      box-shadow: 0 0 0 7px rgba(56, 189, 248, 0.08);
     }
   }
 

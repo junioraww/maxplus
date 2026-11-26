@@ -182,10 +182,7 @@
   .header-icon-btn.close-btn {
     margin-right: 12px;
     background: rgba(0, 0, 0, 0.45);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
     border: 1px solid rgba(255, 255, 255, 0.2);
-    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.4);
     pointer-events: auto;
   }
 
@@ -202,8 +199,6 @@
     height: 34px;
     border-radius: 50%;
     background: rgba(255, 255, 255, 0.16);
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
     border: 1px solid rgba(255, 255, 255, 0.12);
     color: #ffffff;
     display: flex;

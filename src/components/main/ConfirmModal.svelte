@@ -110,8 +110,7 @@
   }
   .modal-card {
     background: var(--bg-surface, #1e2025); width: 100%; max-width: 340px;
-    border-radius: 20px; display: flex; flex-direction: column; color: #fff;
-    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.6); border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 20px; display: flex; flex-direction: column; color: #fff; border: 1px solid rgba(255, 255, 255, 0.08);
     overflow: hidden; padding: 24px 20px 20px; box-sizing: border-box;
     will-change: transform, opacity;
     animation: modalPopIn 0.22s cubic-bezier(0.2, 0.9, 0.3, 1) forwards;

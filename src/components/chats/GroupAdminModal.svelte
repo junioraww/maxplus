@@ -315,7 +315,6 @@
   .modal-card {
     background: var(--bg-surface, #1e2025);
     border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
-    box-shadow: 0 24px 64px rgba(0, 0, 0, 0.65);
     border-radius: 24px;
     width: 100%;
     max-width: 480px;

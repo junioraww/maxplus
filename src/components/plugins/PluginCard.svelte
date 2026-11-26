@@ -225,7 +225,6 @@
     padding: 7px;
     box-sizing: border-box;
     flex-shrink: 0;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
   }
 
   .plugin-card-icon-svg :global(svg) {
@@ -241,7 +240,6 @@
     object-fit: contain;
     background: var(--bg-surface-2);
     flex-shrink: 0;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
   }
 
   .plugin-card-icon-fallback {

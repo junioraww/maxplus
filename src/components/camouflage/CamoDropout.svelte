@@ -162,7 +162,6 @@
     background: var(--camo-surface2, #202228);
     border: 1px solid var(--camo-border, rgba(255, 255, 255, 0.14));
     border-radius: 10px;
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.55);
     padding: 4px;
     z-index: var(--z-dropdown);
     display: flex;

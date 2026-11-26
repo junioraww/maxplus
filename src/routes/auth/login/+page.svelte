@@ -383,11 +383,9 @@
     width: 100%;
     box-sizing: border-box;
     overflow: hidden;
-    transition: box-shadow 0.15s ease;
   }
 
   .input-card:focus-within {
-    box-shadow: 0 0 0 1.5px rgba(0, 122, 255, 0.45);
   }
 
   .country-btn {
