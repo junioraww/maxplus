@@ -174,6 +174,8 @@ export async function sendMessage(
 
   if (!message || typeof message !== "object") {
     markFailed("Сервер не подтвердил отправку");
+    showAlert("Сервер не подтвердил отправку");
+    return response || { error: "Сервер не подтвердил отправку" };
   }
   else {
     if (decodedMessagesStore && plainEntry && message.id) {
@@ -237,6 +239,8 @@ export async function sendMessage(
       }
     ]).catch(() => {});
   }
+
+  return response;
 }
 
 export async function handleReaction(chat, msg, emoji) {

@@ -2,7 +2,14 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { get } from 'svelte/store';
 import { activeCall, patchCallState, resetCallState, CALL_PHASE, CALL_MODE, callUseStubs } from '$lib/stores/calls';
-import { CallEncryptionSession } from '$lib/crypto/callEncryption';
+import {
+  CallEncryptionSession,
+  generateCallPqKeypair,
+  encapsulateCallPq,
+  decapsulateCallPq,
+  computeCallControlMac,
+  verifyCallControlMac,
+} from '$lib/crypto/callEncryption';
 import { mediaPipeline } from '$lib/services/MediaPipelineHost';
 import { showAlert } from '$lib/utils/alert';
 import API, { currentUser, currentRealChats } from '$lib/stores/api';
@@ -524,6 +531,8 @@ class MaxCallSession {
   #isSfuPc = false;
   #useStubs = false;
   #controlChannel = null;
+  #pendingCallPqHandleId = null;
+  #activeChatAuthSecret = null;
 
   constructor() {
     if (isLinuxClient) {
@@ -674,6 +683,7 @@ class MaxCallSession {
       const resolved = await this.#resolveSharedSecret(targetPeerId);
       if (resolved?.secret) {
         clearCallE2eDisabled(targetPeerId);
+        this.#activeChatAuthSecret = resolved.secret;
         await this.#encryption.initFromChatSecret(resolved.secret, conversationId, role === 'originator');
         isAutoSecure = true;
         const displayFp = resolved.fingerprint || this.#encryption.fingerprint;
@@ -1012,13 +1022,27 @@ class MaxCallSession {
         this.#encryption.setBypassEncrypt(true);
         this.#encryption.setBypassDecrypt(true);
       }
-      const sendCaps = () => {
+      const sendCaps = async () => {
         try {
           dc.send(JSON.stringify({
             type: 'peer_caps',
             platform: isLinuxClient ? 'linux' : 'standard',
             supportsSframe: !isLinuxClient,
+            supportsLinuxFrameCryptor: isLinuxClient,
+            supportsPqCallKem: true,
           }));
+          if (this.#role === 'originator' && this.#encryption.mode === CALL_MODE.SECURE && this.#activeChatAuthSecret) {
+            const kp = await generateCallPqKeypair().catch(() => null);
+            if (kp?.pkHex && !kp.isClassicFallback) {
+              this.#pendingCallPqHandleId = kp.handleId;
+              const mac = await computeCallControlMac(this.#activeChatAuthSecret, `pq_init:${this.#conversationId}:${kp.pkHex}`);
+              dc.send(JSON.stringify({
+                type: 'call_pq_init',
+                pkHex: kp.pkHex,
+                mac,
+              }));
+            }
+          }
         } catch {}
       };
       if (dc.readyState === 'open') {
@@ -1026,14 +1050,63 @@ class MaxCallSession {
       } else {
         dc.onopen = sendCaps;
       }
-      dc.onmessage = (event) => {
+      dc.onmessage = async (event) => {
         try {
           const raw = typeof event.data === 'string' ? event.data : new TextDecoder().decode(event.data);
           const data = JSON.parse(raw);
           if (data?.type === 'peer_caps') {
-            if (!data.supportsSframe || data.platform === 'linux') {
+            const peerIsLinux = data.platform === 'linux';
+            const bothLinux = isLinuxClient && peerIsLinux && Boolean(data.supportsLinuxFrameCryptor);
+            if (bothLinux) {
+              this.#encryption.setBypassEncrypt(false);
+              this.#encryption.setBypassDecrypt(false);
+              await this.#syncEncryptionToMedia();
+            } else if (isLinuxClient !== peerIsLinux || (!data.supportsSframe && !bothLinux)) {
               this.#encryption.setBypassEncrypt(true);
               this.#encryption.setBypassDecrypt(true);
+              if (this.#pc && typeof this.#pc.setEncryptionKeys === 'function') {
+                this.#pc.setEncryptionKeys({ mode: 'plain' }).catch(() => {});
+              }
+            }
+          } else if (data?.type === 'call_pq_init' && data.pkHex && this.#activeChatAuthSecret) {
+            const ok = await verifyCallControlMac(this.#activeChatAuthSecret, `pq_init:${this.#conversationId}:${data.pkHex}`, data.mac);
+            if (ok) {
+              const encap = await encapsulateCallPq(data.pkHex);
+              await this.#encryption.initFromEphemeralPqSecret(
+                encap.ssHex,
+                this.#activeChatAuthSecret,
+                this.#conversationId,
+                this.#role === 'originator',
+                1
+              );
+              await this.#syncEncryptionToMedia();
+              patchCallState({
+                secureKeyFingerprint: this.#encryption.fingerprint,
+              });
+              const mac = await computeCallControlMac(this.#activeChatAuthSecret, `pq_accept:${this.#conversationId}:${encap.ctHex}`);
+              dc.send(JSON.stringify({
+                type: 'call_pq_accept',
+                ctHex: encap.ctHex,
+                mac,
+              }));
+            }
+          } else if (data?.type === 'call_pq_accept' && data.ctHex && this.#pendingCallPqHandleId != null && this.#activeChatAuthSecret) {
+            const ok = await verifyCallControlMac(this.#activeChatAuthSecret, `pq_accept:${this.#conversationId}:${data.ctHex}`, data.mac);
+            if (ok) {
+              const handleId = this.#pendingCallPqHandleId;
+              this.#pendingCallPqHandleId = null;
+              const ssHex = await decapsulateCallPq(handleId, data.ctHex);
+              await this.#encryption.initFromEphemeralPqSecret(
+                ssHex,
+                this.#activeChatAuthSecret,
+                this.#conversationId,
+                this.#role === 'originator',
+                1
+              );
+              await this.#syncEncryptionToMedia();
+              patchCallState({
+                secureKeyFingerprint: this.#encryption.fingerprint,
+              });
             }
           } else if (data?.type === 'call_e2e_disable') {
             this.handleRemoteE2eDisable();

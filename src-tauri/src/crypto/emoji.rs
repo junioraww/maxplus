@@ -1,4 +1,4 @@
-use sha2::{Digest, Sha256};
+use aws_lc_rs::digest::{digest, SHA3_256};
 
 pub const EMOJI_TABLE: [&str; 256] = [
     "🐶", "🐱", "🐭", "🐹", "🐰", "🦊", "🐻", "🐼",
@@ -36,9 +36,8 @@ pub const EMOJI_TABLE: [&str; 256] = [
 ];
 
 pub fn generate_fingerprint(shared_secret: &[u8; 32]) -> String {
-    let mut hasher = Sha256::new();
-    hasher.update(shared_secret);
-    let hash = hasher.finalize();
+    let hash_val = digest(&SHA3_256, shared_secret);
+    let hash = hash_val.as_ref();
 
     format!(
         "{} {} {} {}",
@@ -50,17 +49,19 @@ pub fn generate_fingerprint(shared_secret: &[u8; 32]) -> String {
 }
 
 pub fn derive_call_fingerprint(dh_secret_hex: Option<&str>, password: Option<&str>) -> Option<String> {
-    let mut hasher = Sha256::new();
     let dh_bytes = dh_secret_hex.and_then(|h| hex::decode(h).ok());
     let clean_pwd = password.filter(|p| !p.trim().is_empty());
 
     match (dh_bytes, clean_pwd) {
         (Some(dh), Some(pwd)) => {
-            hasher.update(&dh);
-            hasher.update(b":");
-            hasher.update(pwd.as_bytes());
-            let hash: [u8; 32] = hasher.finalize().into();
-            Some(generate_fingerprint(&hash))
+            let mut input = Vec::with_capacity(dh.len() + 1 + pwd.len());
+            input.extend_from_slice(&dh);
+            input.push(b':');
+            input.extend_from_slice(pwd.as_bytes());
+            let d = digest(&SHA3_256, &input);
+            let mut arr = [0u8; 32];
+            arr.copy_from_slice(d.as_ref());
+            Some(generate_fingerprint(&arr))
         }
         (Some(dh), None) => {
             if dh.len() == 32 {
@@ -68,15 +69,17 @@ pub fn derive_call_fingerprint(dh_secret_hex: Option<&str>, password: Option<&st
                 arr.copy_from_slice(&dh);
                 Some(generate_fingerprint(&arr))
             } else {
-                hasher.update(&dh);
-                let hash: [u8; 32] = hasher.finalize().into();
-                Some(generate_fingerprint(&hash))
+                let d = digest(&SHA3_256, &dh);
+                let mut arr = [0u8; 32];
+                arr.copy_from_slice(d.as_ref());
+                Some(generate_fingerprint(&arr))
             }
         }
         (None, Some(pwd)) => {
-            hasher.update(pwd.as_bytes());
-            let hash: [u8; 32] = hasher.finalize().into();
-            Some(generate_fingerprint(&hash))
+            let d = digest(&SHA3_256, pwd.as_bytes());
+            let mut arr = [0u8; 32];
+            arr.copy_from_slice(d.as_ref());
+            Some(generate_fingerprint(&arr))
         }
         (None, None) => None,
     }

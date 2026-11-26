@@ -13,8 +13,18 @@ import {
   getCurrentAccount,
 } from "$lib/stores/accounts";
 import { get as sessionGet } from "$lib/stores/session";
+import { showAlert } from "$lib/utils/alert";
+import { parseApiError, isNo2FaError } from "$lib/utils/errors";
 
 const inflightRetries = new Map();
+
+function notifyApiError(command, errObj) {
+  if (isNo2FaError(errObj)) return;
+  const parsedMsg = parseApiError(errObj);
+  const code = typeof errObj?.error === "string" ? errObj.error : "";
+  const details = code && code !== parsedMsg ? `${command}: ${code}` : command;
+  showAlert(`Ошибка API: ${parsedMsg}`, details);
+}
 
 export const invoke = async (command, args) => {
   if (command === "download_to_path" && args && !args.onProgress) {
@@ -25,6 +35,9 @@ export const invoke = async (command, args) => {
   try {
     const response = await tauriInvoke(command, args);
     recordApiResponse(command, response, Date.now() - reqStart);
+    if (response && typeof response === "object" && response.error) {
+      notifyApiError(command, response);
+    }
     return response;
   } catch (error) {
     recordApiResponse(command, null, Date.now() - reqStart, error);
@@ -58,14 +71,20 @@ export const invoke = async (command, args) => {
       return;
     }
 
-    if (type !== "ApiResponse") return error;
+    if (type !== "ApiResponse") {
+      notifyApiError(command, error);
+      return error;
+    }
 
     try {
-      return {
+      const parsed = {
         ...JSON.parse(text),
         type
       };
+      notifyApiError(command, parsed);
+      return parsed;
     } catch {
+      notifyApiError(command, error);
       return error;
     }
   }
@@ -78,6 +97,7 @@ async function restart(command, args, originalError) {
   const currentRetries = inflightRetries.get(retryKey) || 0;
   if (currentRetries >= 2) {
     inflightRetries.delete(retryKey);
+    notifyApiError(command, originalError);
     return originalError;
   }
   inflightRetries.set(retryKey, currentRetries + 1);
@@ -100,6 +120,7 @@ async function restart(command, args, originalError) {
 
   if (!sessionGet("connected")) {
     inflightRetries.delete(retryKey);
+    notifyApiError(command, originalError);
     return originalError;
   }
 
@@ -109,6 +130,7 @@ async function restart(command, args, originalError) {
     return res;
   } catch (err) {
     inflightRetries.delete(retryKey);
+    notifyApiError(command, err);
     return err;
   }
 }

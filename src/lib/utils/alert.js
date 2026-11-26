@@ -4,6 +4,8 @@ import { error } from "../stores/logs";
 
 export const alerts = writable([]);
 
+const normalizeAlertText = (val) => String(val ?? "").replace(/^Ошибка API:\s*/i, "").trim();
+
 export function showAlert(data, description, onClick, duration = 6000) {
   const id = crypto.randomUUID();
 
@@ -15,8 +17,18 @@ export function showAlert(data, description, onClick, duration = 6000) {
   const calledAt = err.stack ? err.stack.split('\n')[1] : "";
 
   const newAlert = { id, data: text, description, calledAt, onClick };
+  const normalizedText = normalizeAlertText(text);
 
-  alerts.update(all => [...all, newAlert]);
+  let added = false;
+  alerts.update(all => {
+    if (normalizedText && all.some(a => normalizeAlertText(a.data) === normalizedText)) {
+      return all;
+    }
+    added = true;
+    return [...all, newAlert];
+  });
+  if (!added) return;
+
   error({ type: "alert", ...newAlert });
 
   setTimeout(() => {

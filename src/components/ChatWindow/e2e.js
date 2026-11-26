@@ -12,6 +12,8 @@ import {
 import { sendMessage } from "$components/ChatWindow/actions";
 import { CallService } from "$lib/services/CallService";
 import { triggerSafetyLockout } from "$lib/stores/e2eSafety";
+import { showAlert } from "$lib/utils/alert";
+import { parseApiError } from "$lib/utils/errors";
 
 const pendingRequests = new Map();
 const blockedRequests = new Map();
@@ -439,7 +441,7 @@ export async function handleEnc(chat, chatSettings, messages, action) {
       await CallService.syncChatSessionToActiveCall(chat.id);
     } catch (e) {
       console.error(e);
-      alert(String(e));
+      showAlert(parseApiError(e));
     }
   } else if (action === "deny") {
     const msgId = req?.messageId ? String(req.messageId) : null;
@@ -504,7 +506,7 @@ export async function handleEnc(chat, chatSettings, messages, action) {
 }
 
 export async function switchEnc(chat, chatSettings, messages) {
-  if (!chat || chat.type === "CHAT") return;
+  if (!chat || chat.type === "CHAT") return false;
   const account = await getCurrentAccount();
   const accId = Number(account?.id || 0);
   const settings = get(chatSettings);
@@ -515,8 +517,20 @@ export async function switchEnc(chat, chatSettings, messages) {
   );
 
   if (!isSessionActive) {
+    const prevSettings = settings ? JSON.parse(JSON.stringify(settings)) : {};
+    const rollbackPending = () => {
+      chatSettings.set(prevSettings);
+      if (accId) {
+        invoke("set_chat_settings", {
+          account: accId,
+          chatId: Number(chat.id),
+          data: prevSettings,
+        }).catch(() => {});
+      }
+    };
+
     try {
-      const obf = settings?.obfs || "zh";
+      const obf = settings?.obfs || settings?.obfuscation || "zh";
       const initPacket = await initHandshake(accId, chat.id, obf);
 
       const freshSettings = await invoke("get_chat_settings", {
@@ -534,7 +548,7 @@ export async function switchEnc(chat, chatSettings, messages) {
         });
       }
 
-      await sendMessage(
+      const sendRes = await sendMessage(
         chat,
         chatSettings,
         messages,
@@ -544,9 +558,17 @@ export async function switchEnc(chat, chatSettings, messages) {
         undefined,
         true
       );
+      const sentOk = Boolean(sendRes && !sendRes.error && sendRes.message && typeof sendRes.message === "object");
+      if (!sentOk) {
+        rollbackPending();
+        return false;
+      }
+      return true;
     } catch (e) {
       console.error(e);
-      alert(String(e));
+      rollbackPending();
+      showAlert(parseApiError(e));
+      return false;
     }
   } else {
     try {
@@ -598,6 +620,7 @@ export async function switchEnc(chat, chatSettings, messages) {
       data: fresh,
     }).catch(() => {});
     CallService.disableSecureMode().catch(() => {});
+    return true;
   }
 }
 

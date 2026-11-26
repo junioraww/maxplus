@@ -524,9 +524,17 @@
     showToast($chatSettings.reader ? "Отчеты о прочтении включены" : "Отчеты о прочтении выключены");
   }
 
-  function triggerSwitchEnc() {
+  async function triggerSwitchEnc() {
     if (!chat || !chatSettings) return;
-    switchEnc(chat, chatSettings, null);
+    const wasEnc = Boolean(
+      $chatSettings?.session?.shared_secret ||
+        $chatSettings?.session?.fingerprint ||
+        $chatSettings?.keys?.current
+    );
+    const ok = await switchEnc(chat, chatSettings, null);
+    if (ok) {
+      showToast(wasEnc ? "Шифрование отключено" : "Запрос на шифрование отправлен");
+    }
   }
 
   function copyFingerprint() {
