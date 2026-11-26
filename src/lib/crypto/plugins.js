@@ -1,6 +1,7 @@
 const obfuscators = new Map();
 const ciphers = new Map();
 const extensions = new Map();
+const messageCards = new Map();
 
 export const CryptoPluginRegistry = {
   registerObfuscator(name, handler) {
@@ -41,6 +42,24 @@ export const CryptoPluginRegistry = {
       if (typeof handler.detect === "function" && handler.detect(text)) {
         return { name, handler };
       }
+    }
+    return null;
+  },
+
+  registerMessageCard(id, handler) {
+    messageCards.set(id, handler);
+  },
+  unregisterMessageCard(id) {
+    messageCards.delete(id);
+  },
+  findMessageCard(text, msg = null) {
+    if (!text || typeof text !== "string") return null;
+    for (const [id, handler] of messageCards.entries()) {
+      try {
+        if (typeof handler?.match === "function" && handler.match(text, msg)) {
+          return { id, handler };
+        }
+      } catch {}
     }
     return null;
   }

@@ -54,6 +54,26 @@ export const CATALOG = {
 const DEFAULT_ITEMS = ["digital_id", "calls", "chats", "settings"];
 const DEFAULT_MAIN = "chats";
 const STORAGE_KEY = "max_panel_config";
+const KNOWN_PLUGIN_TABS_KEY = "max_panel_known_plugins";
+
+export const pluginPanelItems = writable(new Map());
+
+function loadKnownPluginTabs() {
+  if (typeof localStorage === "undefined") return new Set();
+  try {
+    const raw = localStorage.getItem(KNOWN_PLUGIN_TABS_KEY);
+    return new Set(Array.isArray(JSON.parse(raw)) ? JSON.parse(raw) : []);
+  } catch {
+    return new Set();
+  }
+}
+
+function saveKnownPluginTabs(setVal) {
+  if (typeof localStorage === "undefined") return;
+  try {
+    localStorage.setItem(KNOWN_PLUGIN_TABS_KEY, JSON.stringify([...setVal]));
+  } catch {}
+}
 
 function loadInitialConfig() {
   if (typeof localStorage === "undefined") {
@@ -64,7 +84,7 @@ function loadInitialConfig() {
     if (!raw) return { items: DEFAULT_ITEMS, defaultItem: DEFAULT_MAIN };
     const parsed = JSON.parse(raw);
     let items = Array.isArray(parsed.items)
-      ? parsed.items.filter((id) => CATALOG[id])
+      ? parsed.items.filter((id) => CATALOG[id] || (typeof id === "string" && id.startsWith("plugin:")))
       : DEFAULT_ITEMS;
     if (!items.includes("settings")) {
       items.push("settings");
@@ -107,7 +127,9 @@ function createPanelStore() {
       });
     },
     addItem: (id) => {
-      if (!CATALOG[id]) return;
+      let hasPlugin = false;
+      pluginPanelItems.subscribe((m) => { hasPlugin = m.has(id); })();
+      if (!CATALOG[id] && !hasPlugin) return;
       update((state) => {
         if (state.items.includes(id)) return state;
         const next = { ...state, items: [...state.items, id] };
@@ -146,3 +168,30 @@ function createPanelStore() {
 }
 
 export const panelConfig = createPanelStore();
+
+export function registerPluginPanelItem(item) {
+  if (!item?.id) return;
+  const fullId = item.id.startsWith("plugin:") ? item.id : `plugin:${item.id}`;
+  pluginPanelItems.update((map) => {
+    const next = new Map(map);
+    next.set(fullId, { ...item, id: fullId, isPlugin: true });
+    return next;
+  });
+
+  const known = loadKnownPluginTabs();
+  if (!known.has(fullId)) {
+    known.add(fullId);
+    saveKnownPluginTabs(known);
+    panelConfig.addItem(fullId);
+  }
+  return fullId;
+}
+
+export function unregisterPluginPanelItem(id) {
+  const fullId = id?.startsWith("plugin:") ? id : `plugin:${id}`;
+  pluginPanelItems.update((map) => {
+    const next = new Map(map);
+    next.delete(fullId);
+    return next;
+  });
+}

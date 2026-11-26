@@ -1,5 +1,6 @@
 <script>
   import { getAttachText, getSystemText } from "$lib/utils/attachs";
+  import { CryptoPluginRegistry } from "$lib/crypto/plugins";
 
   export let chat;
   export let msg;
@@ -11,7 +12,10 @@
 
   $: isControl = Boolean(msg?.attaches?.some((x) => (x.type || x._type) === "CONTROL"));
   $: attachText = strip(getAttachText(chat, msg));
-  $: rawText = strip(isControl ? (getSystemText(msg, false) || msg?.text || "") : (msg?.text || ""));
+  $: rawMsgText = msg?.text || "";
+  $: matchedCard = !isControl ? CryptoPluginRegistry.findMessageCard(rawMsgText, msg) : null;
+  $: cardPreview = matchedCard?.handler?.previewText ? matchedCard.handler.previewText(rawMsgText, { chat, msg }) : null;
+  $: rawText = strip(isControl ? (getSystemText(msg, false) || rawMsgText) : (cardPreview ?? rawMsgText));
   $: sameText = Boolean(attachText && rawText && (attachText === rawText || rawText.includes(attachText) || attachText.includes(rawText)));
 
   $: displayText = sameText ? (rawText || attachText) : rawText;
