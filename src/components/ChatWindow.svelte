@@ -1115,7 +1115,7 @@
     await new Promise((r) => setTimeout(r, 60));
     allRendered = true;
     await tick();
-    if (!hasSavedScroll && !hasTargetJump && unreadCount === 0 && scrollElement) {
+    if (!hasSavedScroll && !hasTargetJump && unreadCount === 0 && scrollElement && !scrollController.userHasScrolled) {
       scrollElement.scrollTop = scrollElement.scrollHeight;
       showScrollDown = false;
     }
@@ -1959,6 +1959,8 @@
 
   <div
     on:scroll={scrollController.handleScroll}
+    on:wheel|passive={() => { scrollController.userHasScrolled = true; }}
+    on:touchstart|passive={() => { scrollController.userHasScrolled = true; }}
     on:mousedown={startDrag}
     on:mouseleave={stopDrag}
     on:mouseup={mouseUp}

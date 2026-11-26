@@ -114,7 +114,7 @@
           Недоступно
         </button>
       {:else}
-        <Switch checked={plugin.enabled} on:change={toggleEnabled} ariaLabel="Включить плагин" />
+        <Switch checked={plugin.enabled} standalone={true} on:change={toggleEnabled} ariaLabel="Включить плагин" />
       {/if}
       <button class="expand-btn" class:expanded on:click={toggleExpand}>
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">

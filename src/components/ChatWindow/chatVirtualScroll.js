@@ -115,7 +115,7 @@ export function estimateHeight(msg, clientWidth = 800, hasDateSeparator = false)
     if (totalLines === 1) {
       textHeight = 48.6;
     } else {
-      textHeight = totalLines * 18.5 + 38;
+      textHeight = totalLines * 20.1 + 38;
     }
   }
 
@@ -128,8 +128,8 @@ export function estimateHeight(msg, clientWidth = 800, hasDateSeparator = false)
     h = Math.max(48.6, textHeight || 48.6);
   }
 
-  if (msg.reactionInfo?.totalCount) h += (totalLines <= 1 ? 14 : 26);
-  if (msg.link && textHeight > 49) h += 20;
+  if (msg.reactionInfo?.totalCount) h += (totalLines <= 1 ? 27 : 28);
+  if (msg.link) h += 8;
   if (hasDateSeparator) h += 45;
 
   return Math.round(h);
@@ -170,6 +170,7 @@ export function createVirtualScrollManager() {
       const containerRect = scrollEl ? scrollEl.getBoundingClientRect() : null;
       const shouldAnchor = typeof canAnchor === "function" ? canAnchor() : false;
       const cw = scrollEl ? scrollEl.clientWidth : 800;
+      let anchorDelta = 0;
 
       for (const entry of entries) {
         const el = entry.target;
@@ -189,8 +190,18 @@ export function createVirtualScrollManager() {
           if (prev === undefined || Math.abs(height - prev) >= 0.2) {
             heightsMap.set(cacheKey, height);
             pendingHeightUpdates[cacheKey] = { id, height };
+            if (shouldAnchor && scrollEl && containerRect && Math.abs(diff) >= 0.5) {
+              const rect = el.getBoundingClientRect();
+              if (rect.top < containerRect.top) {
+                anchorDelta += diff;
+              }
+            }
           }
         }
+      }
+
+      if (anchorDelta !== 0 && scrollEl) {
+        scrollEl.scrollTop += anchorDelta;
       }
     });
   }
