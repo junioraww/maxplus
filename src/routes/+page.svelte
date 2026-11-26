@@ -14,7 +14,8 @@
   import Card from "$components/main/Card.svelte";
   import ChatWindow from "$components/ChatWindow.svelte";
   import WebAppManager from "$components/webapp/WebAppManager.svelte";
-  import { panelConfig, CATALOG } from "$lib/stores/panel";
+  import { panelConfig, CATALOG, pluginPanelItems } from "$lib/stores/panel";
+  import PluginPortalContent from "$components/plugins/PluginPortalContent.svelte";
   import { setPanelNavigation } from "$lib/utils/backButton";
   import { panelSlider } from "$lib/utils/panelSlider";
 
@@ -44,11 +45,27 @@
 
 
   $: pages = ($panelConfig.items || [])
-    .filter((id) => CATALOG[id] && COMPONENT_MAP[id])
-    .map((id) => ({
-      ...CATALOG[id],
-      component: COMPONENT_MAP[id],
-    }));
+    .map((id) => {
+      if (CATALOG[id] && COMPONENT_MAP[id]) {
+        return { ...CATALOG[id], component: COMPONENT_MAP[id] };
+      }
+      const pItem = $pluginPanelItems.get(id);
+      if (pItem) {
+        return {
+          ...pItem,
+          component: PluginPortalContent,
+          pluginProps: {
+            mode: "tab",
+            title: pItem.title ?? pItem.name,
+            showHeader: pItem.showHeader ?? true,
+            html: pItem.html || "",
+            onMountCallback: pItem.onMount || null,
+          },
+        };
+      }
+      return null;
+    })
+    .filter(Boolean);
 
   let activeId = null;
   let active = 0;
@@ -328,6 +345,7 @@
           {#if mountedCards.has(pageItem.id)}
             <svelte:component
               this={pageItem.component}
+              {...(pageItem.pluginProps || {})}
               {...(pageItem.id === "calls" ? { isActive: activeId === "calls" } : {})}
               {...(pageItem.id === "logs" || pageItem.id === "notifications" ? { isTab: true } : {})}
             />

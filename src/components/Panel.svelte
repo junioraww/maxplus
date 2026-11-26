@@ -3,7 +3,7 @@
   import { flip } from "svelte/animate";
   import { quintOut, cubicOut } from "svelte/easing";
   import { fade, fly } from "svelte/transition";
-  import { panelConfig, CATALOG } from "$lib/stores/panel";
+  import { panelConfig, CATALOG, pluginPanelItems } from "$lib/stores/panel";
   import { getMountStore } from "$lib/plugins/mount-registry";
   import { currentRealChats } from "$lib/stores/api";
 
@@ -28,9 +28,10 @@
 
   $: currentDefault = $panelConfig.defaultItem;
   $: unreadChatsCount = ($currentRealChats || []).filter((c) => (c?.newMessages || 0) > 0).length;
-  $: availableCatalogItems = Object.values(CATALOG).filter(
-    (item) => !pages.some((p) => p.id === item.id)
-  );
+  $: availableCatalogItems = [
+    ...Object.values(CATALOG),
+    ...Array.from($pluginPanelItems.values()),
+  ].filter((item) => !pages.some((p) => p.id === item.id));
 
   function handleClick(index, page) {
     if (isEditing || isLongPressTriggered) return;
@@ -251,7 +252,11 @@
           {/if}
 
           <div class="icon-box">
-            <img src={"icons/" + page.icon + ".svg"} alt={page.name} />
+            {#if page.iconSvg}
+              <span class="plugin-tab-svg">{@html page.iconSvg}</span>
+            {:else}
+              <img src={"icons/" + page.icon + ".svg"} alt={page.name} />
+            {/if}
             {#if page.id === "chats" && unreadChatsCount > 0}
               <span class="nav-badge font-title">{unreadChatsCount > 999 ? "999+" : unreadChatsCount}</span>
             {/if}
@@ -292,7 +297,11 @@
         {#each availableCatalogItems as item}
           <div class="catalog-item" on:click={() => handleAddItem(item.id)}>
             <div class="catalog-icon">
-              <img src={"icons/" + item.icon + ".svg"} alt={item.name} />
+              {#if item.iconSvg}
+                <span class="plugin-tab-svg">{@html item.iconSvg}</span>
+              {:else}
+                <img src={"icons/" + item.icon + ".svg"} alt={item.name} />
+              {/if}
             </div>
             <div class="catalog-info">
               <span class="catalog-name">{item.name}</span>
@@ -628,6 +637,20 @@
     max-width: 24px;
     filter: invert(50%);
     pointer-events: none;
+  }
+
+  .plugin-tab-svg {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    color: var(--text-secondary, #8b929e);
+    pointer-events: none;
+  }
+
+  .option.active .plugin-tab-svg {
+    color: var(--accent-primary, #248bfe);
   }
 
   .label {

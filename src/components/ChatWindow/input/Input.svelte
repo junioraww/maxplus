@@ -2105,7 +2105,7 @@
         </button>
 
         {#if attachesDropout}
-          <AttachesMenu on:select={(e) => handleAttachesSelect(e.detail)} on:close={() => (attachesDropout = null)} />
+          <AttachesMenu chatId={chat?.id ?? null} on:select={(e) => handleAttachesSelect(e.detail)} on:close={() => (attachesDropout = null)} />
         {/if}
 
         {#each $pluginInputRight as item (item.id)}

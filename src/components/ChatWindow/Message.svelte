@@ -17,6 +17,8 @@
   import FormattedText from "$components/ChatWindow/FormattedText.svelte";
   import { transcriptions, toggleTranscriptionExpanded } from "$lib/stores/transcription";
   import { getMountStore } from "$lib/plugins/mount-registry";
+  import { CryptoPluginRegistry } from "$lib/crypto/plugins";
+  import PluginMessageCard from "$components/plugins/PluginMessageCard.svelte";
 
   const pluginMessageHeaders = getMountStore("message:header");
   const pluginMessageFooters = getMountStore("message:footer");
@@ -47,6 +49,7 @@
   $: rawText = decoded ? (decoded.text ?? "") : (msg.text || "");
   $: isE2eDisable = Boolean(rawText && (rawText === "__E2E_DISABLE__" || rawText.includes('"e2e_control":"disable"')));
   $: effectiveText = isE2eDisable ? (isMe ? "<b>Вы отключили сквозное шифрование</b>" : "<b>Собеседник отключил сквозное шифрование</b>") : rawText;
+  $: matchedMessageCard = !isE2eDisable ? CryptoPluginRegistry.findMessageCard(effectiveText, msg) : null;
   $: lines = effectiveText ? effectiveText.split("\n") : [];
   $: effectiveAttaches = (() => {
     if (!msg.attaches || !msg.attaches.length) return [];
@@ -566,7 +569,15 @@
               </div>
             {/if}
 
-            {#if decoded?.error || effectiveText.includes('<b style="color:#f66">')}
+            {#if matchedMessageCard}
+              <PluginMessageCard
+                handler={matchedMessageCard.handler}
+                text={effectiveText}
+                {msg}
+                {chat}
+                {isMe}
+              />
+            {:else if decoded?.error || effectiveText.includes('<b style="color:#f66">')}
               {#each lines as line}
                 <p class="line crypto-error">{@html line}</p>
               {/each}

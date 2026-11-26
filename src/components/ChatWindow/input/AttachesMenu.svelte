@@ -4,7 +4,11 @@
   import { registerBackHandler } from "$lib/utils/backButton";
   import { invoke, convertFileSrc } from "@tauri-apps/api/core";
   import { getProxiedMediaUrl } from "$lib/utils/images";
+  import { getMountStore } from "$lib/plugins/mount-registry";
 
+  const pluginAttachActions = getMountStore("attach:action");
+
+  export let chatId = null;
   export let onClose = null;
   export let close = null;
   export let setBackHandler = null;
@@ -50,6 +54,7 @@
   let currentDy = 0;
   let startTime = 0;
   let isClosing = false;
+  let isExpanded = false;
 
   function onHandlePointerDown(e) {
     if (e.pointerType === "mouse" && e.button !== 0) return;
@@ -65,7 +70,7 @@
   function onHandlePointerMove(e) {
     if (!isDragging) return;
     const dy = e.clientY - startY;
-    currentDy = Math.max(0, dy);
+    currentDy = Math.max(-100, dy);
   }
 
   function onHandlePointerUp(e) {
@@ -76,10 +81,29 @@
     } catch {}
     const dt = Date.now() - startTime;
     const velocity = currentDy / Math.max(dt, 1);
-    if (currentDy > 85 || (velocity > 0.35 && currentDy > 25)) {
+    if (currentDy < -32 || (velocity < -0.35 && currentDy < -15)) {
+      isExpanded = true;
+      currentDy = 0;
+    } else if (isExpanded && (currentDy > 45 || (velocity > 0.35 && currentDy > 20))) {
+      isExpanded = false;
+      currentDy = 0;
+    } else if (!isExpanded && (currentDy > 85 || (velocity > 0.35 && currentDy > 25))) {
       triggerDismiss();
     } else {
       currentDy = 0;
+    }
+  }
+
+  function onGalleryScroll(e) {
+    if (!isExpanded && e.currentTarget.scrollTop > 16) {
+      isExpanded = true;
+    }
+  }
+
+  function onTabsWheel(e) {
+    if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) {
+      e.preventDefault();
+      e.currentTarget.scrollLeft += e.deltaY;
     }
   }
 
@@ -208,7 +232,8 @@
   <div
     class="attaches-bottom-sheet attaches-dropout"
     class:is-closing={isClosing}
-    style={currentDy > 0 ? `transform: translate3d(0, ${currentDy}px, 0); transition: ${isDragging ? 'none' : 'transform 200ms cubic-bezier(0.1, 0.9, 0.2, 1)'};` : ''}
+    class:is-expanded={isExpanded}
+    style={currentDy !== 0 ? `transform: translate3d(0, ${currentDy > 0 ? currentDy : currentDy * 0.35}px, 0); transition: ${isDragging ? 'none' : 'transform 200ms cubic-bezier(0.1, 0.9, 0.2, 1)'};` : ''}
     on:click|stopPropagation
     on:pointerdown|stopPropagation
   >
@@ -271,7 +296,7 @@
               {/each}
             </div>
           {:else if recentMedia.length > 0}
-            <div class="recent-media-grid">
+            <div class="recent-media-grid" class:expanded={isExpanded} on:scroll={onGalleryScroll}>
               {#each recentMedia as item (item.path)}
                 <button
                   type="button"
@@ -372,7 +397,7 @@
       {/if}
     {/if}
 
-    <div class="sheet-tabs-bar">
+    <div class="sheet-tabs-bar" on:wheel|nonpassive={onTabsWheel}>
       <button
         type="button"
         class="sheet-tab-btn"
@@ -422,6 +447,25 @@
         <span class="mask-icon tab-icon" style="-webkit-mask-image: url('/icons/user.svg'); mask-image: url('/icons/user.svg'); width: 22px; height: 22px;"></span>
         <span class="tab-label">Контакт</span>
       </button>
+
+      {#each $pluginAttachActions as item (item.id)}
+        <button
+          type="button"
+          class="sheet-tab-btn"
+          on:click={() => {
+            const targetChatId = chatId;
+            handleClose();
+            if (typeof item.options?.onClick === "function") {
+              item.options.onClick({ chatId: targetChatId });
+            }
+          }}
+        >
+          <span class="plugin-tab-icon">
+            {@html item.html}
+          </span>
+          <span class="tab-label">{item.options?.label || "Плагин"}</span>
+        </button>
+      {/each}
     </div>
   </div>
 </div>
@@ -629,6 +673,8 @@
   .recent-media-grid {
     display: grid;
     grid-template-columns: repeat(5, minmax(0, 1fr));
+    grid-auto-rows: max-content;
+    align-content: start;
     gap: 6px;
     max-height: 250px;
     overflow-y: auto;
@@ -636,6 +682,11 @@
     padding: 2px;
     box-sizing: border-box;
     width: 100%;
+    transition: max-height 0.24s cubic-bezier(0.2, 0, 0, 1);
+  }
+
+  .recent-media-grid.expanded {
+    max-height: 62vh;
   }
 
   @media (max-width: 440px) {
@@ -647,14 +698,13 @@
   .recent-media-cell {
     position: relative;
     width: 100%;
-    aspect-ratio: 1 / 1;
+    height: 0;
+    padding-top: 100%;
     min-width: 0;
-    min-height: 0;
     border-radius: 10px;
     overflow: hidden;
     background: rgba(255, 255, 255, 0.05);
     border: 1px solid rgba(255, 255, 255, 0.04);
-    padding: 0;
     margin: 0;
     box-sizing: border-box;
     display: block;
@@ -674,10 +724,10 @@
   }
 
   .recent-thumb-img {
+    position: absolute;
+    inset: 0;
     width: 100%;
     height: 100%;
-    min-width: 0;
-    min-height: 0;
     object-fit: cover;
     display: block;
     pointer-events: none;
@@ -685,7 +735,8 @@
   }
 
   .video-thumb-container {
-    position: relative;
+    position: absolute;
+    inset: 0;
     width: 100%;
     height: 100%;
     display: flex;
@@ -905,10 +956,18 @@
   .sheet-tabs-bar {
     display: flex;
     align-items: center;
-    justify-content: space-around;
+    justify-content: flex-start;
+    gap: 4px;
+    overflow-x: auto;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
     border-top: 1px solid rgba(255, 255, 255, 0.08);
-    padding-top: 10px;
+    padding: 10px 4px 0;
     margin-top: 4px;
+  }
+
+  .sheet-tabs-bar::-webkit-scrollbar {
+    display: none;
   }
 
   .sheet-tab-btn {
@@ -919,10 +978,11 @@
     background: transparent;
     border: none;
     cursor: pointer;
-    padding: 6px 12px;
+    padding: 6px 10px;
     border-radius: 12px;
     transition: all 0.15s ease;
-    flex: 1;
+    flex: 1 0 auto;
+    min-width: 64px;
   }
 
   .sheet-tab-btn:hover {
@@ -932,6 +992,17 @@
   .sheet-tab-btn .tab-icon {
     background-color: #8a8d9b;
     transition: background-color 0.15s ease;
+  }
+
+  .sheet-tab-btn .plugin-tab-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    background: transparent;
+    color: #8a8d9b;
+    transition: color 0.15s ease;
   }
 
   .sheet-tab-btn .tab-label {

@@ -2,7 +2,7 @@ use tauri::{AppHandle, Manager};
 use serde_json::{json, Value};
 use std::path::PathBuf;
 
-use super::accounts::load_accounts;
+use super::accounts::{check_account_encryption, load_accounts};
 use super::storage::{crypto_key, Paths, Storage};
 
 fn common_store_path(app: &AppHandle, store: &str) -> Result<PathBuf, String> {
@@ -339,6 +339,114 @@ pub async fn plugin_storage_clear(
 ) -> Result<(), String> {
     tokio::task::spawn_blocking(move || {
         let path = plugin_path(&app, &plugin_id)?;
+        if path.exists() {
+            std::fs::remove_file(&path).map_err(|e| e.to_string())?;
+        }
+        Ok(())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+fn plugin_vault_path_and_storage(app: &AppHandle, plugin_id: &str) -> Result<(PathBuf, Storage), String> {
+    let acc_id = load_accounts(app)
+        .get("current")
+        .and_then(|x| x.as_u64())
+        .ok_or_else(|| "No active account".to_string())?;
+
+    let key = check_account_encryption(app, acc_id)?;
+    let safe_id: String = plugin_id
+        .chars()
+        .filter(|c| c.is_alphanumeric() || *c == '.' || *c == '_' || *c == '-')
+        .collect();
+    let name = if safe_id.is_empty() { "default" } else { &safe_id };
+    let path = Paths::new(app, acc_id).root.join("plugin_vault").join(name);
+    Ok((path, Storage::new(key)))
+}
+
+#[tauri::command]
+pub async fn plugin_vault_set(
+    app: AppHandle,
+    plugin_id: String,
+    key: String,
+    value: Option<String>,
+) -> Result<(), String> {
+    tokio::task::spawn_blocking(move || {
+        let (path, storage) = plugin_vault_path_and_storage(&app, &plugin_id)?;
+        let mut data = storage.load(&path).unwrap_or_else(|| json!({}));
+        let obj = data.as_object_mut().ok_or_else(|| "Invalid vault format".to_string())?;
+        match value {
+            Some(val) => {
+                if !obj.contains_key(&key) && obj.len() >= 1000 {
+                    return Err("Vault limit reached".to_string());
+                }
+                obj.insert(key, Value::String(val));
+            }
+            None => {
+                obj.remove(&key);
+            }
+        }
+        storage.save(&path, &data)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn plugin_vault_get(
+    app: AppHandle,
+    plugin_id: String,
+    key: String,
+) -> Result<Option<String>, String> {
+    tokio::task::spawn_blocking(move || {
+        let (path, storage) = plugin_vault_path_and_storage(&app, &plugin_id)?;
+        let data = match storage.load(&path) {
+            Some(d) => d,
+            None => return Ok(None),
+        };
+        let val = data.get(&key).and_then(|v| {
+            if let Some(s) = v.as_str() {
+                Some(s.to_string())
+            } else if !v.is_null() {
+                Some(v.to_string())
+            } else {
+                None
+            }
+        });
+        Ok(val)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn plugin_vault_list_keys(
+    app: AppHandle,
+    plugin_id: String,
+) -> Result<Vec<String>, String> {
+    tokio::task::spawn_blocking(move || {
+        let (path, storage) = plugin_vault_path_and_storage(&app, &plugin_id)?;
+        let data = match storage.load(&path) {
+            Some(d) => d,
+            None => return Ok(Vec::new()),
+        };
+        let keys = data
+            .as_object()
+            .map(|o| o.keys().cloned().collect())
+            .unwrap_or_default();
+        Ok(keys)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn plugin_vault_clear(
+    app: AppHandle,
+    plugin_id: String,
+) -> Result<(), String> {
+    tokio::task::spawn_blocking(move || {
+        let (path, _) = plugin_vault_path_and_storage(&app, &plugin_id)?;
         if path.exists() {
             std::fs::remove_file(&path).map_err(|e| e.to_string())?;
         }
