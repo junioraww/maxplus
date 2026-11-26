@@ -199,6 +199,7 @@
           </div>
           <Switch
             checked={$pluginSettingsStore.autoUpdate}
+            standalone={true}
             on:change={(e) => pluginSettingsStore.setAutoUpdate(e.detail)}
             ariaLabel="Авто-обновление плагинов"
           />

@@ -98,10 +98,15 @@ export function createChatScrollController(options) {
   async function restoreAnchor() {
     const el = getScrollElement?.();
     if (el && currentScrollAnchor) {
-      await tick();
-      virtualScroll.restoreScrollAnchor(el, currentScrollAnchor);
-      await updateVisibleMessages?.();
-      currentScrollAnchor = null;
+      isProgrammaticScroll = true;
+      try {
+        await tick();
+        virtualScroll.restoreScrollAnchor(el, currentScrollAnchor);
+        await updateVisibleMessages?.();
+        currentScrollAnchor = null;
+      } finally {
+        isProgrammaticScroll = false;
+      }
     }
   }
 
@@ -317,8 +322,6 @@ export function createChatScrollController(options) {
     const l = loader();
     setShowScrollDown(!l?.all_loaded_newer || unreadBadgeCount > 0 || distanceFromBottom > 50);
 
-    checkUnreadMessagesOnScroll();
-
     if (!updateScheduled) {
       updateScheduled = true;
       requestAnimationFrame(async () => {
@@ -327,32 +330,30 @@ export function createChatScrollController(options) {
       });
     }
 
-    if (target.scrollTop <= 80 && !l?.loading && !l?.all_loaded) {
-      if (scrollLoaderTimeout) return;
-      scrollLoaderTimeout = setTimeout(async () => {
-        isProgrammaticScroll = true;
-        try {
-          await l?.loadHistory?.();
-        } finally {
-          isProgrammaticScroll = false;
-          scrollLoaderTimeout = null;
-        }
-      }, 50);
+    if (target.scrollTop <= 600 && !l?.loading && !l?.all_loaded) {
+      if (!scrollLoaderTimeout) {
+        scrollLoaderTimeout = setTimeout(async () => {
+          try {
+            await l?.loadHistory?.();
+          } finally {
+            scrollLoaderTimeout = null;
+          }
+        }, 16);
+      }
     }
 
-    if (distanceFromBottom <= 100 && !l?.loadingNewer && !l?.all_loaded_newer) {
-      if (scrollBottomLoaderTimeout) return;
-      scrollBottomLoaderTimeout = setTimeout(async () => {
-        isProgrammaticScroll = true;
-        try {
-          await l?.loadNewer?.();
-          await tick();
-          await updateVisibleMessages?.();
-        } finally {
-          isProgrammaticScroll = false;
-          scrollBottomLoaderTimeout = null;
-        }
-      }, 50);
+    if (distanceFromBottom <= 300 && !l?.loadingNewer && !l?.all_loaded_newer) {
+      if (!scrollBottomLoaderTimeout) {
+        scrollBottomLoaderTimeout = setTimeout(async () => {
+          try {
+            await l?.loadNewer?.();
+            await tick();
+            await updateVisibleMessages?.();
+          } finally {
+            scrollBottomLoaderTimeout = null;
+          }
+        }, 16);
+      }
     }
   }
 
