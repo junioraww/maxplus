@@ -1,11 +1,13 @@
 <script>
-  import { onDestroy } from "svelte";
+  import { onDestroy, setContext } from "svelte";
   import {
     layerStack,
     dismissLayer,
     finalizeLayer,
   } from "$lib/services/layerManager";
   import { registerBackHandler } from "$lib/utils/backButton";
+
+  setContext("appPortalHost", true);
 
   let unregisterBack = null;
   let enteredLayers = new Set();

@@ -1,5 +1,5 @@
 <script>
-  import { createEventDispatcher, onMount } from "svelte";
+  import { createEventDispatcher, getContext, onMount } from "svelte";
   import { fly, fade } from "svelte/transition";
   import API from "$lib/stores/api";
 
@@ -7,8 +7,25 @@
 
   export let messageId;
   export let chatId;
+  export let close = null;
+  export let setBackHandler = null;
+  export let onSuccess = null;
+  export let onError = null;
 
   const dispatch = createEventDispatcher();
+  const inPortal = Boolean(setBackHandler || getContext("appPortalHost"));
+
+  $: if (setBackHandler) {
+    setBackHandler(() => {
+      handleClose();
+      return false;
+    });
+  }
+
+  function handleClose() {
+    dispatch("close");
+    if (typeof close === "function") close();
+  }
 
   let submitting = false;
 
@@ -23,9 +40,12 @@
     submitting = true;
     try {
       await $API.sendComplaint(reason.id, 2, [String(messageId)], chatId);
+      if (typeof onSuccess === "function") onSuccess({ reason });
       dispatch("success", { reason });
+      if (typeof close === "function") close({ reason });
     } catch (err) {
       console.error("Complaint submission error:", err);
+      if (typeof onError === "function") onError({ err });
       dispatch("error", { err });
     } finally {
       submitting = false;
@@ -34,18 +54,18 @@
 
   function handleKeyDown(e) {
     if (e.key === "Escape") {
-      dispatch("close");
+      handleClose();
     }
   }
 </script>
 
 <svelte:window on:keydown={handleKeyDown} />
 
-<div class="modal-backdrop" on:click={() => dispatch("close")} transition:fade={{ duration: 150 }}>
+<div class="modal-backdrop" class:is-portal-child={inPortal} on:click={handleClose} transition:fade={{ duration: inPortal ? 0 : 150 }}>
   <div
     class="modal-sheet"
     on:click|stopPropagation
-    transition:fly={{ y: 80, duration: 200 }}
+    transition:fly={{ y: 80, duration: inPortal ? 0 : 200 }}
   >
     <div class="sheet-header">
       <div class="header-icon">
@@ -57,7 +77,7 @@
         <h3 class="sheet-title">Пожаловаться</h3>
         <p class="sheet-subtitle">Выберите причину жалобы на сообщение</p>
       </div>
-      <button type="button" class="btn-close" on:click={() => dispatch("close")}>✕</button>
+      <button type="button" class="btn-close" on:click={handleClose}>✕</button>
     </div>
 
     <div class="reasons-list">
@@ -91,6 +111,14 @@
     align-items: center;
     justify-content: center;
     padding: 16px;
+  }
+
+  .modal-backdrop.is-portal-child {
+    position: relative;
+    inset: auto;
+    background: transparent;
+    z-index: auto;
+    padding: 0;
   }
 
   .modal-sheet {
