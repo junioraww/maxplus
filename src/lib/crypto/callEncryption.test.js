@@ -127,11 +127,19 @@ describe('Header-Preserving SFrame CallEncryptionSession', () => {
     const exported = session.getExportedKeys();
 
     expect(exported.audioSendKey).toBeDefined();
-    expect(exported.audioSendKey.length).toBe(16);
+    expect(exported.audioSendKey.length).toBe(32);
     expect(exported.audioRecvKey).toBeDefined();
-    expect(exported.audioRecvKey.length).toBe(16);
+    expect(exported.audioRecvKey.length).toBe(32);
     expect(exported.videoSendKey).toBeDefined();
-    expect(exported.videoSendKey.length).toBe(16);
+    expect(exported.videoSendKey.length).toBe(32);
+    expect(exported.audioSendSalt.length).toBe(12);
+
+    // Tampering with unencrypted header byte must fail AAD authentication
+    const bob = new CallEncryptionSession();
+    await bob.initFromChatSecret(syntheticSecret, syntheticConversationId, false);
+    const enc = await session.encryptFrame(new Uint8Array([0x78, 1, 2, 3, 4]), 'audio');
+    enc[0] ^= 0x01;
+    expect(await bob.decryptFrame(enc, 'audio')).toBeNull();
   });
 
   it('bypasses encryption and decryption when bypass flags are set', async () => {

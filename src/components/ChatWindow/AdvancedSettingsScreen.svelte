@@ -1,10 +1,11 @@
 <script>
   import { onMount } from "svelte";
   import Switch from "$components/common/Switch.svelte";
-  import { getChatSettings } from "$lib/stores/messages";
+  import { getChat, getChatSettings } from "$lib/stores/messages";
   import { autoDownloadEncryptedMedia } from "$lib/stores/e2eSettings";
   import API, { currentUser } from "$lib/stores/api";
   import { registerBackHandler } from "$lib/utils/backButton";
+  import { switchEnc } from "$components/ChatWindow/e2e";
 
   export let chat = null;
   export let userId = null;
@@ -64,21 +65,31 @@
     };
   });
 
-  function triggerSwitchEnc() {
-    if (!$chatSettings) return;
-    const isEnc =
-      $chatSettings?.session?.shared_secret ||
-      $chatSettings?.session?.fingerprint ||
-      $chatSettings?.keys?.current;
+  let switchingEnc = false;
 
-    if (!isEnc) {
-      $chatSettings.pending = true;
-      showNotification("Запрос на новую сессию отправлен");
-    } else {
-      $chatSettings.session = null;
-      $chatSettings.keys = null;
-      $chatSettings.pending = false;
-      showNotification("Шифрование отключено");
+  async function triggerSwitchEnc() {
+    if (!$chatSettings || switchingEnc) return;
+    const targetChat =
+      chat ||
+      (effectiveChatId != null
+        ? getChat(effectiveChatId)?.getInfo?.() || { id: effectiveChatId, type: "DIALOG" }
+        : null);
+    if (!targetChat) return;
+
+    const wasEnc = Boolean(
+      $chatSettings?.session?.shared_secret ||
+        $chatSettings?.session?.fingerprint ||
+        $chatSettings?.keys?.current
+    );
+
+    switchingEnc = true;
+    try {
+      const ok = await switchEnc(targetChat, chatSettings, null);
+      if (ok) {
+        showNotification(wasEnc ? "Шифрование отключено" : "Запрос на новую сессию отправлен");
+      }
+    } finally {
+      switchingEnc = false;
     }
   }
 
@@ -90,12 +101,18 @@
 
   function onPasswordInput(e) {
     if (!$chatSettings) return;
-    $chatSettings.password = e.target.value;
+    const pwd = e.target.value;
+    if (pwd.length && !$chatSettings.obfuscation && !$chatSettings.obfs) {
+      $chatSettings.obfuscation = "zh";
+      $chatSettings.obfs = "zh";
+    }
+    $chatSettings.password = pwd;
   }
 
   function setObfuscation(val) {
     if (!$chatSettings) return;
     $chatSettings.obfuscation = val;
+    $chatSettings.obfs = val;
   }
 
   function swapReader() {
@@ -147,6 +164,7 @@
               type="button"
               class="advanced-pill-btn"
               class:danger={$chatSettings?.session?.shared_secret || $chatSettings?.session?.fingerprint || $chatSettings?.keys?.current}
+              disabled={switchingEnc}
               on:click={triggerSwitchEnc}
             >
               {!($chatSettings?.session?.shared_secret || $chatSettings?.session?.fingerprint || $chatSettings?.keys?.current) ? "Новая сессия" : "Отключить"}

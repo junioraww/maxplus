@@ -24,7 +24,8 @@ function _add(data, type, preview) {
 }
 
 export const add = data => {
-  const type = data.request ? "request" : "response";
+  const hasError = Boolean(data?.response?.payload?.error || data?.error);
+  const type = data.request ? "request" : (hasError ? "error" : "response");
   _add(data, type, JSON.stringify(data).slice(0, 200));
 }
 

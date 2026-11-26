@@ -72,6 +72,26 @@
     showToast($autoDownloadEncryptedMedia ? "Автозагрузка включена" : "Автозагрузка отключена");
   }
 
+  let switchingEnc = false;
+
+  async function handleSwitchEnc() {
+    if (!chat || !chatSettings || switchingEnc) return;
+    const wasEnc = Boolean(
+      $chatSettings?.session?.shared_secret ||
+        $chatSettings?.session?.fingerprint ||
+        $chatSettings?.keys?.current
+    );
+    switchingEnc = true;
+    try {
+      const ok = await switchEnc(chat, chatSettings, messages);
+      if (ok) {
+        showToast(wasEnc ? "Шифрование отключено" : "Запрос на шифрование отправлен");
+      }
+    } finally {
+      switchingEnc = false;
+    }
+  }
+
   function copyFingerprint() {
     if ($chatSettings?.session?.fingerprint) {
       navigator.clipboard.writeText($chatSettings.session.fingerprint);
@@ -139,7 +159,8 @@
             <button
               class="tg-btn-action"
               class:danger={$chatSettings?.session?.shared_secret || $chatSettings?.session?.fingerprint || $chatSettings?.keys?.current}
-              on:click={() => switchEnc(chat, chatSettings, messages)}
+              disabled={switchingEnc}
+              on:click={handleSwitchEnc}
             >
               { !($chatSettings?.session?.shared_secret || $chatSettings?.session?.fingerprint || $chatSettings?.keys?.current) ? "Новая сессия" : "Отключить" }
             </button>

@@ -7,6 +7,9 @@ use libwebrtc::{
     audio_track::RtcAudioTrack,
     ice_candidate::IceCandidate,
     media_stream_track::MediaStreamTrack,
+    native::frame_cryptor::{
+        EncryptionAlgorithm, FrameCryptor, KeyDerivationAlgorithm, KeyProvider, KeyProviderOptions,
+    },
     peer_connection::{
         AnswerOptions, IceGatheringState, OfferOptions, PeerConnection, PeerConnectionState,
         TrackEvent,
@@ -80,6 +83,10 @@ pub struct NativeWebRtcSession {
     state_channel: Arc<Mutex<Option<Channel<String>>>>,
     pending_candidates: Arc<Mutex<Vec<IceCandidate>>>,
     active_tracks: Arc<Mutex<std::collections::HashSet<String>>>,
+    frame_key_provider: Mutex<Option<KeyProvider>>,
+    sender_cryptors: Mutex<HashMap<String, FrameCryptor>>,
+    receiver_cryptors: Mutex<HashMap<String, FrameCryptor>>,
+    encryption_enabled: AtomicBool,
 }
 
 static NEXT_SESSION_ID: AtomicU32 = AtomicU32::new(1);
@@ -282,6 +289,10 @@ impl NativeWebRtcSession {
             state_channel,
             pending_candidates,
             active_tracks,
+            frame_key_provider: Mutex::new(None),
+            sender_cryptors: Mutex::new(HashMap::new()),
+            receiver_cryptors: Mutex::new(HashMap::new()),
+            encryption_enabled: AtomicBool::new(false),
         });
 
         get_sessions().lock().await.insert(session_id, Arc::clone(&session));
@@ -388,6 +399,7 @@ impl NativeWebRtcSession {
                 );
             }
         }
+        self.sync_attached_frame_cryptors().await;
         Ok(())
     }
 
@@ -427,6 +439,8 @@ impl NativeWebRtcSession {
                     }
                     *track_lock = Some(track);
                 }
+                drop(track_lock);
+                self.sync_attached_frame_cryptors().await;
             }
         } else if self.camera_enabled.swap(false, Ordering::SeqCst) {
             let mut capturer = self.capturer.lock().await;
@@ -519,10 +533,115 @@ impl NativeWebRtcSession {
         *self.state_channel.lock().await = Some(channel);
     }
 
+    async fn ensure_frame_key_provider(&self) -> KeyProvider {
+        let mut guard = self.frame_key_provider.lock().await;
+        if let Some(ref kp) = *guard {
+            return kp.clone();
+        }
+        let kp = KeyProvider::new(KeyProviderOptions {
+            shared_key: false,
+            ratchet_window_size: 16,
+            ratchet_salt: b"maxplus-sframe-ratchet-v2".to_vec(),
+            failure_tolerance: -1,
+            key_ring_size: 16,
+            key_derivation_algorithm: KeyDerivationAlgorithm::HKDF,
+        });
+        *guard = Some(kp.clone());
+        kp
+    }
+
+    async fn sync_attached_frame_cryptors(&self) {
+        let enabled = self.encryption_enabled.load(Ordering::SeqCst);
+        let kp = self.ensure_frame_key_provider().await;
+
+        {
+            let mut sc = self.sender_cryptors.lock().await;
+            if let Some(sender) = self.audio_sender.lock().await.as_ref() {
+                if sender.track().is_some() {
+                    let fc = sc.entry("audio_send".to_string()).or_insert_with(|| {
+                        FrameCryptor::new_for_rtp_sender(
+                            &self.factory,
+                            "audio_send".to_string(),
+                            EncryptionAlgorithm::AesGcm,
+                            kp.clone(),
+                            sender.clone(),
+                        )
+                    });
+                    fc.set_enabled(enabled);
+                }
+            }
+            if let Some(sender) = self.video_sender.lock().await.as_ref() {
+                if sender.track().is_some() {
+                    let fc = sc.entry("video_send".to_string()).or_insert_with(|| {
+                        FrameCryptor::new_for_rtp_sender(
+                            &self.factory,
+                            "video_send".to_string(),
+                            EncryptionAlgorithm::AesGcm,
+                            kp.clone(),
+                            sender.clone(),
+                        )
+                    });
+                    fc.set_enabled(enabled);
+                }
+            }
+        }
+
+        {
+            let mut rc = self.receiver_cryptors.lock().await;
+            for transceiver in self.pc.transceivers() {
+                let receiver = transceiver.receiver();
+                if let Some(track) = receiver.track() {
+                    let tid = track.id();
+                    let (key_id, map_key) = match &track {
+                        MediaStreamTrack::Audio(_) => ("audio_recv", format!("audio_recv_{tid}")),
+                        MediaStreamTrack::Video(_) => ("video_recv", format!("video_recv_{tid}")),
+                    };
+                    let fc = rc.entry(map_key).or_insert_with(|| {
+                        FrameCryptor::new_for_rtp_receiver(
+                            &self.factory,
+                            key_id.to_string(),
+                            EncryptionAlgorithm::AesGcm,
+                            kp.clone(),
+                            receiver,
+                        )
+                    });
+                    fc.set_enabled(enabled);
+                }
+            }
+        }
+    }
+
     pub async fn set_encryption_keys(
         &self,
-        _keys: crate::webrtc_engine::commands::EncryptionKeysPayload,
+        keys: crate::webrtc_engine::commands::EncryptionKeysPayload,
     ) -> Result<(), String> {
+        if keys.mode.as_deref() == Some("plain") {
+            self.encryption_enabled.store(false, Ordering::SeqCst);
+            for fc in self.sender_cryptors.lock().await.values() {
+                fc.set_enabled(false);
+            }
+            for fc in self.receiver_cryptors.lock().await.values() {
+                fc.set_enabled(false);
+            }
+            return Ok(());
+        }
+
+        let kp = self.ensure_frame_key_provider().await;
+        if let Some(k) = keys.audio_send_key {
+            kp.set_key("audio_send".to_string(), 0, k);
+        }
+        if let Some(k) = keys.audio_recv_key {
+            kp.set_key("audio_recv".to_string(), 0, k);
+        }
+        if let Some(k) = keys.video_send_key {
+            kp.set_key("video_send".to_string(), 0, k);
+        }
+        if let Some(k) = keys.video_recv_key {
+            kp.set_key("video_recv".to_string(), 0, k);
+        }
+
+        self.encryption_enabled.store(true, Ordering::SeqCst);
+        self.sync_attached_frame_cryptors().await;
         Ok(())
     }
 
