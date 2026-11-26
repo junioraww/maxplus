@@ -1,19 +1,30 @@
 <script>
-  import { createEventDispatcher } from 'svelte';
+  import { createEventDispatcher, getContext } from 'svelte';
   import { fade, scale } from 'svelte/transition';
   import { computeTextDiff } from '$lib/utils/diff';
 
   export let msg = null;
+  export let close = null;
+  export let setBackHandler = null;
 
   const dispatch = createEventDispatcher();
+  const inPortal = Boolean(setBackHandler || getContext('appPortalHost'));
 
-  function close() {
+  $: if (setBackHandler) {
+    setBackHandler(() => {
+      handleClose();
+      return false;
+    });
+  }
+
+  function handleClose() {
     dispatch('close');
+    if (typeof close === 'function') close();
   }
 
   function handleKeydown(e) {
     if (e.key === 'Escape') {
-      close();
+      handleClose();
     }
   }
 
@@ -48,8 +59,8 @@
 
 <svelte:window on:keydown={handleKeydown} />
 
-<div class="modal-backdrop" transition:fade={{ duration: 150 }} on:click={close}>
-  <div class="modal-box" transition:scale={{ start: 0.95, duration: 150 }} on:click|stopPropagation>
+<div class="modal-backdrop" class:is-portal-child={inPortal} transition:fade={{ duration: inPortal ? 0 : 150 }} on:click={handleClose}>
+  <div class="modal-box" transition:scale={{ start: 0.95, duration: inPortal ? 0 : 150 }} on:click|stopPropagation>
     <div class="modal-header">
       <div class="header-left">
         <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
@@ -57,7 +68,7 @@
         </svg>
         <h3>История изменений</h3>
       </div>
-      <button class="close-btn" type="button" on:click={close} title="Закрыть">
+      <button class="close-btn" type="button" on:click={handleClose} title="Закрыть">
         <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <line x1="18" y1="6" x2="6" y2="18" />
           <line x1="6" y1="6" x2="18" y2="18" />
@@ -148,6 +159,14 @@
     z-index: var(--z-modal, 7);
     padding: 16px;
     box-sizing: border-box;
+  }
+
+  .modal-backdrop.is-portal-child {
+    position: relative;
+    inset: auto;
+    background: transparent;
+    z-index: auto;
+    padding: 0;
   }
 
   .modal-box {

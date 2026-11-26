@@ -1,5 +1,8 @@
 <script>
+  import { getContext } from "svelte";
   import { pluginImportModal, closePluginImportModal } from "$lib/stores/plugins";
+
+  const inPortal = Boolean(getContext("appPortalHost"));
   import { APP_VERSION, installPlugin } from "$lib/plugins/runtime";
   import { satisfies } from "$lib/plugins/semver";
   import { PERMISSION_LABELS, CATEGORY_LABELS } from "$lib/plugins/manifest";
@@ -67,7 +70,7 @@
 {#if modalData}
   <div
     class="modal-backdrop"
-    class:is-portal-child={Boolean(setBackHandler || close)}
+    class:is-portal-child={Boolean(setBackHandler || inPortal)}
     on:click={handleCancel}
   >
     <div class="modal-sheet" on:click|stopPropagation>

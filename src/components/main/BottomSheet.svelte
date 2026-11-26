@@ -1,6 +1,8 @@
 <script>
-  import { createEventDispatcher, onMount, onDestroy } from "svelte";
+  import { createEventDispatcher, getContext, onMount, onDestroy } from "svelte";
   import { registerBackHandler } from "$lib/utils/backButton";
+
+  const inPortal = Boolean(getContext("appPortalHost"));
 
   export let title = "";
   export let maxHeight = "85vh";
@@ -21,7 +23,7 @@
   }
 
   onMount(() => {
-    if (!setBackHandler) {
+    if (!setBackHandler && !inPortal) {
       unregisterBack = registerBackHandler(() => {
         handleClose();
         return false;
@@ -43,7 +45,7 @@
 
 <div
   class="bottom-sheet-backdrop"
-  class:is-portal-child={Boolean(setBackHandler || close)}
+  class:is-portal-child={Boolean(setBackHandler || inPortal)}
   class:sheet-closing={isClosing}
   on:click={handleClose}
   role="presentation"

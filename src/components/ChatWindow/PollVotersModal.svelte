@@ -1,5 +1,5 @@
 <script>
-  import { createEventDispatcher, onMount } from "svelte";
+  import { createEventDispatcher, getContext, onMount } from "svelte";
   import { fade, scale } from "svelte/transition";
   import API from "$lib/stores/api";
   import Session, { openProfile as openSessionProfile } from "$lib/stores/session";
@@ -9,26 +9,37 @@
   export let messageId = null;
   export let pollId = null;
   export let answer = null;
+  export let close = null;
+  export let setBackHandler = null;
 
   const dispatch = createEventDispatcher();
+  const inPortal = Boolean(setBackHandler || getContext("appPortalHost"));
   let voters = [];
   let loading = true;
+
+  $: if (setBackHandler) {
+    setBackHandler(() => {
+      handleClose();
+      return false;
+    });
+  }
 
   $: answerText = answer?.text || "";
   $: answerId = Number(answer?.answerId ?? answer?.id ?? 0);
 
-  function close() {
+  function handleClose() {
     dispatch("close");
+    if (typeof close === "function") close();
   }
 
   function handleKeydown(e) {
-    if (e.key === "Escape") close();
+    if (e.key === "Escape") handleClose();
   }
 
   function openProfile(userId) {
     if (!userId) return;
     openSessionProfile({ userId: Number(userId) });
-    close();
+    handleClose();
   }
 
   onMount(async () => {
@@ -66,14 +77,14 @@
 
 <svelte:window on:keydown={handleKeydown} />
 
-<div class="modal-backdrop" transition:fade={{ duration: 150 }} on:click={close}>
-  <div class="modal-box" transition:scale={{ start: 0.95, duration: 150 }} on:click|stopPropagation>
+<div class="modal-backdrop" class:is-portal-child={inPortal} transition:fade={{ duration: inPortal ? 0 : 150 }} on:click={handleClose}>
+  <div class="modal-box" transition:scale={{ start: 0.95, duration: inPortal ? 0 : 150 }} on:click|stopPropagation>
     <div class="modal-header">
       <div class="header-titles">
         <h3>Проголосовавшие</h3>
         <span class="header-subtitle">{answerText}</span>
       </div>
-      <button class="close-btn" type="button" on:click={close} title="Закрыть">
+      <button class="close-btn" type="button" on:click={handleClose} title="Закрыть">
         <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
         </svg>
@@ -100,6 +111,7 @@
 
 <style>
   .modal-backdrop { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.72); display: flex; align-items: center; justify-content: center; z-index: var(--z-modal, 7); padding: 16px; box-sizing: border-box; }
+  .modal-backdrop.is-portal-child { position: relative; inset: auto; background: transparent; z-index: auto; padding: 0; }
   .modal-box { background: #1e2025; border-radius: 14px; width: 100%; max-width: 380px; max-height: 80vh; display: flex; flex-direction: column; overflow: hidden; }
   .modal-header { display: flex; align-items: center; justify-content: space-between; padding: 14px 18px; border-bottom: 1px solid rgba(255, 255, 255, 0.08); }
   .header-titles h3 { margin: 0; font-size: 15px; font-weight: 600; color: #f3f4f6; }

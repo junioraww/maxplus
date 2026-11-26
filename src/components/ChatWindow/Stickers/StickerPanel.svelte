@@ -17,7 +17,7 @@
   import StickerPackModal from "./StickerPackModal.svelte";
   import StickerSettingsScreen from "./StickerSettingsScreen.svelte";
   import StickerCatalogScreen from "./StickerCatalogScreen.svelte";
-  import { openScreen } from "$lib/services/layerManager";
+  import { openScreen, openSheet } from "$lib/services/layerManager";
   import { getMountStore } from "$lib/plugins/mount-registry";
 
   const dispatch = createEventDispatcher();
@@ -38,8 +38,13 @@
   let manualEmojiScrollTimer = null;
   let emojiScrollRaf = null;
 
-  let showPackModal = false;
-  let openedSetId = null;
+  function handleOpenPack(setId) {
+    if (!setId) return;
+    openSheet(StickerPackModal, {
+      setId,
+      onSelect: (sticker) => selectSticker(sticker),
+    });
+  }
 
   function handleOpenSettings() {
     openScreen(StickerSettingsScreen, {}, { canSwipe: true });
@@ -53,7 +58,6 @@
   let peekTimer = null;
 
   let unregPeek = null;
-  let unregPack = null;
 
   $: if (peekSticker) {
     if (!unregPeek) {
@@ -69,24 +73,8 @@
     }
   }
 
-  $: if (showPackModal) {
-    if (!unregPack) {
-      unregPack = registerBackHandler(() => {
-        showPackModal = false;
-        openedSetId = null;
-        return true;
-      });
-    }
-  } else {
-    if (unregPack) {
-      unregPack();
-      unregPack = null;
-    }
-  }
-
   onDestroy(() => {
     if (unregPeek) unregPeek();
-    if (unregPack) unregPack();
     if (manualEmojiScrollTimer) clearTimeout(manualEmojiScrollTimer);
     if (emojiScrollRaf) cancelAnimationFrame(emojiScrollRaf);
   });
@@ -642,10 +630,7 @@
                   on:select={(e) => selectSticker(e.detail.sticker)}
                   on:peekStart={(e) => startPeek(e.detail.sticker)}
                   on:peekEnd={endPeek}
-                  on:openPack={(e) => {
-                    openedSetId = e.detail.setId;
-                    showPackModal = true;
-                  }}
+                  on:openPack={(e) => handleOpenPack(e.detail.setId)}
                 />
               {/each}
             {/if}
@@ -660,10 +645,7 @@
                   on:select={(e) => selectSticker(e.detail.sticker)}
                   on:peekStart={(e) => startPeek(e.detail.sticker)}
                   on:peekEnd={endPeek}
-                  on:openPack={(e) => {
-                    openedSetId = e.detail.setId;
-                    showPackModal = true;
-                  }}
+                  on:openPack={(e) => handleOpenPack(e.detail.setId)}
                 />
               {/each}
             {/if}
@@ -743,21 +725,6 @@
       {/if}
     </div>
   </div>
-
-  {#if showPackModal && openedSetId}
-    <StickerPackModal
-      setId={openedSetId}
-      on:close={() => {
-        showPackModal = false;
-        openedSetId = null;
-      }}
-      on:select={(e) => {
-        selectSticker(e.detail.sticker);
-        showPackModal = false;
-        openedSetId = null;
-      }}
-    />
-  {/if}
 
   {#if peekSticker}
     <div class="peek-overlay" on:click={endPeek}>

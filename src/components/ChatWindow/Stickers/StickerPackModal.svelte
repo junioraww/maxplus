@@ -17,6 +17,8 @@
   export let stickerId = null;
   export let link = null;
   export let close = null;
+  export let setBackHandler = null;
+  export let onSelect = null;
 
   const dispatch = createEventDispatcher();
 
@@ -95,12 +97,15 @@
   }
 
   function handleStickerClick(sticker) {
+    if (typeof onSelect === "function") {
+      onSelect(sticker);
+    }
     dispatch("select", { sticker });
     handleClose();
   }
 </script>
 
-<BottomSheet maxHeight="82vh" showClose={false} showHandle={true} close={handleClose}>
+<BottomSheet maxHeight="82vh" showClose={false} showHandle={true} close={handleClose} {setBackHandler}>
   <div class="pack-sheet-content">
     <div class="pack-sheet-header">
       <div class="info-group">

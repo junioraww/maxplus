@@ -73,7 +73,7 @@
   import { getAttachType } from "$lib/utils/mediaUtils";
   import { scrollToBottom } from "$lib/utils/scroll";
   import { getChatScroll } from "$lib/stores/chatScroll";
-  import { openSheet, dismissLayer } from "$lib/services/layerManager";
+  import { openSheet, openDialog, dismissLayer } from "$lib/services/layerManager";
   import Settings from "$components/ChatWindow/Settings.svelte";
   import E2eModal from "$components/ChatWindow/E2eModal.svelte";
   import Dropout from "$components/ChatWindow/Dropout.svelte";
@@ -172,8 +172,29 @@
 
   let replyTo = null;
   let editingMessage = null;
-  let historyModalMessage = null;
-  let seenByModalData = null;
+  function openEditHistoryModal(msg) {
+    if (!msg) return;
+    openDialog(EditHistoryModal, { msg });
+  }
+
+  function openSeenByModal(data) {
+    if (!data?.msg) return;
+    openDialog(SeenByModal, {
+      chat,
+      msg: data.msg,
+      readers: data.readers || [],
+    });
+  }
+
+  function openComplaintModal(msg) {
+    if (!msg) return;
+    openDialog(ComplaintModal, {
+      messageId: msg.id,
+      chatId: chat?.id || chatId,
+      onSuccess: () => showAlert("Жалоба отправлена"),
+      onError: () => showAlert("Не удалось отправить жалобу"),
+    });
+  }
 
   let settingsShown = false;
   let dropoutActiveAt;
@@ -189,7 +210,6 @@
     const m = $messages?.find((x) => String(x.id) === String(id));
     return m && Number(m.sender) === Number($currentUser);
   }) || (chat?.owner && Number(chat.owner) === Number($currentUser));
-  let complaintMessage = null;
   let isDragSelecting = false;
   let dragSelectStartY = null;
   let dragSelectStartX = null;
@@ -197,10 +217,11 @@
 
   function handleOpenStickerPack(sticker) {
     if (!sticker) return;
-    activeStickerPack = {
+    openSheet(StickerPackModal, {
       stickerId: sticker.stickerId ? Number(sticker.stickerId) : null,
       setId: (sticker.setId || sticker.stickerPackId) ? Number(sticker.setId || sticker.stickerPackId) : null,
-    };
+      onSelect: (selectedSticker) => inputComponent?.sendSticker?.(selectedSticker),
+    });
   }
 
   let allRendered = false;
@@ -895,7 +916,7 @@
   );
 
   function handleReportAndLeave() {
-    complaintMessage = { id: 0 };
+    openComplaintModal({ id: 0 });
   }
 
   $: cachedContact = chat?.type === "DIALOG" ? getContact(avatarUserId) : writable(undefined);
@@ -2054,7 +2075,7 @@
                 on:openMedia={(e) => openMedia(e.detail.attach, e.detail.originEl)}
                 on:openChat={() => openChat(chat.id, msg.id)}
                 on:openStickerPack={(e) => handleOpenStickerPack(e.detail.sticker)}
-                on:openHistory={(e) => (historyModalMessage = e.detail.msg)}
+                on:openHistory={(e) => openEditHistoryModal(e.detail.msg)}
                 on:react={handleMessageReact}
                 on:toggleSelect={(e) => toggleMessageSelection(e.detail.id)}
                 on:messageClick={(e) => handleMessageClick(e.detail.msg, e.detail.e)}
@@ -2080,34 +2101,18 @@
     {chat}
     on:reply={(e) => (replyTo = e.detail.id)}
     on:edit={(e) => (editingMessage = e.detail.msg)}
-    on:history={(e) => (historyModalMessage = e.detail.msg)}
-    on:seenBy={(e) => (seenByModalData = e.detail)}
+    on:history={(e) => openEditHistoryModal(e.detail.msg)}
+    on:seenBy={(e) => openSeenByModal(e.detail)}
     on:copyText={(e) => handleCopyText(e.detail.msg)}
     on:copyMedia={(e) => handleCopyMedia(e.detail.msg)}
     on:saveMedia={(e) => handleSaveMedia(e.detail.msg)}
     on:shareLink={(e) => handleShareLink(e.detail.msg)}
     on:forward={(e) => handleStartForward([e.detail.msg])}
     on:select={(e) => startSelection(chat?.id || chatId, e.detail.msg?.id)}
-    on:report={(e) => (complaintMessage = e.detail.msg)}
+    on:report={(e) => openComplaintModal(e.detail.msg)}
     on:delete={(e) => promptDelete([e.detail.msg?.id])}
     on:close={handleDropout}
   />
-
-  {#if historyModalMessage}
-    <EditHistoryModal
-      msg={historyModalMessage}
-      on:close={() => (historyModalMessage = null)}
-    />
-  {/if}
-
-  {#if seenByModalData}
-    <SeenByModal
-      chat={chat}
-      msg={seenByModalData.msg}
-      readers={seenByModalData.readers}
-      on:close={() => (seenByModalData = null)}
-    />
-  {/if}
 
   {#if failedActionMessage}
     <BottomSheet
@@ -2127,18 +2132,6 @@
         </button>
       </div>
     </BottomSheet>
-  {/if}
-
-  {#if activeStickerPack}
-    <StickerPackModal
-      setId={activeStickerPack.setId}
-      stickerId={activeStickerPack.stickerId}
-      on:close={() => (activeStickerPack = null)}
-      on:select={(e) => {
-        activeStickerPack = null;
-        inputComponent?.sendSticker?.(e.detail.sticker);
-      }}
-    />
   {/if}
 
   {#if showBotStart}
@@ -2205,21 +2198,6 @@
     {unreadBadgeCount}
     on:click={scrollController.jumpToBottom}
   />
-
-  {#if complaintMessage}
-    <ComplaintModal
-      messageId={complaintMessage.id}
-      chatId={chat?.id || chatId}
-      on:close={() => (complaintMessage = null)}
-      on:success={() => {
-        complaintMessage = null;
-        showAlert("Жалоба отправлена");
-      }}
-      on:error={() => {
-        showAlert("Не удалось отправить жалобу");
-      }}
-    />
-  {/if}
 
   {#if deleteConfirmActive}
     <ConfirmModal

@@ -4,6 +4,7 @@
   import { pollsStore, fetchPollUpdates, castPollVote, updatePollInStore } from "$lib/stores/polls";
   import { currentUser } from "$lib/stores/api";
   import { showAlert } from "$lib/utils/alert";
+  import { openDialog } from "$lib/services/layerManager";
   import PollVotersModal from "$components/ChatWindow/PollVotersModal.svelte";
 
   export let attach;
@@ -18,8 +19,6 @@
   let canvasEl;
   let isSubmitting = false;
   let showExportMenu = false;
-  let showVotersModal = false;
-  let selectedVotersAnswer = null;
 
   let optimisticVotedIds = new Set();
   let pendingVoteIds = null;
@@ -218,13 +217,17 @@
     if (isAnonymous) return;
     const aid = Number(ans.answerId ?? ans.id ?? 0);
     const res = resultMap.get(aid);
-    selectedVotersAnswer = {
-      ...ans,
-      answerId: aid,
-      voteCount: Number(res?.voteCount || 0),
-      votes: res?.votes || [],
-    };
-    showVotersModal = true;
+    openDialog(PollVotersModal, {
+      chatId,
+      messageId,
+      pollId,
+      answer: {
+        ...ans,
+        answerId: aid,
+        voteCount: Number(res?.voteCount || 0),
+        votes: res?.votes || [],
+      },
+    });
   }
 
   function launchConfetti(origin) {
@@ -353,10 +356,6 @@
     showExportMenu = false;
   }
 </script>
-
-{#if showVotersModal && selectedVotersAnswer}
-  <PollVotersModal {chatId} {messageId} {pollId} answer={selectedVotersAnswer} on:close={() => { showVotersModal = false; selectedVotersAnswer = null; }} />
-{/if}
 
 {#if showExportMenu}
   <div class="poll-dropout-backdrop" on:click|preventDefault|stopPropagation={() => (showExportMenu = false)} on:pointerdown|preventDefault|stopPropagation={() => (showExportMenu = false)}></div>
