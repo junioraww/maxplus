@@ -986,6 +986,7 @@ export default class MobileApi extends BaseAPI {
     }
 
     this.syncing = (async () => {
+      let hasNewCalls = false;
       try {
         console.warn("Синхронизируем!");
 
@@ -1031,6 +1032,7 @@ export default class MobileApi extends BaseAPI {
       console.log("Ответ sync", synced);
 
       const { chats, contacts, profile, config } = synced;
+      hasNewCalls = Boolean(synced?.videoChatHistory);
 
       if (profile.contact) {
         const fullContact = {
@@ -1178,6 +1180,18 @@ export default class MobileApi extends BaseAPI {
 
         ensureReactionsLoaded().catch(() => {});
         loadStoriesCacheFromDisk().then(() => refreshStoriesFeed(this)).catch(() => {});
+        if (hasNewCalls) {
+          invoke("get_calls", { forward: false, count: 100 })
+            .then((calls) => {
+              if (calls) {
+                const normalized = Array.isArray(calls)
+                  ? { history: calls, hasMore: false }
+                  : (calls.history ? calls : { history: [], ...calls });
+                currentSessionCalls.set(normalized);
+              }
+            })
+            .catch(() => {});
+        }
       }
     }
   })();
