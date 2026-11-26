@@ -67,8 +67,10 @@
 
   .alert {
     pointer-events: auto;
-    background-color: #222222;
-    color: #ffffff;
+    background-color: var(--bg-surface-elevated);
+    color: var(--text-primary);
+    border: 1px solid var(--border-subtle);
+    box-shadow: var(--shadow-elevated);
     padding: 14px 18px;
     border-radius: 14px;
 
@@ -88,7 +90,7 @@
 
   .alert.clickable:active {
     transform: scale(0.97);
-    background-color: #333333;
+    background-color: var(--bg-surface-secondary);
   }
 
   .text {
@@ -101,7 +103,7 @@
 
   .description {
     font-size: 13px;
-    color: #b3b3b3;
+    color: var(--text-secondary);
     line-height: 1.4;
     word-break: break-word;
     overflow-wrap: anywhere;
@@ -110,8 +112,8 @@
   .caller-info {
     display: flex;
     font-size: 11px;
-    color: #666666;
-    font-family: monospace;
+    color: var(--text-muted);
+    font-family: var(--font-family-mono);
     line-height: 1.2;
     margin-bottom: 2px;
     width: 100%;

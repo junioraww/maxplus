@@ -70,7 +70,7 @@
         <img
           src={downloading ? "/icons/reload.svg" : "/icons/crypto.svg"}
           class:spin={downloading}
-          class="icon"
+          class="icon theme-icon"
           alt="icon"
         />
         <div class="info-text">
@@ -123,11 +123,11 @@
   }
 
   .description-card {
-    background: #24252a;
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: var(--settings-card-bg, var(--bg-surface));
+    border: 1px solid var(--border-card);
     border-radius: 14px;
     padding: 16px;
-    color: #aaa;
+    color: var(--settings-text-secondary, var(--text-secondary));
     font-size: 0.92rem;
     line-height: 1.5;
   }
@@ -136,8 +136,8 @@
     display: flex;
     align-items: center;
     gap: 14px;
-    background: #24252a;
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: var(--settings-card-bg, var(--bg-surface));
+    border: 1px solid var(--border-card);
     border-radius: 14px;
     padding: 16px;
   }
@@ -153,11 +153,11 @@
 
   .info-text {
     font-size: 0.95rem;
-    color: #ddd;
+    color: var(--settings-text-secondary, var(--text-secondary));
   }
 
   .info-text b {
-    color: #fff;
+    color: var(--settings-text-primary, var(--text-primary));
   }
 
   .input-card {
@@ -168,17 +168,17 @@
 
   label {
     font-size: 0.78rem;
-    color: #7b7b88;
+    color: var(--settings-text-muted, var(--text-muted));
     text-transform: uppercase;
     letter-spacing: 0.5px;
   }
 
   input {
     width: 100%;
-    background: #1f1f26;
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: var(--settings-input-bg, var(--bg-input));
+    border: 1px solid var(--settings-input-border, var(--border-subtle));
     border-radius: 12px;
-    color: white;
+    color: var(--settings-text-primary, var(--text-primary));
     padding: 14px;
     box-sizing: border-box;
     font-size: 0.95rem;

@@ -10,7 +10,7 @@
     unfavoriteSet,
     clearRecentStickers,
   } from "$lib/stores/stickers";
-  import { openScreen } from "$lib/services/layerManager";
+  import { openScreen, openSheet } from "$lib/services/layerManager";
   import { showAlert } from "$lib/utils/alert";
   import StickerPackModal from "./StickerPackModal.svelte";
   import StickerMedia from "./StickerMedia.svelte";
@@ -39,7 +39,7 @@
   }
 
   function handleOpenPack(setId) {
-    openScreen(StickerPackModal, { setId });
+    openSheet(StickerPackModal, { setId });
   }
 
   function openRecentView() {
@@ -253,8 +253,8 @@
   .sticker-settings-screen {
     width: 100%;
     height: 100%;
-    background: var(--bg-app, #101114);
-    color: var(--text-primary, #ffffff);
+    background: var(--bg-app);
+    color: var(--text-primary);
     display: flex;
     flex-direction: column;
     overflow: hidden;
@@ -262,14 +262,15 @@
   }
 
   .screen-header {
-    height: 56px;
+    height: calc(56px + var(--safe-top, 0px));
     display: flex;
     align-items: center;
     gap: 10px;
-    padding: 0 12px;
-    background: var(--bg-app, #101114);
+    padding: var(--safe-top, 0px) 12px 0;
+    background: var(--bg-topbar, var(--bg-app));
     flex-shrink: 0;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    border-bottom: 1px solid var(--border-subtle);
+    box-sizing: border-box;
   }
 
   .back-btn {
@@ -278,7 +279,7 @@
     border-radius: 50%;
     border: none;
     background: transparent;
-    color: var(--text-primary, #ffffff);
+    color: var(--icon-primary, var(--text-primary));
     display: flex;
     align-items: center;
     justify-content: center;
@@ -287,7 +288,7 @@
   }
 
   .back-btn:hover {
-    background: rgba(255, 255, 255, 0.08);
+    background: var(--bg-hover);
   }
 
   .header-title {
@@ -295,6 +296,7 @@
     margin: 0;
     font-size: 18px;
     font-weight: 600;
+    color: var(--text-primary);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -303,7 +305,7 @@
   .header-text-btn {
     border: none;
     background: transparent;
-    color: var(--accent-color, #3b82f6);
+    color: var(--accent-primary);
     font-size: 14px;
     font-weight: 600;
     padding: 6px 10px;
@@ -313,7 +315,7 @@
   }
 
   .header-text-btn:hover {
-    background: rgba(59, 130, 246, 0.12);
+    background: var(--accent-subtle);
   }
 
   .settings-scroll-content {
@@ -323,7 +325,7 @@
   }
 
   .settings-card {
-    background: rgba(255, 255, 255, 0.04);
+    background: var(--bg-surface);
     border-radius: 16px;
     overflow: hidden;
   }
@@ -345,7 +347,7 @@
   }
 
   .settings-row:hover {
-    background: rgba(255, 255, 255, 0.04);
+    background: var(--bg-hover);
   }
 
   .row-left {
@@ -357,7 +359,7 @@
   }
 
   .row-icon {
-    color: rgba(255, 255, 255, 0.72);
+    color: var(--icon-secondary);
     flex-shrink: 0;
   }
 
@@ -371,6 +373,7 @@
   .row-title {
     font-size: 15px;
     font-weight: 500;
+    color: var(--text-primary);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -378,18 +381,18 @@
 
   .row-subtitle {
     font-size: 13px;
-    color: rgba(255, 255, 255, 0.55);
+    color: var(--text-secondary);
   }
 
   .chevron-icon {
-    color: rgba(255, 255, 255, 0.45);
+    color: var(--icon-muted);
     transform: rotate(-90deg);
     flex-shrink: 0;
   }
 
   .row-divider {
     height: 1px;
-    background: rgba(255, 255, 255, 0.06);
+    background: var(--border-subtle);
     margin: 0 14px;
   }
 
@@ -397,7 +400,7 @@
     font-size: 12px;
     font-weight: 600;
     letter-spacing: 0.04em;
-    color: rgba(255, 255, 255, 0.5);
+    color: var(--text-muted);
     margin: 18px 8px 8px;
   }
 
@@ -405,7 +408,7 @@
     padding: 20px 14px;
     text-align: center;
     font-size: 14px;
-    color: rgba(255, 255, 255, 0.5);
+    color: var(--text-muted);
   }
 
   .pack-thumb {
@@ -413,7 +416,7 @@
     height: 40px;
     border-radius: 10px;
     object-fit: contain;
-    background: rgba(255, 255, 255, 0.05);
+    background: var(--bg-hover);
     flex-shrink: 0;
   }
 
@@ -421,7 +424,8 @@
     width: 40px;
     height: 40px;
     border-radius: 10px;
-    background: rgba(255, 255, 255, 0.08);
+    background: var(--bg-pill);
+    color: var(--text-primary);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -443,7 +447,7 @@
     border: none;
     border-radius: 50%;
     background: transparent;
-    color: rgba(255, 255, 255, 0.65);
+    color: var(--icon-secondary);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -452,13 +456,13 @@
   }
 
   .row-action-btn:hover {
-    background: rgba(255, 255, 255, 0.08);
-    color: #ffffff;
+    background: var(--bg-hover);
+    color: var(--icon-primary);
   }
 
   .row-action-btn.danger:hover {
-    background: rgba(239, 68, 68, 0.15);
-    color: #ef4444;
+    background: var(--status-danger-subtle);
+    color: var(--status-danger);
   }
 
   .stickers-grid {

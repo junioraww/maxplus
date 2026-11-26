@@ -148,8 +148,8 @@
   }
 
   .modal-card {
-    background: #1e2126;
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: var(--bg-surface);
+    border: 1px solid var(--border-subtle);
     border-radius: 20px;
     width: 100%;
     max-width: 480px;
@@ -157,6 +157,7 @@
     display: flex;
     flex-direction: column;
     overflow: hidden;
+    box-shadow: var(--shadow-elevated);
   }
 
   .modal-header {
@@ -174,20 +175,20 @@
   .modal-title {
     font-size: 17px;
     font-weight: 700;
-    color: #fff;
+    color: var(--text-primary);
     margin: 0;
   }
 
   .modal-subtitle {
     font-size: 13px;
-    color: #8b929e;
+    color: var(--text-secondary);
     margin-top: 2px;
   }
 
   .close-btn {
-    background: rgba(255, 255, 255, 0.06);
+    background: var(--bg-pill);
     border: none;
-    color: #8b929e;
+    color: var(--icon-secondary);
     width: 32px;
     height: 32px;
     border-radius: 50%;
@@ -200,8 +201,8 @@
   }
 
   .close-btn:hover {
-    background: rgba(255, 255, 255, 0.12);
-    color: #fff;
+    background: var(--bg-active);
+    color: var(--icon-primary);
   }
 
   .search-wrap {
@@ -210,13 +211,13 @@
     gap: 8px;
     margin: 0 16px 12px;
     padding: 8px 12px;
-    background: rgba(255, 255, 255, 0.06);
+    background: var(--bg-input);
     border-radius: 12px;
-    border: 1px solid rgba(255, 255, 255, 0.06);
+    border: 1px solid var(--border-subtle);
   }
 
   .search-icon {
-    color: #8b929e;
+    color: var(--icon-muted);
     flex-shrink: 0;
   }
 
@@ -225,19 +226,19 @@
     background: none;
     border: none;
     outline: none;
-    color: #fff;
+    color: var(--text-primary);
     font-size: 14px;
     font-family: inherit;
   }
 
   .search-input::placeholder {
-    color: #8b929e;
+    color: var(--text-muted);
   }
 
   .clear-btn {
     background: none;
     border: none;
-    color: #8b929e;
+    color: var(--icon-muted);
     cursor: pointer;
     padding: 2px;
     display: flex;
@@ -250,7 +251,6 @@
     overflow-y: auto;
     padding: 0 16px 16px;
     scrollbar-width: thin;
-    scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
   }
 
   .empty-state {
@@ -258,7 +258,7 @@
     align-items: center;
     justify-content: center;
     padding: 40px 0;
-    color: #8b929e;
+    color: var(--text-muted);
     font-size: 14px;
   }
 
@@ -274,12 +274,12 @@
     justify-content: space-between;
     padding: 8px 10px;
     border-radius: 12px;
-    background: rgba(255, 255, 255, 0.03);
+    background: var(--bg-hover);
     transition: background-color 0.15s;
   }
 
   .pack-row:hover {
-    background: rgba(255, 255, 255, 0.06);
+    background: var(--bg-active);
   }
 
   .pack-info-btn {
@@ -300,7 +300,7 @@
     height: 40px;
     border-radius: 8px;
     object-fit: contain;
-    background: rgba(255, 255, 255, 0.04);
+    background: var(--bg-hover);
     flex-shrink: 0;
   }
 
@@ -308,13 +308,13 @@
     width: 40px;
     height: 40px;
     border-radius: 8px;
-    background: rgba(255, 255, 255, 0.08);
+    background: var(--bg-pill);
     display: flex;
     align-items: center;
     justify-content: center;
     font-size: 16px;
     font-weight: 700;
-    color: #fff;
+    color: var(--text-primary);
     flex-shrink: 0;
   }
 
@@ -327,7 +327,7 @@
   .pack-title {
     font-size: 14px;
     font-weight: 600;
-    color: #fff;
+    color: var(--text-primary);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -335,7 +335,7 @@
 
   .pack-stickers-count {
     font-size: 12px;
-    color: #8b929e;
+    color: var(--text-secondary);
     margin-top: 2px;
   }
 

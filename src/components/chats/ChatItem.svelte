@@ -593,6 +593,7 @@
     flex-shrink: 0;
     opacity: 0.65;
     margin-left: 2px;
+    filter: brightness(0) invert(var(--icon-invert, 1));
   }
 
   .meta {
@@ -625,6 +626,7 @@
     width: 14px;
     height: 14px;
     opacity: 0.75;
+    filter: brightness(0) invert(var(--icon-invert, 1));
   }
 
   .pin-icon {

@@ -92,17 +92,17 @@
 
     <div class="quick-actions">
       <button class="action-chip" on:click={() => copyText(log.url, "url")}>
-        <img src="/icons/copy.svg" alt="" />
+        <img src="/icons/copy.svg" alt="" class="theme-icon" />
         <span>{copiedField === "url" ? "Скопировано!" : "URL"}</span>
       </button>
 
       <button class="action-chip" on:click={() => copyText(generateCurl(log), "curl")}>
-        <img src="/icons/copy.svg" alt="" />
+        <img src="/icons/copy.svg" alt="" class="theme-icon" />
         <span>{copiedField === "curl" ? "Скопировано!" : "cURL"}</span>
       </button>
 
       <button class="action-chip" on:click={() => copyText(JSON.stringify(log, null, 2), "all")}>
-        <img src="/icons/copy.svg" alt="" />
+        <img src="/icons/copy.svg" alt="" class="theme-icon" />
         <span>{copiedField === "all" ? "Скопировано!" : "Все данные (JSON)"}</span>
       </button>
 

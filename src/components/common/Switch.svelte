@@ -68,7 +68,7 @@
     position: relative;
     width: 44px;
     height: 24px;
-    background: rgba(255, 255, 255, 0.16);
+    background: var(--text-subtle, rgba(120, 120, 128, 0.32));
     border-radius: 12px;
     transition: background-color 0.22s cubic-bezier(0.25, 0.1, 0.25, 1);
     box-sizing: border-box;

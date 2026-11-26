@@ -412,7 +412,7 @@
     flex-direction: column;
     padding: 16px;
     box-sizing: border-box;
-    color: #ffffff;
+    color: var(--text-primary);
   }
 
   .toast-popup {
@@ -420,8 +420,8 @@
     top: 14px;
     left: 50%;
     transform: translateX(-50%);
-    background: #6366f1;
-    color: white;
+    background: var(--accent-primary);
+    color: var(--accent-contrast, #ffffff);
     padding: 5px 14px;
     border-radius: 16px;
     font-size: 0.8rem;
@@ -438,9 +438,9 @@
 
   .count {
     font-size: 0.75rem;
-    color: #ffffff;
+    color: var(--text-primary);
     opacity: 0.85;
-    background: #333;
+    background: var(--bg-pill);
     padding: 3px 8px;
     border-radius: 20px;
     white-space: nowrap;
@@ -450,8 +450,8 @@
     width: 28px;
     height: 28px;
     border: none;
-    background: #2b2b33;
-    color: #bbb;
+    background: var(--bg-surface-secondary);
+    color: var(--icon-secondary);
     cursor: pointer;
     display: flex;
     align-items: center;
@@ -465,14 +465,15 @@
   }
 
   .icon-btn:hover {
-    background: #383844;
-    color: #fff;
+    background: var(--bg-active);
+    color: var(--icon-primary);
   }
 
   .icon-btn img {
     width: 14px;
     height: 14px;
     opacity: 0.8;
+    filter: brightness(0) invert(var(--icon-invert, 1));
   }
 
   .icon-btn:hover img {
@@ -511,9 +512,9 @@
     font-size: 0.8rem;
     font-weight: 600;
     border-radius: 6px;
-    border: 1px solid #333;
-    background: #2b2b33;
-    color: #aaa;
+    border: 1px solid var(--border-subtle);
+    background: var(--bg-surface-secondary);
+    color: var(--text-muted);
     cursor: pointer;
     text-align: center;
     transition: background 0.15s, color 0.15s;
@@ -521,9 +522,9 @@
   }
 
   .tab.active {
-    background: #6366f1;
-    color: #fff;
-    border-color: #6366f1;
+    background: var(--accent-primary);
+    color: var(--accent-contrast, #ffffff);
+    border-color: var(--accent-primary);
   }
 
   .logs-container {
@@ -536,7 +537,8 @@
   }
 
   .log-item {
-    background: #2b2b33;
+    background: var(--settings-card-bg, var(--bg-surface));
+    border: 1px solid var(--border-card);
     border-radius: 8px;
     cursor: pointer;
     transition: background 0.1s;
@@ -547,13 +549,12 @@
   }
 
   .log-item:hover {
-    background: #32323b;
-    border-color: #4a4a55;
+    background: var(--settings-card-hover, var(--bg-hover));
   }
 
   .log-item.expanded {
-    border-color: #6366f1;
-    background: #2d2d38;
+    border-color: var(--accent-primary);
+    background: var(--bg-surface-secondary);
     white-space: normal;
     height: auto;
   }
@@ -571,7 +572,7 @@
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    color: #ffffff;
+    color: var(--text-primary);
     opacity: 0.9;
   }
 
@@ -611,8 +612,8 @@
 
   .log-content {
     padding: 10px 12px 22px 12px;
-    border-top: 1px solid #3a3a42;
-    background: #1e1e24;
+    border-top: 1px solid var(--border-subtle);
+    background: var(--bg-surface-secondary);
     overflow: auto;
     position: relative;
     cursor: default;
@@ -625,9 +626,9 @@
   }
 
   .quick-btn {
-    background: #2b2b36;
-    border: 1px solid #3d3d4c;
-    color: #ddd;
+    background: var(--bg-pill);
+    border: 1px solid var(--border-subtle);
+    color: var(--text-primary);
     font-size: 0.72rem;
     padding: 3px 8px;
     border-radius: 5px;
@@ -635,21 +636,21 @@
   }
 
   .quick-btn:hover {
-    background: #363644;
-    color: #fff;
+    background: var(--bg-active);
+    color: var(--text-primary);
   }
 
   .block-color {
-    color: #f87171;
-    border-color: rgba(239, 68, 68, 0.4);
+    color: var(--status-danger);
+    border-color: var(--status-danger-subtle);
   }
 
   pre {
     margin: 6px 0 0;
     font-size: 0.8rem;
-    color: #a5b4fc;
+    color: var(--text-secondary);
     line-height: 1.4;
-    font-family: "Fira Code", monospace;
+    font-family: var(--font-family-mono);
     white-space: pre-wrap;
     word-break: break-all;
     max-height: 300px;
@@ -679,7 +680,7 @@
   .rule-title {
     flex: 1;
     min-width: 0;
-    color: #ffffff;
+    color: var(--text-primary);
   }
 
   .rule-del-btn {

@@ -236,7 +236,7 @@
 
     <div class="settings-sections">
       <SettingsSection>
-        <SettingsRow icon="bot.svg" noIconInvert={true} title="Войти в Сферум" on:click={() => openSferumApp()} />
+        <SettingsRow icon="bot.svg" title="Войти в Сферум" on:click={() => openSferumApp()} />
       </SettingsSection>
 
       <SettingsSection>

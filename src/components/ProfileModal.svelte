@@ -2224,16 +2224,15 @@
 {/if}
 
 <style>
-  :root,
   .profile-window {
-    --profile-bg: #0f1013;
-    --profile-card-bg: #21232c;
-    --profile-card-hover: #262933;
-    --profile-primary-blue: #007aff;
-    --profile-text-primary: #ffffff;
-    --profile-text-secondary: #8e8e93;
-    --profile-danger: #ff3b30;
-    --profile-radius: 16px;
+    --profile-bg: var(--bg-app);
+    --profile-card-bg: var(--bg-surface);
+    --profile-card-hover: var(--bg-surface-elevated);
+    --profile-primary-blue: var(--accent-primary);
+    --profile-text-primary: var(--text-primary);
+    --profile-text-secondary: var(--text-secondary);
+    --profile-danger: var(--status-danger);
+    --profile-radius: var(--card-border-radius, 16px);
   }
 
   .profile-window {

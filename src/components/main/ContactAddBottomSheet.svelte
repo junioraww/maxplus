@@ -76,7 +76,7 @@
   <div class="sheet-content">
     <div class="avatar-preview">
       <div class="avatar-circle">
-        <img src="/icons/profile.svg" alt="" width="36" height="36" />
+        <img src="/icons/profile.svg" alt="" width="36" height="36" class="theme-icon" />
       </div>
     </div>
 

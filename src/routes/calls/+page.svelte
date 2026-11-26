@@ -462,7 +462,7 @@
   <div class="action-tiles">
     <div class="action-tile" on:click={handleCreateConference} role="button" tabindex="0">
       <div class="tile-icon-box tile-icon--blue">
-        <img src="/icons/link.svg" alt="" width="18" height="18" />
+        <span class="mask-icon" style="-webkit-mask-image: url('/icons/link.svg'); mask-image: url('/icons/link.svg'); width: 18px; height: 18px;"></span>
       </div>
       <div class="tile-info">
         <span class="tile-title">Ссылка</span>
@@ -472,7 +472,7 @@
 
     <div class="action-tile" on:click={() => openCallSheet('join')} role="button" tabindex="0">
       <div class="tile-icon-box tile-icon--green">
-        <img src="/icons/user-plus.svg" alt="" width="18" height="18" />
+        <span class="mask-icon" style="-webkit-mask-image: url('/icons/user-plus.svg'); mask-image: url('/icons/user-plus.svg'); width: 18px; height: 18px;"></span>
       </div>
       <div class="tile-info">
         <span class="tile-title">Присоединиться</span>
@@ -531,7 +531,7 @@
       {:else if allCalls.length === 0}
         <div class="empty-box" in:fade={{ duration: 180 }}>
           <div class="empty-icon-wrap">
-            <img src="/icons/call-accept.svg" alt="" width="44" height="44" />
+            <span class="mask-icon" style="-webkit-mask-image: url('/icons/call-accept.svg'); mask-image: url('/icons/call-accept.svg'); width: 44px; height: 44px;"></span>
           </div>
           <p class="empty-headline">История звонков пуста</p>
           <p class="empty-caption">Создайте конференцию или выберите контакт для звонка</p>
@@ -563,13 +563,13 @@
                 <div class="sub-row">
                   <div class="status-marker status--{call.status}">
                     {#if call.status === 'outgoing'}
-                      <img src="/icons/call-outgoing.svg" alt="" width="14" height="14" />
+                      <span class="mask-icon" style="-webkit-mask-image: url('/icons/call-outgoing.svg'); mask-image: url('/icons/call-outgoing.svg'); width: 14px; height: 14px;"></span>
                     {:else if call.status === 'incoming'}
-                      <img src="/icons/call-incoming.svg" alt="" width="14" height="14" />
+                      <span class="mask-icon" style="-webkit-mask-image: url('/icons/call-incoming.svg'); mask-image: url('/icons/call-incoming.svg'); width: 14px; height: 14px;"></span>
                     {:else if call.status === 'missed'}
-                      <img src="/icons/call-missed.svg" alt="" width="14" height="14" />
+                      <span class="mask-icon" style="-webkit-mask-image: url('/icons/call-missed.svg'); mask-image: url('/icons/call-missed.svg'); width: 14px; height: 14px;"></span>
                     {:else}
-                      <img src="/icons/call-canceled.svg" alt="" width="14" height="14" />
+                      <span class="mask-icon" style="-webkit-mask-image: url('/icons/call-canceled.svg'); mask-image: url('/icons/call-canceled.svg'); width: 14px; height: 14px;"></span>
                     {/if}
                   </div>
 
@@ -580,7 +580,7 @@
 
                   {#if call.isVideo}
                     <span class="video-indicator" title="Видеозвонок">
-                      <img src="/icons/video.svg" alt="" width="13" height="13" />
+                      <span class="mask-icon" style="-webkit-mask-image: url('/icons/video.svg'); mask-image: url('/icons/video.svg'); width: 13px; height: 13px;"></span>
                     </span>
                   {/if}
                 </div>
@@ -592,7 +592,7 @@
                   on:click|stopPropagation={() => handleCallAction(call)}
                   aria-label="Позвонить"
                 >
-                  <img src="/icons/call-accept.svg" alt="" width="18" height="18" />
+                  <span class="mask-icon" style="-webkit-mask-image: url('/icons/call-accept.svg'); mask-image: url('/icons/call-accept.svg'); width: 18px; height: 18px;"></span>
                 </button>
 
                 <button
@@ -600,32 +600,32 @@
                   on:click={(e) => toggleCallMenu(call.id, e)}
                   aria-label="Опции"
                 >
-                  <img src="/icons/more-vertical.svg" alt="" width="18" height="18" />
+                  <span class="mask-icon" style="-webkit-mask-image: url('/icons/more-vertical.svg'); mask-image: url('/icons/more-vertical.svg'); width: 18px; height: 18px;"></span>
                 </button>
 
                 {#if activeMenuCallId === call.id}
                   <div class="context-popup" in:scale={{ start: 0.9, duration: 150 }} on:click|stopPropagation>
                     {#if call.peerId}
                       <button class="popup-item" on:click={() => { activeMenuCallId = null; promptStartCall(call.peerId, call.name, call.avatar, 'audio'); }}>
-                        <img src="/icons/call-accept.svg" alt="" width="16" height="16" />
+                        <span class="mask-icon" style="-webkit-mask-image: url('/icons/call-accept.svg'); mask-image: url('/icons/call-accept.svg'); width: 16px; height: 16px;"></span>
                         <span>Аудиозвонок</span>
                       </button>
 
                       <button class="popup-item" on:click={() => { activeMenuCallId = null; promptStartCall(call.peerId, call.name, call.avatar, 'video'); }}>
-                        <img src="/icons/video.svg" alt="" width="16" height="16" />
+                        <span class="mask-icon" style="-webkit-mask-image: url('/icons/video.svg'); mask-image: url('/icons/video.svg'); width: 16px; height: 16px;"></span>
                         <span>Видеозвонок</span>
                       </button>
                     {/if}
 
                     <button class="popup-item" on:click={() => handleOpenChat(call.chatId, call.peerId)}>
-                      <img src="/icons/chats.svg" alt="" width="16" height="16" />
+                      <span class="mask-icon" style="-webkit-mask-image: url('/icons/chats.svg'); mask-image: url('/icons/chats.svg'); width: 16px; height: 16px;"></span>
                       <span>Перейти в чат</span>
                     </button>
 
                     <div class="popup-divider"></div>
 
                     <button class="popup-item popup-item--danger" on:click={() => deleteCallEntry(call)}>
-                      <img src="/icons/trash.svg" alt="" width="16" height="16" />
+                      <span class="mask-icon" style="-webkit-mask-image: url('/icons/trash.svg'); mask-image: url('/icons/trash.svg'); width: 16px; height: 16px;"></span>
                       <span>Удалить из журнала</span>
                     </button>
                   </div>
@@ -646,7 +646,7 @@
       {:else if missedCalls.length === 0}
         <div class="empty-box" in:fade={{ duration: 180 }}>
           <div class="empty-icon-wrap">
-            <img src="/icons/call-accept.svg" alt="" width="44" height="44" />
+            <span class="mask-icon" style="-webkit-mask-image: url('/icons/call-accept.svg'); mask-image: url('/icons/call-accept.svg'); width: 44px; height: 44px;"></span>
           </div>
           <p class="empty-headline">Нет пропущенных звонков</p>
           <p class="empty-caption">Здесь появятся пропущенные вызовы</p>
@@ -677,7 +677,7 @@
 
                 <div class="sub-row">
                   <div class="status-marker status--missed">
-                    <img src="/icons/call-missed.svg" alt="" width="14" height="14" />
+                    <span class="mask-icon" style="-webkit-mask-image: url('/icons/call-missed.svg'); mask-image: url('/icons/call-missed.svg'); width: 14px; height: 14px;"></span>
                   </div>
 
                   <span class="call-type-label">
@@ -687,7 +687,7 @@
 
                   {#if call.isVideo}
                     <span class="video-indicator" title="Видеозвонок">
-                      <img src="/icons/video.svg" alt="" width="13" height="13" />
+                      <span class="mask-icon" style="-webkit-mask-image: url('/icons/video.svg'); mask-image: url('/icons/video.svg'); width: 13px; height: 13px;"></span>
                     </span>
                   {/if}
                 </div>
@@ -699,7 +699,7 @@
                   on:click|stopPropagation={() => handleCallAction(call)}
                   aria-label="Позвонить"
                 >
-                  <img src="/icons/call-accept.svg" alt="" width="18" height="18" />
+                  <span class="mask-icon" style="-webkit-mask-image: url('/icons/call-accept.svg'); mask-image: url('/icons/call-accept.svg'); width: 18px; height: 18px;"></span>
                 </button>
 
                 <button
@@ -707,32 +707,32 @@
                   on:click={(e) => toggleCallMenu(call.id, e)}
                   aria-label="Опции"
                 >
-                  <img src="/icons/more-vertical.svg" alt="" width="18" height="18" />
+                  <span class="mask-icon" style="-webkit-mask-image: url('/icons/more-vertical.svg'); mask-image: url('/icons/more-vertical.svg'); width: 18px; height: 18px;"></span>
                 </button>
 
                 {#if activeMenuCallId === call.id}
                   <div class="context-popup" in:scale={{ start: 0.9, duration: 150 }} on:click|stopPropagation>
                     {#if call.peerId}
                       <button class="popup-item" on:click={() => { activeMenuCallId = null; promptStartCall(call.peerId, call.name, call.avatar, 'audio'); }}>
-                        <img src="/icons/call-accept.svg" alt="" width="16" height="16" />
+                        <span class="mask-icon" style="-webkit-mask-image: url('/icons/call-accept.svg'); mask-image: url('/icons/call-accept.svg'); width: 16px; height: 16px;"></span>
                         <span>Аудиозвонок</span>
                       </button>
 
                       <button class="popup-item" on:click={() => { activeMenuCallId = null; promptStartCall(call.peerId, call.name, call.avatar, 'video'); }}>
-                        <img src="/icons/video.svg" alt="" width="16" height="16" />
+                        <span class="mask-icon" style="-webkit-mask-image: url('/icons/video.svg'); mask-image: url('/icons/video.svg'); width: 16px; height: 16px;"></span>
                         <span>Видеозвонок</span>
                       </button>
                     {/if}
 
                     <button class="popup-item" on:click={() => handleOpenChat(call.chatId, call.peerId)}>
-                      <img src="/icons/chats.svg" alt="" width="16" height="16" />
+                      <span class="mask-icon" style="-webkit-mask-image: url('/icons/chats.svg'); mask-image: url('/icons/chats.svg'); width: 16px; height: 16px;"></span>
                       <span>Перейти в чат</span>
                     </button>
 
                     <div class="popup-divider"></div>
 
                     <button class="popup-item popup-item--danger" on:click={() => deleteCallEntry(call)}>
-                      <img src="/icons/trash.svg" alt="" width="16" height="16" />
+                      <span class="mask-icon" style="-webkit-mask-image: url('/icons/trash.svg'); mask-image: url('/icons/trash.svg'); width: 16px; height: 16px;"></span>
                       <span>Удалить из журнала</span>
                     </button>
                   </div>
@@ -774,7 +774,7 @@
     margin: 0;
     font-size: 1.17em;
     font-weight: bold;
-    color: #eee;
+    color: var(--text-primary);
   }
 
   .active-call-strip {
@@ -783,8 +783,8 @@
     gap: 12px;
     padding: 10px 14px;
     margin-bottom: 14px;
-    background: rgba(74, 222, 128, 0.12);
-    border: 1px solid rgba(74, 222, 128, 0.3);
+    background: var(--status-success-subtle);
+    border: 1px solid var(--status-success);
     border-radius: 14px;
     cursor: pointer;
     flex-shrink: 0;
@@ -794,7 +794,7 @@
     width: 10px;
     height: 10px;
     border-radius: 50%;
-    background: #4ade80;
+    background: var(--status-success);
     animation: ringGlow 1.8s infinite;
   }
 
@@ -813,19 +813,19 @@
   .active-call-name {
     font-size: 14px;
     font-weight: 600;
-    color: #fff;
+    color: var(--text-primary);
   }
 
   .active-call-status {
     font-size: 11px;
-    color: #4ade80;
+    color: var(--status-success);
   }
 
   .active-call-return {
     padding: 5px 12px;
     border-radius: 16px;
-    background: #4ade80;
-    color: #0b2413;
+    background: var(--status-success);
+    color: #ffffff;
     font-size: 12px;
     font-weight: 600;
     border: none;
@@ -847,8 +847,8 @@
     align-items: center;
     gap: 8px;
     padding: 8px 10px;
-    background: var(--bg-surface, #1e2025);
-    border: 1px solid rgba(255, 255, 255, 0.05);
+    background: var(--bg-surface);
+    border: 1px solid var(--border-card);
     border-radius: 12px;
     cursor: pointer;
     transition: background 0.18s, transform 0.12s;
@@ -861,7 +861,7 @@
   }
 
   .action-tile:hover {
-    background: var(--bg-surface-2, #26262e);
+    background: var(--bg-surface-2);
   }
 
   .action-tile:active {
@@ -879,13 +879,13 @@
   }
 
   .tile-icon--blue {
-    background: rgba(36, 139, 254, 0.15);
-    color: #248bfe;
+    background: var(--accent-subtle);
+    color: var(--accent-primary);
   }
 
   .tile-icon--green {
-    background: rgba(74, 222, 128, 0.15);
-    color: #4ade80;
+    background: var(--status-success-subtle);
+    color: var(--status-success);
   }
 
   .tile-info {
@@ -899,7 +899,7 @@
   .tile-title {
     font-size: 13px;
     font-weight: 600;
-    color: #ffffff;
+    color: var(--text-primary);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -908,7 +908,7 @@
 
   .tile-desc {
     font-size: 10.5px;
-    color: var(--text-muted, #8b929e);
+    color: var(--text-muted);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -923,10 +923,10 @@
 
   .segmented-control {
     display: flex;
-    background: var(--bg-surface, #1e2025);
+    background: var(--bg-surface);
     padding: 3px;
     border-radius: 12px;
-    border: 1px solid rgba(255, 255, 255, 0.04);
+    border: 1px solid var(--border-card);
     position: relative;
     user-select: none;
   }
@@ -937,7 +937,7 @@
     bottom: 3px;
     left: 3px;
     width: calc(50% - 3px);
-    background: var(--bg-surface-2, #26262e);
+    background: var(--bg-surface-2);
     border-radius: 9px;
     pointer-events: none;
     will-change: transform;
@@ -958,7 +958,7 @@
     border: none;
     border-radius: 9px;
     background: transparent;
-    color: var(--text-muted, #8b929e);
+    color: var(--text-muted);
     font-size: 13px;
     font-weight: 600;
     cursor: pointer;
@@ -968,19 +968,19 @@
   }
 
   .segment-btn.active {
-    color: #ffffff;
+    color: var(--text-primary);
   }
 
   .count-tag {
     font-size: 11px;
     padding: 1px 6px;
     border-radius: 10px;
-    background: rgba(255, 255, 255, 0.1);
+    background: var(--bg-hover);
   }
 
   .count-tag--danger {
-    background: rgba(239, 68, 68, 0.2);
-    color: #ef4444;
+    background: var(--status-danger-subtle);
+    color: var(--status-danger);
   }
 
   .calls-swipe-container {
@@ -1039,8 +1039,8 @@
   .spinner {
     width: 28px;
     height: 28px;
-    border: 2.5px solid rgba(255, 255, 255, 0.1);
-    border-top-color: var(--accent-primary, #248bfe);
+    border: 2.5px solid var(--border-subtle);
+    border-top-color: var(--accent-primary);
     border-radius: 50%;
     animation: spin 0.8s linear infinite;
   }
@@ -1064,11 +1064,11 @@
     width: 64px;
     height: 64px;
     border-radius: 50%;
-    background: rgba(255, 255, 255, 0.04);
+    background: var(--bg-hover);
     display: flex;
     align-items: center;
     justify-content: center;
-    color: rgba(255, 255, 255, 0.2);
+    color: var(--icon-disabled);
     margin-bottom: 4px;
   }
 
@@ -1076,13 +1076,13 @@
     margin: 0;
     font-size: 16px;
     font-weight: 600;
-    color: #ffffff;
+    color: var(--text-primary);
   }
 
   .empty-caption {
     margin: 0;
     font-size: 13px;
-    color: var(--text-muted, #8b929e);
+    color: var(--text-muted);
     line-height: 1.4;
   }
 
@@ -1105,11 +1105,11 @@
   }
 
   .history-card:hover {
-    background: rgba(255, 255, 255, 0.04);
+    background: var(--bg-hover);
   }
 
   .history-card:active {
-    background: rgba(255, 255, 255, 0.07);
+    background: var(--bg-active);
   }
 
   .avatar-col {
@@ -1134,7 +1134,7 @@
   .caller-name {
     font-size: 15px;
     font-weight: 600;
-    color: #ffffff;
+    color: var(--text-primary);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -1201,7 +1201,7 @@
     border-radius: 50%;
     border: none;
     background: transparent;
-    color: var(--text-muted, #8b929e);
+    color: var(--icon-muted);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -1210,8 +1210,8 @@
   }
 
   .icon-action-btn:hover {
-    background: rgba(255, 255, 255, 0.08);
-    color: #ffffff;
+    background: var(--bg-hover);
+    color: var(--icon-primary);
   }
 
   .icon-action-btn:active {
@@ -1219,13 +1219,13 @@
   }
 
   .dial-btn {
-    color: var(--accent-primary, #248bfe);
-    background: rgba(36, 139, 254, 0.1);
+    color: var(--accent-primary);
+    background: var(--accent-subtle);
   }
 
   .dial-btn:hover {
-    background: rgba(36, 139, 254, 0.2);
-    color: #248bfe;
+    background: var(--accent-subtle-hover);
+    color: var(--accent-primary);
   }
 
   .context-popup {
@@ -1234,13 +1234,14 @@
     right: 0;
     z-index: var(--z-dropdown, 6);
     min-width: 190px;
-    background: var(--bg-surface-2, #26262e);
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: var(--dropout-bg, var(--bg-surface-2));
+    border: 1px solid var(--border-subtle);
     border-radius: 14px;
     padding: 6px;
     display: flex;
     flex-direction: column;
     gap: 2px;
+    box-shadow: var(--dropout-shadow, var(--shadow-elevated));
   }
 
   .popup-item {
@@ -1251,7 +1252,7 @@
     border-radius: 10px;
     border: none;
     background: transparent;
-    color: #ffffff;
+    color: var(--dropout-text, var(--text-primary));
     font-size: 13px;
     font-weight: 500;
     cursor: pointer;
@@ -1260,20 +1261,20 @@
   }
 
   .popup-item:hover {
-    background: rgba(255, 255, 255, 0.08);
+    background: var(--dropout-item-hover, var(--bg-hover));
   }
 
   .popup-item--danger {
-    color: var(--status-danger, #ef4444);
+    color: var(--status-danger);
   }
 
   .popup-item--danger:hover {
-    background: rgba(239, 68, 68, 0.12);
+    background: var(--status-danger-subtle);
   }
 
   .popup-divider {
     height: 1px;
-    background: rgba(255, 255, 255, 0.06);
+    background: var(--border-subtle);
     margin: 4px 6px;
   }
 
@@ -1285,8 +1286,8 @@
     height: 56px;
     border-radius: 28px;
     border: none;
-    background: var(--accent-primary, #248bfe);
-    color: #ffffff;
+    background: var(--accent-primary);
+    color: var(--accent-contrast, #ffffff);
     display: flex;
     align-items: center;
     justify-content: center;

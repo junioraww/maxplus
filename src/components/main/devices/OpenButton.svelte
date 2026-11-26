@@ -7,7 +7,7 @@
 </script>
 
 <div on:click={open} class="open-dev">
-  <img src="/icons/phone.svg" alt="" />
+  <img src="/icons/phone.svg" alt="" class="theme-icon" />
 </div>
 
 <style>

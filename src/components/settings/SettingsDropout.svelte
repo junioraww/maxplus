@@ -116,7 +116,7 @@
     align-items: center;
     justify-content: space-between;
     gap: 12px;
-    background: var(--settings-card-elevated, #25262d);
+    background: var(--settings-card-bg, var(--bg-surface));
     border: none;
     border-radius: 12px;
     padding: 12px 14px;
@@ -126,7 +126,7 @@
   }
 
   .dropout-header:hover {
-    background: var(--settings-card-hover, rgba(255, 255, 255, 0.06));
+    background: var(--settings-card-hover, var(--bg-hover));
   }
 
   .text-col {
@@ -137,13 +137,13 @@
   }
 
   .label {
-    color: white;
+    color: var(--settings-text-primary, var(--text-primary));
     font-size: 0.92rem;
     font-weight: 500;
   }
 
   .description {
-    color: #888;
+    color: var(--settings-text-secondary, var(--text-secondary));
     font-size: 0.78rem;
     line-height: 1.3;
   }
@@ -152,11 +152,11 @@
     display: flex;
     align-items: center;
     gap: 6px;
-    background: rgba(255, 255, 255, 0.05);
+    background: var(--bg-hover);
     border: none;
     border-radius: 8px;
     padding: 6px 10px;
-    color: #3390ec;
+    color: var(--settings-accent, var(--accent-primary));
     font-size: 0.88rem;
     font-weight: 500;
     cursor: pointer;
@@ -165,11 +165,11 @@
   }
 
   .value-btn:hover {
-    background: rgba(255, 255, 255, 0.09);
+    background: var(--bg-active);
   }
 
   .chevron {
-    color: #888;
+    color: var(--settings-icon-muted, var(--icon-muted));
     transition: transform 0.18s ease;
   }
 
@@ -190,8 +190,9 @@
     min-width: 190px;
     max-height: 260px;
     overflow-y: auto;
-    background: var(--dropout-bg, #1c1e24);
-    border: none;
+    background: var(--dropout-bg, var(--bg-surface-elevated));
+    border: 1px solid var(--border-subtle);
+    box-shadow: var(--dropout-shadow, var(--shadow-elevated));
     border-radius: 12px;
     padding: 6px;
     z-index: var(--z-dropdown);
@@ -214,7 +215,7 @@
     border: none;
     border-radius: 8px;
     padding: 8px 12px;
-    color: #ddd;
+    color: var(--dropout-text, var(--text-primary));
     font-size: 0.88rem;
     cursor: pointer;
     text-align: left;
@@ -222,17 +223,17 @@
   }
 
   .menu-item:hover {
-    background: rgba(255, 255, 255, 0.08);
-    color: white;
+    background: var(--dropout-item-hover, var(--bg-hover));
+    color: var(--dropout-text, var(--text-primary));
   }
 
   .menu-item.selected {
-    color: #3390ec;
+    color: var(--settings-accent, var(--accent-primary));
     font-weight: 600;
   }
 
   .check-icon {
-    color: #3390ec;
+    color: var(--settings-accent, var(--accent-primary));
     flex-shrink: 0;
   }
 </style>

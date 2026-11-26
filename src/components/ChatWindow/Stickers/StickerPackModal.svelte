@@ -197,7 +197,7 @@
     justify-content: space-between;
     gap: 12px;
     padding: 4px 16px 12px;
-    border-bottom: 1px solid var(--border-color, rgba(255, 255, 255, 0.08));
+    border-bottom: 1px solid var(--border-subtle);
     flex-shrink: 0;
   }
 
@@ -214,7 +214,7 @@
     height: 40px;
     border-radius: 10px;
     object-fit: contain;
-    background: rgba(255, 255, 255, 0.06);
+    background: var(--bg-hover);
     flex-shrink: 0;
   }
 
@@ -229,6 +229,7 @@
     margin: 0;
     font-size: 16px;
     font-weight: 600;
+    color: var(--text-primary);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -236,7 +237,7 @@
 
   .pack-count {
     font-size: 13px;
-    color: var(--text-secondary, rgba(255, 255, 255, 0.55));
+    color: var(--text-secondary);
   }
 
   .header-actions {
@@ -251,8 +252,8 @@
     height: 34px;
     border: none;
     border-radius: 50%;
-    background: rgba(255, 255, 255, 0.08);
-    color: var(--text-primary, #ffffff);
+    background: var(--bg-hover);
+    color: var(--icon-primary);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -261,7 +262,7 @@
   }
 
   .icon-action-btn:hover {
-    background: rgba(255, 255, 255, 0.14);
+    background: var(--bg-active);
   }
 
   .pack-sheet-body {
@@ -279,7 +280,7 @@
     justify-content: center;
     gap: 12px;
     padding: 40px 16px;
-    color: var(--text-secondary, rgba(255, 255, 255, 0.55));
+    color: var(--text-secondary);
     font-size: 14px;
   }
 
@@ -287,8 +288,8 @@
   .btn-spinner {
     width: 22px;
     height: 22px;
-    border: 2.5px solid rgba(255, 255, 255, 0.2);
-    border-top-color: #ffffff;
+    border: 2.5px solid var(--border-subtle);
+    border-top-color: var(--accent-primary);
     border-radius: 50%;
     animation: spin 0.7s linear infinite;
   }
@@ -309,7 +310,7 @@
     aspect-ratio: 1;
     border: none;
     border-radius: 12px;
-    background: rgba(255, 255, 255, 0.03);
+    background: var(--bg-hover);
     padding: 6px;
     cursor: pointer;
     display: flex;
@@ -319,13 +320,13 @@
   }
 
   .sticker-grid-item:hover {
-    background: rgba(255, 255, 255, 0.08);
+    background: var(--bg-active);
     transform: scale(1.04);
   }
 
   .pack-sheet-footer {
     padding: 12px 16px calc(14px + env(safe-area-inset-bottom, 0px));
-    border-top: 1px solid var(--border-color, rgba(255, 255, 255, 0.08));
+    border-top: 1px solid var(--border-subtle);
     flex-shrink: 0;
   }
 
@@ -334,8 +335,8 @@
     height: 44px;
     border: none;
     border-radius: 12px;
-    background: var(--accent-color, #2563eb);
-    color: #ffffff;
+    background: var(--accent-primary);
+    color: var(--accent-contrast, #ffffff);
     font-size: 15px;
     font-weight: 600;
     cursor: pointer;
@@ -346,8 +347,8 @@
   }
 
   .btn-fav.is-remove {
-    background: rgba(239, 68, 68, 0.16);
-    color: #ef4444;
+    background: var(--status-danger-subtle);
+    color: var(--status-danger);
   }
 
   .btn-fav:disabled {

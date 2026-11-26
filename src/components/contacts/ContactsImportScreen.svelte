@@ -401,7 +401,7 @@
     width: 14px;
     height: 14px;
     transform: scaleX(-1);
-    filter: invert(var(--icon-invert, 1));
+    filter: brightness(0) invert(var(--icon-invert, 1));
   }
 
   .toolbar-title-box {
@@ -467,7 +467,7 @@
   .search-icon,
   .clear-icon {
     opacity: 0.65;
-    filter: invert(var(--icon-invert, 1));
+    filter: brightness(0) invert(var(--icon-invert, 1));
   }
 
   .search-box input {
@@ -640,7 +640,7 @@
   .hero-icon {
     width: 34px;
     height: 34px;
-    filter: invert(var(--icon-invert, 1));
+    filter: brightness(0) invert(var(--icon-invert, 1));
   }
 
   .state-title {

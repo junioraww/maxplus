@@ -5,8 +5,8 @@
 body {
   margin: 0;
   padding: 0;
-  background-color: #17181c;
-  color: #ffffff;
+  background-color: var(--bg-app);
+  color: var(--text-primary);
   overflow: hidden;
   font-family: var(--font-family-base);
   box-sizing: border-box;
@@ -89,11 +89,31 @@ img {
   /* Typography */
   --font-family-base: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, system-ui, sans-serif;
   --font-family-title: "sans-serif-medium", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, system-ui, sans-serif;
+  --font-family-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 
   --font-weight-normal: 400;
   --font-weight-medium: 500;
   --font-weight-title: 600;
   --font-weight-bold: 700;
+
+  --font-size-display: 28px;
+  --line-height-display: 32px;
+  --font-size-title-1: 24px;
+  --line-height-title-1: 28px;
+  --font-size-title-2: 20px;
+  --line-height-title-2: 24px;
+  --font-size-toolbar: 17px;
+  --line-height-toolbar: 24px;
+  --font-size-headline: 17px;
+  --line-height-headline: 20px;
+  --font-size-body: 16px;
+  --line-height-body: 20px;
+  --font-size-body-compact: 15px;
+  --line-height-body-compact: 20px;
+  --font-size-subtitle: 13px;
+  --line-height-subtitle: 16px;
+  --font-size-caption: 11px;
+  --line-height-caption: 14px;
 
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
@@ -102,25 +122,29 @@ img {
   --safe-area-top: var(--safe-top);
   --safe-area-bottom: var(--safe-bottom);
 
-  --bg-app: #17181c;
+  --bg-app: #0f0f12;
   --bg-chat: #161621;
-  --bg-surface: #1e2025;
-  --bg-surface-secondary: #26262e;
-  --bg-surface-2: #26262e;
-  --bg-surface-elevated: #24252b;
-  --bg-input: #26262e;
-  --bg-pill: #2c2d33;
+  --bg-surface: #17181c;
+  --bg-surface-secondary: #25262d;
+  --bg-surface-2: #25262d;
+  --bg-surface-elevated: #25262d;
+  --bg-input: #25262d;
+  --bg-pill: #434455;
   --bg-sheet: #1e1f24;
-  --bg-panel: #1c1d1f;
-  --bg-topbar: #212126;
+  --bg-panel: #17181c;
+  --bg-topbar: #0f0f12;
   --bg-pinned-chat: #202225;
   --bg-pinned-chat-hover: #26282e;
+  --bg-overlay: rgba(13, 13, 13, 0.64);
+  --bg-hover: rgba(255, 255, 255, 0.05);
+  --bg-active: rgba(255, 255, 255, 0.09);
 
-  --accent-primary: #248bfe;
-  --accent-primary-hover: #1b74d9;
+  --accent-primary: #007aff;
+  --accent-primary-hover: #1a88ff;
   --accent-primary-disabled: #1b4e8c;
-  --accent-subtle: rgba(36, 139, 254, 0.12);
-  --accent-subtle-hover: rgba(36, 139, 254, 0.2);
+  --accent-subtle: rgba(0, 122, 255, 0.16);
+  --accent-subtle-hover: rgba(0, 122, 255, 0.24);
+  --accent-contrast: #ffffff;
 
   --bubble-outgoing: linear-gradient(135deg, #4f6cf7 0%, #7b4cd6 55%, #9d5df7 100%);
   --bubble-incoming: #3a3c55;
@@ -151,19 +175,34 @@ img {
   --motion-curve: cubic-bezier(0.25, 0.1, 0.25, 1.0);
 
   --text-primary: #ffffff;
-  --text-secondary: #8b929e;
-  --text-muted: #697282;
-  --text-subtle: #697282;
+  --text-secondary: rgba(255, 255, 255, 0.80);
+  --text-muted: rgba(255, 255, 255, 0.64);
+  --text-subtle: rgba(255, 255, 255, 0.40);
 
-  --border-subtle: rgba(255, 255, 255, 0.08);
-  --border-card: rgba(255, 255, 255, 0.06);
+  --icon-primary: #ffffff;
+  --icon-secondary: rgba(255, 255, 255, 0.68);
+  --icon-muted: rgba(255, 255, 255, 0.52);
+  --icon-disabled: rgba(255, 255, 255, 0.36);
+
+  --border-subtle: rgba(255, 255, 255, 0.09);
+  --border-card: rgba(255, 255, 255, 0.08);
+  --checkbox-border: rgba(255, 255, 255, 0.35);
+  --checkbox-border-hover: rgba(255, 255, 255, 0.55);
+  --checkbox-bg: rgba(255, 255, 255, 0.05);
+  --checkbox-bg-hover: rgba(255, 255, 255, 0.08);
+
+  --shadow-card: 0 8px 24px rgba(0, 0, 0, 0.35);
+  --shadow-elevated: 0 12px 32px rgba(0, 0, 0, 0.45);
 
   --icon-invert: 1;
 
-  --status-success: #4ade80;
-  --status-danger: #ef4444;
-  --status-warning: #fbbf24;
-  --badge-unread: #3b82f6;
+  --status-success: #2bc644;
+  --status-success-subtle: rgba(43, 198, 68, 0.10);
+  --status-danger: #ce4257;
+  --status-danger-subtle: rgba(206, 66, 87, 0.16);
+  --status-warning: #ffd60a;
+  --status-warning-subtle: rgba(255, 214, 10, 0.15);
+  --badge-unread: #007aff;
   --read-tick: #34b7f1;
   --online: #4fc3f7;
 
@@ -211,9 +250,9 @@ img {
   --msg-tick-read-color: #38bdf8;
   --msg-views-color: rgba(255, 255, 255, 0.65);
 
-  --msg-selection-bg: rgba(36, 139, 254, 0.12);
+  --msg-selection-bg: var(--accent-subtle, rgba(0, 122, 255, 0.16));
   --msg-selection-checkbox-border: rgba(255, 255, 255, 0.45);
-  --msg-selection-checkbox-active: #248bfe;
+  --msg-selection-checkbox-active: var(--accent-primary, #007aff);
 
   /* Dropout / Context Menu variables */
   --dropout-bg: #1c1e24;
@@ -290,25 +329,29 @@ img {
 }
 
 [data-theme="dark"] {
-  --bg-app: #17181c;
+  --bg-app: #0f0f12;
   --bg-chat: #161621;
-  --bg-surface: #1e2025;
-  --bg-surface-secondary: #26262e;
-  --bg-surface-2: #26262e;
-  --bg-surface-elevated: #24252b;
-  --bg-input: #26262e;
-  --bg-pill: #2c2d33;
+  --bg-surface: #17181c;
+  --bg-surface-secondary: #25262d;
+  --bg-surface-2: #25262d;
+  --bg-surface-elevated: #25262d;
+  --bg-input: #25262d;
+  --bg-pill: #434455;
   --bg-sheet: #1e1f24;
-  --bg-panel: #1c1d1f;
-  --bg-topbar: #212126;
+  --bg-panel: #17181c;
+  --bg-topbar: #0f0f12;
   --bg-pinned-chat: #202225;
   --bg-pinned-chat-hover: #26282e;
+  --bg-overlay: rgba(13, 13, 13, 0.64);
+  --bg-hover: rgba(255, 255, 255, 0.05);
+  --bg-active: rgba(255, 255, 255, 0.09);
 
-  --accent-primary: #248bfe;
-  --accent-primary-hover: #1b74d9;
+  --accent-primary: #007aff;
+  --accent-primary-hover: #1a88ff;
   --accent-primary-disabled: #1b4e8c;
-  --accent-subtle: rgba(36, 139, 254, 0.12);
-  --accent-subtle-hover: rgba(36, 139, 254, 0.2);
+  --accent-subtle: rgba(0, 122, 255, 0.16);
+  --accent-subtle-hover: rgba(0, 122, 255, 0.24);
+  --accent-contrast: #ffffff;
 
   --bubble-outgoing: linear-gradient(135deg, #4f6cf7 0%, #7b4cd6 55%, #9d5df7 100%);
   --bubble-incoming: #3a3c55;
@@ -339,19 +382,34 @@ img {
   --motion-curve: cubic-bezier(0.25, 0.1, 0.25, 1.0);
 
   --text-primary: #ffffff;
-  --text-secondary: #8b929e;
-  --text-muted: #697282;
-  --text-subtle: #697282;
+  --text-secondary: rgba(255, 255, 255, 0.80);
+  --text-muted: rgba(255, 255, 255, 0.64);
+  --text-subtle: rgba(255, 255, 255, 0.40);
 
-  --border-subtle: rgba(255, 255, 255, 0.08);
-  --border-card: rgba(255, 255, 255, 0.06);
+  --icon-primary: #ffffff;
+  --icon-secondary: rgba(255, 255, 255, 0.68);
+  --icon-muted: rgba(255, 255, 255, 0.52);
+  --icon-disabled: rgba(255, 255, 255, 0.36);
+
+  --border-subtle: rgba(255, 255, 255, 0.09);
+  --border-card: rgba(255, 255, 255, 0.08);
+  --checkbox-border: rgba(255, 255, 255, 0.35);
+  --checkbox-border-hover: rgba(255, 255, 255, 0.55);
+  --checkbox-bg: rgba(255, 255, 255, 0.05);
+  --checkbox-bg-hover: rgba(255, 255, 255, 0.08);
+
+  --shadow-card: 0 8px 24px rgba(0, 0, 0, 0.35);
+  --shadow-elevated: 0 12px 32px rgba(0, 0, 0, 0.45);
 
   --icon-invert: 1;
 
-  --status-success: #4ade80;
-  --status-danger: #ef4444;
-  --status-warning: #fbbf24;
-  --badge-unread: #3b82f6;
+  --status-success: #2bc644;
+  --status-success-subtle: rgba(43, 198, 68, 0.10);
+  --status-danger: #ce4257;
+  --status-danger-subtle: rgba(206, 66, 87, 0.16);
+  --status-warning: #ffd60a;
+  --status-warning-subtle: rgba(255, 214, 10, 0.15);
+  --badge-unread: #007aff;
   --read-tick: #34b7f1;
   --online: #4fc3f7;
 
@@ -399,9 +457,9 @@ img {
   --msg-tick-read-color: #38bdf8;
   --msg-views-color: rgba(255, 255, 255, 0.65);
 
-  --msg-selection-bg: rgba(36, 139, 254, 0.12);
+  --msg-selection-bg: var(--accent-subtle, rgba(0, 122, 255, 0.16));
   --msg-selection-checkbox-border: rgba(255, 255, 255, 0.45);
-  --msg-selection-checkbox-active: #248bfe;
+  --msg-selection-checkbox-active: var(--accent-primary, #007aff);
 
   /* Dropout / Context Menu variables */
   --dropout-bg: #1c1e24;
@@ -455,35 +513,39 @@ img {
 
 [data-theme="light"],
 body.light {
-  --bg-app: #f4f5f7;
+  --bg-app: #edeef2;
   --bg-chat: #f0f2f5;
   --bg-surface: #ffffff;
-  --bg-surface-secondary: #f4f5f7;
-  --bg-surface-2: #e9ebed;
-  --bg-surface-elevated: #ffffff;
-  --bg-input: #f0f2f5;
-  --bg-pill: #e4e6eb;
+  --bg-surface-secondary: #f5f7fa;
+  --bg-surface-2: #e9ebf1;
+  --bg-surface-elevated: #f5f7fa;
+  --bg-input: #f5f7fa;
+  --bg-pill: #e9ebf1;
   --bg-sheet: #ffffff;
   --bg-panel: #ffffff;
-  --bg-topbar: #ffffff;
-  --bg-pinned-chat: #f0f2f5;
-  --bg-pinned-chat-hover: #e4e6eb;
+  --bg-topbar: #edeef2;
+  --bg-pinned-chat: #f5f7fa;
+  --bg-pinned-chat-hover: #e9ebf1;
+  --bg-overlay: rgba(12, 13, 14, 0.32);
+  --bg-hover: rgba(9, 9, 9, 0.05);
+  --bg-active: rgba(9, 9, 9, 0.08);
 
-  --accent-primary: #248bfe;
-  --accent-primary-hover: #1b74d9;
+  --accent-primary: #007aff;
+  --accent-primary-hover: #0066d6;
   --accent-primary-disabled: #93c5fd;
-  --accent-subtle: rgba(36, 139, 254, 0.1);
-  --accent-subtle-hover: rgba(36, 139, 254, 0.16);
+  --accent-subtle: rgba(0, 122, 255, 0.16);
+  --accent-subtle-hover: rgba(0, 122, 255, 0.22);
+  --accent-contrast: #ffffff;
 
   --bubble-outgoing: linear-gradient(135deg, #17A8E5 0%, #0B8CE8 50%, #0070EB 100%);
   --bubble-incoming: #ffffff;
   --bubble-outgoing-text: #ffffff;
-  --bubble-incoming-text: #000000;
+  --bubble-incoming-text: #060708;
 
   --bubble-gradient-space-in: #ffffff;
   --bubble-gradient-space-out: linear-gradient(135deg, #17A8E5 0%, #0B8CE8 50%, #0070EB 100%);
   --bubble-flat-in: #ffffff;
-  --bubble-gradient-blue-out: linear-gradient(135deg, #248BFE 0%, #1B74D9 100%);
+  --bubble-gradient-blue-out: linear-gradient(135deg, #007aff 0%, #0066d6 100%);
 
   --bubble-corner-base: 16px;
   --bubble-corner-tail: 6px;
@@ -503,22 +565,37 @@ body.light {
 
   --motion-curve: cubic-bezier(0.25, 0.1, 0.25, 1.0);
 
-  --text-primary: #000000;
-  --text-secondary: #707579;
-  --text-muted: #8e8e93;
-  --text-subtle: #a0a5ab;
+  --text-primary: #060708;
+  --text-secondary: rgba(6, 7, 8, 0.68);
+  --text-muted: rgba(6, 7, 8, 0.52);
+  --text-subtle: rgba(6, 7, 8, 0.40);
 
-  --border-subtle: rgba(0, 0, 0, 0.08);
-  --border-card: rgba(0, 0, 0, 0.06);
+  --icon-primary: rgba(6, 7, 8, 0.84);
+  --icon-secondary: rgba(6, 7, 8, 0.64);
+  --icon-muted: rgba(6, 7, 8, 0.48);
+  --icon-disabled: rgba(6, 7, 8, 0.28);
+
+  --border-subtle: rgba(9, 9, 9, 0.08);
+  --border-card: rgba(9, 9, 9, 0.06);
+  --checkbox-border: rgba(6, 7, 8, 0.32);
+  --checkbox-border-hover: rgba(6, 7, 8, 0.52);
+  --checkbox-bg: rgba(9, 9, 9, 0.04);
+  --checkbox-bg-hover: rgba(9, 9, 9, 0.08);
+
+  --shadow-card: 0 4px 16px rgba(12, 13, 14, 0.08);
+  --shadow-elevated: 0 8px 24px rgba(12, 13, 14, 0.14);
 
   --icon-invert: 0;
 
-  --status-success: #16a34a;
-  --status-danger: #dc2626;
-  --status-warning: #d97706;
-  --badge-unread: #248bfe;
-  --read-tick: #248bfe;
-  --online: #0284c7;
+  --status-success: #1abe43;
+  --status-success-subtle: rgba(26, 190, 67, 0.10);
+  --status-danger: #ff303c;
+  --status-danger-subtle: rgba(255, 48, 60, 0.16);
+  --status-warning: #ffcc00;
+  --status-warning-subtle: rgba(255, 204, 0, 0.15);
+  --badge-unread: #007aff;
+  --read-tick: #007aff;
+  --online: #0f8ec2;
 
   /* Light mode message styling */
   --msg-bubble-in-bg: #ffffff;
@@ -540,7 +617,7 @@ body.light {
   --msg-views-color: rgba(0, 0, 0, 0.45);
   --msg-role-badge-bg: rgba(0, 0, 0, 0.08);
   --msg-role-badge-text: #536471;
-  --msg-selection-bg: rgba(36, 139, 254, 0.08);
+  --msg-selection-bg: var(--accent-subtle, rgba(0, 122, 255, 0.16));
   --msg-selection-checkbox-border: rgba(0, 0, 0, 0.35);
 
   /* Light mode dropout */
@@ -597,9 +674,9 @@ input[type="checkbox"] {
   margin: 0;
   width: 18px;
   height: 18px;
-  border: 1.5px solid rgba(255, 255, 255, 0.35);
+  border: 1.5px solid var(--checkbox-border);
   border-radius: 4px;
-  background-color: rgba(255, 255, 255, 0.05);
+  background-color: var(--checkbox-bg);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -611,8 +688,8 @@ input[type="checkbox"] {
 }
 
 input[type="checkbox"]:hover {
-  border-color: rgba(255, 255, 255, 0.55);
-  background-color: rgba(255, 255, 255, 0.08);
+  border-color: var(--checkbox-border-hover);
+  background-color: var(--checkbox-bg-hover);
 }
 
 input[type="checkbox"]::after {

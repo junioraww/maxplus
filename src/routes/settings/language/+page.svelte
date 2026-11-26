@@ -12,7 +12,7 @@
 <SettingsPageWrapper title="Язык" {from} {isTab} {onClose}>
   <div class="language-page">
     <SettingsSection title="Язык интерфейса" footer="Пока поддерживается только русский язык.">
-      <SettingsRow title="Русский" subtitle="Russian" chevron={false} active={true}>
+      <SettingsRow title="Русский" subtitle="Russian" chevron={false}>
         <svg slot="right" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--settings-accent, #007aff)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
           <polyline points="20 6 9 17 4 12" />
         </svg>

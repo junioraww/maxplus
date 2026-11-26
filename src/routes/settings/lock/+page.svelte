@@ -459,7 +459,7 @@
   .loading-state {
     padding: 40px;
     text-align: center;
-    color: #9ca3af;
+    color: var(--settings-text-muted, var(--text-muted));
     font-size: 0.95rem;
   }
 
@@ -468,12 +468,12 @@
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.6px;
-    color: #8c8e96;
+    color: var(--settings-text-muted, var(--text-muted));
     margin: 16px 8px 6px 8px;
   }
 
   .settings-card {
-    background: var(--settings-card-bg, #17181c);
+    background: var(--settings-card-bg, var(--bg-surface));
     border-radius: var(--settings-card-radius, 16px);
     overflow: hidden;
     display: flex;
@@ -490,7 +490,7 @@
   }
 
   .settings-row:hover {
-    background: var(--settings-card-hover, rgba(255, 255, 255, 0.05));
+    background: var(--settings-card-hover, var(--bg-hover));
   }
 
   .row-info {
@@ -504,12 +504,12 @@
   .row-title {
     font-size: 0.95rem;
     font-weight: 500;
-    color: #ffffff;
+    color: var(--settings-text-primary, var(--text-primary));
   }
 
   .row-desc {
     font-size: 0.82rem;
-    color: #8c8e96;
+    color: var(--settings-text-secondary, var(--text-secondary));
     line-height: 1.35;
   }
 
@@ -522,24 +522,24 @@
   .pin-display {
     font-size: 1.1rem;
     letter-spacing: 2px;
-    color: #9ca3af;
+    color: var(--settings-text-muted, var(--text-muted));
   }
 
   .chevron {
     font-size: 1.3rem;
-    color: #6b7280;
+    color: var(--settings-icon-muted, var(--icon-muted));
     line-height: 1;
   }
 
   .counter-text {
     font-size: 0.95rem;
     font-weight: 600;
-    color: #ffffff;
+    color: var(--settings-text-primary, var(--text-primary));
   }
 
   .divider {
     height: 1px;
-    background: rgba(255, 255, 255, 0.05);
+    background: var(--settings-separator, var(--border-subtle));
     margin: 0 16px;
   }
 
@@ -552,7 +552,7 @@
 
   .sub-label {
     font-size: 0.82rem;
-    color: #8c8e96;
+    color: var(--settings-text-secondary, var(--text-secondary));
   }
 
   .app-pills {
@@ -564,14 +564,14 @@
   }
 
   .pill-btn {
-    background: #33333d;
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: var(--bg-surface-secondary);
+    border: 1px solid var(--border-subtle);
     border-radius: 10px;
     padding: 10px 8px;
     display: flex;
     align-items: center;
     gap: 6px;
-    color: #ffffff;
+    color: var(--text-primary);
     font-size: 0.84rem;
     cursor: pointer;
     min-width: 0;
@@ -659,19 +659,19 @@
 
   .action-outline-btn {
     background: transparent;
-    border: 1px solid rgba(255, 255, 255, 0.12);
-    color: #ffffff;
+    border: 1px solid var(--border-subtle);
+    color: var(--text-primary);
   }
 
   .action-outline-btn.danger {
-    border-color: rgba(239, 68, 68, 0.3);
-    color: #ef4444;
+    border-color: var(--status-danger-subtle);
+    color: var(--status-danger);
   }
 
   .action-solid-btn {
-    background: #25c275;
+    background: var(--status-success);
     border: none;
-    color: #000000;
+    color: #ffffff;
     font-weight: 600;
   }
 
@@ -725,8 +725,8 @@
   }
 
   .modal-card {
-    background: var(--bg-surface, #26262e);
-    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    background: var(--bg-sheet);
+    border-top: 1px solid var(--border-subtle);
     border-radius: 20px 20px 0 0;
     padding: 14px 20px calc(16px + max(var(--safe-bottom, 0px) - var(--keyboard-inset, 0px), 0px));
     width: 100%;
@@ -735,6 +735,7 @@
     flex-direction: column;
     gap: 14px;
     box-sizing: border-box;
+    color: var(--text-primary);
   }
 
   .modal-backdrop.has-keyboard .modal-card {
@@ -745,7 +746,7 @@
     width: 40px;
     height: 4px;
     border-radius: 2px;
-    background: rgba(255, 255, 255, 0.2);
+    background: var(--text-subtle);
     margin: 0 auto 6px;
     flex-shrink: 0;
   }
@@ -754,21 +755,22 @@
     margin: 0;
     font-size: 1.15rem;
     text-align: center;
+    color: var(--text-primary);
   }
 
   .modal-card p {
     margin: 0;
     font-size: 0.85rem;
-    color: #9ca3af;
+    color: var(--text-secondary);
     line-height: 1.4;
     text-align: center;
   }
 
   .modal-card input {
-    background: #141518;
-    border: 1px solid rgba(255, 255, 255, 0.12);
+    background: var(--bg-input);
+    border: 1px solid var(--border-subtle);
     border-radius: 12px;
-    color: #ffffff;
+    color: var(--text-primary);
     font-size: 1.6rem;
     letter-spacing: 12px;
     text-align: center;
@@ -778,7 +780,7 @@
 
   .modal-error {
     font-size: 0.8rem;
-    color: #ef4444;
+    color: var(--status-danger);
     text-align: center;
   }
 
@@ -804,20 +806,20 @@
   }
 
   .modal-cancel-btn {
-    background: rgba(255, 255, 255, 0.08);
-    color: #ffffff;
+    background: var(--bg-pill);
+    color: var(--text-primary);
   }
 
   .modal-cancel-btn:hover {
-    background: rgba(255, 255, 255, 0.14);
+    background: var(--bg-active);
   }
 
   .modal-save-btn {
-    background: var(--accent-primary, #248bfe);
-    color: #ffffff;
+    background: var(--accent-primary);
+    color: var(--accent-contrast, #ffffff);
   }
 
   .modal-save-btn:hover {
-    background: var(--accent-primary-hover, #1b74d9);
+    background: var(--accent-primary-hover);
   }
 </style>

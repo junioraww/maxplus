@@ -109,11 +109,12 @@
     animation: modalFadeOut 0.18s cubic-bezier(0.4, 0, 1, 1) forwards;
   }
   .modal-card {
-    background: var(--bg-surface, #1e2025); width: 100%; max-width: 340px;
-    border-radius: 20px; display: flex; flex-direction: column; color: #fff; border: 1px solid rgba(255, 255, 255, 0.08);
+    background: var(--bg-surface); width: 100%; max-width: 340px;
+    border-radius: 20px; display: flex; flex-direction: column; color: var(--text-primary); border: 1px solid var(--border-subtle);
     overflow: hidden; padding: 24px 20px 20px; box-sizing: border-box;
     will-change: transform, opacity;
     animation: modalPopIn 0.22s cubic-bezier(0.2, 0.9, 0.3, 1) forwards;
+    box-shadow: var(--shadow-elevated);
   }
   .modal-card.modal-closing {
     animation: modalPopOut 0.18s cubic-bezier(0.4, 0, 1, 1) forwards;
@@ -129,18 +130,18 @@
     to { opacity: 0; transform: scale3d(0.92, 0.92, 1); }
   }
   .modal-content { text-align: center; display: flex; flex-direction: column; gap: 8px; }
-  .modal-title { margin: 0; font-size: 18px; font-weight: 600; color: #fff; }
-  .modal-message { margin: 0; font-size: 14px; color: var(--text-secondary, #8b929e); line-height: 1.45; }
+  .modal-title { margin: 0; font-size: 18px; font-weight: 600; color: var(--text-primary); }
+  .modal-message { margin: 0; font-size: 14px; color: var(--text-secondary); line-height: 1.45; }
   .modal-actions { display: flex; gap: 10px; margin-top: 24px; }
   .action-btn {
     flex: 1; height: 44px; border-radius: 22px; border: none; font-size: 14px; font-weight: 600;
     cursor: pointer; display: flex; align-items: center; justify-content: center;
     transition: background 0.15s, opacity 0.15s;
   }
-  .cancel-btn { background: rgba(255, 255, 255, 0.08); color: #fff; }
-  .cancel-btn:hover { background: rgba(255, 255, 255, 0.14); }
-  .confirm-btn { background: var(--accent-primary, #248bfe); color: #fff; }
-  .confirm-btn:hover { background: var(--accent-primary-hover, #1b74d9); }
-  .confirm-btn.danger { background: var(--status-danger, #ef4444); }
-  .confirm-btn.danger:hover { background: #dc2626; }
+  .cancel-btn { background: var(--bg-pill); color: var(--text-primary); }
+  .cancel-btn:hover { background: var(--bg-active); }
+  .confirm-btn { background: var(--accent-primary); color: var(--accent-contrast, #ffffff); }
+  .confirm-btn:hover { background: var(--accent-primary-hover); }
+  .confirm-btn.danger { background: var(--status-danger); color: #ffffff; }
+  .confirm-btn.danger:hover { opacity: 0.9; }
 </style>

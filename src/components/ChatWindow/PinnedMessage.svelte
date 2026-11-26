@@ -134,7 +134,7 @@
 <style>
   .pinbar {
     position: relative;
-    z-index: var(--z-header, 4);
+    z-index: var(--z-chat, 3);
     display: flex;
     align-items: center;
     gap: 10px;
@@ -143,15 +143,15 @@
     min-height: 52px;
     padding: 5px 0 5px 12px;
     box-sizing: border-box;
-    background: var(--bg-header, var(--surface-bg, #161722));
-    border-bottom: 1px solid var(--border-color, rgba(255, 255, 255, 0.08));
+    background: var(--bg-surface);
+    border-bottom: 1px solid var(--border-subtle);
     cursor: pointer;
     user-select: none;
     transition: background-color 0.15s ease;
   }
 
   .pinbar:hover {
-    background: var(--bg-header-hover, rgba(255, 255, 255, 0.04));
+    background: var(--bg-surface-secondary);
   }
 
   .pinbar-segments {
@@ -168,7 +168,7 @@
     flex: 1;
     width: 2px;
     border-radius: 2px;
-    background: var(--accent-color, #8b5cf6);
+    background: var(--accent-primary);
     opacity: 0.35;
     transition: opacity 0.2s ease;
   }
@@ -194,7 +194,7 @@
     font-size: 13px;
     font-weight: 600;
     line-height: 1.25;
-    color: var(--accent-color, #8b5cf6);
+    color: var(--accent-primary);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -203,7 +203,7 @@
   .pinbar-subtitle {
     font-size: 13px;
     line-height: 1.3;
-    color: var(--text-primary, #f4f4f6);
+    color: var(--text-primary);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -219,15 +219,15 @@
     justify-content: center;
     border: none;
     background: transparent;
-    color: var(--text-secondary, rgba(255, 255, 255, 0.6));
+    color: var(--icon-muted);
     cursor: pointer;
     border-radius: 50%;
     transition: background-color 0.15s ease, color 0.15s ease;
   }
 
   .pinbar-action-btn:hover {
-    background: var(--hover-bg, rgba(255, 255, 255, 0.08));
-    color: var(--text-primary, #ffffff);
+    background: var(--bg-hover);
+    color: var(--icon-primary);
   }
 
   .pinbar-icon {

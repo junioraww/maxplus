@@ -20,6 +20,14 @@ async function persistTheme(mode) {
 function applyThemeAttr(id) {
   if (!browser || typeof document === "undefined") return;
   document.documentElement.setAttribute("data-theme", id);
+  document.documentElement.style.colorScheme = id === "light" ? "light" : "dark";
+  try {
+    localStorage.setItem("maxplus_theme_id", id);
+  } catch {}
+  const metaTheme = document.querySelector('meta[name="theme-color"]');
+  if (metaTheme) {
+    metaTheme.setAttribute("content", id === "light" ? "#edeef2" : "#0f0f12");
+  }
 }
 
 export async function setTheme(id) {

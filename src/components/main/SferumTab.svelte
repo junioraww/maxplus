@@ -58,8 +58,8 @@
     width: 100%;
     padding: 24px;
     box-sizing: border-box;
-    background: #141417;
-    color: #fff;
+    background: var(--bg-app);
+    color: var(--text-primary);
   }
 
   .sferum-card {
@@ -67,24 +67,25 @@
     flex-direction: column;
     align-items: center;
     text-align: center;
-    background: #1e1e24;
-    border: 1px solid #2a2a34;
+    background: var(--bg-surface);
+    border: 1px solid var(--border-card);
     border-radius: 20px;
     padding: 36px 24px;
     max-width: 380px;
     width: 100%;
     box-sizing: border-box;
+    box-shadow: var(--shadow-card);
   }
 
   .sferum-icon-wrapper {
     width: 84px;
     height: 84px;
     border-radius: 22px;
-    background: linear-gradient(135deg, #0077ff, #0055cc);
+    background: linear-gradient(135deg, var(--accent-primary), var(--accent-primary-hover));
     display: flex;
     align-items: center;
     justify-content: center;
-    color: #fff;
+    color: var(--accent-contrast, #ffffff);
     margin-bottom: 20px;
   }
 
@@ -92,22 +93,23 @@
     margin: 0 0 8px;
     font-size: 24px;
     font-weight: 700;
+    color: var(--text-primary);
   }
 
   .sferum-subtitle {
     margin: 0 0 24px;
     font-size: 14px;
-    color: #8e8e93;
+    color: var(--text-secondary);
     line-height: 1.45;
   }
 
   .error-box {
     margin-bottom: 16px;
     padding: 10px 14px;
-    background: rgba(239, 68, 68, 0.15);
-    border: 1px solid rgba(239, 68, 68, 0.3);
+    background: var(--status-danger-subtle);
+    border: 1px solid var(--status-danger);
     border-radius: 10px;
-    color: #ef4444;
+    color: var(--status-danger);
     font-size: 13px;
     width: 100%;
     box-sizing: border-box;
@@ -121,8 +123,8 @@
     width: 100%;
     padding: 14px 20px;
     border-radius: 12px;
-    background: #0077ff;
-    color: #fff;
+    background: var(--accent-primary);
+    color: var(--accent-contrast, #ffffff);
     border: none;
     font-size: 16px;
     font-weight: 600;
@@ -131,7 +133,7 @@
   }
 
   .open-sferum-btn:hover:not(:disabled) {
-    background: #0066dd;
+    background: var(--accent-primary-hover);
   }
 
   .open-sferum-btn:active:not(:disabled) {

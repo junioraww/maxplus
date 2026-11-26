@@ -226,7 +226,7 @@
       />
       {#if searchQuery.length > 0}
         <button class="clear-query-btn" on:click={clearQuery} aria-label="Очистить">
-          <img src="/icons/close.svg" width="16" height="16" alt="" />
+          <img src="/icons/close.svg" width="16" height="16" alt="" class="theme-icon" />
         </button>
       {/if}
     </div>

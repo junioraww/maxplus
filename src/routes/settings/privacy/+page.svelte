@@ -851,18 +851,18 @@
   .toggle-title {
     font-size: 0.98rem;
     font-weight: 500;
-    color: #fff;
+    color: var(--settings-text-primary, var(--text-primary));
   }
 
   .toggle-desc {
     font-size: 0.82rem;
-    color: #888;
+    color: var(--settings-text-secondary, var(--text-secondary));
   }
 
   .modal-backdrop {
     position: fixed;
     inset: 0;
-    background: rgba(0, 0, 0, 0.65);
+    background: var(--bg-overlay, rgba(0, 0, 0, 0.65));
     display: flex;
     align-items: flex-end;
     justify-content: center;
@@ -923,53 +923,53 @@
     align-items: center;
     justify-content: space-between;
     padding: 12px 14px;
-    background: rgba(255, 255, 255, 0.03);
-    border: 1px solid rgba(255, 255, 255, 0.06);
+    background: var(--bg-hover);
+    border: 1px solid var(--border-subtle);
     border-radius: 8px;
     cursor: pointer;
     transition: background 0.15s, border-color 0.15s;
   }
 
   .modal-option:hover {
-    background: rgba(255, 255, 255, 0.06);
+    background: var(--bg-active);
   }
 
   .modal-option.selected {
-    border-color: #0ea5e9;
-    background: rgba(14, 165, 233, 0.1);
+    border-color: var(--accent-primary);
+    background: var(--accent-subtle);
   }
 
   .option-label {
     font-size: 0.95rem;
-    color: #eee;
+    color: var(--text-primary);
   }
 
   .radio-circle {
     width: 20px;
     height: 20px;
     border-radius: 50%;
-    border: 2px solid #666;
+    border: 2px solid var(--icon-muted);
     display: flex;
     align-items: center;
     justify-content: center;
   }
 
   .radio-circle.checked {
-    border-color: #0ea5e9;
+    border-color: var(--accent-primary);
   }
 
   .radio-inner {
     width: 10px;
     height: 10px;
     border-radius: 50%;
-    background: #0ea5e9;
+    background: var(--accent-primary);
   }
 
   .modal-cancel-btn {
     height: 44px;
     border: none;
-    background: rgba(255, 255, 255, 0.08);
-    color: #ffffff;
+    background: var(--bg-pill);
+    color: var(--text-primary);
     cursor: pointer;
     font-size: 14px;
     font-weight: 600;
@@ -981,7 +981,7 @@
   }
 
   .modal-cancel-btn:hover {
-    background: rgba(255, 255, 255, 0.14);
+    background: var(--bg-active);
   }
 
   .modal-actions {
@@ -1005,12 +1005,12 @@
   }
 
   .modal-btn.secondary {
-    background: rgba(255, 255, 255, 0.08);
-    color: #ffffff;
+    background: var(--bg-pill);
+    color: var(--text-primary);
   }
 
   .modal-btn.secondary:hover {
-    background: rgba(255, 255, 255, 0.14);
+    background: var(--bg-active);
   }
 
   .modal-btn.primary {
@@ -1056,7 +1056,7 @@
     height: 32px;
     border-radius: 50%;
     background: transparent;
-    color: #ffffff;
+    color: var(--icon-primary);
     border: none;
     display: flex;
     align-items: center;
@@ -1075,7 +1075,7 @@
     height: 32px;
     border-radius: 50%;
     background: transparent;
-    color: #ffffff;
+    color: var(--icon-primary);
     border: none;
     display: flex;
     align-items: center;
@@ -1100,9 +1100,9 @@
   .bot-badge {
     font-size: 10px;
     font-weight: 600;
-    color: #0ea5e9;
-    background: rgba(14, 165, 233, 0.14);
-    border: 1px solid rgba(14, 165, 233, 0.28);
+    color: var(--accent-primary);
+    background: var(--accent-subtle);
+    border: 1px solid var(--accent-subtle-hover);
     padding: 1px 5px;
     border-radius: 4px;
     letter-spacing: 0.04em;
@@ -1113,14 +1113,14 @@
   .close-icon-btn {
     background: transparent;
     border: none;
-    color: #888;
+    color: var(--icon-muted);
     font-size: 1.2rem;
     cursor: pointer;
     padding: 4px 8px;
   }
 
   .close-icon-btn:hover {
-    color: #fff;
+    color: var(--icon-primary);
   }
 
   .search-input-wrapper {
@@ -1131,11 +1131,11 @@
   .custom-search-input {
     width: 100%;
     height: 36px;
-    background-color: #202024;
-    border: 1px solid #363640;
+    background-color: var(--settings-input-bg);
+    border: 1px solid var(--settings-input-border);
     border-radius: 8px;
     padding: 0 12px;
-    color: #fff;
+    color: var(--settings-text-primary);
     font-size: 14px;
     outline: none;
     box-sizing: border-box;
@@ -1143,7 +1143,7 @@
   }
 
   .custom-search-input:focus {
-    border-color: #0ea5e9;
+    border-color: var(--accent-primary);
   }
 
   .blacklist-scroll {
@@ -1164,7 +1164,7 @@
     justify-content: center;
     height: 100%;
     min-height: 200px;
-    color: #888;
+    color: var(--text-muted);
     font-size: 0.9rem;
     text-align: center;
   }
@@ -1174,7 +1174,7 @@
     align-items: center;
     gap: 12px;
     padding: 8px 10px;
-    background: rgba(255, 255, 255, 0.02);
+    background: var(--bg-hover);
     border-radius: 8px;
   }
 
@@ -1184,7 +1184,7 @@
   }
 
   .select-block-item:hover {
-    background: rgba(255, 255, 255, 0.06);
+    background: var(--bg-active);
   }
 
   .blacklist-info {
@@ -1196,7 +1196,7 @@
 
   .blacklist-name {
     font-size: 0.92rem;
-    color: #fff;
+    color: var(--text-primary);
     font-weight: 500;
     white-space: nowrap;
     overflow: hidden;
@@ -1205,13 +1205,13 @@
 
   .blacklist-sub {
     font-size: 0.78rem;
-    color: #888;
+    color: var(--text-muted);
   }
 
   .unblock-btn {
-    background: rgba(255, 255, 255, 0.08);
-    color: #ff5555;
-    border: 1px solid rgba(255, 85, 85, 0.2);
+    background: var(--status-danger-subtle);
+    color: var(--status-danger);
+    border: 1px solid var(--status-danger-subtle);
     padding: 6px 12px;
     border-radius: 6px;
     font-size: 0.8rem;
