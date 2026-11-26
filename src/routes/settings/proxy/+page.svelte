@@ -436,7 +436,6 @@
 
   .status-dot.online {
     background: #10b981;
-    box-shadow: 0 0 8px rgba(16, 185, 129, 0.6);
   }
 
   .status-meta {
@@ -539,7 +538,6 @@
   .segment-btn.active {
     background: #2c2c34;
     color: #ffffff;
-    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
   }
 
   .active-dot {

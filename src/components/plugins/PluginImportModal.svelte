@@ -239,7 +239,6 @@
     justify-content: center;
     padding: 10px;
     box-sizing: border-box;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
   }
 
   .plugin-modal-icon-svg :global(svg) {
@@ -254,7 +253,6 @@
     border-radius: 16px;
     object-fit: contain;
     background: var(--bg-surface-2);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
   }
 
   .plugin-modal-icon-fallback {

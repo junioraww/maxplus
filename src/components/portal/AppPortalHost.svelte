@@ -800,7 +800,6 @@
     height: 100%;
     pointer-events: auto;
     overflow: hidden;
-    box-shadow: -10px 0 30px rgba(0, 0, 0, 0.5);
     will-change: transform;
     touch-action: pan-y;
   }

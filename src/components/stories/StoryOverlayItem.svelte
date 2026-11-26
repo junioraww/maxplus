@@ -413,13 +413,11 @@
     white-space: pre-wrap;
     text-align: center;
     word-break: break-word;
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
     box-sizing: border-box;
   }
 
   .text-content.transparent-bg {
     background: transparent !important;
-    box-shadow: none !important;
     text-shadow: 0 2px 10px rgba(0, 0, 0, 0.95), 0 0 4px rgba(0, 0, 0, 0.9);
   }
 
@@ -446,7 +444,6 @@
     overflow: hidden;
     white-space: nowrap;
     text-overflow: ellipsis;
-    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
   }
   .link-content span {
     overflow: hidden;
@@ -480,7 +477,6 @@
     border: 2px dashed rgba(255, 255, 255, 0.95);
     border-radius: 12px;
     pointer-events: none;
-    box-shadow: 0 0 10px rgba(0, 0, 0, 0.45);
   }
 
   .corner-handle {
@@ -491,7 +487,6 @@
     border: 2.5px solid #2481cc;
     border-radius: 50%;
     cursor: nwse-resize;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.45);
     touch-action: none;
     z-index: var(--z-dropdown, 6);
   }
@@ -524,7 +519,6 @@
     border: 2px solid #3b82f6;
     border-radius: 4px;
     cursor: ew-resize;
-    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
     touch-action: none;
     z-index: var(--z-dropdown, 6);
   }

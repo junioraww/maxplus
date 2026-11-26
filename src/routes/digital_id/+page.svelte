@@ -485,7 +485,6 @@
     gap: 16px;
     background: linear-gradient(135deg, #1f2229 0%, #16181c 100%);
     border: 1px solid rgba(59, 130, 246, 0.25);
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
   }
 
   .id-card-top {
@@ -773,7 +772,6 @@
     padding: 8px 16px;
     border-radius: 8px;
     font-size: 13px;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
     z-index: var(--z-toast, 10);
     pointer-events: none;
   }

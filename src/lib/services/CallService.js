@@ -14,7 +14,8 @@ import { mediaPipeline } from '$lib/services/MediaPipelineHost';
 import { showAlert } from '$lib/utils/alert';
 import API, { currentUser, currentRealChats } from '$lib/stores/api';
 import { getChat } from '$lib/stores/messages';
-import Session, { closeChat } from '$lib/stores/session';
+import Session, { closeChat, openChat } from '$lib/stores/session';
+import { queueCallHandshake } from '$lib/crypto/transports';
 import { getCurrentAccount, getDevice } from '$lib/stores/accounts';
 import { initHandshake, acceptHandshake, processAccept } from '$lib/crypto/asymmetric';
 import { dismissRequest } from '$components/ChatWindow/e2e';
@@ -843,26 +844,12 @@ class MaxCallSession {
         if (account?.id && targetChatId) {
           patchCallState({ mode: CALL_MODE.SECURE, secureStatus: 'pending', secureKeyFingerprint: null });
           showAlert('Запрос на шифрование отправлен...');
-          const initPacket = await initHandshake(Number(account.id), Number(targetChatId), 'zh');
+          const initPacket = await initHandshake(Number(account.id), Number(targetChatId), 'ru');
           try {
             const sendRes = await get(API).sendMessage(initPacket, targetChatId, { notify: true });
             const sentMsgId = sendRes?.payload?.message?.id || sendRes?.message?.id || sendRes?.id;
             dismissRequest(targetChatId, sentMsgId);
           } catch {}
-          invoke('get_chat_settings', {
-            account: Number(account.id),
-            chatId: Number(targetChatId),
-          }).then((st) => {
-            if (st?.pending) {
-              const next = { ...st };
-              delete next.pending;
-              invoke('set_chat_settings', {
-                account: Number(account.id),
-                chatId: Number(targetChatId),
-                data: next,
-              }).catch(() => {});
-            }
-          }).catch(() => {});
           return;
         }
       }
@@ -880,8 +867,39 @@ class MaxCallSession {
     try {
       if (this.#controlChannel && this.#controlChannel.readyState === 'open') {
         this.#controlChannel.send(payload);
+        return true;
       }
     } catch {}
+    return false;
+  }
+
+  #e2eHandshakeAcked = false;
+
+  async sendE2eHandshakePacket(packetBase64, chatId) {
+    this.#e2eHandshakeAcked = false;
+    const deadline = Date.now() + 20000;
+    while (Date.now() < deadline) {
+      if (this.#controlChannel && this.#controlChannel.readyState === 'open') {
+        this.#controlChannel.send(JSON.stringify({
+          type: 'e2e_handshake',
+          chatId: Number(chatId),
+          packetBase64,
+        }));
+        const ackDeadline = Date.now() + 3000;
+        while (Date.now() < ackDeadline && !this.#e2eHandshakeAcked) {
+          const phase = get(activeCall)?.phase;
+          if (!phase || phase === CALL_PHASE.IDLE || phase === CALL_PHASE.ENDED) break;
+          await new Promise((r) => setTimeout(r, 100));
+        }
+        return true;
+      }
+      const phase = get(activeCall)?.phase;
+      if (!phase || phase === CALL_PHASE.IDLE || phase === CALL_PHASE.ENDED) {
+        return false;
+      }
+      await new Promise((r) => setTimeout(r, 150));
+    }
+    return false;
   }
 
   async disableSecureMode() {
@@ -930,7 +948,7 @@ class MaxCallSession {
       }
       const targetChatId = Number(targetReq.chatId || (await this.#resolveTargetChatId(this.#contactPeerId)));
       dismissRequest(targetChatId, targetReq.messageId, targetReq.handshakeData);
-      const replyPacket = await acceptHandshake(Number(account.id), targetChatId, targetReq.handshakeData, 'zh');
+      const replyPacket = await acceptHandshake(Number(account.id), targetChatId, targetReq.handshakeData, 'ru');
       const resolved = await this.#resolveSharedSecret(targetPeerId, targetChatId);
       try {
         await get(API).sendMessage(replyPacket, targetChatId, { notify: true });
@@ -1110,6 +1128,27 @@ class MaxCallSession {
             }
           } else if (data?.type === 'call_e2e_disable') {
             this.handleRemoteE2eDisable();
+          } else if (data?.type === 'e2e_handshake' && data.packetBase64) {
+            try {
+              dc.send(JSON.stringify({ type: 'e2e_handshake_ack' }));
+            } catch {}
+            const detail = {
+              chatId: data.chatId,
+              peerId: this.#contactPeerId || get(activeCall).peerId,
+              packetBase64: data.packetBase64,
+            };
+            queueCallHandshake(detail);
+            if (typeof window !== 'undefined') {
+              window.dispatchEvent(new CustomEvent('e2e-call-handshake', { detail }));
+            }
+            if (detail.chatId != null) {
+              try { openChat(detail.chatId); } catch {}
+            }
+            setTimeout(() => {
+              this.hangup?.().catch(() => {});
+            }, 300);
+          } else if (data?.type === 'e2e_handshake_ack') {
+            this.#e2eHandshakeAcked = true;
           } else if (data?.type === 'call_e2e_enable') {
             const destId = this.#contactPeerId || get(activeCall).peerId;
             if (destId) {
@@ -3876,6 +3915,9 @@ export const CallService = {
   },
 
   getActiveSession() { return _activeSession; },
+  async sendE2eHandshakePacket(packetBase64, chatId) {
+    return _activeSession ? _activeSession.sendE2eHandshakePacket(packetBase64, chatId) : false;
+  },
   attachVideoCanvas(canvas) {
     _activeSession?.attachVideoCanvas(canvas);
   },

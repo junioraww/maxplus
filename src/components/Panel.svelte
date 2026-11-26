@@ -356,7 +356,6 @@
     background: #25262c;
     border: 1px solid #383a45;
     border-radius: 14px;
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
     box-sizing: border-box;
   }
 
@@ -489,7 +488,6 @@
   .option.editing-item {
     background: rgba(255, 255, 255, 0.08);
     border: 1px solid rgba(255, 255, 255, 0.16);
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.08);
   }
 
   .option.editing-item:hover {
@@ -500,7 +498,6 @@
   .option-wrapper.dragging .option {
     background: rgba(0, 119, 255, 0.18);
     border-color: rgba(0, 119, 255, 0.55);
-    box-shadow: 0 4px 14px rgba(0, 119, 255, 0.25);
   }
 
   .star-badge {
@@ -522,13 +519,11 @@
     z-index: var(--z-floating);
     line-height: 0;
     transition: transform 0.15s, background-color 0.15s, border-color 0.15s;
-    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.35);
   }
 
   .star-badge.is-default {
     background: #2b2612;
     border-color: #ffd700;
-    box-shadow: 0 2px 8px rgba(255, 215, 0, 0.3);
   }
 
   .star-badge:hover {
@@ -562,7 +557,6 @@
     z-index: var(--z-floating);
     line-height: 0;
     transition: transform 0.15s;
-    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.35);
   }
 
   .remove-badge:hover {
@@ -594,7 +588,6 @@
     box-sizing: border-box;
     z-index: var(--z-floating);
     line-height: 0;
-    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.35);
   }
 
   .lock-badge svg {
@@ -696,7 +689,6 @@
     flex-direction: column;
     max-height: 70vh;
     padding-bottom: max(16px, var(--safe-bottom, 0px));
-    box-shadow: 0 -8px 30px rgba(0, 0, 0, 0.5);
   }
 
   .sheet-top {

@@ -426,7 +426,6 @@
     border-radius: 16px;
     font-size: 0.8rem;
     font-weight: 500;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
     z-index: var(--z-toast);
     pointer-events: none;
   }

@@ -2205,7 +2205,6 @@
     position: absolute;
     inset: 0;
     background: rgba(0, 0, 0, 0.45);
-    backdrop-filter: blur(12px);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -2251,7 +2250,6 @@
     left: 50%;
     transform: translateX(-50%);
     background: rgba(0, 0, 0, 0.65);
-    backdrop-filter: blur(8px);
     border: 1px solid rgba(255, 255, 255, 0.15);
     padding: 6px 14px;
     border-radius: 20px;
@@ -2372,7 +2370,6 @@
     align-items: center;
     justify-content: center;
     cursor: pointer;
-    backdrop-filter: blur(8px);
   }
 
   .camera-switch-btn {
@@ -2387,7 +2384,6 @@
     justify-content: center;
     cursor: pointer;
     transition: transform 0.15s, background-color 0.15s;
-    backdrop-filter: blur(8px);
   }
   .camera-switch-btn:hover {
     background: rgba(0, 0, 0, 0.85);
@@ -2447,7 +2443,6 @@
     height: 64px;
     border-radius: 50%;
     background: rgba(0, 0, 0, 0.55);
-    backdrop-filter: blur(8px);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -2511,7 +2506,6 @@
     left: 0;
     right: 0;
     background: rgba(13, 14, 18, 0.95);
-    backdrop-filter: blur(12px);
     padding: 8px 16px;
     border-top: 1px solid rgba(255, 255, 255, 0.1);
     z-index: var(--z-sheet, 7);
@@ -2531,7 +2525,6 @@
     gap: 8px;
     padding: 6px 14px;
     background: rgba(28, 42, 56, 0.92);
-    backdrop-filter: blur(8px);
     color: #ffffff;
     font-size: 12px;
     font-weight: 600;
@@ -2601,7 +2594,6 @@
     width: calc(50% - 2px);
     background: linear-gradient(135deg, #3b82f6, #2563eb);
     border-radius: 14px;
-    box-shadow: 0 2px 6px rgba(37, 99, 235, 0.45);
     transition: transform 0.25s cubic-bezier(0.2, 0.8, 0.2, 1);
     pointer-events: none;
   }
@@ -2691,7 +2683,6 @@
     flex-direction: column;
     gap: 16px;
     border: 1px solid rgba(255, 255, 255, 0.1);
-    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.6);
   }
 
   .sub-modal-card h3 {
@@ -2804,6 +2795,5 @@
     border-radius: 18px;
     padding: 16px;
     border: 1px solid rgba(255, 255, 255, 0.12);
-    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.7);
   }
 </style>

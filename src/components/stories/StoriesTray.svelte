@@ -171,7 +171,6 @@
     cursor: pointer;
     padding: 0;
     transition: transform 0.15s;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.4);
     z-index: 2;
   }
 

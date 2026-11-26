@@ -795,7 +795,6 @@
     height: 10px;
     border-radius: 50%;
     background: #4ade80;
-    box-shadow: 0 0 10px #4ade80;
     animation: ringGlow 1.8s infinite;
   }
 
@@ -940,7 +939,6 @@
     width: calc(50% - 3px);
     background: var(--bg-surface-2, #26262e);
     border-radius: 9px;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
     pointer-events: none;
     will-change: transform;
     z-index: 1;
@@ -1239,7 +1237,6 @@
     background: var(--bg-surface-2, #26262e);
     border: 1px solid rgba(255, 255, 255, 0.08);
     border-radius: 14px;
-    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
     padding: 6px;
     display: flex;
     flex-direction: column;
@@ -1290,17 +1287,15 @@
     border: none;
     background: var(--accent-primary, #248bfe);
     color: #ffffff;
-    box-shadow: 0 4px 20px rgba(36, 139, 254, 0.45);
     display: flex;
     align-items: center;
     justify-content: center;
     cursor: pointer;
-    transition: transform 0.15s, box-shadow 0.15s;
+    transition: transform 0.15s;
     z-index: var(--z-floating, 5);
   }
 
   .fab-new-call:hover {
-    box-shadow: 0 6px 24px rgba(36, 139, 254, 0.6);
   }
 
   .fab-new-call:active {

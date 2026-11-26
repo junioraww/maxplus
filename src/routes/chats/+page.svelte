@@ -870,7 +870,6 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    box-shadow: 0 0 0 2px var(--bg-app, #17181c), 0 0 0 3.5px #3b82f6;
     background: var(--bg-app, #17181c);
     overflow: hidden;
   }

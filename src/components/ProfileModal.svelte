@@ -549,7 +549,7 @@
     const password = event.target.value;
 
     if (password.length) {
-      if (!$chatSettings.obfuscation) setObfuscation("zh");
+      if (!$chatSettings.obfuscation) setObfuscation("ru");
     } else {
       if ($chatSettings.obfuscation) setObfuscation(null);
     }
@@ -569,7 +569,7 @@
     }
     $chatSettings.obfuscation = type;
     $chatSettings.obfs = type;
-    showToast(type === "zh" ? "Маскировка: Китайский" : type === "words" ? "Маскировка: Книжные слова" : "Маскировка отключена");
+    showToast(type === "ru" ? "Маскировка: Русский" : type === "words" ? "Маскировка: Книжные слова" : "Маскировка отключена");
   }
 
   function handleAction(action) {
@@ -2446,7 +2446,6 @@
     transition: background 0.15s, transform 0.12s;
     user-select: none;
     box-sizing: border-box;
-    box-shadow: none;
   }
 
   .profile-action-tile:hover {
@@ -2493,7 +2492,6 @@
     font-size: 16px;
     font-weight: 600;
     cursor: pointer;
-    box-shadow: none;
     transition: opacity 0.15s, transform 0.1s;
     display: flex;
     align-items: center;
@@ -2525,7 +2523,6 @@
     overflow: hidden;
     display: flex;
     flex-direction: column;
-    box-shadow: none;
   }
 
   .profile-card-caption {
@@ -2815,7 +2812,6 @@
     min-width: 210px;
     border-radius: 16px;
     padding: 6px;
-    box-shadow: 0 10px 32px rgba(0, 0, 0, 0.65);
     display: flex;
     flex-direction: column;
     gap: 2px;
@@ -2872,15 +2868,12 @@
     width: auto !important;
     max-width: min(400px, 90%);
     background: rgba(33, 35, 44, 0.95);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
     border: none;
     color: #ffffff;
     padding: 10px 20px;
     border-radius: 24px;
     font-size: 14px;
     font-weight: 500;
-    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45);
     z-index: 120;
     pointer-events: none;
     white-space: nowrap;
@@ -2908,7 +2901,6 @@
     align-items: center;
     justify-content: center;
     color: #ffffff;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
     z-index: 5;
     pointer-events: none;
     transition: transform 0.15s ease, opacity 0.15s ease;

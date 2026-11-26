@@ -876,7 +876,6 @@
     padding: 12px 20px calc(20px + var(--safe-bottom, 0px));
     width: 100%;
     max-width: 480px;
-    box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.5);
     display: flex;
     flex-direction: column;
     gap: 16px;

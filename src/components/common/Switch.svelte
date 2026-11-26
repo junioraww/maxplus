@@ -62,7 +62,6 @@
   }
 
   .app-switch:focus-visible .switch-track {
-    box-shadow: 0 0 0 2px var(--accent-primary, #248bfe);
   }
 
   .switch-track {
@@ -89,7 +88,6 @@
     height: 20px;
     background: #ffffff;
     border-radius: 50%;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.28);
     transition: transform 0.22s cubic-bezier(0.25, 0.1, 0.25, 1);
   }
 

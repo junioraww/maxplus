@@ -14,6 +14,8 @@ import { CallService } from "$lib/services/CallService";
 import { triggerSafetyLockout } from "$lib/stores/e2eSafety";
 import { showAlert } from "$lib/utils/alert";
 import { parseApiError } from "$lib/utils/errors";
+import { resolveHandshakeMode, sendHandshakePacket } from "$lib/crypto/transports";
+import { syncChatSettingsLocal } from "$lib/stores/messages";
 
 const pendingRequests = new Map();
 const blockedRequests = new Map();
@@ -132,7 +134,19 @@ export async function checkForEncryptionRequest(
     return null;
   }
 
-  const currentSettings = get(chatSettings);
+  const account = await getCurrentAccount();
+  const accId = Number(account?.id || 0);
+
+  let currentSettings = get(chatSettings);
+  if (!currentSettings && accId) {
+    currentSettings = await invoke("get_chat_settings", {
+      account: accId,
+      chatId: Number(chat.id),
+    }).catch(() => null);
+    if (currentSettings) {
+      syncChatSettingsLocal(chat.id, currentSettings);
+    }
+  }
   const isSessionActive = Boolean(
     currentSettings?.session?.shared_secret ||
     currentSettings?.session?.fingerprint ||
@@ -140,21 +154,22 @@ export async function checkForEncryptionRequest(
   );
   const establishedAt = Number(currentSettings?.session?.established_at || 0);
   const rejectedSet = getRejectedSet(chat.id, currentSettings);
-
-  const account = await getCurrentAccount();
-  const accId = Number(account?.id || 0);
   const myIds = new Set([
     Number(currentUid),
     Number(account?.id),
     Number(account?.contact?.id),
   ].filter((n) => !isNaN(n) && n > 0));
 
+  const dedupMap = new Map();
+  for (const m of [...(Array.isArray(allMessages) ? allMessages : []), ...newMessages]) {
+    if (m && m.id != null && !m.deleted) {
+      dedupMap.set(String(m.id), m);
+    }
+  }
+  const combinedMessages = Array.from(dedupMap.values());
+
   let latestMyMessageTime = 0;
-  const combinedForMyCheck = Array.isArray(allMessages) && allMessages.length > 0
-    ? [...allMessages, ...newMessages]
-    : newMessages;
-  for (const m of combinedForMyCheck) {
-    if (!m || m.deleted) continue;
+  for (const m of combinedMessages) {
     const sId = Number(m.sender?.id || m.sender);
     if (myIds.has(sId)) {
       const t = Number(m.time || m.created_at || 0);
@@ -169,14 +184,18 @@ export async function checkForEncryptionRequest(
     }
   }
 
-  const recipientMessages = newMessages
-    .filter((msg) => {
-      const senderId = Number(msg.sender?.id || msg.sender);
-      return !myIds.has(senderId) || isSavedMessagesChat;
-    })
-    .sort((a, b) => Number(a.time || a.created_at || 0) - Number(b.time || b.created_at || 0));
-  const candidateMessages = recipientMessages.slice(-3);
-  const candidateIds = new Set(candidateMessages.map((m) => String(m.id)));
+  // Only consider requests that are among the newest 3 messages in the whole chat
+  const tailMessages = combinedMessages
+    .sort((a, b) => Number(a.time || a.created_at || 0) - Number(b.time || b.created_at || 0))
+    .slice(-3);
+  const candidateIds = new Set(
+    tailMessages
+      .filter((msg) => {
+        const senderId = Number(msg.sender?.id || msg.sender);
+        return !myIds.has(senderId) || isSavedMessagesChat;
+      })
+      .map((m) => String(m.id))
+  );
 
   let detectedRequest = null;
 
@@ -196,15 +215,13 @@ export async function checkForEncryptionRequest(
     const senderId = Number(msg.sender?.id || msg.sender);
     const isFromMe = myIds.has(senderId);
 
-    const isDisableSignal = dec.text && (dec.text === "__E2E_DISABLE__" || dec.text.includes('"e2e_control":"disable"'));
+    const isDisableSignal = dec.text && dec.text.includes('"e2e_control":"disable"');
     if (isDisableSignal) {
       let payloadTs = 0;
       try {
-        if (dec.text.includes('"e2e_control"')) {
-          const parsed = JSON.parse(dec.text);
-          if (parsed && parsed.timestamp) {
-            payloadTs = Number(parsed.timestamp);
-          }
+        const parsed = JSON.parse(dec.text);
+        if (parsed && parsed.timestamp) {
+          payloadTs = Number(parsed.timestamp);
         }
       } catch (_) {}
       const msgTime = Number(msg.time || msg.created_at || 0);
@@ -235,42 +252,7 @@ export async function checkForEncryptionRequest(
       }
       if ((!isFromMe || isSavedMessagesChat) && isSessionActive) {
         handledDisables.add(msgIdStr);
-        chatSettings.update((old) => {
-          const next = { ...old };
-          if (next.session?.shared_secret) {
-            const fromTs = next.session.established_at || 0;
-            const untilTs = Date.now();
-            const existingKeys = Array.isArray(next.keys?.keys) ? [...next.keys.keys] : [];
-            const found = existingKeys.find((k) => k.shared_secret === next.session.shared_secret);
-            if (found) {
-              found.message_until = untilTs;
-            } else {
-              existingKeys.push({
-                shared_secret: next.session.shared_secret,
-                fingerprint: next.session.fingerprint,
-                message_from: fromTs,
-                message_until: untilTs,
-              });
-            }
-            next.keys = {
-              ...(next.keys || {}),
-              keys: existingKeys,
-              current: null,
-            };
-          }
-          delete next.session;
-          delete next.pending;
-          delete next.e2e_declined;
-          return next;
-        });
-        const fresh = get(chatSettings);
-        invoke("set_chat_settings", {
-          account: accId,
-          chatId: Number(chat.id),
-          data: fresh,
-        }).catch(() => {});
-        triggerSafetyLockout(chat.id, 5000);
-        CallService.disableSecureMode().catch(() => {});
+        await archiveAndClearLocalSession(chat, chatSettings, accId);
       }
       continue;
     }
@@ -301,8 +283,19 @@ export async function checkForEncryptionRequest(
         CallService.handleIncomingChatHandshake(detectedRequest);
       }
     } else if (dec.is_handshake_accept && dec.handshake_data) {
-      const hasPending = Boolean(currentSettings?.pending?.x_sk || currentSettings?.pending === true || (currentSettings?.pending && typeof currentSettings.pending === 'object'));
-      if (hasPending && !currentSettings?.session?.peer_x_pk && (!isFromMe || isSavedMessagesChat)) {
+      let hasPending = Boolean(currentSettings?.pending?.x_sk || currentSettings?.pending === true || (currentSettings?.pending && typeof currentSettings.pending === 'object'));
+      if (!hasPending && accId) {
+        const freshCheck = await invoke("get_chat_settings", {
+          account: accId,
+          chatId: Number(chat.id),
+        }).catch(() => null);
+        if (freshCheck) {
+          currentSettings = freshCheck;
+          syncChatSettingsLocal(chat.id, freshCheck);
+          hasPending = Boolean(freshCheck?.pending?.x_sk || (freshCheck?.pending && typeof freshCheck.pending === 'object'));
+        }
+      }
+      if (hasPending && (!isFromMe || isSavedMessagesChat)) {
         try {
           const fingerprint = await processAccept(
             accId,
@@ -315,21 +308,7 @@ export async function checkForEncryptionRequest(
             chatId: Number(chat.id),
           });
           if (freshSettings) {
-            chatSettings.set(freshSettings);
-          } else {
-            chatSettings.update((old) => ({
-              ...old,
-              pending: false,
-              session: {
-                ...(old?.session || {}),
-                fingerprint,
-                established_at: Date.now(),
-              },
-              keys: {
-                ...(old?.keys || {}),
-                current: 1,
-              },
-            }));
+            syncChatSettingsLocal(chat.id, freshSettings);
           }
         } catch (e) {
           console.error(e);
@@ -341,6 +320,22 @@ export async function checkForEncryptionRequest(
   return detectedRequest;
 }
 
+async function archiveAndClearLocalSession(chat, chatSettings, accId) {
+  try {
+    const fresh = await invoke("disable_e2e_session", {
+      account: accId,
+      chatId: Number(chat.id),
+    });
+    if (fresh) {
+      syncChatSettingsLocal(chat.id, fresh);
+    }
+  } catch (e) {
+    console.error(e);
+  }
+  triggerSafetyLockout(chat.id, 5000);
+  CallService.disableSecureMode().catch(() => {});
+}
+
 export async function handleEnc(chat, chatSettings, messages, action) {
   const req = pendingRequests.get(Number(chat.id));
   if (!req) return;
@@ -350,12 +345,15 @@ export async function handleEnc(chat, chatSettings, messages, action) {
 
   if (action === "agree") {
     try {
-      const obf = get(chatSettings)?.obfs || "zh";
+      const settings = get(chatSettings);
+      const mode = resolveHandshakeMode(settings);
+      const rawObf = settings?.obfs ?? settings?.obfuscation;
+      const obf = rawObf && rawObf !== "none" ? rawObf : "ru";
       const replyPacket = await acceptHandshake(
         accId,
         chat.id,
         req.handshakeData,
-        obf
+        mode === "chat" ? obf : "raw"
       );
 
       pendingRequests.delete(Number(chat.id));
@@ -390,53 +388,16 @@ export async function handleEnc(chat, chatSettings, messages, action) {
             new Set([...(freshSettings?.declined_handshakes || []), ...(hsData ? [hsData] : [])])
           ),
         });
-      } else {
-        const info = await getEncryptionInfo(accId, chat.id);
-        const oldSettings = get(chatSettings);
-        let existingKeys = Array.isArray(oldSettings?.keys?.keys) ? [...oldSettings.keys.keys] : [];
-        if (oldSettings?.session?.shared_secret) {
-          existingKeys.push({
-            shared_secret: oldSettings.session.shared_secret,
-            fingerprint: oldSettings.session.fingerprint,
-            message_from: oldSettings.session.established_at || 0,
-            message_until: Date.now(),
-          });
-        }
-        chatSettings.update((old) => ({
-          ...old,
-          pending: false,
-          handled_handshakes: Array.from(
-            new Set([...(old?.handled_handshakes || []), ...(msgId ? [msgId] : [])])
-          ),
-          rejected_handshakes: Array.from(
-            new Set([...(old?.rejected_handshakes || []), ...(msgId ? [msgId] : [])])
-          ),
-          declined_handshakes: Array.from(
-            new Set([...(old?.declined_handshakes || []), ...(hsData ? [hsData] : [])])
-          ),
-          session: {
-            ...(old?.session || {}),
-            fingerprint: info?.fingerprint,
-            established_at: Date.now(),
-          },
-          keys: {
-            ...(old?.keys || {}),
-            keys: existingKeys,
-            current: 1,
-          },
-        }));
       }
 
-      await sendMessage(
+      await sendHandshakePacket({
+        mode,
         chat,
         chatSettings,
         messages,
-        replyPacket,
-        undefined,
-        undefined,
-        undefined,
-        true
-      );
+        rawPacketBase64: mode === "chat" ? null : replyPacket,
+        textPacket: mode === "chat" ? replyPacket : null,
+      });
 
       await CallService.syncChatSessionToActiveCall(chat.id);
     } catch (e) {
@@ -530,8 +491,10 @@ export async function switchEnc(chat, chatSettings, messages) {
     };
 
     try {
-      const obf = settings?.obfs || settings?.obfuscation || "zh";
-      const initPacket = await initHandshake(accId, chat.id, obf);
+      const mode = resolveHandshakeMode(settings);
+      const rawObf = settings?.obfs ?? settings?.obfuscation;
+      const obf = rawObf && rawObf !== "none" ? rawObf : "ru";
+      const packetOut = await initHandshake(accId, chat.id, mode === "chat" ? obf : "raw");
 
       const freshSettings = await invoke("get_chat_settings", {
         account: accId,
@@ -539,25 +502,17 @@ export async function switchEnc(chat, chatSettings, messages) {
       });
       if (freshSettings) {
         delete freshSettings.e2e_declined;
-        chatSettings.set(freshSettings);
-      } else {
-        chatSettings.update((old) => {
-          const next = { ...old, pending: true };
-          delete next.e2e_declined;
-          return next;
-        });
+        syncChatSettingsLocal(chat.id, freshSettings);
       }
 
-      const sendRes = await sendMessage(
+      const sendRes = await sendHandshakePacket({
+        mode,
         chat,
         chatSettings,
         messages,
-        initPacket,
-        undefined,
-        undefined,
-        undefined,
-        true
-      );
+        rawPacketBase64: mode === "chat" ? null : packetOut,
+        textPacket: mode === "chat" ? packetOut : null,
+      });
       const sentOk = Boolean(sendRes && !sendRes.error && sendRes.message && typeof sendRes.message === "object");
       if (!sentOk) {
         rollbackPending();
@@ -583,43 +538,11 @@ export async function switchEnc(chat, chatSettings, messages) {
         undefined,
         false
       );
-    } catch {}
-    triggerSafetyLockout(chat.id, 5000);
-    chatSettings.update((old) => {
-      const next = { ...old };
-      if (next.session?.shared_secret) {
-        const fromTs = next.session.established_at || 0;
-        const untilTs = Date.now();
-        const existingKeys = Array.isArray(next.keys?.keys) ? [...next.keys.keys] : [];
-        const found = existingKeys.find((k) => k.shared_secret === next.session.shared_secret);
-        if (found) {
-          found.message_until = untilTs;
-        } else {
-          existingKeys.push({
-            shared_secret: next.session.shared_secret,
-            fingerprint: next.session.fingerprint,
-            message_from: fromTs,
-            message_until: untilTs,
-          });
-        }
-        next.keys = {
-          ...(next.keys || {}),
-          keys: existingKeys,
-          current: null,
-        };
-      }
-      delete next.session;
-      delete next.pending;
-      delete next.e2e_declined;
-      return next;
-    });
-    const fresh = get(chatSettings);
-    invoke("set_chat_settings", {
-      account: accId,
-      chatId: Number(chat.id),
-      data: fresh,
-    }).catch(() => {});
-    CallService.disableSecureMode().catch(() => {});
+    } catch (e) {
+      console.error("Failed to send encrypted disable signal:", e);
+      showAlert(parseApiError(e));
+    }
+    await archiveAndClearLocalSession(chat, chatSettings, accId);
     return true;
   }
 }

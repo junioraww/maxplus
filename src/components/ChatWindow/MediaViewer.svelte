@@ -1848,7 +1848,6 @@
     width: 12px;
     border-radius: 50%;
     background: #fff;
-    box-shadow: 0 0 4px rgba(0, 0, 0, 0.4);
   }
   input[type="range"]:disabled {
     opacity: 0.5;

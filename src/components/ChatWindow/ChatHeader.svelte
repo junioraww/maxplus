@@ -10,6 +10,7 @@
   import { activeCall, CALL_PHASE } from "$lib/stores/calls";
   import { getMountStore } from "$lib/plugins/mount-registry";
   import { showAlert } from "$lib/utils/alert";
+  import { openScreen } from "$lib/services/layerManager";
 
   const pluginHeaderLeadings = getMountStore("chat:header-leading");
   const pluginHeaderInfos = getMountStore("chat:header-info");
@@ -108,6 +109,11 @@
 
   function handleOpenSettings() {
     dispatch("openSettings");
+  }
+
+  async function handleOpenAdvancedSettings() {
+    const mod = await import("$components/ChatWindow/AdvancedSettingsScreen.svelte");
+    openScreen(mod.default || mod, { chat, userId: avatarUserId }, { canSwipe: true });
   }
 
   function handleProfileClick() {
@@ -300,7 +306,7 @@
         <button
           type="button"
           class="fingerprint-badge"
-          on:click|stopPropagation={handleOpenSettings}
+          on:click|stopPropagation={handleOpenAdvancedSettings}
           on:keydown|stopPropagation={handleKeyDown}
           title="Ключ шифрования (E2E): {fingerprint}"
           aria-label="Ключ шифрования"
@@ -584,7 +590,6 @@
     border-radius: 12px;
     padding: 4px;
     min-width: 180px;
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
     z-index: var(--z-dropdown, 50);
     display: flex;
     flex-direction: column;
@@ -632,7 +637,9 @@
     border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.12));
     background: var(--bg-surface-elevated, rgba(255, 255, 255, 0.06));
     border-radius: 8px;
-    padding: 3px 5px;
+    width: 34px;
+    height: 34px;
+    padding: 0;
     margin: 0 4px;
     display: inline-flex;
     align-items: center;
@@ -654,22 +661,26 @@
 
   .fingerprint-grid {
     display: grid;
-    grid-template-columns: repeat(2, 1fr);
-    grid-template-rows: repeat(2, 1fr);
+    grid-template-columns: repeat(2, 12px);
+    grid-template-rows: repeat(2, 12px);
     gap: 1px;
-    width: 26px;
-    height: 26px;
+    width: 25px;
+    height: 25px;
     box-sizing: border-box;
-    align-items: center;
-    justify-items: center;
+    place-items: center;
+    place-content: center;
   }
 
   .fingerprint-grid span {
+    width: 12px;
+    height: 12px;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 12px;
+    text-align: center;
+    font-size: 10px;
     line-height: 1;
+    overflow: hidden;
     font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif;
   }
 

@@ -241,9 +241,7 @@
   }
 
   .participant-tile.speaking {
-    box-shadow: 0 0 0 3px #22c55e, 0 0 18px rgba(34, 197, 94, 0.45);
     border-color: #22c55e;
-    transition: box-shadow 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   }
 
   .waiting-tile {
@@ -286,7 +284,6 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
   }
 
   .avatar-initials {
@@ -331,7 +328,6 @@
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
-    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
   }
 
   .waiting-state {

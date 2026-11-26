@@ -171,7 +171,6 @@
     border-radius: 14px;
     width: 100%;
     max-width: 480px;
-    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.6);
     display: flex;
     flex-direction: column;
     overflow: hidden;

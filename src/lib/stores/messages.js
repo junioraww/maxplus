@@ -32,7 +32,8 @@ export const getChatSettings = chatId => {
 
   const entry = {
     store,
-    initialized: false
+    initialized: false,
+    suppressNextWrite: false,
   };
 
   settingsCache[chatId] = entry;
@@ -55,14 +56,28 @@ export const getChatSettings = chatId => {
         entry.initialized = true;
         return;
       }
+      if (entry.suppressNextWrite) {
+        entry.suppressNextWrite = false;
+        return;
+      }
 
-      const _account =  await getCurrentAccount();
+      const _account = await getCurrentAccount();
       await invoke("set_chat_settings", { account: Number(_account.id), chatId: Number(chatId), data: updated });
     });
   })();
 
   return store;
 };
+
+export function syncChatSettingsLocal(chatId, data) {
+  if (chatId == null || !data) return;
+  const entry = settingsCache[chatId];
+  if (!entry?.store) return;
+  if (entry.initialized) {
+    entry.suppressNextWrite = true;
+  }
+  entry.store.set(data);
+}
 
 export const getChat = chatId => {
   if (chatsCache[chatId])

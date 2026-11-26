@@ -641,7 +641,6 @@
     justify-content: center;
     background: var(--select-avatar-bg);
     border: 1.5px solid var(--select-avatar-border);
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
   }
 
   .blurred-avatar {
@@ -671,7 +670,6 @@
     align-items: center;
     justify-content: center;
     color: #007aff;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
   }
 
   .open-devices {
@@ -707,7 +705,6 @@
     border: 1px solid var(--select-menu-border);
     border-radius: 14px;
     overflow: hidden;
-    box-shadow: 0 10px 35px rgba(0, 0, 0, 0.2);
     animation: menuAppear .15s ease;
   }
 

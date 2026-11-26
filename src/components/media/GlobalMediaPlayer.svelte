@@ -199,7 +199,6 @@
     height: 100%;
     border-radius: 50%;
     overflow: hidden;
-    box-shadow: 0 4px 18px rgba(0, 0, 0, 0.45);
     border: 2px solid rgba(255, 255, 255, 0.8);
     background: #000;
   }

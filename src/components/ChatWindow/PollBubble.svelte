@@ -509,7 +509,7 @@
   .poll-more-btn { background: none; border: none; padding: 4px; color: var(--text-secondary, #9ca3af); cursor: pointer; border-radius: 4px; display: flex; align-items: center; }
   .poll-more-btn:hover { background: rgba(255, 255, 255, 0.08); color: #fff; }
   .poll-menu-dropdown { position: absolute; right: 0; top: 24px; z-index: var(--z-dropdown, 6); }
-  .telegram-dropout-card { display: flex; flex-direction: column; width: 196px; background: #1c1e2a; border: 1px solid rgba(255, 255, 255, 0.12); border-radius: var(--oneme-sheet-radius, 20px); box-shadow: 0 12px 36px rgba(0, 0, 0, 0.55), 0 2px 10px rgba(0, 0, 0, 0.3); overflow: hidden; }
+  .telegram-dropout-card { display: flex; flex-direction: column; width: 196px; background: #1c1e2a; border: 1px solid rgba(255, 255, 255, 0.12); border-radius: var(--oneme-sheet-radius, 20px); overflow: hidden; }
   .actions-group { display: flex; flex-direction: column; padding: 6px 0; }
   .action-row { display: flex; align-items: center; gap: 10px; width: 100%; padding: 8px 14px; border: none; background: transparent; color: #ffffff; font-size: 13.5px; font-weight: 450; cursor: pointer; text-align: left; transition: background 0.12s ease; font-family: inherit; }
   .action-row:hover { background: rgba(255, 255, 255, 0.08); }

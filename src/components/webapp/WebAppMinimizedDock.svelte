@@ -253,11 +253,10 @@
     border: 1px solid rgba(255, 255, 255, 0.14);
     border-radius: 20px;
     padding: 4px 8px 4px 6px;
-    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
     cursor: grab;
     user-select: none;
     animation: pillFadeIn 0.24s cubic-bezier(0.22, 1, 0.36, 1) forwards;
-    transition: transform 0.25s cubic-bezier(0.2, 0.9, 0.3, 1.2), background 0.15s ease, box-shadow 0.2s ease, opacity 0.18s cubic-bezier(0.22, 1, 0.36, 1);
+    transition: transform 0.25s cubic-bezier(0.2, 0.9, 0.3, 1.2), background 0.15s ease, opacity 0.18s cubic-bezier(0.22, 1, 0.36, 1);
     will-change: transform, opacity;
   }
 
@@ -279,7 +278,6 @@
     transition: none;
     cursor: grabbing;
     z-index: 10;
-    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.6);
   }
 
   .dock-pill:hover:not(.dragging) {

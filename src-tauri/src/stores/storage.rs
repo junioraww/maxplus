@@ -31,6 +31,16 @@ static PENDING_WRITES: LazyLock<Mutex<HashMap<PathBuf, (Value, Option<[u8; 32]>)
 static SCHEDULED_PATHS: LazyLock<Mutex<HashSet<PathBuf>>> =
     LazyLock::new(|| Mutex::new(HashSet::new()));
 
+pub fn flush_pending_writes() {
+    let items: Vec<(PathBuf, (Value, Option<[u8; 32]>))> = {
+        let mut pending = PENDING_WRITES.lock().unwrap();
+        pending.drain().collect()
+    };
+    for (path, (val, key)) in items {
+        let _ = Storage::new(key).save_direct(&path, &val);
+    }
+}
+
 pub fn save_coalesced(path: PathBuf, value: Value, key: Option<[u8; 32]>, delay: Duration) {
     {
         let mut pending = PENDING_WRITES.lock().unwrap();

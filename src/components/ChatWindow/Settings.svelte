@@ -5,6 +5,7 @@
   import API from "$lib/stores/api";
   import { isChatMuted } from "$lib/utils/notifications";
   import { autoDownloadEncryptedMedia } from "$lib/stores/e2eSettings";
+  import { openSettingsPage } from "$lib/stores/session";
   import Switch from "$components/common/Switch.svelte";
 
   export let chat;
@@ -40,7 +41,7 @@
     const password = event.target.value;
 
     if (password.length) {
-      if (!$chatSettings.obfuscation) setObfuscation("zh");
+      if (!$chatSettings.obfuscation) setObfuscation("ru");
     } else {
       if ($chatSettings.obfuscation) setObfuscation(null);
     }
@@ -53,13 +54,27 @@
     }, 500);
   }
 
+  $: isE2eActive = Boolean(
+    $chatSettings?.session?.shared_secret ||
+    $chatSettings?.session?.fingerprint ||
+    $chatSettings?.keys?.current ||
+    $chatSettings?.password
+  );
+  $: activeObf = $chatSettings?.obfuscation ?? $chatSettings?.obfs ?? (isE2eActive ? "ru" : "none");
+
   async function setObfuscation(type) {
     if (type === "words") {
-      hasDictionary = !!(await dict.getDictionary());
+      const d = await dict.getDictionary().catch(() => null);
+      hasDictionary = Boolean(d?.dict8?.length);
+      if (!hasDictionary) {
+        showToast("Словарь не установлен. Загрузите словарь в настройках.");
+        openSettingsPage("dictionary");
+        return;
+      }
     }
     $chatSettings.obfuscation = type;
     $chatSettings.obfs = type;
-    showToast(type === "zh" ? "Маскировка: Китайский" : type === "words" ? "Маскировка: Книжные слова" : "Маскировка отключена");
+    showToast(type === "ru" ? "Маскировка: Русский" : type === "words" ? "Маскировка: Книжные слова" : "Маскировка отключена");
   }
 
   async function swapReader() {
@@ -243,8 +258,8 @@
       <div class="tg-segmented">
         <button
           class="tg-seg-btn"
-          class:active={!$chatSettings.obfuscation}
-          on:click={() => setObfuscation(null)}
+          class:active={activeObf === "none"}
+          on:click={() => setObfuscation("none")}
         >
           <span class="tg-seg-title">Без маскировки</span>
           <span class="tg-seg-sub">OFF</span>
@@ -252,16 +267,16 @@
 
         <button
           class="tg-seg-btn"
-          class:active={$chatSettings.obfuscation === "zh"}
-          on:click={() => setObfuscation("zh")}
+          class:active={activeObf === "ru"}
+          on:click={() => setObfuscation("ru")}
         >
-          <span class="tg-seg-title">Китайский</span>
-          <span class="tg-seg-sub">Zh</span>
+          <span class="tg-seg-title">Русский</span>
+          <span class="tg-seg-sub">Ru</span>
         </button>
 
         <button
           class="tg-seg-btn"
-          class:active={$chatSettings.obfuscation === "words"}
+          class:active={activeObf === "words"}
           on:click={() => setObfuscation("words")}
         >
           <span class="tg-seg-title">Книжные слова</span>
@@ -270,9 +285,9 @@
       </div>
 
       <div class="tg-caption">
-        {#if $chatSettings.obfuscation === "zh"}
-          Зашифрованный текст визуально маскируется иероглифами.
-        {:else if $chatSettings.obfuscation === "words"}
+        {#if activeObf === "ru"}
+          Зашифрованный текст маскируется потоком русских букв и пробелов.
+        {:else if activeObf === "words"}
           {#await hasDictionary}
             Проверка словаря...
           {:then has}
@@ -395,7 +410,6 @@
     display: flex;
     flex-direction: column;
     overflow: hidden;
-    box-shadow: 0 -10px 40px rgba(0, 0, 0, 0.5);
   }
 
   .tg-grabber {
@@ -775,7 +789,6 @@
 
   .tg-seg-btn.active {
     background: #3390ec;
-    box-shadow: 0 2px 8px rgba(51, 144, 236, 0.4);
   }
 
   .tg-seg-btn.active .tg-seg-title,
@@ -803,7 +816,6 @@
     display: flex;
     align-items: center;
     gap: 8px;
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
     z-index: 10;
     pointer-events: none;
   }

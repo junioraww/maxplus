@@ -462,7 +462,6 @@
     align-items: center;
     justify-content: center;
     cursor: pointer;
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
     transition: transform 0.15s ease;
   }
 
@@ -502,7 +501,6 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
   }
 
   .hidden-file-input {
@@ -581,7 +579,6 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
   }
 
   .error-notice {

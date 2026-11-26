@@ -94,7 +94,6 @@
     align-items: center;
     justify-content: center;
     transition: opacity 0.1s;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
   }
 
   .scroll-down-btn:hover {
@@ -120,7 +119,6 @@
     line-height: 22px;
     text-align: center;
     border-radius: 11px;
-    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
     pointer-events: auto;
     cursor: pointer;
     user-select: none;

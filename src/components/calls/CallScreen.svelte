@@ -1027,7 +1027,6 @@
     align-items: center;
     gap: 8px;
     z-index: 1020;
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
   }
 
   .error-svg {
@@ -1072,7 +1071,6 @@
     border-radius: 20px;
     padding: 18px;
     box-sizing: border-box;
-    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6);
   }
 
   .debug-modal-header {
@@ -1185,7 +1183,6 @@
     height: 184px;
     border-radius: 14px;
     overflow: hidden;
-    box-shadow: 0 4px 24px rgba(0,0,0,0.5);
     cursor: grab;
     touch-action: none;
     z-index: 1010;
@@ -1259,7 +1256,6 @@
     border-radius: 50%;
     border: 1px solid rgba(255, 255, 255, 0.15);
     background: rgba(0, 0, 0, 0.65);
-    backdrop-filter: blur(8px);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -1419,18 +1415,12 @@
   }
 
   .peer-avatar.speaking {
-    box-shadow: 0 0 0 3px #22c55e, 0 0 24px rgba(34, 197, 94, 0.55);
-    transition: box-shadow 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   }
 
   .remote-video.speaking {
-    box-shadow: inset 0 0 0 3px #22c55e;
-    transition: box-shadow 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   }
 
   .pip-container.speaking {
-    box-shadow: 0 0 0 3px #22c55e, 0 0 16px rgba(34, 197, 94, 0.45);
-    transition: box-shadow 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   }
 
   .peer-avatar--fallback span {
@@ -1493,7 +1483,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: transform 0.15s, box-shadow 0.15s;
+    transition: transform 0.15s;
     user-select: none;
     -webkit-user-select: none;
     touch-action: manipulation;
@@ -1508,13 +1498,11 @@
 
   .action-btn--decline {
     background: #ef4444;
-    box-shadow: 0 4px 20px rgba(239,68,68,0.4);
     color: #fff;
   }
 
   .action-btn--accept {
     background: #22c55e;
-    box-shadow: 0 4px 20px rgba(34,197,94,0.4);
     color: #fff;
   }
 
@@ -1644,13 +1632,12 @@
 
   @keyframes recPulse {
     0% { transform: scale(0.9); opacity: 0.8; }
-    50% { transform: scale(1.15); opacity: 1; box-shadow: 0 0 10px rgba(255, 68, 68, 0.8); }
+    50% { transform: scale(1.15); opacity: 1; }
     100% { transform: scale(0.9); opacity: 0.8; }
   }
 
   .ctrl-btn--hangup {
     background: #ef4444;
-    box-shadow: 0 2px 14px rgba(239,68,68,0.4);
     width: clamp(42px, 11.5vw, 52px);
     height: clamp(42px, 11.5vw, 52px);
     aspect-ratio: 1 / 1;
@@ -1713,7 +1700,6 @@
     flex-direction: column;
     align-items: center;
     text-align: center;
-    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6);
   }
 
   .secure-req-icon {

@@ -740,7 +740,6 @@
     background: #1c1e2a;
     border: 1px solid rgba(255, 255, 255, 0.12);
     border-radius: 14px;
-    box-shadow: 0 12px 36px rgba(0, 0, 0, 0.6), 0 2px 10px rgba(0, 0, 0, 0.3);
     padding: 6px 0;
   }
 
@@ -955,7 +954,6 @@
     border-radius: 50%;
     margin-left: auto;
     border: 2px solid rgba(255, 255, 255, 0.7);
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
     flex-shrink: 0;
   }
 </style>

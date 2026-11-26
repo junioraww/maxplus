@@ -282,7 +282,6 @@
     border-radius: 50%;
     background: #248bfe;
     cursor: ew-resize;
-    box-shadow: 0 0 6px rgba(0, 0, 0, 0.4);
     margin-top: -5px;
   }
 

@@ -188,7 +188,6 @@
     border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.12));
     border-radius: 14px;
     padding: 5px;
-    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
     max-height: 240px;
     overflow-y: auto;
     display: flex;

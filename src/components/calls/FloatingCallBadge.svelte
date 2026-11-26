@@ -170,7 +170,6 @@
     background: #1c1d24;
     border: 1px solid rgba(255, 255, 255, 0.12);
     border-radius: 28px;
-    box-shadow: 0 6px 28px rgba(0, 0, 0, 0.45);
     cursor: pointer;
     touch-action: none;
     min-width: 180px;

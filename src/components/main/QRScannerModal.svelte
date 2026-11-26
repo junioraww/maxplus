@@ -1,6 +1,5 @@
 <script>
   import { onMount, onDestroy } from "svelte";
-  import { fade, fly } from "svelte/transition";
   import { createEventDispatcher } from "svelte";
   import { registerBackHandler } from "$lib/utils/backButton";
   import { pickFileBytes } from "$lib/utils/filePicker";
@@ -71,6 +70,8 @@
     }
     if (onScan) onScan(content);
     dispatch("scan", content);
+    if (propClose) propClose(content);
+    if (onClose) onClose();
     dispatch("close");
   }
 
@@ -278,73 +279,68 @@
   });
 </script>
 
-<div class="scanner-backdrop" transition:fade={{ duration: 180 }} on:click={close}>
-  <div class="scanner-container" transition:fly={{ y: 25, duration: 220 }} on:click|stopPropagation>
-    <div class="header">
-      <h3>Сканирование QR-кода</h3>
-      <button type="button" class="close-btn" on:click={close}>
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-          <line x1="18" y1="6" x2="6" y2="18"/>
-          <line x1="6" y1="6" x2="18" y2="18"/>
-        </svg>
-      </button>
-    </div>
+<div class="scanner-sheet-panel" role="dialog" aria-modal="true">
+  <div class="sheet-drag-handle" aria-hidden="true"></div>
+  <div class="header">
+    <h3>Сканирование QR-кода</h3>
+    <button type="button" class="close-btn" on:click={close}>
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <line x1="18" y1="6" x2="6" y2="18"/>
+        <line x1="6" y1="6" x2="18" y2="18"/>
+      </svg>
+    </button>
+  </div>
 
-    <div class="camera-viewport">
-      <video bind:this={videoEl} playsinline muted></video>
-      <div class="overlay">
-        <div class="reticle">
-          <span class="corner tl"></span>
-          <span class="corner tr"></span>
-          <span class="corner bl"></span>
-          <span class="corner br"></span>
-          <div class="scan-laser"></div>
-        </div>
+  <div class="camera-viewport">
+    <video bind:this={videoEl} playsinline muted></video>
+    <div class="overlay">
+      <div class="reticle">
+        <span class="corner tl"></span>
+        <span class="corner tr"></span>
+        <span class="corner bl"></span>
+        <span class="corner br"></span>
+        <div class="scan-laser"></div>
       </div>
-
-      {#if errorMsg}
-        <div class="error-banner">
-          <p>{errorMsg}</p>
-        </div>
-      {/if}
     </div>
 
-    <div class="actions">
-      <input type="file" accept="image/*" bind:this={fileInputEl} on:change={handleFileInput} style="display: none;" />
-      <button type="button" class="action-btn" on:click={pickFromFile}>
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
-          <circle cx="8.5" cy="8.5" r="1.5"/>
-          <polyline points="21 15 16 10 5 21"/>
-        </svg>
-        <span>Выбрать из файлов</span>
-      </button>
-    </div>
+    {#if errorMsg}
+      <div class="error-banner">
+        <p>{errorMsg}</p>
+      </div>
+    {/if}
+  </div>
+
+  <div class="actions">
+    <input type="file" accept="image/*" bind:this={fileInputEl} on:change={handleFileInput} style="display: none;" />
+    <button type="button" class="action-btn" on:click={pickFromFile}>
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+        <circle cx="8.5" cy="8.5" r="1.5"/>
+        <polyline points="21 15 16 10 5 21"/>
+      </svg>
+      <span>Выбрать из файлов</span>
+    </button>
   </div>
 </div>
 
 <style>
-  .scanner-backdrop {
-    position: fixed;
-    inset: 0;
-    background: rgba(0, 0, 0, 0.85);
-    z-index: var(--z-modal, 7);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 16px;
-  }
-
-  .scanner-container {
+  .scanner-sheet-panel {
     width: 100%;
-    max-width: 420px;
-    background: #18181b;
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 20px;
+    background: var(--settings-surface, #17181c);
+    border-radius: 24px 24px 0 0;
     overflow: hidden;
     display: flex;
     flex-direction: column;
-    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+
+  .sheet-drag-handle {
+    width: 36px;
+    height: 4px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.22);
+    margin: 10px auto 2px;
+    flex-shrink: 0;
   }
 
   .header {

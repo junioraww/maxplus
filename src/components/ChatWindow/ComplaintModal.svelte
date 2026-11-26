@@ -98,7 +98,6 @@
     border-radius: 18px;
     width: 100%;
     max-width: 400px;
-    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.65);
     border: 1px solid rgba(255, 255, 255, 0.1);
     overflow: hidden;
     display: flex;

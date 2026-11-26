@@ -15,18 +15,17 @@ import {
 } from "../src/lib/crypto/callEncryption";
 
 test.describe("End-to-End Encryption and Obfuscation Detection", () => {
-  test("detectObfuscation recognizes Chinese marker prefix and returns zh", async () => {
-    const zhMarker = String.fromCharCode(
-      0x4e00,
-      0x4e02,
-      0x4e04,
-      0x4e06,
-      0x4e08
+  test("detectObfuscation recognizes Russian marker prefix and returns ru", async () => {
+    const ruMarker = String.fromCharCode(
+      0x0430,
+      0x0432,
+      0x0434,
+      0x0436
     );
-    const sampleObf = zhMarker + "一丁丂七丄";
+    const sampleObf = ruMarker + " клмноп";
     const detected = await detectObfuscation(sampleObf);
     expect(detected).not.toBeNull();
-    expect(detected.name).toBe("zh");
+    expect(detected.name).toBe("ru");
     expect(detected.plugin).toBe(false);
   });
 

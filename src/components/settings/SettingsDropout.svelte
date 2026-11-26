@@ -194,7 +194,6 @@
     border: none;
     border-radius: 12px;
     padding: 6px;
-    box-shadow: 0 10px 28px rgba(0, 0, 0, 0.55);
     z-index: var(--z-dropdown);
     display: flex;
     flex-direction: column;

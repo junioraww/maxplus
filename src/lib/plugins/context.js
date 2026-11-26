@@ -425,7 +425,7 @@ export function buildPluginContext(manifest, pluginId) {
           const Comp = mod.default || mod;
           return new Promise((resolve) => {
             let scanned = null;
-            const p = openScreen(Comp, {
+            const p = openSheet(Comp, {
               onScan: (code) => {
                 scanned = code;
                 dismissLayer(p.id, code);
@@ -526,7 +526,7 @@ export function buildPluginContext(manifest, pluginId) {
           const settings = get(getChatSettings(cid)) || {};
           const hasSession = Boolean(settings?.keys?.current || settings?.session);
           const password = settings?.password || null;
-          const obf = settings?.obfs || 'zh';
+          const obf = settings?.obfs || 'ru';
 
           let payloadText = String(plaintext ?? '');
           if (!hasSession && !password && CryptoPluginRegistry.hasObfuscator(obf)) {

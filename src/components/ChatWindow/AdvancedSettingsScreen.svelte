@@ -6,6 +6,12 @@
   import API, { currentUser } from "$lib/stores/api";
   import { registerBackHandler } from "$lib/utils/backButton";
   import { switchEnc } from "$components/ChatWindow/e2e";
+  import { HANDSHAKE_MODES, resolveHandshakeMode } from "$lib/crypto/transports";
+  import { openSheet } from "$lib/services/layerManager";
+  import { openSettingsPage } from "$lib/stores/session";
+  import { dict } from "$lib/crypto/text-codec";
+  import { showAlert } from "$lib/utils/alert";
+  import QrExchangeModal from "$components/ChatWindow/QrExchangeModal.svelte";
 
   export let chat = null;
   export let userId = null;
@@ -67,13 +73,35 @@
 
   let switchingEnc = false;
 
-  async function triggerSwitchEnc() {
-    if (!$chatSettings || switchingEnc) return;
-    const targetChat =
+  function openQrExchangeSheet() {
+    const targetChat = getTargetChat();
+    if (!targetChat || !chatSettings) return;
+    openSheet(QrExchangeModal, {
+      chat: targetChat,
+      chatSettings,
+      onActivated: () => showNotification("Секретный чат активирован по QR"),
+    });
+  }
+
+  function getTargetChat() {
+    return (
       chat ||
       (effectiveChatId != null
         ? getChat(effectiveChatId)?.getInfo?.() || { id: effectiveChatId, type: "DIALOG" }
-        : null);
+        : null)
+    );
+  }
+
+  function setHandshakeTransport(modeId) {
+    if (!$chatSettings) return;
+    $chatSettings.handshake_transport = modeId;
+    const found = HANDSHAKE_MODES.find((m) => m.id === modeId);
+    if (found) showNotification(`Обмен ключами: ${found.label}`);
+  }
+
+  async function triggerSwitchEnc() {
+    if (!$chatSettings || switchingEnc) return;
+    const targetChat = getTargetChat();
     if (!targetChat) return;
 
     const wasEnc = Boolean(
@@ -103,14 +131,30 @@
     if (!$chatSettings) return;
     const pwd = e.target.value;
     if (pwd.length && !$chatSettings.obfuscation && !$chatSettings.obfs) {
-      $chatSettings.obfuscation = "zh";
-      $chatSettings.obfs = "zh";
+      $chatSettings.obfuscation = "ru";
+      $chatSettings.obfs = "ru";
     }
     $chatSettings.password = pwd;
   }
 
-  function setObfuscation(val) {
+  $: isE2eActive = Boolean(
+    $chatSettings?.session?.shared_secret ||
+    $chatSettings?.session?.fingerprint ||
+    $chatSettings?.keys?.current ||
+    $chatSettings?.password
+  );
+  $: activeObf = $chatSettings?.obfuscation ?? $chatSettings?.obfs ?? (isE2eActive ? "ru" : "none");
+
+  async function setObfuscation(val) {
     if (!$chatSettings) return;
+    if (val === "words") {
+      const d = await dict.getDictionary().catch(() => null);
+      if (!d?.dict8?.length) {
+        showAlert("Словарь не установлен. Загрузите или выберите словарь в настройках.");
+        openSettingsPage("dictionary");
+        return;
+      }
+    }
     $chatSettings.obfuscation = val;
     $chatSettings.obfs = val;
   }
@@ -218,29 +262,59 @@
           <button
             type="button"
             class="seg-btn"
-            class:active={!$chatSettings?.obfuscation}
-            on:click={() => setObfuscation(null)}
+            class:active={activeObf === "none"}
+            on:click={() => setObfuscation("none")}
           >
             <span>Без маскировки</span>
           </button>
           <button
             type="button"
             class="seg-btn"
-            class:active={$chatSettings?.obfuscation === "zh"}
-            on:click={() => setObfuscation("zh")}
+            class:active={activeObf === "ru"}
+            on:click={() => setObfuscation("ru")}
           >
-            <span>Китайский</span>
+            <span>Русский</span>
           </button>
           <button
             type="button"
             class="seg-btn"
-            class:active={$chatSettings?.obfuscation === "words"}
+            class:active={activeObf === "words"}
             on:click={() => setObfuscation("words")}
           >
             <span>Книжные слова</span>
           </button>
         </div>
       </div>
+
+      {#if chat?.type !== "CHAT"}
+        <div class="advanced-card">
+          <div class="advanced-card-caption">Способ обмена ключами</div>
+          <div class="advanced-segmented-row transport-grid">
+            {#each HANDSHAKE_MODES as mode (mode.id)}
+              <button
+                type="button"
+                class="seg-btn"
+                class:active={resolveHandshakeMode($chatSettings) === mode.id}
+                on:click={() => setHandshakeTransport(mode.id)}
+                title={mode.hint}
+              >
+                <span>{mode.label}</span>
+              </button>
+            {/each}
+          </div>
+
+          <div class="advanced-item-row clickable" on:click={openQrExchangeSheet}>
+            <div class="advanced-item-icon">
+              <span class="mask-icon" style="-webkit-mask-image: url('/icons/qr.svg'); mask-image: url('/icons/qr.svg'); width: 22px; height: 22px;"></span>
+            </div>
+            <div class="advanced-item-content">
+              <div class="advanced-item-title">Обмен по QR-коду</div>
+              <div class="advanced-item-subtitle">Локальный обмен без отправки ключей на сервер</div>
+            </div>
+            <span class="advanced-pill-btn">Открыть</span>
+          </div>
+        </div>
+      {/if}
 
       <div class="advanced-card">
         <div class="advanced-card-caption">Другие настройки Max+</div>
@@ -368,7 +442,6 @@
     padding: 12px 0;
     display: flex;
     flex-direction: column;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
   }
 
   /* Indented blue caption strictly aligned directly above row text (to the right of icon) */
@@ -526,6 +599,11 @@
     padding: 6px 16px 8px 16px;
   }
 
+  .advanced-segmented-row.transport-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .seg-btn {
     flex: 1;
     padding: 8px 10px;
@@ -552,13 +630,11 @@
     left: 50%;
     transform: translateX(-50%);
     background: rgba(0, 0, 0, 0.85);
-    backdrop-filter: blur(8px);
     color: #ffffff;
     padding: 10px 20px;
     border-radius: 20px;
     font-size: 13px;
     font-weight: 500;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
     z-index: var(--z-toast, 120);
     animation: toastIn 0.2s cubic-bezier(0.1, 0.9, 0.2, 1);
   }

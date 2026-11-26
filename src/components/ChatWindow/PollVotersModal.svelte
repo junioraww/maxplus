@@ -100,7 +100,7 @@
 
 <style>
   .modal-backdrop { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.72); display: flex; align-items: center; justify-content: center; z-index: var(--z-modal, 7); padding: 16px; box-sizing: border-box; }
-  .modal-box { background: #1e2025; border-radius: 14px; width: 100%; max-width: 380px; max-height: 80vh; display: flex; flex-direction: column; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6); overflow: hidden; }
+  .modal-box { background: #1e2025; border-radius: 14px; width: 100%; max-width: 380px; max-height: 80vh; display: flex; flex-direction: column; overflow: hidden; }
   .modal-header { display: flex; align-items: center; justify-content: space-between; padding: 14px 18px; border-bottom: 1px solid rgba(255, 255, 255, 0.08); }
   .header-titles h3 { margin: 0; font-size: 15px; font-weight: 600; color: #f3f4f6; }
   .header-subtitle { font-size: 12px; color: var(--text-secondary, #9ca3af); display: block; margin-top: 2px; max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

@@ -2,13 +2,97 @@ use tauri::AppHandle;
 use serde_json::{json, Value};
 use std::{
     collections::HashMap,
-    sync::{LazyLock, RwLock},
+    sync::{Arc, LazyLock, Mutex, RwLock},
 };
 
 use super::storage::{crypto_key, Paths, Storage};
 
 pub static CHAT_SETTINGS_CACHE: LazyLock<RwLock<HashMap<(u64, i64), Value>>> =
     LazyLock::new(|| RwLock::new(HashMap::new()));
+
+static CHAT_LOCKS: LazyLock<Mutex<HashMap<(u64, i64), Arc<Mutex<()>>>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+
+pub fn with_chat_settings_lock<T>(account: u64, chat_id: i64, f: impl FnOnce() -> T) -> T {
+    let lock = {
+        let mut map = CHAT_LOCKS.lock().unwrap();
+        map.entry((account, chat_id))
+            .or_insert_with(|| Arc::new(Mutex::new(())))
+            .clone()
+    };
+    let _guard = lock.lock().unwrap();
+    f()
+}
+
+pub fn archive_session_into_keys(
+    session: &serde_json::Map<String, Value>,
+    target: &mut Value,
+    until_ts: i64,
+) {
+    let Some(secret) = session.get("shared_secret").and_then(|s| s.as_str()) else {
+        return;
+    };
+    if secret.is_empty() {
+        return;
+    }
+    if !target.get("keys").map_or(false, |k| k.is_object()) {
+        target["keys"] = json!({ "current": null, "keys": [], "messages": [] });
+    }
+    if !target["keys"].get("keys").map_or(false, |k| k.is_array()) {
+        target["keys"]["keys"] = json!([]);
+    }
+    let Some(arr) = target["keys"]["keys"].as_array_mut() else {
+        return;
+    };
+    let existing_msg_keys = session.get("msg_keys").and_then(|m| m.as_object());
+    let role_val = session.get("role").cloned().unwrap_or(json!(0));
+    let fp_val = session.get("fingerprint").cloned().unwrap_or(json!(""));
+    let from_val = session.get("established_at").cloned().unwrap_or(json!(0));
+
+    let mut target_idx = arr
+        .iter()
+        .position(|item| item.get("shared_secret").and_then(|s| s.as_str()) == Some(secret));
+    if target_idx.is_none() {
+        arr.push(json!({
+            "shared_secret": secret,
+            "fingerprint": fp_val,
+            "role": role_val,
+            "message_from": from_val,
+            "message_until": until_ts,
+            "msg_keys": {},
+        }));
+        target_idx = Some(arr.len() - 1);
+    }
+    if let Some(obj) = arr[target_idx.unwrap()].as_object_mut() {
+        obj.insert("message_until".into(), json!(until_ts));
+        obj.entry("role").or_insert(role_val);
+        if let Some(mk_map) = existing_msg_keys {
+            let dst = obj.entry("msg_keys").or_insert_with(|| json!({}));
+            if !dst.is_object() {
+                *dst = json!({});
+            }
+            if let Some(dst_obj) = dst.as_object_mut() {
+                for (k, v) in mk_map {
+                    dst_obj.insert(k.clone(), v.clone());
+                }
+            }
+        }
+    }
+}
+
+pub fn save_chat_settings_raw_locked(
+    app: &AppHandle,
+    account: u64,
+    chat_id: i64,
+    data: &Value,
+) -> Result<(), String> {
+    let key = crypto_key(app, account);
+    Storage::new(key).save_direct(Paths::new(app, account).settings(chat_id), data)?;
+    if let Ok(mut guard) = CHAT_SETTINGS_CACHE.write() {
+        guard.insert((account, chat_id), data.clone());
+    }
+    Ok(())
+}
 
 #[tauri::command]
 pub async fn get_contact(
@@ -215,69 +299,99 @@ pub async fn get_chat_settings(
     .map_err(|e| e.to_string())?
 }
 
+fn merge_archived_keys(existing: &Value, data: &mut Value) {
+    let Some(existing_arr) = existing
+        .get("keys")
+        .and_then(|k| k.get("keys"))
+        .and_then(|k| k.as_array())
+    else {
+        return;
+    };
+    if existing_arr.is_empty() {
+        return;
+    }
+    if !data.get("keys").map_or(false, |k| k.is_object()) {
+        data["keys"] = json!({ "current": null, "keys": [], "messages": [] });
+    }
+    if !data["keys"].get("keys").map_or(false, |k| k.is_array()) {
+        data["keys"]["keys"] = json!([]);
+    }
+    let Some(dst_arr) = data["keys"]["keys"].as_array_mut() else {
+        return;
+    };
+    for ex_item in existing_arr {
+        let Some(secret) = ex_item.get("shared_secret").and_then(|s| s.as_str()) else {
+            continue;
+        };
+        if let Some(dst_item) = dst_arr
+            .iter_mut()
+            .find(|it| it.get("shared_secret").and_then(|s| s.as_str()) == Some(secret))
+        {
+            if let (Some(ex_obj), Some(dst_obj)) = (ex_item.as_object(), dst_item.as_object_mut()) {
+                if let Some(role) = ex_obj.get("role") {
+                    dst_obj.insert("role".into(), role.clone());
+                }
+                if let Some(ex_mks) = ex_obj.get("msg_keys").and_then(|m| m.as_object()) {
+                    let dst_mks = dst_obj.entry("msg_keys").or_insert_with(|| json!({}));
+                    if !dst_mks.is_object() {
+                        *dst_mks = json!({});
+                    }
+                    if let Some(dst_mks_obj) = dst_mks.as_object_mut() {
+                        for (k, v) in ex_mks {
+                            dst_mks_obj.entry(k.clone()).or_insert_with(|| v.clone());
+                        }
+                    }
+                }
+            }
+        } else {
+            dst_arr.push(ex_item.clone());
+        }
+    }
+}
+
 pub fn set_chat_settings_sync(
     app: &AppHandle,
     account: u64,
     chat_id: i64,
     data: Value,
 ) -> Result<(), String> {
-    let mut data = data;
-    if let Ok(existing) = get_chat_settings_sync(app, account, chat_id) {
-        if data.get("pending").map_or(false, |p| p.is_boolean() && p.as_bool() == Some(true)) {
-            if let Some(existing_pending) = existing.get("pending") {
-                if existing_pending.is_object() {
-                    data["pending"] = existing_pending.clone();
+    with_chat_settings_lock(account, chat_id, || {
+        let mut data = data;
+        if let Ok(existing) = get_chat_settings_sync(app, account, chat_id) {
+            if let Some(pinned) = existing.get("pinned_peer_ed_pk") {
+                if data.get("pinned_peer_ed_pk").is_none() {
+                    data["pinned_peer_ed_pk"] = pinned.clone();
                 }
             }
-        } else if data.get("pending").map_or(false, |p| p.is_object()) {
-            if let Some(existing_pending) = existing.get("pending") {
-                if existing_pending.get("x_sk").is_some() && data["pending"].get("x_sk").is_none() {
-                    data["pending"] = existing_pending.clone();
+            if data.get("pending").map_or(false, |p| p.is_boolean() && p.as_bool() == Some(true)) {
+                if let Some(existing_pending) = existing.get("pending") {
+                    if existing_pending.is_object() {
+                        data["pending"] = existing_pending.clone();
+                    }
+                }
+            } else if data.get("pending").map_or(false, |p| p.is_object()) {
+                if let Some(existing_pending) = existing.get("pending") {
+                    if existing_pending.get("x_sk").is_some() && data["pending"].get("x_sk").is_none() {
+                        data["pending"] = existing_pending.clone();
+                    }
                 }
             }
-        }
-        if let Some(existing_session) = existing.get("session") {
-            if existing_session.is_object() {
-                if let Some(session_obj) = data.get_mut("session").and_then(|s| s.as_object_mut()) {
-                    if !session_obj.contains_key("shared_secret") {
-                        if let Some(secret) = existing_session.get("shared_secret") {
-                            session_obj.insert("shared_secret".to_string(), secret.clone());
-                        }
-                    }
-                    if !session_obj.contains_key("peer_x_pk") {
-                        if let Some(v) = existing_session.get("peer_x_pk") {
-                            session_obj.insert("peer_x_pk".to_string(), v.clone());
-                        }
-                    }
-                    if !session_obj.contains_key("peer_ed_pk") {
-                        if let Some(v) = existing_session.get("peer_ed_pk") {
-                            session_obj.insert("peer_ed_pk".to_string(), v.clone());
-                        }
-                    }
-                    if !session_obj.contains_key("my_ed_sk") {
-                        if let Some(v) = existing_session.get("my_ed_sk") {
-                            session_obj.insert("my_ed_sk".to_string(), v.clone());
-                        }
-                    }
-                    if !session_obj.contains_key("my_ed_pk") {
-                        if let Some(v) = existing_session.get("my_ed_pk") {
-                            session_obj.insert("my_ed_pk".to_string(), v.clone());
-                        }
-                    }
+            merge_archived_keys(&existing, &mut data);
+            if let Some(existing_session) = existing.get("session").and_then(|s| s.as_object()) {
+                if data.get("session").map_or(false, |s| s.is_object()) {
+                    data["session"] = Value::Object(existing_session.clone());
+                } else {
+                    archive_session_into_keys(
+                        existing_session,
+                        &mut data,
+                        chrono::Utc::now().timestamp_millis(),
+                    );
                 }
             }
         }
-    }
 
-    let key = crypto_key(app, account);
-    let storage = Storage::new(key);
-    storage.save_coalesced(Paths::new(app, account).settings(chat_id), &data);
-
-    if let Ok(mut guard) = CHAT_SETTINGS_CACHE.write() {
-        guard.insert((account, chat_id), data);
-    }
-
-    Ok(())
+        save_chat_settings_raw_locked(app, account, chat_id, &data)
+    })
 }
 
 #[tauri::command]

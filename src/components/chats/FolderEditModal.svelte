@@ -642,7 +642,6 @@
     display: flex;
     flex-direction: column;
     flex-shrink: 0;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
   }
 
   .card-block.no-border {

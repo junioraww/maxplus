@@ -12,6 +12,8 @@
   import { registerBackHandler } from "$lib/utils/backButton";
   import { parseApiError } from "$lib/utils/errors";
   import { canPinInChat } from "$lib/utils/chatPermissions";
+  import { registerDecodedMessagesStore, consumeCallHandshake } from "$lib/crypto/transports";
+  import { verifyHandshakePacket } from "$lib/crypto/asymmetric";
 
   import Message from "$components/ChatWindow/Message.svelte";
   import PinnedMessage from "$components/ChatWindow/PinnedMessage.svelte";
@@ -267,6 +269,16 @@
   let showUnreadSeparator = false;
   $: unreadBadgeCount = Math.max(0, Number(chat?.newMessages ?? 0));
   $: chatSettings = getChatSettings(chat?.id ?? chatId);
+  let lastSessionSecret = null;
+  $: {
+    const curSecret = $chatSettings?.session?.shared_secret || null;
+    if (curSecret && curSecret !== lastSessionSecret) {
+      lastSessionSecret = curSecret;
+      loader?.retryErroredMessages?.();
+    } else if (!curSecret) {
+      lastSessionSecret = null;
+    }
+  }
   $: isChannel = chat?.type === "CHANNEL";
   $: isChannelOwner = Boolean(
     chat &&
@@ -523,6 +535,7 @@
 
   const decodedMessages = writable({});
   $: chatCache = getChat(chat?.id ?? chatId);
+  $: if ((chat?.id ?? chatId) != null) registerDecodedMessagesStore(chat?.id ?? chatId, decodedMessages);
 
   loader = createMessagesLoader({
     messages,
@@ -535,6 +548,12 @@
     onAnchorCapture: () => scrollController.captureAnchor(),
     onAnchorRestore: () => scrollController.restoreAnchor(),
     onSecretChatRequest: (req) => { gotSecretChatRequest = req; },
+    onStegoDecoded: async () => {
+      await tick();
+      virtualScroll.applyPendingHeights($messages);
+      virtualScroll.computeCumulativeHeights($messages);
+      await updateVisibleMessages();
+    },
   });
 
 
@@ -742,7 +761,37 @@
     }
   }
 
+  async function handleCallHandshakeEvent(ev) {
+    const detail = ev?.detail;
+    const activeId = chatId ?? chat?.id;
+    if (!detail?.packetBase64 || activeId == null) return;
+    if (detail.chatId != null && Number(detail.chatId) !== Number(activeId) && Number(detail.peerId) !== Number(avatarUserId)) {
+      return;
+    }
+    try {
+      const bin = atob(detail.packetBase64);
+      const bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      const dto = await verifyHandshakePacket(bytes, activeId).catch(() => null);
+      if (!dto || (!dto.is_handshake_request && !dto.is_handshake_accept)) return;
+      const syntheticId = `call_hs_${Date.now()}`;
+      const syntheticMsg = { id: syntheticId, sender: detail.peerId || avatarUserId, time: Date.now() };
+      const req = await checkForEncryptionRequest(
+        chat,
+        chatSettings,
+        { [syntheticId]: dto },
+        [syntheticMsg],
+        decodedMessages,
+        [...($messages || []), syntheticMsg]
+      );
+      if (req) gotSecretChatRequest = req;
+    } catch {}
+  }
+
   onDestroy(() => {
+    if (typeof window !== "undefined") {
+      window.removeEventListener("e2e-call-handshake", handleCallHandshakeEvent);
+    }
     window.removeEventListener("mouseup", stopDrag);
     window.removeEventListener("blur", stopDrag);
     if (unsubReceivedMessage) {
@@ -932,6 +981,13 @@
   }
 
   onMount(async () => {
+    if (typeof window !== "undefined") {
+      window.addEventListener("e2e-call-handshake", handleCallHandshakeEvent);
+    }
+    const queuedHs = consumeCallHandshake(chatId ?? chat?.id, avatarUserId);
+    if (queuedHs) {
+      handleCallHandshakeEvent({ detail: queuedHs });
+    }
     scrollController.isInitialMounting = true;
     scrollController.isProgrammaticScroll = true;
 
@@ -2234,7 +2290,6 @@
     background-size: 360px 360px;
     padding-top: 0;
     padding-bottom: 0;
-    box-shadow: none;
   }
 
   .chat-window.is-selecting,
@@ -2246,13 +2301,11 @@
 
   .chat-window.animating {
     transition: transform 0.22s cubic-bezier(0.25, 1, 0.5, 1);
-    box-shadow: -4px 0 24px rgba(0, 0, 0, 0.45);
     will-change: transform;
   }
 
   .chat-window.swiping {
     transition: none;
-    box-shadow: -4px 0 24px rgba(0, 0, 0, 0.45);
     will-change: transform;
   }
 
@@ -2623,8 +2676,6 @@
   .group-hero-card {
     background: linear-gradient(135deg, rgba(33, 42, 43, 0.64) 0%, rgba(33, 42, 43, 0.88) 100%);
     border: 2px solid rgba(56, 62, 69, 0.44);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
     border-radius: 24px;
     padding: 20px 24px 24px 24px;
     margin: 24px auto;
@@ -2636,7 +2687,6 @@
     flex-direction: column;
     align-items: center;
     box-sizing: border-box;
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
   }
 
   .group-hero-avatar {

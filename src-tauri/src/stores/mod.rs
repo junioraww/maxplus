@@ -14,7 +14,10 @@ pub use accounts::{is_account_privacy_active_disk, resolve_account_for_chat};
 pub use accounts::{current_get, get_background_creds, is_account_encrypted_disk, load_accounts, resolve_app_root, update_account_token};
 pub use messages::clear_local_messages;
 pub use cache::{add_cache_index_alias, get_cached_file_sync, hash, is_file_encrypted, set_cached_file_with_meta};
-pub use chats::{get_chat_settings_sync, set_chat_settings_sync};
+pub use chats::{
+    archive_session_into_keys, get_chat_settings_sync, save_chat_settings_raw_locked,
+    with_chat_settings_lock,
+};
 
 pub fn load_sync_state<T: serde::de::DeserializeOwned>(
     app: &AppHandle,

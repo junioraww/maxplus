@@ -126,7 +126,6 @@
     gap: 8px;
     background: rgba(24, 24, 28, 0.94);
     border: 1.5px solid rgba(239, 68, 68, 0.7);
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45), 0 0 16px rgba(239, 68, 68, 0.35);
     border-radius: 30px;
     padding: 6px 14px 6px 8px;
     cursor: grab;
@@ -146,7 +145,6 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    box-shadow: 0 0 10px rgba(239, 68, 68, 0.8);
     animation: pulse-opacity 1.6s ease-in-out infinite;
     flex-shrink: 0;
   }

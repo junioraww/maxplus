@@ -538,7 +538,6 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    box-shadow: 0 4px 16px rgba(224, 83, 83, 0.55);
   }
 
   .pin-icon {
@@ -580,7 +579,6 @@
     background: #1e2027;
     color: #ffffff;
     border: 1px solid rgba(255, 255, 255, 0.1);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
     cursor: pointer;
     font-size: 20px;
     font-weight: 500;
@@ -609,7 +607,6 @@
     background: #248bfe;
     color: #ffffff;
     border: none;
-    box-shadow: 0 4px 14px rgba(36, 139, 254, 0.45);
     cursor: pointer;
     display: flex;
     align-items: center;
@@ -658,7 +655,6 @@
     font-size: 13px;
     font-weight: 500;
     border: 1px solid rgba(224, 163, 83, 0.3);
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
     z-index: 5;
     pointer-events: none;
     text-align: center;

@@ -32,11 +32,11 @@ export async function sendMessage(
   const hasSession = Boolean(settings?.keys?.current || settings?.session);
   const password = settings?.password;
   const isE2eActive = Boolean(hasSession || password);
-  const isDisableControl = originalPlaintext === "__E2E_DISABLE__" || originalPlaintext.includes('"e2e_control":"disable"');
-  const obf = isDisableControl ? null : (settings?.obfs || (isE2eActive ? "zh" : null));
+  const obf = settings?.obfs ?? settings?.obfuscation ?? (isE2eActive ? "ru" : "none");
+  const hasObf = Boolean(obf && obf !== "none");
 
   let effectiveMedia = mediaDescriptor;
-  if (!effectiveMedia && attaches?.length && (isE2eActive || obf)) {
+  if (!effectiveMedia && attaches?.length && (isE2eActive || hasObf)) {
     const firstAttach = attaches[0];
     effectiveMedia = {
       attach_index: 0,
@@ -52,7 +52,7 @@ export async function sendMessage(
     };
   }
 
-  if (!isDisableControl && !forceObfuscation && (isE2eActive || obf)) {
+  if (!forceObfuscation && (isE2eActive || hasObf)) {
     const account = await getCurrentAccount();
     text = await encryptMessage({
       account: Number(account?.id || 0),
@@ -71,8 +71,8 @@ export async function sendMessage(
   const plainEntry = isE2eActive ? {
     text: originalPlaintext,
     media: effectiveMedia,
-    is_encrypted: !isDisableControl,
-    obf: !isDisableControl ? obf : null,
+    is_encrypted: true,
+    obf: obf,
     error: null,
   } : null;
 

@@ -480,8 +480,6 @@
     flex-direction: column;
     justify-content: flex-end;
     align-items: center;
-    backdrop-filter: blur(4px);
-    -webkit-backdrop-filter: blur(4px);
   }
 
   .attaches-bottom-sheet {
@@ -490,7 +488,6 @@
     background: var(--bg-surface, #1e2029);
     border-top-left-radius: 20px;
     border-top-right-radius: 20px;
-    box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.55);
     padding: 0 16px 12px;
     display: flex;
     flex-direction: column;
@@ -709,12 +706,11 @@
     box-sizing: border-box;
     display: block;
     cursor: pointer;
-    transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+    transition: transform 0.15s ease, border-color 0.15s ease;
   }
 
   .recent-media-cell:hover {
     transform: scale(1.03);
-    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45);
     border-color: rgba(56, 189, 248, 0.5);
     z-index: 2;
   }
@@ -764,7 +760,6 @@
     align-items: center;
     justify-content: center;
     pointer-events: none;
-    backdrop-filter: blur(2px);
   }
 
   .video-indicator-svg {

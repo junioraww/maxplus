@@ -150,12 +150,11 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: background-color 0.15s ease, box-shadow 0.15s ease;
+    transition: background-color 0.15s ease;
   }
 
   .otp-cell.focused {
     background: var(--auth-input-bg, #eff0f4);
-    box-shadow: 0 0 0 1.5px rgba(0, 122, 255, 0.4);
   }
 
   .otp-cell input {
