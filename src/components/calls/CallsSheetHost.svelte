@@ -177,7 +177,7 @@
   {:else if activeType === "new_call"}
     <BottomSheet title="Новый звонок" maxHeight="85vh" {close} {setBackHandler} on:close={handleClose}>
       <div class="search-box">
-        <img src="/icons/search.svg" alt="" width="18" height="18" />
+        <img src="/icons/search.svg" alt="" width="18" height="18" class="theme-icon" />
         <input type="text" placeholder="Поиск по контактам..." bind:value={contactSearchQuery} class="search-input" />
       </div>
 

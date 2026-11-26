@@ -916,11 +916,16 @@
   .action-circle-btn img {
     width: 20px;
     height: 20px;
+    filter: brightness(0) invert(var(--icon-invert, 1));
   }
 
   .action-circle-btn.plus-btn {
     background: var(--accent-primary, #248bfe);
     color: #ffffff;
+  }
+
+  .action-circle-btn.plus-btn img {
+    filter: none;
   }
 
   .action-circle-btn.plus-btn:hover {
@@ -956,7 +961,7 @@
   .selection-count {
     font-size: 18px;
     font-weight: 600;
-    color: #ffffff;
+    color: var(--text-primary);
   }
 
   .action-right {
@@ -978,8 +983,12 @@
     transition: background-color 0.15s ease;
   }
 
+  .icon-btn img {
+    filter: brightness(0) invert(var(--icon-invert, 1));
+  }
+
   .icon-btn:hover {
-    background-color: rgba(255, 255, 255, 0.08);
+    background-color: var(--bg-hover);
   }
 
   .send-forward-btn {

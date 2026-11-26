@@ -112,13 +112,13 @@
     <div class="chat-list-bottom-actions">
       <button class="bottom-action-item" on:click={() => dispatch("findContact")}>
         <div class="action-icon-wrap">
-          <img src="/icons/phone.svg" width="24" height="24" alt="" />
+          <img src="/icons/phone.svg" width="24" height="24" alt="" class="theme-icon" />
         </div>
         <span class="action-label">Найти по номеру телефона</span>
       </button>
       <button class="bottom-action-item" on:click={() => dispatch("inviteLink")}>
         <div class="action-icon-wrap">
-          <img src="/icons/link.svg" width="24" height="24" alt="" />
+          <img src="/icons/link.svg" width="24" height="24" alt="" class="theme-icon" />
         </div>
         <span class="action-label">Пригласить по ссылке</span>
       </button>
@@ -170,14 +170,14 @@
     width: 36px;
     height: 36px;
     opacity: 0.45;
-    filter: brightness(0) invert(1);
+    filter: brightness(0) invert(var(--icon-invert, 1));
   }
 
   .empty-title {
     font-size: 17px;
     font-weight: var(--font-weight-title, 600);
     line-height: 22px;
-    color: #ffffff;
+    color: var(--text-primary);
     margin: 0 0 8px;
   }
 

@@ -879,7 +879,8 @@
     bottom: 0;
     width: 100%;
     max-height: 100vh;
-    background: #18191b;
+    background: var(--bg-sheet);
+    color: var(--text-primary);
     border-top-left-radius: 14px;
     border-top-right-radius: 14px;
     display: flex;
@@ -904,8 +905,8 @@
     padding-top: var(--safe-top, 0px);
     box-sizing: border-box;
     width: 100%;
-    background: #202225;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    background: var(--bg-topbar, var(--bg-surface));
+    border-bottom: 1px solid var(--border-subtle);
     touch-action: none;
     user-select: none;
   }
@@ -917,7 +918,7 @@
     transform: translateX(-50%);
     width: 36px;
     height: 4px;
-    background: rgba(255, 255, 255, 0.28);
+    background: var(--text-subtle);
     border-radius: 2px;
     pointer-events: none;
   }
@@ -942,7 +943,7 @@
   .sheet-title {
     font-size: 15px;
     font-weight: 600;
-    color: #f1f2f4;
+    color: var(--text-primary);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -956,7 +957,7 @@
     border-radius: 50%;
     border: none;
     background: transparent;
-    color: #a0a4aa;
+    color: var(--icon-secondary);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -966,8 +967,8 @@
   }
 
   .header-btn:hover {
-    background: rgba(255, 255, 255, 0.1);
-    color: #fff;
+    background: var(--bg-hover);
+    color: var(--icon-primary);
   }
 
   .menu-container {
@@ -979,10 +980,11 @@
     top: 40px;
     right: 0;
     width: 220px;
-    background: #232629;
+    background: var(--dropout-bg, var(--bg-surface-elevated));
     border-radius: 12px;
     padding: 6px;
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    border: 1px solid var(--border-subtle);
+    box-shadow: var(--dropout-shadow, var(--shadow-elevated));
     display: flex;
     flex-direction: column;
     gap: 2px;
@@ -996,7 +998,7 @@
     padding: 10px 12px;
     border: none;
     background: transparent;
-    color: #e0e3e8;
+    color: var(--dropout-text, var(--text-primary));
     font-size: 13px;
     border-radius: 8px;
     cursor: pointer;
@@ -1005,15 +1007,15 @@
   }
 
   .menu-item:hover {
-    background: rgba(255, 255, 255, 0.08);
+    background: var(--dropout-item-hover, var(--bg-hover));
   }
 
   .menu-item.danger {
-    color: #ff5c5c;
+    color: var(--status-danger);
   }
 
   .menu-item.danger:hover {
-    background: rgba(255, 92, 92, 0.12);
+    background: var(--status-danger-subtle);
   }
 
   .frame-container {
@@ -1023,7 +1025,7 @@
     height: calc(100% - 48px - var(--safe-top, 0px));
     padding-bottom: var(--safe-bottom, 0px);
     box-sizing: border-box;
-    background: #0f1011;
+    background: var(--bg-app);
   }
 
   .app-frame {

@@ -2146,16 +2146,19 @@
       </button>
     </div>
   {:else if isChannel && !canPostInChannel}
-    <div class="channel-preview-bar">
-      <button
-        type="button"
-        class="channel-footer-btn channel-mute-btn"
-        disabled={togglingChannelMute}
-        on:click={handleToggleChannelMute}
-      >
-        {channelMuted ? "Включить уведомления" : "Отключить уведомления"}
-      </button>
-    </div>
+    <button
+      type="button"
+      class="channel-mute-fab"
+      disabled={togglingChannelMute}
+      on:click={handleToggleChannelMute}
+      title={channelMuted ? "Включить уведомления" : "Отключить уведомления"}
+      aria-label={channelMuted ? "Включить уведомления" : "Отключить уведомления"}
+    >
+      <span
+        class="mask-icon channel-mute-fab-icon"
+        style="-webkit-mask-image: url('{channelMuted ? '/icons/mute.svg' : '/icons/bell.svg'}'); mask-image: url('{channelMuted ? '/icons/mute.svg' : '/icons/bell.svg'}');"
+      ></span>
+    </button>
   {:else if $chatSettings}
     <Input
       bind:this={inputComponent}
@@ -2285,11 +2288,22 @@
     height: 100%;
     max-height: 100%;
     background-color: var(--bg-chat, #161621);
+    isolation: isolate;
+    padding-top: 0;
+    padding-bottom: 0;
+  }
+
+  .chat-window::before {
+    content: "";
+    position: absolute;
+    inset: 0;
     background-image: var(--bg-chat-pattern, none);
     background-repeat: repeat;
     background-size: 360px 360px;
-    padding-top: 0;
-    padding-bottom: 0;
+    filter: brightness(0) invert(var(--icon-invert, 1));
+    opacity: 0.08;
+    pointer-events: none;
+    z-index: -1;
   }
 
   .chat-window.is-selecting,
@@ -2368,7 +2382,7 @@
   }
 
   .message-wrapper.is-selected {
-    background: rgba(123, 76, 214, 0.22);
+    background: transparent;
     border-radius: 0;
   }
 
@@ -2429,10 +2443,10 @@
 
   @keyframes msgJumpHighlight {
     0% {
-      background: rgba(123, 76, 214, 0.32);
+      background: var(--accent-subtle-hover);
     }
     70% {
-      background: rgba(123, 76, 214, 0.14);
+      background: var(--accent-subtle);
     }
     100% {
       background: transparent;
@@ -2594,14 +2608,43 @@
     background: var(--accent-primary-hover, #1b74d9);
   }
 
-  .channel-mute-btn {
-    background: var(--bg-surface-secondary, #26262e);
-    color: var(--text-primary, #ffffff);
-    border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
+  /* Channel Mute FAB (1-to-1 with MAX i3d.java / y7d.java) */
+  .channel-mute-fab {
+    position: fixed;
+    left: 12px;
+    bottom: calc(16px + var(--safe-bottom, 0px));
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    border: 1px solid var(--border-subtle);
+    background: var(--bg-surface-elevated);
+    color: var(--icon-primary);
+    box-shadow: var(--shadow-card);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    z-index: var(--z-floating, 5);
+    padding: 0;
+    transition: background-color 0.15s ease, transform 0.12s ease;
   }
 
-  .channel-mute-btn:hover {
-    background: var(--bg-surface-elevated, #2e3038);
+  .channel-mute-fab:hover:not(:disabled) {
+    background: var(--bg-surface-secondary);
+  }
+
+  .channel-mute-fab:active:not(:disabled) {
+    transform: scale(0.94);
+  }
+
+  .channel-mute-fab:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+
+  .channel-mute-fab-icon {
+    width: 22px;
+    height: 22px;
   }
 
   /* Group Report / Leave Banner (Matching MAX PinBarsWidget & abd.java) */

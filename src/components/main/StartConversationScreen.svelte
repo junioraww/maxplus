@@ -320,7 +320,7 @@
         </div>
         {#if searchQuery}
           <button class="icon-btn" on:click={() => (searchQuery = "")} aria-label="Очистить">
-            <img src="/icons/close.svg" alt="" width="18" height="18" />
+            <img src="/icons/close.svg" alt="" width="18" height="18" class="theme-icon" />
           </button>
         {/if}
       {:else}
@@ -329,7 +329,7 @@
         </button>
         <div class="toolbar-title">Начать общение</div>
         <button class="icon-btn" on:click={toggleSearch} aria-label="Поиск">
-          <img src="/icons/search.svg" alt="" width="20" height="20" />
+          <img src="/icons/search.svg" alt="" width="20" height="20" class="theme-icon" />
         </button>
       {/if}
     </div>
@@ -566,7 +566,7 @@
 
   .icon-btn { width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; border: none; background: transparent; border-radius: 50%; cursor: pointer; color: inherit; transition: background 0.15s ease; }
   .icon-btn:hover { background: var(--border-subtle, rgba(255, 255, 255, 0.08)); }
-  .back-arrow { width: 14px; height: 14px; transform: scaleX(-1); filter: invert(var(--icon-invert, 1)); }
+  .back-arrow { width: 14px; height: 14px; transform: scaleX(-1); filter: brightness(0) invert(var(--icon-invert, 1)); }
 
   .actions-list { display: flex; flex-direction: column; padding: 8px 0; border-bottom: 8px solid var(--border-card, rgba(0, 0, 0, 0.25)); }
   .action-item, .contact-row { display: flex; align-items: center; cursor: pointer; transition: background 0.15s ease; }
@@ -589,7 +589,7 @@
 
   .sub-search-wrap { padding: 10px 16px; background: var(--bg-surface, #18191e); }
   .sub-search-box { display: flex; align-items: center; background: var(--bg-input, rgba(255, 255, 255, 0.06)); border-radius: 10px; padding: 0 12px; height: 38px; gap: 8px; }
-  .sub-search-icon { opacity: 0.6; filter: invert(var(--icon-invert, 1)); }
+  .sub-search-icon { opacity: 0.6; filter: brightness(0) invert(var(--icon-invert, 1)); }
   .sub-search-box input { flex: 1; background: transparent; border: none; outline: none; color: var(--text-primary, #fff); font-size: 14px; }
 
   .chips-scroll { display: flex; gap: 8px; padding: 8px 16px; overflow-x: auto; border-bottom: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.05)); }

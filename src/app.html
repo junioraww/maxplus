@@ -7,12 +7,24 @@
       name="viewport"
       content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover, interactive-widget=overlays-content"
     />
-    <meta name="theme-color" content="#131417" />
-    <meta name="color-scheme" content="dark" />
+    <meta name="theme-color" content="#0f0f12" />
+    <meta name="color-scheme" content="dark light" />
     <title>Max+</title>
     %sveltekit.head%
     <script>
       (() => {
+        try {
+          const cachedTheme = localStorage.getItem("maxplus_theme_id");
+          const prefersLight = window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches;
+          const bootTheme = (cachedTheme === "light" || cachedTheme === "dark")
+            ? cachedTheme
+            : (prefersLight ? "light" : "dark");
+          document.documentElement.setAttribute("data-theme", bootTheme);
+          document.documentElement.style.colorScheme = bootTheme;
+          const metaTheme = document.querySelector('meta[name="theme-color"]');
+          if (metaTheme) metaTheme.setAttribute("content", bootTheme === "light" ? "#edeef2" : "#0f0f12");
+        } catch {}
+
         const blankPoster = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'/%3E";
         const origCreate = document.createElement.bind(document);
         document.createElement = function(tagName, options) {
@@ -55,8 +67,14 @@
         position: fixed;
         overflow: hidden;
         overscroll-behavior: none;
-        background-color: #131417;
+        background-color: #0f0f12;
         color-scheme: dark;
+      }
+
+      html[data-theme="light"],
+      html[data-theme="light"] body {
+        background-color: #edeef2;
+        color-scheme: light;
       }
 
       html.camo-boot,
@@ -97,11 +115,15 @@
         flex-direction: column;
         justify-content: center;
         align-items: center;
-        background: #131417;
+        background: #0f0f12;
         z-index: var(--z-loader, 11);
         user-select: none;
         -webkit-user-select: none;
         transition: opacity 0.25s ease-out, visibility 0.25s ease-out;
+      }
+
+      html[data-theme="light"] .initial-loader {
+        background: #edeef2;
       }
 
       .initial-loader.loaded {
@@ -132,7 +154,13 @@
       .loader-icon {
         width: 100%;
         height: 100%;
+        color: #ffffff;
         filter: drop-shadow(0 4px 16px rgba(255, 255, 255, 0.15));
+      }
+
+      html[data-theme="light"] .loader-icon {
+        color: #060708;
+        filter: drop-shadow(0 4px 16px rgba(6, 7, 8, 0.12));
       }
 
       .loader-title {
@@ -141,6 +169,10 @@
         font-weight: 700;
         letter-spacing: 0.5px;
         font-family: system-ui, sans-serif;
+      }
+
+      html[data-theme="light"] .loader-title {
+        color: #060708;
       }
 
       .loader-dots {
@@ -156,6 +188,10 @@
         border-radius: 50%;
         background: #ffffff;
         animation: pulse-dot 1.2s infinite ease-in-out;
+      }
+
+      html[data-theme="light"] .loader-dots span {
+        background: #060708;
       }
 
       .loader-dots span:nth-child(2) {
@@ -189,6 +225,10 @@
         font-family: system-ui, sans-serif;
       }
 
+      html[data-theme="light"] .credits-text {
+        color: rgba(6, 7, 8, 0.52);
+      }
+
       @keyframes pulse-dot {
         0%, 80%, 100% {
           opacity: 0.2;
@@ -210,19 +250,19 @@
               <path
                 d="M54,28.7733C68.1126,28.7733 79.5,40.1581 79.5,54.1365C79.5,68.115 68.1126,79.4998 54,79.4998C39.8874,79.4998 28.5,68.115 28.5,54.1365C28.5,40.1581 39.8874,28.7733 54,28.7733Z"
                 fill="none"
-                stroke="#FFFFFF"
+                stroke="currentColor"
                 stroke-width="15"
               />
               <path
                 d="M22.3915,55.3724C22.3915,55.3724 22.2564,47.3297 25.3431,39.0233C28.4297,30.717 27.7587,23.2017 29.3691,21.6194C30.9795,20.0372 38.9522,21.5956 42.7906,25.0474L22.3915,55.3724Z"
-                fill="#FFFFFF"
-                stroke="#FFFFFF"
+                fill="currentColor"
+                stroke="currentColor"
                 stroke-width="1"
               />
               <path
                 d="M85.691,56.0431C85.691,56.0431 85.825,47.8434 82.7643,39.375C79.7036,30.9066 80.369,23.2446 78.7721,21.6315C77.1752,20.0184 69.2695,21.6072 65.4633,25.1264L85.691,56.0431Z"
-                fill="#FFFFFF"
-                stroke="#FFFFFF"
+                fill="currentColor"
+                stroke="currentColor"
                 stroke-width="1"
               />
             </g>

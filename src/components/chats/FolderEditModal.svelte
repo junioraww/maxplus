@@ -602,6 +602,7 @@
     width: 14px;
     height: 14px;
     transform: scaleX(-1);
+    filter: brightness(0) invert(var(--icon-invert, 1));
   }
 
   .toolbar-title-box {
@@ -792,7 +793,7 @@
 
   .item-divider {
     height: 0.5px;
-    background: rgba(255, 255, 255, 0.08);
+    background: var(--border-subtle);
     margin-left: 54px;
     flex-shrink: 0;
   }
@@ -811,7 +812,7 @@
   }
 
   .filter-switch-row:hover {
-    background: rgba(255, 255, 255, 0.04);
+    background: var(--bg-hover);
   }
 
   .filter-icon-box {
@@ -824,7 +825,7 @@
   }
 
   .filter-icon-img {
-    filter: brightness(0) invert(1);
+    filter: brightness(0) invert(var(--icon-invert, 1));
     opacity: 0.85;
   }
 

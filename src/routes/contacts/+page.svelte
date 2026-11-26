@@ -91,7 +91,7 @@
           on:click={openContactAdd}
           aria-label="Добавить контакт"
         >
-          <img src="/icons/plus.svg" alt="" width="20" height="20" />
+          <span class="mask-icon" style="-webkit-mask-image: url('/icons/plus.svg'); mask-image: url('/icons/plus.svg'); width: 20px; height: 20px;"></span>
         </button>
       </div>
       <Search input={(q) => (filter = q)} placeholder="Поиск контактов" />
@@ -136,7 +136,7 @@
               on:click={(e) => handleDeleteContact(contact, e)}
               title="Удалить контакт"
             >
-              <img src="/icons/trash.svg" alt="" width="16" height="16" />
+              <img src="/icons/trash.svg" alt="" width="16" height="16" class="theme-icon" />
             </button>
           </div>
         {/each}
@@ -160,11 +160,11 @@
 
   .contacts-header {
     padding: calc(10px + var(--safe-top, 0px)) 16px 10px;
-    background: #1c1d22;
+    background: var(--bg-topbar, var(--bg-surface));
     display: flex;
     flex-direction: column;
     gap: 10px;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    border-bottom: 1px solid var(--border-subtle);
   }
 
   .contacts-title-row {
@@ -177,13 +177,13 @@
     margin: 0;
     font-size: 18px;
     font-weight: 600;
-    color: #ffffff;
+    color: var(--text-primary);
   }
 
   .add-contact-btn {
     background: none;
     border: none;
-    color: #0077ff;
+    color: var(--accent-primary);
     cursor: pointer;
     display: flex;
     align-items: center;
@@ -193,13 +193,13 @@
   }
 
   .add-contact-btn:hover {
-    background: rgba(0, 119, 255, 0.12);
+    background: var(--accent-subtle);
   }
 
   .modal-search-wrapper {
     padding: 10px 14px 6px;
-    background: #1c1d22;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    background: var(--bg-surface);
+    border-bottom: 1px solid var(--border-subtle);
   }
 
   .contacts-content {
@@ -212,7 +212,7 @@
     display: flex;
     flex-direction: column;
     padding: 6px 12px;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    border-bottom: 1px solid var(--border-subtle);
   }
 
   .quick-row {
@@ -222,13 +222,13 @@
     padding: 10px 4px;
     cursor: pointer;
     border-radius: 10px;
-    color: #ffffff;
+    color: var(--text-primary);
     font-size: 15px;
     font-weight: 500;
   }
 
   .quick-row:hover {
-    background: rgba(255, 255, 255, 0.04);
+    background: var(--bg-hover);
   }
 
   .quick-icon {
@@ -238,15 +238,15 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    color: #ffffff;
+    color: var(--accent-contrast, #ffffff);
   }
 
   .quick-icon.share-icon {
-    background: #2563eb;
+    background: var(--accent-primary);
   }
 
   .quick-icon.add-icon {
-    background: #0077ff;
+    background: var(--accent-primary);
   }
 
   .contacts-list {
@@ -259,7 +259,7 @@
     padding: 12px 14px 4px;
     font-size: 13px;
     font-weight: 700;
-    color: #0077ff;
+    color: var(--accent-primary);
   }
 
   .contact-item {
@@ -273,7 +273,7 @@
   }
 
   .contact-item:hover {
-    background: rgba(255, 255, 255, 0.04);
+    background: var(--bg-hover);
   }
 
   .contact-info {
@@ -286,7 +286,7 @@
   .contact-name {
     font-size: 15px;
     font-weight: 500;
-    color: #ffffff;
+    color: var(--text-primary);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -294,13 +294,13 @@
 
   .contact-status {
     font-size: 13px;
-    color: #8c93a0;
+    color: var(--text-muted);
   }
 
   .delete-btn {
     background: none;
     border: none;
-    color: #6d7380;
+    color: var(--icon-muted);
     cursor: pointer;
     padding: 6px;
     border-radius: 50%;

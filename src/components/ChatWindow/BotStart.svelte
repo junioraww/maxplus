@@ -62,8 +62,8 @@
   }
 
   .bot-card {
-    background: #242832;
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: var(--bg-surface);
+    border: 1px solid var(--border-card);
     border-radius: 20px;
     padding: 24px 20px;
     max-width: 320px;
@@ -73,24 +73,25 @@
     align-items: center;
     text-align: center;
     pointer-events: auto;
+    box-shadow: var(--shadow-card);
   }
 
   .bot-name {
     margin: 12px 0 6px;
-    color: #fff;
+    color: var(--text-primary);
     font-size: 18px;
     font-weight: 600;
   }
 
   .bot-desc-title {
-    color: #8e8e93;
+    color: var(--text-muted);
     font-size: 13px;
     font-weight: 500;
     margin-bottom: 8px;
   }
 
   .bot-desc-text {
-    color: #ddd;
+    color: var(--text-secondary);
     font-size: 14px;
     line-height: 1.4;
     margin: 0;
@@ -111,10 +112,10 @@
     width: 100%;
     max-width: 480px;
     height: 48px;
-    background: #248bfe;
+    background: var(--accent-primary);
     border: none;
     border-radius: 12px;
-    color: #fff;
+    color: var(--accent-contrast, #ffffff);
     font-size: 16px;
     font-weight: 600;
     cursor: pointer;

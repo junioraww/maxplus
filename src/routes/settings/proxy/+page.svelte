@@ -267,7 +267,7 @@
               <div class="bypass-chip" class:essential={isEssential(bHost)}>
                 <span class="bypass-chip-text">{bHost}</span>
                 {#if isEssential(bHost)}
-                  <span class="bypass-chip-lock" title="Обязательный системный адрес">🔒</span>
+                  <img src="/icons/lock.svg" alt="" width="12" height="12" class="theme-icon bypass-chip-lock" title="Обязательный системный адрес" />
                 {:else}
                   <button
                     type="button"
@@ -275,7 +275,7 @@
                     title="Удалить"
                     on:click={() => removeBypassHost(idx)}
                   >
-                    ✕
+                    <img src="/icons/close.svg" alt="Удалить" width="12" height="12" class="theme-icon" />
                   </button>
                 {/if}
               </div>
@@ -453,7 +453,7 @@
   .status-title {
     font-size: 0.95rem;
     font-weight: 600;
-    color: #fff;
+    color: var(--settings-text-primary, var(--text-primary));
   }
 
   .status-badge {
@@ -461,19 +461,19 @@
     font-weight: 700;
     padding: 2px 8px;
     border-radius: 6px;
-    background: rgba(255, 255, 255, 0.08);
-    color: #8e8e93;
+    background: var(--bg-pill);
+    color: var(--settings-text-muted, var(--text-muted));
     letter-spacing: 0.5px;
   }
 
   .status-badge.badge-active {
-    background: rgba(16, 185, 129, 0.18);
-    color: #10b981;
+    background: var(--status-success-subtle);
+    color: var(--status-success);
   }
 
   .status-sub {
     font-size: 0.8rem;
-    color: #9ca3af;
+    color: var(--settings-text-secondary, var(--text-secondary));
     margin-top: 2px;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -491,15 +491,15 @@
     font-size: 0.86rem;
     font-weight: 600;
     text-transform: uppercase;
-    color: #888;
+    color: var(--settings-text-muted, var(--text-muted));
     margin: 0;
     letter-spacing: 0.5px;
   }
 
   .settings-card {
-    background: #26262e;
-    border-radius: 12px;
-    border: 1px solid #333;
+    background: var(--settings-card-bg, var(--bg-surface));
+    border-radius: var(--settings-card-radius, 12px);
+    border: 1px solid var(--border-subtle);
     padding: 16px;
     box-sizing: border-box;
     flex-shrink: 0;
@@ -507,13 +507,13 @@
 
   .card-divider {
     height: 1px;
-    background: rgba(255, 255, 255, 0.06);
+    background: var(--settings-separator, var(--border-subtle));
     margin: 14px 0;
   }
 
   .segment-container {
     display: flex;
-    background: #1c1c21;
+    background: var(--bg-app);
     border-radius: 10px;
     padding: 3px;
     gap: 4px;
@@ -525,7 +525,7 @@
     border: none;
     border-radius: 8px;
     background: transparent;
-    color: #8e8e93;
+    color: var(--settings-text-muted, var(--text-muted));
     font-size: 14px;
     font-weight: 600;
     cursor: pointer;
@@ -536,15 +536,15 @@
   }
 
   .segment-btn.active {
-    background: #2c2c34;
-    color: #ffffff;
+    background: var(--settings-card-elevated, var(--bg-surface-elevated));
+    color: var(--settings-text-primary, var(--text-primary));
   }
 
   .active-dot {
     width: 6px;
     height: 6px;
     border-radius: 50%;
-    background: #10b981;
+    background: var(--status-success);
     display: inline-block;
     margin-left: 6px;
     flex-shrink: 0;
@@ -569,7 +569,7 @@
 
   .input-label {
     font-size: 13px;
-    color: #9ca3af;
+    color: var(--settings-text-secondary, var(--text-secondary));
     font-weight: 500;
   }
 
@@ -577,10 +577,10 @@
     width: 100%;
     min-width: 0;
     height: 42px;
-    background: #1c1c21;
-    border: 1px solid #3a3a42;
+    background: var(--settings-input-bg, var(--bg-input));
+    border: 1px solid var(--settings-input-border, var(--border-subtle));
     border-radius: 10px;
-    color: #fff;
+    color: var(--settings-text-primary, var(--text-primary));
     padding: 0 12px;
     font-size: 14px;
     outline: none;
@@ -589,7 +589,7 @@
   }
 
   .text-input:focus {
-    border-color: #248bfe;
+    border-color: var(--settings-accent, var(--accent-primary));
   }
 
   .bypass-section {
@@ -614,12 +614,12 @@
   .bypass-title {
     font-size: 0.95rem;
     font-weight: 600;
-    color: #fff;
+    color: var(--settings-text-primary, var(--text-primary));
   }
 
   .bypass-desc {
     font-size: 0.8rem;
-    color: #888;
+    color: var(--settings-text-secondary, var(--text-secondary));
     line-height: 1.35;
   }
 
@@ -645,8 +645,8 @@
     flex-wrap: wrap;
     gap: 8px;
     padding: 8px 10px;
-    background: #1c1c21;
-    border: 1px solid #333;
+    background: var(--settings-input-bg, var(--bg-input));
+    border: 1px solid var(--settings-input-border, var(--border-subtle));
     border-radius: 10px;
     min-height: 42px;
     align-items: center;
@@ -656,19 +656,19 @@
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    background: #2a2a34;
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: var(--bg-surface-secondary);
+    border: 1px solid var(--border-subtle);
     border-radius: 6px;
     padding: 3px 8px;
     font-size: 12.5px;
-    color: #e5e7eb;
+    color: var(--text-primary);
     line-height: 1.4;
   }
 
   .bypass-chip.essential {
-    background: rgba(16, 185, 129, 0.1);
-    border-color: rgba(16, 185, 129, 0.25);
-    color: #10b981;
+    background: var(--status-success-subtle);
+    border-color: var(--status-success);
+    color: var(--status-success);
   }
 
   .bypass-chip-lock {
@@ -708,10 +708,10 @@
   .bypass-add-btn {
     height: 38px;
     padding: 0 16px;
-    background: #2a2a34;
-    border: 1px solid #3a3a44;
+    background: var(--bg-pill);
+    border: 1px solid var(--border-subtle);
     border-radius: 10px;
-    color: #fff;
+    color: var(--text-primary);
     font-size: 13px;
     font-weight: 500;
     cursor: pointer;
@@ -720,8 +720,8 @@
   }
 
   .bypass-add-btn:hover:not(:disabled) {
-    background: #343440;
-    border-color: #248bfe;
+    background: var(--bg-active);
+    border-color: var(--accent-primary);
   }
 
   .bypass-add-btn:disabled {
@@ -747,12 +747,12 @@
   .toggle-title {
     font-size: 1rem;
     font-weight: 500;
-    color: #fff;
+    color: var(--settings-text-primary, var(--text-primary));
   }
 
   .toggle-desc {
     font-size: 0.82rem;
-    color: #888;
+    color: var(--settings-text-secondary, var(--text-secondary));
     line-height: 1.35;
   }
 
@@ -825,13 +825,13 @@
   }
 
   .action-btn.secondary {
-    background: #3a3a42;
-    color: #fff;
+    background: var(--bg-pill);
+    color: var(--text-primary);
   }
 
   .action-btn.primary {
-    background: #248bfe;
-    color: #fff;
+    background: var(--accent-primary);
+    color: var(--accent-contrast, #ffffff);
   }
 
   .save-btn {

@@ -356,23 +356,24 @@
     position: relative;
     width: 100%;
     height: 100%;
-    background: var(--bg-primary, #121212);
-    color: var(--text-primary, #ffffff);
+    background: var(--bg-app);
+    color: var(--text-primary);
     display: flex;
     flex-direction: column;
     overflow: hidden;
   }
 
   .advanced-topbar {
-    height: 56px;
-    min-height: 56px;
+    height: calc(var(--settings-topbar-height, 56px) + var(--safe-top, 0px));
+    min-height: calc(var(--settings-topbar-height, 56px) + var(--safe-top, 0px));
     display: flex;
     align-items: center;
-    padding: 0 16px;
+    padding: var(--safe-top, 0px) 16px 0;
     gap: 12px;
-    background: var(--bg-surface, #1e1e1e);
-    border-bottom: 1px solid var(--border-light, rgba(255, 255, 255, 0.08));
+    background: var(--bg-topbar, var(--bg-surface));
+    border-bottom: 1px solid var(--border-subtle);
     z-index: var(--z-header, 4);
+    box-sizing: border-box;
   }
 
   .btn-topbar-back {
@@ -384,14 +385,14 @@
     border-radius: 50%;
     border: none;
     background: transparent;
-    color: var(--text-primary, #ffffff);
+    color: var(--icon-primary, var(--text-primary));
     cursor: pointer;
     transition: background 0.15s;
     margin-left: -6px;
   }
 
   .btn-topbar-back:hover {
-    background: var(--hover-surface, rgba(255, 255, 255, 0.08));
+    background: var(--bg-hover);
   }
 
   .topbar-title-wrap {
@@ -448,7 +449,7 @@
   .advanced-card-caption {
     font-size: 13px;
     font-weight: 600;
-    color: var(--accent, #0077ff);
+    color: var(--accent-primary);
     text-transform: uppercase;
     letter-spacing: 0.5px;
     padding: 4px 16px 8px 54px;
@@ -469,7 +470,7 @@
   }
 
   .advanced-item-row.clickable:hover {
-    background: var(--hover-surface, rgba(255, 255, 255, 0.05));
+    background: var(--bg-hover);
   }
 
   .advanced-item-icon {
@@ -478,7 +479,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    color: var(--text-secondary, #8e8e93);
+    color: var(--icon-secondary);
     flex-shrink: 0;
   }
 
@@ -493,12 +494,12 @@
   .advanced-item-title {
     font-size: 15px;
     font-weight: 500;
-    color: var(--text-primary, #ffffff);
+    color: var(--text-primary);
   }
 
   .advanced-item-subtitle {
     font-size: 13px;
-    color: var(--text-secondary, #8e8e93);
+    color: var(--text-secondary);
   }
 
   .status-badge {
@@ -510,26 +511,26 @@
   }
 
   .status-badge.success {
-    background: rgba(52, 199, 89, 0.15);
-    color: #34c759;
+    background: var(--status-success-subtle);
+    color: var(--status-success);
   }
 
   .status-badge.warning {
-    background: rgba(255, 149, 0, 0.15);
-    color: #ff9500;
+    background: var(--status-warning-subtle);
+    color: var(--status-warning);
   }
 
   .status-badge.muted {
-    background: rgba(142, 142, 147, 0.15);
-    color: #8e8e93;
+    background: var(--bg-pill);
+    color: var(--text-muted);
   }
 
   .advanced-pill-btn {
     padding: 6px 14px;
     border-radius: 18px;
     border: none;
-    background: var(--accent, #0077ff);
-    color: #ffffff;
+    background: var(--accent-primary);
+    color: var(--accent-contrast, #ffffff);
     font-size: 13px;
     font-weight: 500;
     cursor: pointer;
@@ -541,7 +542,7 @@
   }
 
   .advanced-pill-btn.danger {
-    background: #ff3b30;
+    background: var(--status-danger);
   }
 
   .fingerprint-emojis {
@@ -559,14 +560,14 @@
     justify-content: center;
     background: transparent;
     border: none;
-    color: var(--text-secondary, #8e8e93);
+    color: var(--icon-secondary);
     cursor: pointer;
     border-radius: 50%;
     transition: background 0.15s, color 0.15s;
   }
 
   .btn-copy:hover, .btn-eye:hover {
-    background: var(--hover-surface, rgba(255, 255, 255, 0.08));
+    background: var(--bg-hover);
     color: var(--text-primary, #ffffff);
   }
 

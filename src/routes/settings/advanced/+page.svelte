@@ -389,12 +389,12 @@
   .toggle-title {
     font-size: 1rem;
     font-weight: 500;
-    color: #fff;
+    color: var(--settings-text-primary, var(--text-primary));
   }
 
   .toggle-desc {
     font-size: 0.82rem;
-    color: #888;
+    color: var(--settings-text-secondary, var(--text-secondary));
   }
 
   .section-header {

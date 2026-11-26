@@ -12,17 +12,17 @@
 <div class="folder-context-menu" role="menu">
   {#if folder && folder.id !== 0 && folder.id !== "all.chat.folder"}
     <button type="button" class="folder-menu-item" on:click={() => handleSelect("edit")}>
-      <img src="/icons/edit.svg" width="18" height="18" alt="" />
+      <img src="/icons/edit.svg" width="18" height="18" alt="" class="theme-icon" />
       <span>Изменить</span>
     </button>
   {/if}
   <button type="button" class="folder-menu-item" on:click={() => handleSelect("read")}>
-    <img src="/icons/status-read.svg" width="18" height="18" alt="" />
+    <img src="/icons/status-read.svg" width="18" height="18" alt="" class="theme-icon" />
     <span>Прочитать все</span>
   </button>
   {#if folder && folder.id !== 0 && folder.id !== "all.chat.folder"}
     <button type="button" class="folder-menu-item danger" on:click={() => handleSelect("delete")}>
-      <img src="/icons/trash.svg" width="18" height="18" alt="" />
+      <img src="/icons/trash.svg" width="18" height="18" alt="" class="theme-icon" />
       <span>Удалить</span>
     </button>
   {/if}

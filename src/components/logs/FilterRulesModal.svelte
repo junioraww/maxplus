@@ -166,14 +166,15 @@
   }
 
   .modal-card {
-    background: #1e1f26;
-    border: 1px solid #323543;
+    background: var(--bg-surface);
+    border: 1px solid var(--border-subtle);
     border-radius: 14px;
     width: 100%;
     max-width: 480px;
     display: flex;
     flex-direction: column;
     overflow: hidden;
+    box-shadow: var(--shadow-elevated);
   }
 
   .modal-header {
@@ -181,7 +182,7 @@
     align-items: center;
     justify-content: space-between;
     padding: 14px 18px;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    border-bottom: 1px solid var(--border-subtle);
   }
 
   .modal-title {
@@ -190,13 +191,13 @@
     gap: 8px;
     font-size: 15px;
     font-weight: 600;
-    color: #f3f4f6;
+    color: var(--text-primary);
   }
 
   .icon-close {
     background: none;
     border: none;
-    color: #9ca3af;
+    color: var(--icon-muted);
     cursor: pointer;
     padding: 4px;
     border-radius: 6px;
@@ -204,8 +205,8 @@
   }
 
   .icon-close:hover {
-    color: #fff;
-    background: rgba(255, 255, 255, 0.08);
+    color: var(--icon-primary);
+    background: var(--bg-hover);
   }
 
   .modal-body {
@@ -216,9 +217,9 @@
   }
 
   .error-banner {
-    background: rgba(239, 68, 68, 0.15);
-    border: 1px solid rgba(239, 68, 68, 0.35);
-    color: #fca5a5;
+    background: var(--status-danger-subtle);
+    border: 1px solid var(--status-danger);
+    color: var(--status-danger);
     padding: 8px 12px;
     border-radius: 8px;
     font-size: 12px;
@@ -233,33 +234,33 @@
   .field label {
     font-size: 12px;
     font-weight: 500;
-    color: #9ca3af;
+    color: var(--text-secondary);
   }
 
   .field input {
-    background: #16171c;
-    border: 1px solid #333645;
+    background: var(--bg-input);
+    border: 1px solid var(--border-subtle);
     border-radius: 8px;
     padding: 10px 12px;
-    color: #f3f4f6;
+    color: var(--text-primary);
     font-size: 13px;
     outline: none;
     transition: border-color 0.15s;
   }
 
   .field input:focus {
-    border-color: #0077ff;
+    border-color: var(--accent-primary);
   }
 
   .code-input {
-    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-family: var(--font-family-mono);
     font-size: 12.5px !important;
   }
 
   .target-toggle {
     display: flex;
-    background: #16171c;
-    border: 1px solid #333645;
+    background: var(--bg-input);
+    border: 1px solid var(--border-subtle);
     border-radius: 8px;
     padding: 2px;
     gap: 2px;
@@ -269,7 +270,7 @@
     flex: 1;
     background: none;
     border: none;
-    color: #9ca3af;
+    color: var(--text-muted);
     font-size: 12px;
     font-weight: 500;
     padding: 7px 0;
@@ -279,8 +280,8 @@
   }
 
   .toggle-btn.active {
-    background: #2b2e3b;
-    color: #fff;
+    background: var(--bg-surface);
+    color: var(--text-primary);
     font-weight: 600;
   }
 
@@ -307,8 +308,8 @@
   .custom-checkbox {
     width: 18px;
     height: 18px;
-    background: #16171c;
-    border: 1.5px solid #3e4253;
+    background: var(--checkbox-bg);
+    border: 1.5px solid var(--checkbox-border);
     border-radius: 5px;
     display: flex;
     align-items: center;
@@ -318,8 +319,8 @@
   }
 
   .checkbox-container input:checked ~ .custom-checkbox {
-    background: #0077ff;
-    border-color: #0077ff;
+    background: var(--accent-primary);
+    border-color: var(--accent-primary);
   }
 
   .checkbox-container input:checked ~ .custom-checkbox::after {
@@ -333,16 +334,16 @@
 
   .checkbox-label {
     font-size: 12.5px;
-    color: #d1d5db;
+    color: var(--text-primary);
   }
 
   .hint-box {
-    background: rgba(0, 119, 255, 0.08);
-    border: 1px solid rgba(0, 119, 255, 0.2);
+    background: var(--accent-subtle);
+    border: 1px solid var(--accent-subtle-hover);
     border-radius: 8px;
     padding: 8px 12px;
     font-size: 11.5px;
-    color: #93c5fd;
+    color: var(--accent-primary);
     line-height: 1.4;
   }
 
@@ -352,14 +353,14 @@
     justify-content: flex-end;
     gap: 10px;
     padding: 12px 18px;
-    background: #17181d;
-    border-top: 1px solid rgba(255, 255, 255, 0.06);
+    background: var(--bg-surface-secondary);
+    border-top: 1px solid var(--border-subtle);
   }
 
   .btn-cancel {
-    background: #252732;
-    border: 1px solid #363948;
-    color: #d1d5db;
+    background: var(--bg-pill);
+    border: 1px solid var(--border-subtle);
+    color: var(--text-primary);
     padding: 8px 16px;
     border-radius: 8px;
     font-size: 13px;
@@ -368,14 +369,14 @@
   }
 
   .btn-cancel:hover {
-    background: #2e303d;
-    color: #fff;
+    background: var(--bg-active);
+    color: var(--text-primary);
   }
 
   .btn-save {
-    background: #0077ff;
+    background: var(--accent-primary);
     border: none;
-    color: #fff;
+    color: var(--accent-contrast, #ffffff);
     padding: 8px 18px;
     border-radius: 8px;
     font-size: 13px;
@@ -385,6 +386,6 @@
   }
 
   .btn-save:hover {
-    background: #0066dd;
+    background: var(--accent-primary-hover);
   }
 </style>

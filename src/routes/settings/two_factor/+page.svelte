@@ -489,14 +489,14 @@
     margin: 0;
     font-size: 1.2rem;
     font-weight: 600;
-    color: white;
+    color: var(--settings-text-primary, var(--text-primary));
   }
 
   .step-indicator {
     font-size: 0.8rem;
     text-transform: uppercase;
     letter-spacing: 0.5px;
-    color: #3390ec;
+    color: var(--settings-accent, var(--accent-primary));
     font-weight: 600;
   }
 
@@ -506,16 +506,16 @@
   }
 
   .status.success {
-    color: #68d391;
+    color: var(--status-success);
   }
 
   .status.warning {
-    color: #f6c453;
+    color: var(--status-warning);
   }
 
   .description {
     margin: 0;
-    color: #9ca3af;
+    color: var(--settings-text-secondary, var(--text-secondary));
     line-height: 1.5;
     font-size: 0.92rem;
   }
@@ -531,21 +531,21 @@
     justify-content: space-between;
     align-items: center;
     gap: 10px;
-    background: #1b1c21;
-    border: 1px solid rgba(255, 255, 255, 0.06);
+    background: var(--settings-card-elevated, var(--bg-surface-secondary));
+    border: 1px solid var(--border-subtle);
     border-radius: 10px;
     padding: 10px 14px;
   }
 
   .info-label {
-    color: #888;
+    color: var(--settings-text-muted, var(--text-muted));
     font-size: 0.88rem;
     white-space: nowrap;
     flex-shrink: 0;
   }
 
   .info-val {
-    color: white;
+    color: var(--settings-text-primary, var(--text-primary));
     font-size: 0.92rem;
     word-break: break-all;
     text-align: right;
@@ -559,15 +559,15 @@
 
   .field label {
     font-size: 0.85rem;
-    color: #888;
+    color: var(--settings-text-muted, var(--text-muted));
   }
 
   input {
     width: 100%;
-    background: #1f1f26;
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: var(--settings-input-bg, var(--bg-input));
+    border: 1px solid var(--settings-input-border, var(--border-subtle));
     border-radius: 12px;
-    color: white;
+    color: var(--settings-text-primary, var(--text-primary));
     padding: 13px 14px;
     box-sizing: border-box;
     font-size: 0.95rem;
@@ -576,8 +576,8 @@
   }
 
   input:focus {
-    border-color: #3390ec;
-    background: #20202a;
+    border-color: var(--settings-accent, var(--accent-primary));
+    background: var(--settings-card-elevated, var(--bg-surface-elevated));
   }
 
   button {

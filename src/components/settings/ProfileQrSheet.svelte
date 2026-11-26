@@ -242,8 +242,8 @@
   .qr-sheet {
     position: relative;
     width: 100%;
-    background-color: #161722;
-    color: #ffffff;
+    background-color: var(--bg-sheet, #1e1f24);
+    color: var(--text-primary, #ffffff);
     border-top-left-radius: 20px;
     border-top-right-radius: 20px;
     padding: 8px 12px max(16px, calc(16px + var(--safe-bottom, 0px)));
@@ -271,7 +271,7 @@
     width: 36px;
     height: 4px;
     border-radius: 99px;
-    background: rgba(255, 255, 255, 0.35);
+    background: var(--text-subtle, rgba(255, 255, 255, 0.35));
     cursor: pointer;
     margin-top: 2px;
   }

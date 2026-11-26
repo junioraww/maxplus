@@ -103,7 +103,8 @@
   .bottom-sheet-panel {
     width: 100%;
     max-width: 480px;
-    background: var(--bg-surface, #1e2025);
+    background: var(--bg-sheet, var(--bg-surface));
+    color: var(--text-primary);
     border-top-left-radius: 20px;
     border-top-right-radius: 20px;
     display: flex;
@@ -159,7 +160,7 @@
     width: 40px;
     height: 4px;
     border-radius: 2px;
-    background: rgba(255, 255, 255, 0.2);
+    background: var(--text-subtle);
     margin: 10px auto 4px;
     flex-shrink: 0;
   }

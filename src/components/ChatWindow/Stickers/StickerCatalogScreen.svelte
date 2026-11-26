@@ -11,7 +11,7 @@
     unfavoriteSet,
   } from "$lib/stores/stickers";
   import { showAlert } from "$lib/utils/alert";
-  import { openScreen } from "$lib/services/layerManager";
+  import { openSheet } from "$lib/services/layerManager";
   import StickerSettingsScreen from "./StickerSettingsScreen.svelte";
   import StickerPackModal from "./StickerPackModal.svelte";
   import StickerMedia from "./StickerMedia.svelte";
@@ -42,7 +42,7 @@
   }
 
   function handleOpenPack(setId) {
-    openScreen(StickerPackModal, { setId });
+    openSheet(StickerPackModal, { setId });
   }
 
   async function togglePackFavorite(pack) {
@@ -208,14 +208,15 @@
   }
 
   .screen-header {
-    height: 56px;
+    height: calc(56px + var(--safe-top, 0px));
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 0 8px;
-    background: var(--bg-app, #101114);
+    padding: var(--safe-top, 0px) 8px 0;
+    background: var(--bg-topbar, var(--bg-app));
     flex-shrink: 0;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    border-bottom: 1px solid var(--border-subtle);
+    box-sizing: border-box;
   }
 
   .header-left {
@@ -238,7 +239,7 @@
     border-radius: 50%;
     border: none;
     background: transparent;
-    color: var(--text-primary, #ffffff);
+    color: var(--icon-primary, var(--text-primary));
     display: flex;
     align-items: center;
     justify-content: center;
@@ -248,13 +249,14 @@
 
   .icon-btn:hover,
   .icon-btn.active {
-    background: rgba(255, 255, 255, 0.08);
+    background: var(--bg-hover);
   }
 
   .header-title {
     margin: 0;
     font-size: 18px;
     font-weight: 600;
+    color: var(--text-primary);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -262,7 +264,7 @@
 
   .search-bar-wrap {
     padding: 8px 14px;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    border-bottom: 1px solid var(--border-subtle);
     flex-shrink: 0;
   }
 
@@ -270,17 +272,17 @@
     display: flex;
     align-items: center;
     gap: 8px;
-    background: rgba(255, 255, 255, 0.07);
+    background: var(--bg-input);
     border-radius: 12px;
     padding: 8px 12px;
-    color: rgba(255, 255, 255, 0.65);
+    color: var(--icon-muted);
   }
 
   .search-input-box input {
     flex: 1;
     border: none;
     background: transparent;
-    color: #ffffff;
+    color: var(--text-primary);
     font-size: 14px;
     outline: none;
     min-width: 0;
@@ -291,8 +293,8 @@
     height: 22px;
     border: none;
     border-radius: 50%;
-    background: rgba(255, 255, 255, 0.12);
-    color: #ffffff;
+    background: var(--bg-pill);
+    color: var(--text-primary);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -309,7 +311,7 @@
   .empty-state {
     padding: 48px 16px;
     text-align: center;
-    color: rgba(255, 255, 255, 0.5);
+    color: var(--text-muted);
     font-size: 14px;
   }
 
@@ -320,7 +322,7 @@
   }
 
   .showcase-card {
-    background: rgba(255, 255, 255, 0.04);
+    background: var(--bg-surface);
     border-radius: 16px;
     padding: 12px 12px 14px;
     display: flex;
@@ -352,6 +354,7 @@
   .showcase-pack-name {
     font-size: 15px;
     font-weight: 600;
+    color: var(--text-primary);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -359,7 +362,7 @@
 
   .showcase-pack-count {
     font-size: 12px;
-    color: rgba(255, 255, 255, 0.55);
+    color: var(--text-secondary);
   }
 
   .showcase-action-pill {
@@ -368,16 +371,16 @@
     padding: 7px 14px;
     font-size: 13px;
     font-weight: 600;
-    background: var(--accent-color, #2563eb);
-    color: #ffffff;
+    background: var(--accent-primary);
+    color: var(--accent-contrast, #ffffff);
     cursor: pointer;
     flex-shrink: 0;
     transition: opacity 0.15s ease, background-color 0.15s ease;
   }
 
   .showcase-action-pill.added {
-    background: rgba(255, 255, 255, 0.1);
-    color: rgba(255, 255, 255, 0.78);
+    background: var(--bg-pill);
+    color: var(--text-secondary);
   }
 
   .showcase-action-pill:disabled {

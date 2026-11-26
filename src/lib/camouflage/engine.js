@@ -113,9 +113,13 @@ const LOCALES = {
   }
 };
 
-export function generateProceduralTheme(seed) {
+export function generateProceduralTheme(seed, isLight) {
+  if (typeof isLight !== "boolean" && typeof document !== "undefined") {
+    isLight = document.documentElement?.getAttribute("data-theme") === "light";
+  }
+  isLight = Boolean(isLight);
   if (typeof window !== "undefined" && typeof window.__generateProceduralTheme === "function") {
-    return window.__generateProceduralTheme(seed);
+    return window.__generateProceduralTheme(seed, isLight);
   }
   const rand = createPrng(seed);
   const pick = arr => arr[Math.floor(rand() * arr.length)];
@@ -144,16 +148,32 @@ export function generateProceduralTheme(seed) {
   const accent = hslToHex(accentHue, accentSat, accentLight);
   const accentFg = accentLight > 58 ? "#000000" : "#ffffff";
 
-  const isOled = rand() < arch.oledProb;
-  const bg = isOled ? "#000000" : hslToHex(arch.bgHue, Math.round(8 + rand() * 8), Math.round(5 + rand() * 4));
-  const surface = hslToHex(arch.bgHue, Math.round(10 + rand() * 8), Math.round(11 + rand() * 4));
-  const surface2 = hslToHex(arch.bgHue, Math.round(12 + rand() * 10), Math.round(17 + rand() * 5));
-  const btnBg = hslToHex(arch.bgHue, Math.round(10 + rand() * 8), Math.round(14 + rand() * 5));
-  const btnTopBg = hslToHex(arch.bgHue, Math.round(12 + rand() * 10), Math.round(22 + rand() * 6));
+  const isOled = !isLight && rand() < arch.oledProb;
+  const bg = isLight
+    ? hslToHex(arch.bgHue, Math.round(6 + rand() * 6), Math.round(94 + rand() * 3))
+    : (isOled ? "#000000" : hslToHex(arch.bgHue, Math.round(8 + rand() * 8), Math.round(5 + rand() * 4)));
+  const surface = isLight
+    ? "#ffffff"
+    : hslToHex(arch.bgHue, Math.round(10 + rand() * 8), Math.round(11 + rand() * 4));
+  const surface2 = isLight
+    ? hslToHex(arch.bgHue, Math.round(8 + rand() * 6), Math.round(90 + rand() * 4))
+    : hslToHex(arch.bgHue, Math.round(12 + rand() * 10), Math.round(17 + rand() * 5));
+  const btnBg = isLight
+    ? hslToHex(arch.bgHue, Math.round(8 + rand() * 6), Math.round(91 + rand() * 4))
+    : hslToHex(arch.bgHue, Math.round(10 + rand() * 8), Math.round(14 + rand() * 5));
+  const btnTopBg = isLight
+    ? hslToHex(arch.bgHue, Math.round(10 + rand() * 6), Math.round(84 + rand() * 4))
+    : hslToHex(arch.bgHue, Math.round(12 + rand() * 10), Math.round(22 + rand() * 6));
   const btnOpBg = rand() > 0.3 ? accent : hslToHex(accentHue, Math.round(accentSat * 0.9), Math.round(accentLight * 0.88));
-  const border = `rgba(255, 255, 255, ${(0.05 + rand() * 0.08).toFixed(2)})`;
-  const text = hslToHex(arch.bgHue, 8, Math.round(94 + rand() * 5));
-  const textDim = hslToHex(arch.bgHue, 12, Math.round(58 + rand() * 10));
+  const border = isLight
+    ? `rgba(6, 7, 8, ${(0.07 + rand() * 0.05).toFixed(2)})`
+    : `rgba(255, 255, 255, ${(0.05 + rand() * 0.08).toFixed(2)})`;
+  const text = isLight
+    ? hslToHex(arch.bgHue, 10, Math.round(6 + rand() * 4))
+    : hslToHex(arch.bgHue, 8, Math.round(94 + rand() * 5));
+  const textDim = isLight
+    ? hslToHex(arch.bgHue, 8, Math.round(42 + rand() * 8))
+    : hslToHex(arch.bgHue, 12, Math.round(58 + rand() * 10));
 
   const btnRadius = pick(["4px", "6px", "8px", "10px", "12px", "14px"]);
   const cardRadius = pick(["8px", "10px", "12px", "14px"]);
@@ -177,6 +197,7 @@ export function generateProceduralTheme(seed) {
 
   return {
     seed,
+    isLight,
     archetypeName: arch.name,
     lang,
     notesTitle,

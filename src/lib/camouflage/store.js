@@ -25,9 +25,13 @@ export function pickDecoyVariant(appType, seed = Date.now()) {
 export function resolveProceduralTheme(settings) {
   const seed = settings?.seed || 133742;
   const appType = settings?.appType || "calculator";
-  const theme = (settings?.proceduralTheme && settings.proceduralTheme.seed === seed)
-    ? { ...settings.proceduralTheme }
-    : generateProceduralTheme(seed);
+  const isLight = typeof document !== "undefined"
+    ? document.documentElement?.getAttribute("data-theme") === "light"
+    : false;
+  const cached = settings?.proceduralTheme;
+  const theme = (cached && cached.seed === seed && Boolean(cached.isLight) === isLight)
+    ? { ...cached }
+    : generateProceduralTheme(seed, isLight);
   const variant = pickDecoyVariant(appType, seed);
   if (variant?.iconSvg) {
     theme.iconSvg = variant.iconSvg;
