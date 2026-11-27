@@ -132,7 +132,7 @@ function labelLocalTracks(sdp, userId, cameraTrackId, screenTrackId) {
       .replace(new RegExp(`^a=msid:(\\S+) ${escaped}\\s*$`, 'gm'), `a=msid:$1 ${prefix}:sCAMERA`)
       .replace(new RegExp(`^(a=ssrc:\\d+ msid:\\S+) ${escaped}\\s*$`, 'gm'), `$1 ${prefix}:sCAMERA`)
       .replace(new RegExp(`^(a=ssrc:\\d+ label:)${escaped}\\s*$`, 'gm'), `$1${prefix}:sCAMERA`);
-    if (!result.includes(`${prefix}:sCAMERA`)) {
+    if (!result.includes(`${prefix}:sCAMERA`) && !screenTrackId) {
       const lines = result.split('\n');
       let inVideo = false;
       for (let i = 0; i < lines.length; i++) {
@@ -158,7 +158,7 @@ function labelLocalTracks(sdp, userId, cameraTrackId, screenTrackId) {
       .replace(new RegExp(`^a=msid:(\\S+) ${escaped}\\s*$`, 'gm'), `a=msid:$1 ${prefix}:sSCREEN`)
       .replace(new RegExp(`^(a=ssrc:\\d+ msid:\\S+) ${escaped}\\s*$`, 'gm'), `$1 ${prefix}:sSCREEN`)
       .replace(new RegExp(`^(a=ssrc:\\d+ label:)${escaped}\\s*$`, 'gm'), `$1${prefix}:sSCREEN`);
-    if (!result.includes(`${prefix}:sSCREEN`)) {
+    if (!result.includes(`${prefix}:sSCREEN`) && !cameraTrackId) {
       const lines = result.split('\n');
       let inVideo = false;
       for (let i = 0; i < lines.length; i++) {
@@ -499,6 +499,7 @@ class MaxCallSession {
   #cameraStream = null;
   #cameraFacing = 'user';
   #screenStream = null;
+  #screenSender = null;
   #encryption = new CallEncryptionSession();
   #destroyed = false;
   #isActive = false;
@@ -571,8 +572,8 @@ class MaxCallSession {
   #applyTrackLabels(sdp) {
     const isScreen = Boolean(get(activeCall).screenOn);
     const isVideo = Boolean(get(activeCall).videoOn);
-    const camTrack = this.#cameraStream?.getVideoTracks()[0]?.id || (isLinuxClient && isVideo && !isScreen ? 'camera0' : null);
-    const scrTrack = this.#screenStream?.getVideoTracks()[0]?.id || (isLinuxClient && isScreen ? 'camera0' : null);
+    const camTrack = this.#cameraStream?.getVideoTracks()[0]?.id || (isLinuxClient && isVideo ? 'camera0' : null);
+    const scrTrack = this.#screenStream?.getVideoTracks()[0]?.id || (isLinuxClient && isScreen ? 'screen0' : null);
     return labelLocalTracks(sdp, this.#myCallUserId, camTrack, scrTrack);
   }
 
@@ -619,9 +620,8 @@ class MaxCallSession {
     const participants = get(activeCall).participants || [];
     const keys = [];
     for (const p of participants) {
-      if (p.videoOn || p.screenOn) {
-        keys.push(`u${p.id}:${p.screenOn ? 'sSCREEN' : 'sCAMERA'}`);
-      }
+      if (p.screenOn) keys.push(`u${p.id}:sSCREEN`);
+      if (p.videoOn) keys.push(`u${p.id}:sCAMERA`);
     }
     try {
       const bytes = encodeDisplayLayout(keys);
@@ -1223,7 +1223,8 @@ class MaxCallSession {
   async #syncEncryptionToMedia() {
     if (!this.#encryption) return;
     if (this.#pc && typeof this.#pc.setEncryptionKeys === 'function') {
-      const keys = this.#encryption.mode === 'plain' ? { mode: 'plain' } : this.#encryption.getExportedKeys();
+      const usePlainOnNative = this.#encryption.mode === 'plain' || (isLinuxClient && (this.#encryption.bypassEncrypt || this.#encryption.bypassDecrypt));
+      const keys = usePlainOnNative ? { mode: 'plain' } : this.#encryption.getExportedKeys();
       await this.#pc.setEncryptionKeys(keys);
     }
     if (this.#pc) {
@@ -1779,7 +1780,7 @@ class MaxCallSession {
       } catch {}
     }
 
-    if (this.#encryption.mode === CALL_MODE.SECURE && typeof pc.setEncryptionKeys === 'function') {
+    if (this.#encryption.mode === CALL_MODE.SECURE && !(isLinuxClient && (this.#encryption.bypassEncrypt || this.#encryption.bypassDecrypt)) && typeof pc.setEncryptionKeys === 'function') {
       pc.setEncryptionKeys(this.#encryption.getExportedKeys()).catch(() => {});
     }
 
@@ -2773,7 +2774,9 @@ class MaxCallSession {
     if (this.#destroyed) return;
     if (isLinuxClient) {
       patchCallState({ screenOn: on, localScreenStream: null });
-      if (this.#pc && typeof this.#pc.setCameraEnabled === 'function') {
+      if (this.#pc && typeof this.#pc.setScreenEnabled === 'function') {
+        await this.#pc.setScreenEnabled(on);
+      } else if (this.#pc && typeof this.#pc.setCameraEnabled === 'function') {
         await this.#pc.setCameraEnabled(on || get(activeCall).videoOn);
       }
       if (this.#pc && this.#topology !== 'SERVER') {
@@ -2794,18 +2797,17 @@ class MaxCallSession {
       try {
         let stream = null;
         const isAndroid = typeof navigator !== 'undefined' && /android/i.test(navigator.userAgent);
-        if (!isAndroid && navigator.mediaDevices?.getDisplayMedia) {
+        if (!isAndroid) {
+          if (!navigator.mediaDevices?.getDisplayMedia) {
+            throw new Error('getDisplayMedia is not supported on this platform');
+          }
           try {
             stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
-          } catch {
-            try {
-              stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
-            } catch (err) {
-              if (err.name === 'NotAllowedError') throw err;
-            }
+          } catch (err) {
+            if (err?.name === 'NotAllowedError' || err?.name === 'AbortError') throw err;
+            stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
           }
-        }
-        if (!stream) {
+        } else {
           const captureInfo = await invoke('start_android_screen_capture');
           const port = captureInfo?.port;
           const width = captureInfo?.width || 720;
@@ -2815,55 +2817,69 @@ class MaxCallSession {
           canvas.width = width;
           canvas.height = height;
           const ctx = canvas.getContext('2d');
-          const img = new Image();
-          img.crossOrigin = 'anonymous';
-          img.src = `http://127.0.0.1:${port}/screen.mjpeg`;
           let streaming = true;
-          const drawInterval = setInterval(() => {
-            if (!streaming) return;
-            try {
-              if (img.naturalWidth > 0) {
-                ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          let decoding = false;
+          let ws = null;
+          if (typeof WebSocket !== 'undefined' && typeof createImageBitmap === 'function') {
+            ws = new WebSocket(`ws://127.0.0.1:${port}/screen.ws`);
+            ws.binaryType = 'blob';
+            ws.onmessage = async (event) => {
+              if (!streaming || decoding || !(event.data instanceof Blob)) return;
+              decoding = true;
+              try {
+                const bmp = await createImageBitmap(event.data);
+                if (streaming) {
+                  ctx.drawImage(bmp, 0, 0, canvas.width, canvas.height);
+                }
+                bmp.close();
+              } catch {} finally {
+                decoding = false;
               }
-            } catch {}
-          }, 1000 / 15);
+            };
+          }
           stream = canvas.captureStream(15);
           const trk = stream.getVideoTracks()[0];
           const origStop = trk.stop.bind(trk);
-          trk.stop = () => {
+          const cleanupCapture = () => {
             streaming = false;
-            clearInterval(drawInterval);
-            img.src = '';
+            if (ws) {
+              try { ws.close(); } catch {}
+              ws = null;
+            }
             invoke('stop_android_screen_capture').catch(() => {});
+          };
+          trk.stop = () => {
+            cleanupCapture();
             origStop();
           };
           this.#androidScreenCapture = {
             stream,
-            cleanup: () => {
-              streaming = false;
-              clearInterval(drawInterval);
-              img.src = '';
-              invoke('stop_android_screen_capture').catch(() => {});
-            }
+            cleanup: cleanupCapture,
           };
         }
         this.#screenStream = stream;
         this.#screenStream.getVideoTracks()[0].onended = () => this.enableScreen(false);
         const track = this.#screenStream.getVideoTracks()[0];
         if (this.#pc) {
-          const senders = typeof this.#pc.getSenders === 'function' ? this.#pc.getSenders() : [];
-          let sender = senders.find(s => s.track?.kind === 'video' || s.track === null);
-          const transceivers = typeof this.#pc.getTransceivers === 'function' ? this.#pc.getTransceivers() : [];
-          const transceiver = transceivers.find(t => t.receiver?.track?.kind === 'video' || t.sender?.track?.kind === 'video');
-          if (transceiver) {
-            transceiver.direction = 'sendrecv';
-            sender = transceiver.sender;
-          }
-          if (sender) {
-            await sender.replaceTrack(track);
+          if (this.#screenSender) {
+            await this.#screenSender.replaceTrack(track);
           } else {
-            const s = this.#pc.addTrack(track, this.#screenStream);
-            if (this.#encryption.mode === CALL_MODE.SECURE) this.#encryption.applyToSender(s, 'video');
+            const camTrack = this.#cameraStream?.getVideoTracks()[0];
+            const transceivers = typeof this.#pc.getTransceivers === 'function' ? this.#pc.getTransceivers() : [];
+            const availableTc = transceivers.find(t =>
+              (t.receiver?.track?.kind === 'video' || t.sender?.track?.kind === 'video') &&
+              (!camTrack || t.sender?.track?.id !== camTrack.id) &&
+              t.sender?.track == null
+            );
+            if (availableTc) {
+              availableTc.direction = 'sendrecv';
+              await availableTc.sender.replaceTrack(track);
+              this.#screenSender = availableTc.sender;
+            } else {
+              const s = this.#pc.addTrack(track, this.#screenStream);
+              this.#screenSender = s;
+              if (this.#encryption.mode === CALL_MODE.SECURE) this.#encryption.applyToSender(s, 'video');
+            }
           }
           if (this.#topology !== 'SERVER') {
             await this.#renegotiate();
@@ -2871,7 +2887,9 @@ class MaxCallSession {
         }
         patchCallState({ screenOn: true, localScreenStream: this.#screenStream });
       } catch (e) {
-        if (e.name !== 'NotAllowedError') showAlert('Демонстрация экрана недоступна');
+        if (e?.name !== 'NotAllowedError' && e?.name !== 'AbortError') {
+          showAlert('Демонстрация экрана недоступна');
+        }
         return;
       }
     } else if (!on && this.#screenStream) {
@@ -2881,26 +2899,13 @@ class MaxCallSession {
       }
       for (const t of this.#screenStream.getTracks()) t.stop();
       this.#screenStream = null;
-      const transceivers = typeof this.#pc?.getTransceivers === 'function' ? this.#pc.getTransceivers() : [];
-      const transceiver = transceivers.find(t => t.receiver?.track?.kind === 'video' || t.sender?.track?.kind === 'video');
-      const camTrack = get(activeCall).videoOn && this.#cameraStream ? this.#cameraStream.getVideoTracks()[0] : null;
-      if (camTrack) {
-        if (transceiver?.sender) {
-          await transceiver.sender.replaceTrack(camTrack);
-        } else {
-          const senders = typeof this.#pc?.getSenders === 'function' ? this.#pc.getSenders() : [];
-          const sender = senders.find(s => s.track?.kind === 'video' || s.track === null);
-          if (sender) await sender.replaceTrack(camTrack);
+      if (this.#screenSender) {
+        const transceivers = typeof this.#pc?.getTransceivers === 'function' ? this.#pc.getTransceivers() : [];
+        const tc = transceivers.find(t => t.sender === this.#screenSender);
+        if (tc) {
+          tc.direction = 'recvonly';
         }
-      } else {
-        if (transceiver) {
-          transceiver.direction = 'recvonly';
-          await transceiver.sender?.replaceTrack(null);
-        } else {
-          const senders = typeof this.#pc?.getSenders === 'function' ? this.#pc.getSenders() : [];
-          const sender = senders.find(s => s.track?.kind === 'video');
-          await sender?.replaceTrack(null);
-        }
+        await this.#screenSender.replaceTrack(null).catch(() => {});
       }
       patchCallState({ screenOn: false, localScreenStream: null });
       if (this.#topology !== 'SERVER' && this.#pc) {
@@ -2978,6 +2983,8 @@ class MaxCallSession {
     for (const t of (this.#screenStream?.getTracks() || [])) {
       try { t.stop(); } catch {}
     }
+    this.#screenStream = null;
+    this.#screenSender = null;
     if (this.#remoteStream) {
       for (const t of this.#remoteStream.getTracks()) {
         try { t.stop(); } catch {}

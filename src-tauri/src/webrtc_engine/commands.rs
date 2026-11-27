@@ -171,6 +171,21 @@ pub async fn webrtc_set_camera_enabled(session_id: u32, enabled: bool) -> Result
 }
 
 #[tauri::command]
+pub async fn webrtc_set_screen_enabled(session_id: u32, enabled: bool) -> Result<(), String> {
+    #[cfg(target_os = "linux")]
+    {
+        println!("[webrtc:cmd] webrtc_set_screen_enabled for session {}: {}", session_id, enabled);
+        let session = NativeWebRtcSession::get(session_id).await?;
+        session.set_screen_enabled(enabled).await
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        let _ = (session_id, enabled);
+        Ok(())
+    }
+}
+
+#[tauri::command]
 pub async fn webrtc_set_mic_muted(session_id: u32, muted: bool) -> Result<(), String> {
     #[cfg(target_os = "linux")]
     {

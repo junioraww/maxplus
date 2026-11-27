@@ -57,6 +57,8 @@ export class CallEncryptionSession {
   get mode() { return this.#mode; }
   get fingerprint() { return this.#fingerprint; }
   get keyId() { return this.#keyId; }
+  get bypassEncrypt() { return this.#bypassEncrypt; }
+  get bypassDecrypt() { return this.#bypassDecrypt; }
 
   getExportedKeys() {
     if (this.#mode === 'plain') return { mode: 'plain' };

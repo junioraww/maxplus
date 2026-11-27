@@ -530,6 +530,7 @@ pub fn run() {
             webrtc_engine::commands::webrtc_set_remote_description,
             webrtc_engine::commands::webrtc_add_ice_candidate,
             webrtc_engine::commands::webrtc_set_camera_enabled,
+            webrtc_engine::commands::webrtc_set_screen_enabled,
             webrtc_engine::commands::webrtc_set_mic_muted,
             webrtc_engine::commands::webrtc_listen_video,
             webrtc_engine::commands::webrtc_listen_audio,
