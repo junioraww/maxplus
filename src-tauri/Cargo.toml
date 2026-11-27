@@ -85,6 +85,7 @@ libwebrtc = "0.3"
 nokhwa = { version = "0.10", features = ["input-v4l"] }
 tokio-stream = "0.1"
 rust-ini = "=0.21.1"
+x11 = { version = "2.21", features = ["xlib"] }
 
 [target.'cfg(target_os = "windows")'.dependencies]
 windows-sys = { version = "0.59", features = ["Win32_UI_WindowsAndMessaging", "Win32_UI_Shell"] }

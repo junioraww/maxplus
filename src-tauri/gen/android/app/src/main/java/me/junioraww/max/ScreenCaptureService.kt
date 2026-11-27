@@ -27,6 +27,8 @@ import java.io.OutputStream
 import java.net.InetAddress
 import java.net.ServerSocket
 import java.net.Socket
+import java.security.MessageDigest
+import android.util.Base64
 import java.util.concurrent.CopyOnWriteArrayList
 
 class ScreenCaptureService : Service() {
@@ -60,12 +62,14 @@ class ScreenCaptureService : Service() {
     }
 
     private var mediaProjection: MediaProjection? = null
+    private var projectionCallback: MediaProjection.Callback? = null
     private var virtualDisplay: VirtualDisplay? = null
     private var imageReader: ImageReader? = null
     private var handlerThread: HandlerThread? = null
     private var serverSocket: ServerSocket? = null
     private var serverThread: Thread? = null
     private val clients = CopyOnWriteArrayList<OutputStream>()
+    private val wsClients = CopyOnWriteArrayList<OutputStream>()
     private var reusableBitmap: Bitmap? = null
     private var targetWidth = 720
     private var targetHeight = 1280
@@ -125,6 +129,15 @@ class ScreenCaptureService : Service() {
             val thread = HandlerThread("ScreenCaptureHandler").apply { start() }
             handlerThread = thread
             val handler = Handler(thread.looper)
+
+            val callback = object : MediaProjection.Callback() {
+                override fun onStop() {
+                    teardown()
+                    stopSelf()
+                }
+            }
+            projectionCallback = callback
+            projection.registerCallback(callback, handler)
 
             val metrics = resources.displayMetrics
             virtualDisplay = projection.createVirtualDisplay(
@@ -198,19 +211,36 @@ class ScreenCaptureService : Service() {
         Thread {
             try {
                 val input = socket.getInputStream().bufferedReader()
+                var wsKey: String? = null
                 while (true) {
                     val line = input.readLine() ?: break
                     if (line.isEmpty()) break
+                    if (line.startsWith("Sec-WebSocket-Key:", ignoreCase = true)) {
+                        wsKey = line.substringAfter(':').trim()
+                    }
                 }
                 val out = socket.getOutputStream()
-                val header = "HTTP/1.1 200 OK\r\n" +
-                    "Content-Type: multipart/x-mixed-replace; boundary=frame\r\n" +
-                    "Access-Control-Allow-Origin: *\r\n" +
-                    "Cache-Control: no-cache, private\r\n" +
-                    "Pragma: no-cache\r\n\r\n"
-                out.write(header.toByteArray(Charsets.US_ASCII))
-                out.flush()
-                clients.add(out)
+                if (wsKey != null) {
+                    val acceptSeed = wsKey + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
+                    val sha1 = MessageDigest.getInstance("SHA-1").digest(acceptSeed.toByteArray(Charsets.US_ASCII))
+                    val accept = Base64.encodeToString(sha1, Base64.NO_WRAP)
+                    val handshake = "HTTP/1.1 101 Switching Protocols\r\n" +
+                        "Upgrade: websocket\r\n" +
+                        "Connection: Upgrade\r\n" +
+                        "Sec-WebSocket-Accept: $accept\r\n\r\n"
+                    out.write(handshake.toByteArray(Charsets.US_ASCII))
+                    out.flush()
+                    wsClients.add(out)
+                } else {
+                    val header = "HTTP/1.1 200 OK\r\n" +
+                        "Content-Type: multipart/x-mixed-replace; boundary=frame\r\n" +
+                        "Access-Control-Allow-Origin: *\r\n" +
+                        "Cache-Control: no-cache, private\r\n" +
+                        "Pragma: no-cache\r\n\r\n"
+                    out.write(header.toByteArray(Charsets.US_ASCII))
+                    out.flush()
+                    clients.add(out)
+                }
             } catch (_: Throwable) {
                 try { socket.close() } catch (_: Throwable) {}
             }
@@ -262,18 +292,51 @@ class ScreenCaptureService : Service() {
     }
 
     private fun broadcastFrame(bytes: ByteArray) {
-        if (clients.isEmpty()) return
-        val boundaryHeader = "--frame\r\nContent-Type: image/jpeg\r\nContent-Length: ${bytes.size}\r\n\r\n"
-        val headerBytes = boundaryHeader.toByteArray(Charsets.US_ASCII)
-        val endBytes = "\r\n".toByteArray(Charsets.US_ASCII)
-        for (client in clients) {
-            try {
-                client.write(headerBytes)
-                client.write(bytes)
-                client.write(endBytes)
-                client.flush()
-            } catch (_: Throwable) {
-                clients.remove(client)
+        if (clients.isNotEmpty()) {
+            val boundaryHeader = "--frame\r\nContent-Type: image/jpeg\r\nContent-Length: ${bytes.size}\r\n\r\n"
+            val headerBytes = boundaryHeader.toByteArray(Charsets.US_ASCII)
+            val endBytes = "\r\n".toByteArray(Charsets.US_ASCII)
+            for (client in clients) {
+                try {
+                    client.write(headerBytes)
+                    client.write(bytes)
+                    client.write(endBytes)
+                    client.flush()
+                } catch (_: Throwable) {
+                    clients.remove(client)
+                }
+            }
+        }
+        if (wsClients.isNotEmpty()) {
+            val len = bytes.size
+            val wsHeader = when {
+                len <= 125 -> byteArrayOf(0x82.toByte(), len.toByte())
+                len <= 65535 -> byteArrayOf(
+                    0x82.toByte(),
+                    126.toByte(),
+                    ((len ushr 8) and 0xFF).toByte(),
+                    (len and 0xFF).toByte()
+                )
+                else -> byteArrayOf(
+                    0x82.toByte(),
+                    127.toByte(),
+                    0, 0, 0, 0,
+                    ((len ushr 24) and 0xFF).toByte(),
+                    ((len ushr 16) and 0xFF).toByte(),
+                    ((len ushr 8) and 0xFF).toByte(),
+                    (len and 0xFF).toByte()
+                )
+            }
+            for (client in wsClients) {
+                try {
+                    synchronized(client) {
+                        client.write(wsHeader)
+                        client.write(bytes)
+                        client.flush()
+                    }
+                } catch (_: Throwable) {
+                    wsClients.remove(client)
+                }
             }
         }
     }
@@ -333,6 +396,11 @@ class ScreenCaptureService : Service() {
         }
         clients.clear()
 
+        for (client in wsClients) {
+            try { client.close() } catch (_: Throwable) {}
+        }
+        wsClients.clear()
+
         try { serverSocket?.close() } catch (_: Throwable) {}
         serverSocket = null
 
@@ -341,6 +409,9 @@ class ScreenCaptureService : Service() {
 
         try { imageReader?.close() } catch (_: Throwable) {}
         imageReader = null
+
+        try { projectionCallback?.let { mediaProjection?.unregisterCallback(it) } } catch (_: Throwable) {}
+        projectionCallback = null
 
         try { mediaProjection?.stop() } catch (_: Throwable) {}
         mediaProjection = null

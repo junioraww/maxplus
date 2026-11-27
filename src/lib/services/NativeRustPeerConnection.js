@@ -384,6 +384,15 @@ export class NativeRustPeerConnection extends EventTarget {
     });
   }
 
+  async setScreenEnabled(enabled) {
+    await this._initPromise;
+    if (this.sessionId == null) return;
+    await invoke('webrtc_set_screen_enabled', {
+      sessionId: this.sessionId,
+      enabled: Boolean(enabled),
+    });
+  }
+
   async setMicMuted(muted) {
     await this._initPromise;
     if (this.sessionId == null) return;

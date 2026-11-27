@@ -1,4 +1,4 @@
-use crate::webrtc_engine::media::CameraCapturer;
+use crate::webrtc_engine::media::{CameraCapturer, ScreenCapturer};
 use crate::webrtc_engine::renderer::{AudioSender, FrameSender};
 use libwebrtc::{
     audio_frame::AudioFrame,
@@ -72,6 +72,11 @@ pub struct NativeWebRtcSession {
     video_track: Mutex<Option<RtcVideoTrack>>,
     video_sender: Mutex<Option<RtpSender>>,
     camera_enabled: AtomicBool,
+    screen_capturer: Mutex<ScreenCapturer>,
+    screen_source: NativeVideoSource,
+    screen_track: Mutex<Option<RtcVideoTrack>>,
+    screen_sender: Mutex<Option<RtpSender>>,
+    screen_enabled: AtomicBool,
     mic_muted: AtomicBool,
     use_stubs: Arc<AtomicBool>,
     audio_sender: Mutex<Option<RtpSender>>,
@@ -181,6 +186,14 @@ impl NativeWebRtcSession {
             false,
         );
 
+        let screen_source = NativeVideoSource::new(
+            libwebrtc::video_source::VideoResolution {
+                width: 1280,
+                height: 720,
+            },
+            false,
+        );
+
         let stub_audio_source =
             NativeAudioSource::new(AudioSourceOptions::default(), 48000, 1, 100);
         let stub_audio_track = factory.create_audio_track("stub_audio", stub_audio_source.clone());
@@ -204,6 +217,18 @@ impl NativeWebRtcSession {
             )
             .ok();
         let video_sender = video_transceiver.map(|t| t.sender());
+
+        let screen_transceiver = pc
+            .add_transceiver_for_media(
+                MediaType::Video,
+                RtpTransceiverInit {
+                    direction: RtpTransceiverDirection::SendRecv,
+                    stream_ids: vec!["maxplus_screen".to_string()],
+                    send_encodings: vec![],
+                },
+            )
+            .ok();
+        let screen_sender = screen_transceiver.map(|t| t.sender());
 
         let handle = tokio::runtime::Handle::current();
 
@@ -325,6 +350,11 @@ impl NativeWebRtcSession {
             video_track: Mutex::new(None),
             video_sender: Mutex::new(video_sender),
             camera_enabled: AtomicBool::new(false),
+            screen_capturer: Mutex::new(ScreenCapturer::new()),
+            screen_source,
+            screen_track: Mutex::new(None),
+            screen_sender: Mutex::new(screen_sender),
+            screen_enabled: AtomicBool::new(false),
             mic_muted: AtomicBool::new(false),
             use_stubs,
             audio_sender: Mutex::new(audio_sender),
@@ -526,6 +556,39 @@ impl NativeWebRtcSession {
         Ok(())
     }
 
+    pub async fn set_screen_enabled(&self, enabled: bool) -> Result<(), String> {
+        if enabled {
+            if !self.screen_enabled.swap(true, Ordering::SeqCst) {
+                let mut capturer = self.screen_capturer.lock().await;
+                capturer.start(self.screen_source.clone(), Arc::clone(&self.use_stubs))?;
+
+                let mut track_lock = self.screen_track.lock().await;
+                if let Some(track) = track_lock.as_ref() {
+                    track.set_enabled(true);
+                } else {
+                    let track = self
+                        .factory
+                        .create_video_track("screen0", self.screen_source.clone());
+                    let sender_lock = self.screen_sender.lock().await;
+                    if let Some(sender) = sender_lock.as_ref() {
+                        let _ = sender.set_track(Some(MediaStreamTrack::Video(track.clone())));
+                    }
+                    *track_lock = Some(track);
+                }
+                drop(track_lock);
+                self.sync_attached_frame_cryptors().await;
+            }
+        } else if self.screen_enabled.swap(false, Ordering::SeqCst) {
+            let mut capturer = self.screen_capturer.lock().await;
+            capturer.stop();
+            let track_lock = self.screen_track.lock().await;
+            if let Some(track) = track_lock.as_ref() {
+                track.set_enabled(false);
+            }
+        }
+        Ok(())
+    }
+
     pub async fn set_use_stubs(&self, enabled: bool) -> Result<(), String> {
         let prev = self.use_stubs.swap(enabled, Ordering::SeqCst);
         let sender_lock = self.audio_sender.lock().await;
@@ -621,6 +684,15 @@ impl NativeWebRtcSession {
 
     async fn sync_attached_frame_cryptors(&self) {
         let enabled = self.encryption_enabled.load(Ordering::SeqCst);
+        if !enabled {
+            for fc in self.sender_cryptors.lock().await.values() {
+                fc.set_enabled(false);
+            }
+            for fc in self.receiver_cryptors.lock().await.values() {
+                fc.set_enabled(false);
+            }
+            return;
+        }
         let kp = self.ensure_frame_key_provider().await;
 
         {
@@ -640,6 +712,20 @@ impl NativeWebRtcSession {
             if self.video_track.lock().await.is_some() {
                 if let Some(sender) = self.video_sender.lock().await.as_ref() {
                     let fc = sc.entry("video_send".to_string()).or_insert_with(|| {
+                        FrameCryptor::new_for_rtp_sender(
+                            &self.factory,
+                            "video_send".to_string(),
+                            EncryptionAlgorithm::AesGcm,
+                            kp.clone(),
+                            sender.clone(),
+                        )
+                    });
+                    fc.set_enabled(enabled);
+                }
+            }
+            if self.screen_track.lock().await.is_some() {
+                if let Some(sender) = self.screen_sender.lock().await.as_ref() {
+                    let fc = sc.entry("screen_send".to_string()).or_insert_with(|| {
                         FrameCryptor::new_for_rtp_sender(
                             &self.factory,
                             "video_send".to_string(),
@@ -714,6 +800,8 @@ impl NativeWebRtcSession {
         self.stub_audio_running.store(false, Ordering::SeqCst);
         let mut capturer = self.capturer.lock().await;
         capturer.stop();
+        let mut screen_capturer = self.screen_capturer.lock().await;
+        screen_capturer.stop();
         let _ = self.factory.stop_recording();
         let _ = self.factory.stop_playout();
         self.factory.release_platform_adm();
