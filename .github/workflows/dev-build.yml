@@ -276,13 +276,20 @@ jobs:
       - run: bun run tauri icon static/favicon.png
 
       - name: Build Windows Debug Binary
-        run: bunx tauri build --debug
+        run: |
+          $ver = (Get-Content src-tauri/tauri.conf.json -Raw | ConvertFrom-Json).version
+          if ($ver -match '-') {
+            bunx tauri build --debug --bundles nsis
+          } else {
+            bunx tauri build --debug
+          }
 
       - uses: actions/upload-artifact@v6
         with:
           name: maxplus-dev-windows
           path: |
             src-tauri/target/debug/maxplus.exe
+            src-tauri/target/debug/bundle/**/*.exe
             src-tauri/target/debug/bundle/**/*.msi
 
   build-macos:
