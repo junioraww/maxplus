@@ -770,7 +770,7 @@
     position: fixed;
     inset: 0;
     width: 100vw;
-    height: 100vh;
+    height: 100dvh;
     background: #000000;
     z-index: var(--z-viewer, 100);
     overflow: hidden;
@@ -814,7 +814,7 @@
     top: 0;
     left: 0;
     right: 0;
-    padding: 16px 24px;
+    padding: calc(16px + var(--safe-top, 0px)) calc(24px + var(--safe-right, 0px)) 16px calc(24px + var(--safe-left, 0px));
     display: flex;
     justify-content: space-between;
     align-items: center;
@@ -925,7 +925,7 @@
 
   .bottom-hint {
     position: absolute;
-    bottom: 14px;
+    bottom: calc(14px + var(--safe-bottom, 0px));
     left: 0;
     right: 0;
     text-align: center;
@@ -938,7 +938,7 @@
 
   @media (max-width: 640px) {
     .top-nav {
-      padding: 12px 16px;
+      padding: calc(12px + var(--safe-top, 0px)) calc(16px + var(--safe-right, 0px)) 12px calc(16px + var(--safe-left, 0px));
     }
     .bottom-hint {
       display: none;

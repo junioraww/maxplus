@@ -59,7 +59,7 @@
   >
     {#if showHandle}<div class="bottom-sheet-handle"></div>{/if}
     {#if title || showClose || $$slots.header}
-      <div class="bottom-sheet-header">
+      <div class="bottom-sheet-header" class:compact={!title && !$$slots.header}>
         {#if $$slots.header}
           <slot name="header" />
         {:else}
@@ -174,6 +174,11 @@
     justify-content: space-between;
     padding: 4px 16px 8px;
     flex-shrink: 0;
+  }
+
+  .bottom-sheet-header.compact {
+    min-height: 28px;
+    padding: 0 12px 2px;
   }
 
   .bottom-sheet-title {

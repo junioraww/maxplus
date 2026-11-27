@@ -110,7 +110,8 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: 16px;
+    padding: calc(16px + var(--safe-top, 0px)) calc(16px + var(--safe-right, 0px)) calc(16px + var(--safe-bottom, 0px)) calc(16px + var(--safe-left, 0px));
+    box-sizing: border-box;
   }
 
   .modal-backdrop.is-portal-child {
@@ -122,11 +123,13 @@
   }
 
   .modal-sheet {
-    background: #1c1d29;
+    background: var(--bg-surface, #1c1d29);
+    color: var(--text-primary, #ffffff);
     border-radius: 18px;
     width: 100%;
     max-width: 400px;
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    max-height: calc(85dvh - var(--safe-top, 0px) - var(--safe-bottom, 0px));
+    border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.1));
     overflow: hidden;
     display: flex;
     flex-direction: column;

@@ -3,6 +3,7 @@
   import { fade, scale, fly } from "svelte/transition";
   import { tick } from "svelte";
   import { registerBackHandler } from "$lib/utils/backButton";
+  import { getSafeAreaInsets } from "$lib/utils/safeArea";
 
   import { handleReaction } from "$components/ChatWindow/actions";
   import API, { currentUser, serverConfig } from "$lib/stores/api";
@@ -54,22 +55,27 @@
     const innerHeight = vv ? vv.height : (typeof window !== "undefined" ? window.innerHeight : 640);
     const offsetTop = vv ? vv.offsetTop : 0;
     const offsetLeft = vv ? vv.offsetLeft : 0;
+    const safe = getSafeAreaInsets();
+    const minTop = offsetTop + safe.top + 12;
+    const maxBottom = offsetTop + innerHeight - safe.bottom - 12;
+    const minLeft = offsetLeft + safe.left + 12;
+    const maxRight = offsetLeft + innerWidth - safe.right - 12;
 
     // Horizontal positioning:
     let x;
-    if (clientX + menuWidth <= offsetLeft + innerWidth - 12) {
-      x = clientX;
+    if (clientX + menuWidth <= maxRight) {
+      x = Math.max(minLeft, clientX);
       alignRight = false;
-    } else if (clientX - menuWidth >= offsetLeft + 12) {
-      x = clientX - menuWidth;
+    } else if (clientX - menuWidth >= minLeft) {
+      x = Math.min(maxRight - menuWidth, clientX - menuWidth);
       alignRight = true;
     } else {
-      x = Math.max(offsetLeft + 12, Math.min(clientX - menuWidth / 2, offsetLeft + innerWidth - menuWidth - 12));
+      x = Math.max(minLeft, Math.min(clientX - menuWidth / 2, maxRight - menuWidth));
       alignRight = clientX > offsetLeft + innerWidth / 2;
     }
 
     // Vertical positioning:
-    if (clientY - capsuleHeight - 16 >= offsetTop) {
+    if (clientY - capsuleHeight - 16 >= minTop) {
       reactionsBelow = false;
     } else {
       reactionsBelow = true;
@@ -77,12 +83,12 @@
 
     let y;
     const neededBelow = cardHeight + (reactionsBelow ? capsuleHeight + 8 : 0) + 12;
-    if (clientY + neededBelow <= offsetTop + innerHeight) {
-      y = clientY + 4;
-    } else if (clientY - totalHeight - 12 >= offsetTop) {
+    if (clientY + neededBelow <= maxBottom) {
+      y = Math.max(minTop, clientY + 4);
+    } else if (clientY - totalHeight - 12 >= minTop) {
       y = clientY - totalHeight - 4;
     } else {
-      y = Math.max(offsetTop + 12, offsetTop + innerHeight - totalHeight - 12);
+      y = Math.max(minTop, maxBottom - totalHeight);
     }
 
     menuPosition = { top: y, left: x };
@@ -90,10 +96,6 @@
     await tick();
     if (menuNode) {
       const rect = menuNode.getBoundingClientRect();
-      const maxBottom = offsetTop + innerHeight - 12;
-      const maxRight = offsetLeft + innerWidth - 12;
-      const minTop = offsetTop + 12;
-      const minLeft = offsetLeft + 12;
 
       if (rect.bottom > maxBottom) {
         menuPosition.top = Math.max(minTop, menuPosition.top - (rect.bottom - maxBottom));
