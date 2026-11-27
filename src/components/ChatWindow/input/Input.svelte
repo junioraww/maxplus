@@ -1436,12 +1436,12 @@
   let pointerDownTime = 0;
   let isHoldStarted = false;
 
-  async function startRecording() {
+  async function startRecording(locked = false) {
     if (isRecording) return;
     stopCurrentMedia();
     cancelDrag = 0;
     lockDrag = 0;
-    isLocked = false;
+    isLocked = locked;
     isRecording = true;
     await tick();
     await session.start({ mode: recordMode, videoPreviewEl, fallbackCanvasEl });
@@ -1815,11 +1815,12 @@
 
     holdTimeout = setTimeout(() => {
       isHoldStarted = true;
-      startRecording();
+      startRecording(false);
     }, 200);
 
     window.addEventListener('pointermove', handleRecordPointerMove);
     window.addEventListener('pointerup', handleRecordPointerUp);
+    window.addEventListener('pointercancel', handleRecordPointerUp);
   }
 
   function handleRecordPointerMove(e) {
@@ -1842,14 +1843,22 @@
     }
   }
 
-  function handleRecordPointerUp() {
+  function handleRecordPointerUp(e) {
     const pressDuration = Date.now() - pointerDownTime;
     clearTimeout(holdTimeout);
     window.removeEventListener('pointermove', handleRecordPointerMove);
     window.removeEventListener('pointerup', handleRecordPointerUp);
+    window.removeEventListener('pointercancel', handleRecordPointerUp);
+
+    if (e?.type === 'pointercancel') {
+      if (!isLocked && (isRecording || isHoldStarted)) {
+        cancelRecording();
+      }
+      return;
+    }
 
     if (!isHoldStarted && !isRecording && pressDuration < 200) {
-      recordMode = recordMode === 'voice' ? 'video' : 'voice';
+      startRecording(true);
       return;
     }
 
@@ -2466,6 +2475,8 @@
     height: 36px;
     margin-left: 4px;
     color: var(--text-muted, #8e8e93);
+    touch-action: none;
+    user-select: none;
   }
 
   .camera-button:hover,

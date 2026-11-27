@@ -1017,10 +1017,22 @@
   on:click|self={requestClose}
 >
   <div class="ag-header" style="opacity: {uiOpacity};">
-    <div class="ag-counter">
-      {#if displayTotal > 0}
-        {currentIndex + 1} из {displayTotal}
-      {/if}
+    <div class="ag-header-left">
+      <button
+        type="button"
+        class="ag-icon-btn"
+        title="Назад"
+        on:click|stopPropagation={requestClose}
+      >
+        <svg viewBox="0 0 24 24" fill="currentColor">
+          <path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z" />
+        </svg>
+      </button>
+      <div class="ag-counter">
+        {#if displayTotal > 0}
+          {currentIndex + 1} из {displayTotal}
+        {/if}
+      </div>
     </div>
 
     <div class="ag-actions">
@@ -1085,20 +1097,6 @@
       </button>
     </div>
   </div>
-
-  {#if items.length > 1}
-    <div class="ag-dots-bar" style="opacity: {uiOpacity};">
-      {#each items.slice(0, 24) as _, idx}
-        <button
-          type="button"
-          class="ag-dot"
-          class:active={idx === currentIndex}
-          on:click|stopPropagation={() => goToSlide(idx)}
-          aria-label="Фото {idx + 1}"
-        ></button>
-      {/each}
-    </div>
-  {/if}
 
   <div class="ag-body">
     <button
@@ -1240,6 +1238,20 @@
       </svg>
     </button>
   </div>
+
+  {#if items.length > 1}
+    <div class="ag-dots-bar" style="opacity: {uiOpacity};">
+      {#each items.slice(0, 24) as _, idx}
+        <button
+          type="button"
+          class="ag-dot"
+          class:active={idx === currentIndex}
+          on:click|stopPropagation={() => goToSlide(idx)}
+          aria-label="Фото {idx + 1}"
+        ></button>
+      {/each}
+    </div>
+  {/if}
 </div>
 
 <style>
@@ -1262,16 +1274,23 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: calc(12px + var(--safe-top, 0px)) 18px 12px;
+    padding: calc(10px + var(--safe-top, 0px)) 16px 10px;
+    background: rgba(0, 0, 0, 0.84);
     color: #ffffff;
     z-index: var(--z-header, 20);
     transition: opacity 180ms ease-out;
   }
 
+  .ag-header-left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
   .ag-counter {
     font-size: 15px;
     font-weight: 600;
-    opacity: 0.9;
+    opacity: 0.95;
   }
 
   .ag-actions {
@@ -1322,9 +1341,14 @@
   }
 
   .ag-dots-bar {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
     display: flex;
     gap: 4px;
-    padding: 0 18px 8px;
+    padding: 12px 18px calc(16px + var(--safe-bottom, 0px));
+    background: rgba(0, 0, 0, 0.84);
     z-index: var(--z-header, 20);
     transition: opacity 180ms ease-out;
   }

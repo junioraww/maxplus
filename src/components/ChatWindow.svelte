@@ -10,6 +10,7 @@
   import { writable, get } from "svelte/store";
   import { fly, slide } from "svelte/transition";
   import { registerBackHandler } from "$lib/utils/backButton";
+  import { invoke } from "$lib/utils/invoke";
   import { parseApiError } from "$lib/utils/errors";
   import { canPinInChat } from "$lib/utils/chatPermissions";
   import { registerDecodedMessagesStore, consumeCallHandshake } from "$lib/crypto/transports";
@@ -382,10 +383,18 @@
   $: swipeStyle = currentDragX > 0 ? `transform: translate3d(${currentDragX}px, 0, 0);` : "";
 
   const unregisterBack = registerBackHandler(() => {
+    if (isSearchOpen) {
+      handleSearchClose();
+      return false;
+    }
     handleCloseChat();
   });
 
   onDestroy(() => {
+    if (searchDebounceTimer) {
+      clearTimeout(searchDebounceTimer);
+      searchDebounceTimer = null;
+    }
     if (e2eLayerId) {
       dismissLayer(e2eLayerId);
       e2eLayerId = null;
@@ -448,14 +457,10 @@
   let searchQuery = "";
   let searchMatches = [];
   let searchMatchIndex = 0;
+  let searchDebounceTimer = null;
+  let searchRequestSeq = 0;
 
-  function updateSearchMatches(query) {
-    const q = (query || "").trim().toLowerCase();
-    if (!q) {
-      searchMatches = [];
-      searchMatchIndex = 0;
-      return;
-    }
+  function collectLocalSearchMatches(q) {
     const list = $messages || [];
     const matched = [];
     for (let i = list.length - 1; i >= 0; i--) {
@@ -463,14 +468,77 @@
       if (!m || m.deleted) continue;
       const text = ($decodedMessages[m.id]?.text ?? m.text ?? "").toLowerCase();
       if (text.includes(q)) {
-        matched.push({ id: m.id, time: m.time });
+        matched.push({ id: m.id, time: m.time || 0 });
       }
     }
-    searchMatches = matched;
-    searchMatchIndex = 0;
-    if (matched.length > 0) {
-      jumpAndHighlightMessage(matched[0].id, matched[0].time);
+    return matched;
+  }
+
+  async function runServerChatSearch(rawQuery, seq) {
+    const targetChatId = Number(chat?.id ?? chatId);
+    if (!Number.isFinite(targetChatId) || !rawQuery) return;
+    try {
+      const res = await invoke("search_chat_messages", {
+        chatId: targetChatId,
+        query: rawQuery,
+        count: 50,
+        marker: null,
+      });
+      if (seq !== searchRequestSeq || !isSearchOpen) return;
+      const payload = res?.payload || res || {};
+      const items = Array.isArray(payload.result)
+        ? payload.result
+        : Array.isArray(payload.messages)
+          ? payload.messages
+          : [];
+      const seen = new Map();
+      for (const m of collectLocalSearchMatches(rawQuery.toLowerCase())) {
+        seen.set(String(m.id), m);
+      }
+      for (const item of items) {
+        const msg = item?.message || item;
+        if (msg?.id != null && !seen.has(String(msg.id))) {
+          seen.set(String(msg.id), { id: msg.id, time: msg.time || 0 });
+        }
+      }
+      const merged = Array.from(seen.values()).sort((a, b) => (b.time || 0) - (a.time || 0));
+      const prevId = searchMatches[searchMatchIndex]?.id;
+      searchMatches = merged;
+      if (prevId != null) {
+        const idx = merged.findIndex((m) => String(m.id) === String(prevId));
+        searchMatchIndex = idx >= 0 ? idx : 0;
+      } else {
+        searchMatchIndex = 0;
+        if (merged.length > 0) {
+          jumpAndHighlightMessage(merged[0].id, merged[0].time);
+        }
+      }
+    } catch {}
+  }
+
+  function updateSearchMatches(query) {
+    const trimmed = (query || "").trim();
+    const q = trimmed.toLowerCase();
+    if (searchDebounceTimer) {
+      clearTimeout(searchDebounceTimer);
+      searchDebounceTimer = null;
     }
+    const seq = ++searchRequestSeq;
+    if (!q) {
+      searchMatches = [];
+      searchMatchIndex = 0;
+      return;
+    }
+    const local = collectLocalSearchMatches(q);
+    searchMatches = local;
+    searchMatchIndex = 0;
+    if (local.length > 0) {
+      jumpAndHighlightMessage(local[0].id, local[0].time);
+    }
+    searchDebounceTimer = setTimeout(() => {
+      searchDebounceTimer = null;
+      runServerChatSearch(trimmed, seq);
+    }, 300);
   }
 
   function handleSearchOpen() {
@@ -478,6 +546,11 @@
   }
 
   function handleSearchClose() {
+    if (searchDebounceTimer) {
+      clearTimeout(searchDebounceTimer);
+      searchDebounceTimer = null;
+    }
+    searchRequestSeq++;
     isSearchOpen = false;
     searchQuery = "";
     searchMatches = [];

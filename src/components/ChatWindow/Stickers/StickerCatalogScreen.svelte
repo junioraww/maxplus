@@ -1,5 +1,5 @@
 <script>
-  import { createEventDispatcher, onMount } from "svelte";
+  import { createEventDispatcher, onMount, onDestroy } from "svelte";
   import {
     orderedSetIds,
     favoriteSetIds,
@@ -74,6 +74,62 @@
     }
   }
 
+  let visibleLimit = 12;
+  let visiblePackIds = new Set();
+  let scrollEl = null;
+  let packObserver = null;
+  const observedNodes = new Map();
+
+  function getPackObserver() {
+    if (packObserver || typeof IntersectionObserver === "undefined") return packObserver;
+    packObserver = new IntersectionObserver(
+      (entries) => {
+        let added = false;
+        for (const entry of entries) {
+          if (!entry.isIntersecting) continue;
+          const pack = observedNodes.get(entry.target);
+          if (!pack) continue;
+          if (!visiblePackIds.has(pack.id)) {
+            visiblePackIds.add(pack.id);
+            added = true;
+          }
+          ensurePreviewLoaded(pack);
+        }
+        if (added) visiblePackIds = visiblePackIds;
+      },
+      { root: scrollEl, rootMargin: "200px 0px", threshold: 0.01 }
+    );
+    return packObserver;
+  }
+
+  function observePack(node, pack) {
+    observedNodes.set(node, pack);
+    const obs = getPackObserver();
+    obs?.observe(node);
+    return {
+      update(nextPack) {
+        observedNodes.set(node, nextPack);
+      },
+      destroy() {
+        observedNodes.delete(node);
+        packObserver?.unobserve(node);
+      },
+    };
+  }
+
+  function onPacksScroll(e) {
+    const el = e.currentTarget;
+    if (el.scrollHeight - el.scrollTop - el.clientHeight < 350 && visibleLimit < filteredPacks.length) {
+      visibleLimit += 12;
+    }
+  }
+
+  onDestroy(() => {
+    packObserver?.disconnect();
+    packObserver = null;
+    observedNodes.clear();
+  });
+
   $: allPacks = $orderedSetIds
     .map((id) => $stickerSets.get(id))
     .filter(Boolean);
@@ -84,11 +140,11 @@
       )
     : allPacks;
 
-  $: {
-    for (const pack of filteredPacks.slice(0, 12)) {
-      ensurePreviewLoaded(pack);
-    }
+  $: if (query !== undefined) {
+    visibleLimit = 12;
   }
+
+  $: displayedPacks = filteredPacks.slice(0, visibleLimit);
 </script>
 
 <div class="sticker-catalog-screen">
@@ -143,17 +199,17 @@
     </div>
   {/if}
 
-  <div class="packs-scroll-content">
+  <div class="packs-scroll-content" bind:this={scrollEl} on:scroll={onPacksScroll}>
     {#if filteredPacks.length === 0}
       <div class="empty-state">
         <span>Наборы не найдены</span>
       </div>
     {:else}
       <div class="showcase-list">
-        {#each filteredPacks as pack (pack.id)}
+        {#each displayedPacks as pack (pack.id)}
           {@const isFav = $favoriteSetIds.includes(pack.id)}
           {@const previewIds = (pack.stickerIds || []).slice(0, 8)}
-          <div class="showcase-card">
+          <div class="showcase-card" use:observePack={pack}>
             <div class="showcase-card-head">
               <button type="button" class="showcase-title-btn" on:click={() => handleOpenPack(pack.id)}>
                 <span class="showcase-pack-name">{pack.name || "Набор стикеров"}</span>
@@ -170,24 +226,28 @@
               </button>
             </div>
 
-            <div class="showcase-strip" on:click={() => handleOpenPack(pack.id)}>
-              {#each previewIds as sid (sid)}
-                {@const st = $stickersById.get(sid)}
-                <div class="showcase-sticker-cell">
-                  {#if st}
-                    <StickerMedia
-                      url={st.url}
-                      lottieUrl={st.lottieUrl}
-                      size="68px"
-                      autoplay={false}
-                      loop={false}
-                    />
-                  {:else}
-                    <div class="sticker-placeholder"></div>
-                  {/if}
-                </div>
-              {/each}
-            </div>
+            {#if visiblePackIds.has(pack.id)}
+              <div class="showcase-strip" on:click={() => handleOpenPack(pack.id)}>
+                {#each previewIds as sid (sid)}
+                  {@const st = $stickersById.get(sid)}
+                  <div class="showcase-sticker-cell">
+                    {#if st}
+                      <StickerMedia
+                        url={st.url}
+                        lottieUrl={st.lottieUrl}
+                        size="68px"
+                        autoplay={false}
+                        loop={false}
+                      />
+                    {:else}
+                      <div class="sticker-placeholder"></div>
+                    {/if}
+                  </div>
+                {/each}
+              </div>
+            {:else}
+              <div class="showcase-strip-placeholder"></div>
+            {/if}
           </div>
         {/each}
       </div>
@@ -328,6 +388,12 @@
     display: flex;
     flex-direction: column;
     gap: 10px;
+    content-visibility: auto;
+    contain-intrinsic-size: auto 132px;
+  }
+
+  .showcase-strip-placeholder {
+    height: 76px;
   }
 
   .showcase-card-head {

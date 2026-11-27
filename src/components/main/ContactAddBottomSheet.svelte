@@ -157,12 +157,12 @@
     width: 76px;
     height: 76px;
     border-radius: 50%;
-    background: #2a2c35;
-    color: #8c93a0;
+    background: var(--bg-input);
+    color: var(--text-muted);
     display: flex;
     align-items: center;
     justify-content: center;
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    border: 1px solid var(--border-subtle);
   }
 
   .form-body {

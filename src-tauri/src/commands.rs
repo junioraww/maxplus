@@ -116,6 +116,7 @@ delegate_cmd!(get_contact_photos(contact_id: u64, from: Option<i64>, count: Opti
 delegate_cmd!(remove_contact_photo(photo_id: u64) => remove_contact_photo(photo_id));
 delegate_cmd!(search_public(query: String, count: i32, type_: String) => search_public(query, count, type_));
 delegate_cmd!(search_msg(query: String, count: i32, marker: Option<String>) => search_msg(query, count, marker));
+delegate_cmd!(search_chat_messages(chat_id: i64, query: String, count: i32, marker: Option<i64>) => search_chat_messages(chat_id, query, count, marker));
 delegate_cmd!(get_chats(chat_ids: Vec<i64>) => get_chats(chat_ids));
 delegate_cmd!(get_sessions() => get_sessions());
 delegate_cmd!(close_all_sessions() => close_all_sessions());
