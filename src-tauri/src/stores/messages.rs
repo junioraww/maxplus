@@ -336,6 +336,54 @@ pub async fn load_messages(
     .map_err(|e| e.to_string())?
 }
 
+pub fn has_message_at(
+    paths: &Paths,
+    key: Option<[u8; 32]>,
+    chat_id: i64,
+    msg_id: &Value,
+    msg_time: Option<i64>,
+) -> bool {
+    let storage = Storage::new(key);
+    let dir = paths.messages(chat_id);
+    if !dir.is_dir() {
+        return false;
+    }
+    let files: Vec<PathBuf> = if let Some(t) = msg_time {
+        let day = chrono::DateTime::from_timestamp(t / 1000, 0)
+            .unwrap_or_else(chrono::Utc::now)
+            .format("%Y-%m-%d")
+            .to_string();
+        let day_prefix = format!("1_{}_", day);
+        let legacy_name = format!("1_{}", day);
+        let mut matched: Vec<PathBuf> = Storage::list(&dir)
+            .into_iter()
+            .filter(|p| {
+                p.file_name()
+                    .and_then(|n| n.to_str())
+                    .map(|s| s.starts_with(&day_prefix) || s == legacy_name)
+                    .unwrap_or(false)
+            })
+            .collect();
+        if matched.is_empty() {
+            Storage::list(&dir)
+        } else {
+            matched.sort();
+            matched
+        }
+    } else {
+        Storage::list(&dir)
+    };
+
+    for file in files.iter().rev() {
+        if let Some(saved) = storage.load(file).and_then(|x| x.as_array().cloned()) {
+            if saved.iter().any(|x| x.get("id") == Some(msg_id)) {
+                return true;
+            }
+        }
+    }
+    false
+}
+
 pub fn update_messages_at(
     paths: &Paths,
     key: Option<[u8; 32]>,

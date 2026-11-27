@@ -13,7 +13,7 @@ macro_rules! delegate_cmd {
     ($name:ident($($arg:ident: $ty:ty),*) => $client_method:ident($($pass_arg:expr),*)) => {
         #[tauri::command]
         pub async fn $name(state: State<'_, AppState>, $($arg: $ty),*) -> Result<Value, Value> {
-            let r = state.client.$client_method($($pass_arg),*).await.map_err(|e| e.to_json())?;
+            let r = state.client().$client_method($($pass_arg),*).await.map_err(|e| e.to_json())?;
             Ok(r.payload)
         }
     };
@@ -87,7 +87,7 @@ pub async fn import_phonebook_contacts(
         }
 
         let resp = state
-            .client
+            .client()
             .upload_phonebook_contacts(map)
             .await
             .map_err(|e| e.to_json())?;
@@ -185,7 +185,7 @@ pub async fn purge_chat_history(
     for_all: Option<bool>,
 ) -> Result<Value, Value> {
     let r = state
-        .client
+        .client()
         .clear_chat_history(chat_id, last_event_time, for_all)
         .await
         .map_err(|e| e.to_json())?;
@@ -221,7 +221,7 @@ pub async fn update_pinned_messages(
         ids.push(p(s)?);
     }
     let r = state
-        .client
+        .client()
         .update_pinned_messages(chat_id, action, ids, for_me, notify)
         .await
         .map_err(|e| e.to_json())?;
@@ -239,7 +239,7 @@ pub async fn delete_messages(
     for s in message_ids {
         ids.push(p(s)?);
     }
-    let r = state.client.delete_messages(chat_id, ids, for_me).await.map_err(|e| e.to_json())?;
+    let r = state.client().delete_messages(chat_id, ids, for_me).await.map_err(|e| e.to_json())?;
     Ok(r.payload)
 }
 delegate_cmd!(edit_message(chat_id: i64, message_id: String, text: String, attaches: Option<Vec<Value>>, elements: Option<Vec<Value>>) => edit_message(chat_id, p(message_id)?, text, attaches, elements));
@@ -261,7 +261,7 @@ pub async fn send_complaint(
     for s in ids {
         parsed_ids.push(p(s)?);
     }
-    let r = state.client.send_complaint(reason_id, type_id, parsed_ids, parent_id).await.map_err(|e| e.to_json())?;
+    let r = state.client().send_complaint(reason_id, type_id, parsed_ids, parent_id).await.map_err(|e| e.to_json())?;
     Ok(r.payload)
 }
 
@@ -309,7 +309,7 @@ pub fn generate_device(is_mobile: Option<bool>) -> Identity {
 
 #[tauri::command]
 pub async fn set_presence(state: State<'_, AppState>, online: bool) -> Result<(), ()> {
-    state.client.set_presence(online).await;
+    state.client().set_presence(online).await;
     Ok(())
 }
 
@@ -332,10 +332,22 @@ pub async fn attach_ui_session(
         .ensure_session_for_account(&root, account_id, true)
         .await?;
 
+    let bg_root = root.clone();
+    tauri::async_runtime::spawn(async move {
+        crate::session::manager().sync_background_accounts(&bg_root).await;
+    });
+
     Ok(json!({
         "reused": reused,
         "snapshot": snapshot,
     }))
+}
+
+#[tauri::command]
+pub async fn refresh_background_sessions(app: AppHandle) -> Result<(), String> {
+    let root = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    crate::session::manager().sync_background_accounts(&root).await;
+    Ok(())
 }
 
 #[tauri::command]
@@ -367,7 +379,7 @@ pub async fn call_opcode(
     payload: Value,
 ) -> Result<Value, Value> {
     let r = state
-        .client
+        .client()
         .call(opcode, payload)
         .await
         .map_err(|e| e.to_json())?;
@@ -378,10 +390,8 @@ pub async fn call_opcode(
 pub async fn logout(state: State<'_, AppState>) -> Result<Value, Value> {
     let _session_guard = crate::state::shared_session_lock().lock().await;
     let mgr = crate::session::manager();
-    mgr.set_suppress_reconnect(true).await;
+    let res = state.client().logout().await.map_err(|e| e.to_json())?;
     mgr.reset_session_state().await;
-    let res = state.client.logout().await.map_err(|e| e.to_json())?;
-    state.client.disconnect().await;
     Ok(res.payload)
 }
 
@@ -401,24 +411,24 @@ pub async fn init(
 
     if user_id.is_some()
         && token.is_some()
-        && state.client.get_user_id().await == user_id
-        && state.client.get_token().await == token
-        && state.client.probe_liveness().await
+        && state.client().get_user_id().await == user_id
+        && state.client().get_token().await == token
+        && state.client().probe_liveness().await
     {
         return Ok(json!({
             "reused": true,
-            "alreadySynced": state.client.is_synced().await,
+            "alreadySynced": state.client().is_synced().await,
         }));
     }
 
-    state.client.disconnect().await;
+    state.client().disconnect().await;
 
     if let Some(uid) = user_id {
-        state.client.set_user_id(uid).await;
+        state.client().set_user_id(uid).await;
     }
 
     if let Some(t) = token {
-        state.client.set_token(t).await;
+        state.client().set_token(t).await;
     }
 
     if let Ok(settings) = crate::proxy_manager::fetch_proxy_config().await {
@@ -428,7 +438,7 @@ pub async fn init(
     }
 
     let r = state
-        .client
+        .client()
         .connect(identity, true)
         .await
         .map_err(|e| e.to_json())?;
@@ -437,18 +447,17 @@ pub async fn init(
 }
 
 #[tauri::command]
-pub async fn disconnect(state: State<'_, AppState>) -> Result<(), String> {
+pub async fn disconnect(_state: State<'_, AppState>) -> Result<(), String> {
     let _session_guard = crate::state::shared_session_lock().lock().await;
     let mgr = crate::session::manager();
     mgr.set_suppress_reconnect(true).await;
     mgr.reset_session_state().await;
-    state.client.disconnect().await;
     Ok(())
 }
 
 #[tauri::command]
 pub async fn set_chats_for_telemetry(state: State<'_, AppState>, chats: Vec<TelemetryChat>) -> Result<String, String> {
-    state.client.set_telemetry_chats(chats).await;
+    state.client().set_telemetry_chats(chats).await;
     Ok("Set".into())
 }
 
@@ -459,7 +468,7 @@ pub async fn update_user_settings(
     account_id: u64,
     settings: HashMap<String, serde_json::Value>,
 ) -> Result<Value, Value> {
-    let r = state.client.update_user_settings(settings.clone()).await.map_err(|e| e.to_json())?;
+    let r = state.client().update_user_settings(settings.clone()).await.map_err(|e| e.to_json())?;
     let settings_val = serde_json::to_value(&settings).unwrap_or(json!({}));
     let _ = save_user_settings(&app, account_id, &settings_val);
     Ok(r.payload)
@@ -479,7 +488,7 @@ pub async fn get_blacklist(
     from: Option<i64>,
     count: Option<i64>,
 ) -> Result<Value, Value> {
-    let r = state.client.get_blacklist(from.unwrap_or(0), count.unwrap_or(100)).await.map_err(|e| e.to_json())?;
+    let r = state.client().get_blacklist(from.unwrap_or(0), count.unwrap_or(100)).await.map_err(|e| e.to_json())?;
     Ok(r.payload)
 }
 
@@ -488,7 +497,7 @@ pub async fn add_to_blacklist(
     state: State<'_, AppState>,
     contact_id: u64,
 ) -> Result<Value, Value> {
-    let r = state.client.add_to_blacklist(contact_id).await.map_err(|e| e.to_json())?;
+    let r = state.client().add_to_blacklist(contact_id).await.map_err(|e| e.to_json())?;
     Ok(r.payload)
 }
 
@@ -497,13 +506,13 @@ pub async fn remove_from_blacklist(
     state: State<'_, AppState>,
     contact_id: u64,
 ) -> Result<Value, Value> {
-    let r = state.client.remove_from_blacklist(contact_id).await.map_err(|e| e.to_json())?;
+    let r = state.client().remove_from_blacklist(contact_id).await.map_err(|e| e.to_json())?;
     Ok(r.payload)
 }
 
 #[tauri::command]
 pub async fn set_token(state: State<'_, AppState>, token: String) -> Result<String, String> {
-    state.client.set_token(token).await;
+    state.client().set_token(token).await;
     Ok("Set".into())
 }
 
@@ -817,14 +826,14 @@ pub async fn two_factor(
 ) -> Result<Value, Value> {
     let p = payload.unwrap_or(Value::Null);
     let resp = match action.as_str() {
-        "status" => state.client.fetch_2fa_status().await,
+        "status" => state.client().fetch_2fa_status().await,
         "request_email" => {
             let track = p.str("trackId").map(String::from);
-            state.client.request_2fa_email_code(track, p.str_or("email", "")).await
+            state.client().request_2fa_email_code(track, p.str_or("email", "")).await
         }
         "setup" => {
             let track = p.str("trackId").map(String::from);
-            state.client.setup_2fa(
+            state.client().setup_2fa(
                 p.str_or("password", ""),
                 p.str("hint"),
                 p.str("email"),
@@ -833,18 +842,18 @@ pub async fn two_factor(
             ).await
         }
         "change" => {
-            state.client.change_2fa(
+            state.client().change_2fa(
                 p.str_or("currentPassword", ""),
                 p.str_or("newPassword", ""),
                 p.str("newHint"),
             ).await
         }
         "disable" => {
-            state.client.disable_2fa(p.str_or("currentPassword", "")).await
+            state.client().disable_2fa(p.str_or("currentPassword", "")).await
         }
         "verify_email" => {
             let track = p.str_or("trackId", "");
-            state.client.verify_2fa_email(track, p.str_or("code", "")).await
+            state.client().verify_2fa_email(track, p.str_or("code", "")).await
         }
         _ => return Err(json!({ "error": "unknown_action" })),
     };

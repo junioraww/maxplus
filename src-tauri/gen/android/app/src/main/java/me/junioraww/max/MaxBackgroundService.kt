@@ -88,6 +88,7 @@ class MaxBackgroundService : Service() {
 
     private var connectivityManager: ConnectivityManager? = null
     private var networkCallback: ConnectivityManager.NetworkCallback? = null
+    private var serviceWakeLock: PowerManager.WakeLock? = null
 
     private external fun startDaemonNative(appDir: String, account: Long)
     private external fun stopDaemonNative()
@@ -111,6 +112,15 @@ class MaxBackgroundService : Service() {
 
         ensureNotificationChannel()
         registerNetworkCallback()
+        try {
+            val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
+            serviceWakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "MaxPlus:BackgroundServiceLock").apply {
+                setReferenceCounted(false)
+                acquire()
+            }
+        } catch (e: Throwable) {
+            Log.e("MaxPlus", "serviceWakeLock acquire error", e)
+        }
         isServiceRunning = true
     }
 
@@ -136,6 +146,10 @@ class MaxBackgroundService : Service() {
     override fun onDestroy() {
         isServiceRunning = false
         isDaemonConnected = false
+        try {
+            if (serviceWakeLock?.isHeld == true) serviceWakeLock?.release()
+        } catch (_: Throwable) {}
+        serviceWakeLock = null
         unregisterNetworkCallback()
         try {
             stopDaemonNative()

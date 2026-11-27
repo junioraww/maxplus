@@ -30,16 +30,21 @@ if (typeof window !== "undefined") {
   lockScreenState.subscribe((state) => {
     if (!state) {
       desktopHiddenCount = 0;
-      invoke("cancel_notification", { chatId: 777000 }).catch(() => {});
+      invoke("reset_privacy_notifications", { accountId: null }).catch(() => {});
     }
   });
 }
 
-export async function clearChatNotification(chatId) {
+export async function clearChatNotification(chatId, accountId = null) {
   if (!currentOs) currentOs = type();
   if (currentOs === 'android') {
     try {
-      await invoke("cancel_notification", { chatId: Number(chatId) });
+      let acct = accountId;
+      if (acct == null) {
+        const current = await getCurrentAccount().catch(() => null);
+        acct = current?.id ?? 0;
+      }
+      await invoke("cancel_notification", { chatId: Number(chatId), accountId: Number(acct || 0) });
     } catch (e) {}
   }
 }
@@ -463,6 +468,7 @@ export async function newMessage(chatId, chat, contact, message) {
 
   if (currentOs === "android") {
     try {
+      if (!granted) await suggestNotifications();
       const senderId = message?.sender ? String(message.sender) : (peerId ? String(peerId) : (contactObj?.id ? String(contactObj.id) : ""));
       let account = 0;
       try {

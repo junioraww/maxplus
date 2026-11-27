@@ -732,6 +732,27 @@ pub fn resolve_account_for_chat(app_dir: &str, chat_id: i64) -> u64 {
 }
 
 #[cfg(target_os = "android")]
+pub fn get_account_label_disk(app_dir: &str, account_id: u64) -> String {
+    let store = Storage::new(None).load(&resolve_app_root(app_dir).join("accounts"));
+    let Some(accounts) = store.as_ref().and_then(|s| s.get("accounts")?.as_array()) else {
+        return String::new();
+    };
+    if accounts.len() <= 1 || account_id == 0 {
+        return String::new();
+    }
+    let Some((idx, acc)) = accounts.iter().enumerate().find(|(_, a)| {
+        a["id"].as_u64() == Some(account_id) || a["user_id"].as_u64() == Some(account_id)
+    }) else {
+        return String::new();
+    };
+    acc.get("preview")
+        .and_then(|p| crate::notifications::extract_contact_name(p).or_else(|| p["phone"].as_str().map(str::to_string)))
+        .or_else(|| acc["name"].as_str().or_else(|| acc["phone"].as_str()).map(str::to_string))
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| format!("Аккаунт {}", idx + 1))
+}
+
+#[cfg(target_os = "android")]
 pub fn is_account_privacy_active_disk(app_dir: &str, account_id: u64) -> bool {
     let root = resolve_app_root(app_dir);
     let accounts_path = root.join("accounts");
@@ -797,7 +818,8 @@ pub fn resolve_account_creds_at(
                     return Some(lid);
                 }
                 let self_path = Paths::from_root(root, lid).self_contact();
-                if let Some(self_val) = storage.load(&self_path) {
+                let self_storage = Storage::new(crate::stores::get_crypto_key(lid));
+                if let Some(self_val) = self_storage.load(&self_path) {
                     if self_val.get("id").and_then(|v| v.as_u64()) == Some(target) {
                         return Some(lid);
                     }

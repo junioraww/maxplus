@@ -30,6 +30,12 @@ class ReplyReceiver : BroadcastReceiver() {
   ): Boolean
     
   override fun onReceive(context: Context, intent: Intent) {
+    if (intent.action == "${context.packageName}.ACTION_DISMISS") {
+      val account = intent.getLongExtra("account", 0L)
+      val chatId = intent.getLongExtra("chatId", 0L)
+      NotificationHelper(context).handleNotificationDismissed(account, chatId)
+      return
+    }
     if (intent.action != "${context.packageName}.ACTION_REPLY") return
       
     val results = RemoteInput.getResultsFromIntent(intent) ?: return
@@ -54,7 +60,7 @@ class ReplyReceiver : BroadcastReceiver() {
           val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
           
           if (success) {
-            NotificationHelper(context).handleOutgoingReply(chatId, replyText)
+            NotificationHelper(context).handleOutgoingReply(account, chatId, replyText)
           } else {
             val errorBuilder = NotificationCompat.Builder(context, NotificationHelper.CHANNEL_ID)
               .setSmallIcon(android.R.drawable.ic_dialog_alert)

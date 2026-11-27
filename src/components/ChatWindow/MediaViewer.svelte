@@ -1607,22 +1607,8 @@
     color: rgba(255, 255, 255, 0.72);
   }
 
-  .header-subtitle-line {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 12px;
-    opacity: 0.72;
-  }
-
   .header-dot {
     opacity: 0.5;
-  }
-
-  .counter {
-    font-size: 12px;
-    font-weight: 500;
-    opacity: 0.85;
   }
 
   .viewer-content {

@@ -22,6 +22,7 @@ import androidx.core.content.pm.ShortcutManagerCompat
 import androidx.core.graphics.drawable.IconCompat
 import org.json.JSONArray
 import org.json.JSONObject
+import java.util.concurrent.ConcurrentHashMap
 
 class NotificationHelper(private val ctx: Context) {
   init {
@@ -37,6 +38,9 @@ class NotificationHelper(private val ctx: Context) {
   private external fun isChatGroupNative(account: Long, chatId: Long, appDir: String): Boolean
   private external fun isAccountPrivacyActiveNative(account: Long, appDir: String): Boolean
   private external fun resolveAccountForChatNative(chatId: Long, appDir: String): Long
+  private external fun resolveLocalAccountNative(account: Long, appDir: String): Long
+  private external fun isAccountEncryptedNative(account: Long, appDir: String): Boolean
+  private external fun getAccountLabelNative(account: Long, appDir: String): String?
 
   fun isNotificationsEnabled(account: Long): Boolean {
     return try {
@@ -69,6 +73,8 @@ class NotificationHelper(private val ctx: Context) {
     private const val HISTORY_LIMIT = 10
     private const val GROUP_KEY = "maxplus_messages_group"
     private const val SUMMARY_ID = 500001
+    private val inMemoryHistory = ConcurrentHashMap<String, List<NotificationMessage>>()
+    private val inMemoryMeta = ConcurrentHashMap<String, Pair<String, Boolean>>()
 
     @Volatile
     var customContext: Context? = null
@@ -87,6 +93,7 @@ class NotificationHelper(private val ctx: Context) {
         "msg" to text,
         "suid" to senderId,
         "c" to account.toString(),
+        "account_id" to account.toString(),
         "isGroup" to isGroup.toString()
       )
       if (senderName.isNotEmpty()) {
@@ -101,30 +108,111 @@ class NotificationHelper(private val ctx: Context) {
       }.start()
     }
 
+    private fun notifIdFor(account: Long, chatId: Long): Int {
+      if (account == 0L) return (chatId and 0x7fffffffL).toInt()
+      val mixed = (account * 31L) xor chatId
+      val id = (mixed and 0x7fffffffL).toInt()
+      return if (id == 0) 1 else id
+    }
+
+    private fun tagFor(account: Long, chatId: Long) = "acct_${account}_${chatId}"
+
+    private fun groupKeyFor(account: Long) = if (account > 0L) "maxplus_messages_group_$account" else GROUP_KEY
+
+    private fun summaryIdFor(account: Long) = if (account > 0L) (SUMMARY_ID + (account % 1000L).toInt()) else SUMMARY_ID
+
     @JvmStatic
-    fun cancelNotificationDirect(chatId: Long) {
+    fun cancelNotificationDirect(account: Long, chatId: Long) {
       val ctx = customContext ?: MainActivity.appContext ?: MainActivity.instance?.applicationContext
       if (ctx == null) {
         Log.e("MaxPlus", "cancelNotificationDirect: no Context available")
         return
       }
-      Log.d("MaxPlus", "cancelNotificationDirect: chatId=$chatId")
+      val helper = NotificationHelper(ctx)
+      val acct = if (account > 0L) helper.normalizeAccount(account) else 0L
+      Log.d("MaxPlus", "cancelNotificationDirect: account=$acct (raw=$account), chatId=$chatId")
       val mgr = ctx.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-      val notifId = (chatId and 0x7fffffff).toInt()
-      mgr.cancel(notifId)
-      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-        val remaining = mgr.activeNotifications.count {
-          it.id != SUMMARY_ID && it.notification.group == GROUP_KEY
-        }
-        if (remaining < 2) {
-          mgr.cancel(SUMMARY_ID)
-        }
-      }
       val prefs = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-      prefs.edit()
+      val editor = prefs.edit()
         .remove("dialog_cache_$chatId")
         .remove("dialog_meta_$chatId")
-        .apply()
+
+      if (acct > 0L) {
+        val notifId = notifIdFor(acct, chatId)
+        val tag = tagFor(acct, chatId)
+        mgr.cancel(tag, notifId)
+        mgr.cancel(notifId)
+        val cKey = "dialog_cache_${acct}_${chatId}"
+        val mKey = "dialog_meta_${acct}_${chatId}"
+        inMemoryHistory.remove(cKey)
+        inMemoryMeta.remove(mKey)
+        editor.remove(cKey).remove(mKey)
+      } else {
+        val notifId = (chatId and 0x7fffffff).toInt()
+        mgr.cancel(notifId)
+        val suffix = "_$chatId"
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+          for (sbn in mgr.activeNotifications) {
+            if (sbn.tag != null && sbn.tag.endsWith(suffix)) {
+              mgr.cancel(sbn.tag, sbn.id)
+            }
+          }
+        }
+        inMemoryHistory.keys.filter { it.endsWith(suffix) }.forEach { inMemoryHistory.remove(it) }
+        inMemoryMeta.keys.filter { it.endsWith(suffix) }.forEach { inMemoryMeta.remove(it) }
+        for (key in prefs.all.keys) {
+          if ((key.startsWith("dialog_cache_") || key.startsWith("dialog_meta_")) && key.endsWith(suffix)) {
+            editor.remove(key)
+          }
+        }
+      }
+      editor.apply()
+
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+        if (acct > 0L) {
+          helper.updateGroupSummary(acct)
+        } else {
+          val groups = mgr.activeNotifications
+            .mapNotNull { it.notification.group }
+            .filter { it.startsWith(GROUP_KEY) }
+            .distinct()
+          for (g in groups) {
+            val gAcct = g.removePrefix("${GROUP_KEY}_").toLongOrNull() ?: 0L
+            helper.updateGroupSummary(gAcct)
+          }
+          val remaining = mgr.activeNotifications.count {
+            it.id != SUMMARY_ID && it.notification.group == GROUP_KEY
+          }
+          if (remaining < 2) {
+            mgr.cancel(SUMMARY_ID)
+          }
+        }
+      }
+    }
+
+    @JvmStatic
+    fun resetPrivacyNotificationsDirect(account: Long) {
+      val ctx = customContext ?: MainActivity.appContext ?: MainActivity.instance?.applicationContext ?: return
+      val prefs = ctx.getSharedPreferences("maxplus_privacy_notifications", Context.MODE_PRIVATE)
+      val mgr = ctx.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+      if (account > 0L) {
+        val acct = NotificationHelper(ctx).normalizeAccount(account)
+        resetSecurePrivacyNotification(ctx, acct)
+        if (acct != account) {
+          resetSecurePrivacyNotification(ctx, account)
+        }
+        return
+      }
+      val editor = prefs.edit()
+      for (key in prefs.all.keys) {
+        if (key.startsWith("hidden_count_")) {
+          editor.putInt(key, 0)
+          val acct = key.removePrefix("hidden_count_").toLongOrNull() ?: 0L
+          mgr.cancel((777000L + (acct % 1000L)).toInt())
+        }
+      }
+      editor.apply()
+      mgr.cancel(777000)
     }
 
     @JvmStatic
@@ -168,16 +256,7 @@ class NotificationHelper(private val ctx: Context) {
       Log.w("MaxPlus", "handleIncomingMessage: missing chatId")
       return
     }
-    val explicitAccount = (data["account_id"] ?: data["explicit_account"])?.toLongOrNull()
-    val account = if (explicitAccount != null && explicitAccount > 0L) {
-      explicitAccount
-    } else {
-      try {
-        resolveAccountForChatNative(chatId, ctx.applicationInfo.dataDir)
-      } catch (_: Throwable) {
-        0L
-      }
-    }
+    val account = resolveAccount(data, chatId)
 
     try {
       if (!isNotificationsEnabledNative(account, ctx.applicationInfo.dataDir)) {
@@ -240,8 +319,8 @@ class NotificationHelper(private val ctx: Context) {
       return
     }
     
-    val history = appendMessage(chatId, NotificationMessage(text, senderId, senderName, ts, mid, false))
-    saveMeta(chatId, chatTitle, account, isGroup)
+    val history = appendMessage(account, chatId, NotificationMessage(text, senderId, senderName, ts, mid, false))
+    saveMeta(account, chatId, chatTitle, isGroup)
     render(chatId, chatTitle, account, isGroup, history, alertOnce = false)
   }
 
@@ -265,6 +344,7 @@ class NotificationHelper(private val ctx: Context) {
       PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
     )
 
+    val accountLabel = getAccountLabel(account)
     val text = "У вас новые сообщения ($count)"
     val builder = NotificationCompat.Builder(ctx, CHANNEL_ID)
       .setSmallIcon(R.drawable.ic_notification)
@@ -274,6 +354,9 @@ class NotificationHelper(private val ctx: Context) {
       .setAutoCancel(true)
       .setPriority(NotificationCompat.PRIORITY_HIGH)
       .setCategory(NotificationCompat.CATEGORY_MESSAGE)
+    if (accountLabel.isNotEmpty()) {
+      builder.setSubText(accountLabel)
+    }
 
     manager().notify(notifId, builder.build())
   }
@@ -283,8 +366,9 @@ class NotificationHelper(private val ctx: Context) {
     val chatId = (data["mc"] ?: data["chat_id"])?.toLongOrNull() ?: return
     val mid = data["msgid"] ?: data["mid"] ?: return
     val newText = data["msg"] ?: data["body"] ?: data["text"] ?: return
+    val account = resolveAccount(data, chatId)
     
-    val history = loadMessages(chatId).toMutableList()
+    val history = loadMessages(account, chatId).toMutableList()
     val index = history.indexOfLast { it.messageId == mid }
     if (index < 0) return
       
@@ -292,9 +376,9 @@ class NotificationHelper(private val ctx: Context) {
     if (old.isDeleted || old.text == newText) return
       
     history[index] = old.copy(text = newText)
-    saveMessages(chatId, history)
+    saveMessages(account, chatId, history)
     
-    val (title, account, isGroup) = loadMeta(chatId)
+    val (title, isGroup) = loadMeta(account, chatId)
     render(chatId, title, account, isGroup, history, alertOnce = true)
   }
   
@@ -302,21 +386,24 @@ class NotificationHelper(private val ctx: Context) {
     Log.d("MaxPlus", "handleRemoveMessage: data=$data")
     val chatId = (data["mc"] ?: data["chat_id"])?.toLongOrNull() ?: return
     val mid = data["msgid"] ?: data["mid"] ?: return
+    val account = resolveAccount(data, chatId)
     
-    val history = loadMessages(chatId).toMutableList()
+    val history = loadMessages(account, chatId).toMutableList()
     val index = history.indexOfLast { it.messageId == mid }
     if (index < 0) return
       
     history[index] = history[index].copy(isDeleted = true)
-    saveMessages(chatId, history)
+    saveMessages(account, chatId, history)
     
-    val (title, account, isGroup) = loadMeta(chatId)
+    val (title, isGroup) = loadMeta(account, chatId)
     render(chatId, title, account, isGroup, history, alertOnce = true)
   }
   
-  fun handleOutgoingReply(chatId: Long, replyText: String) {
-    val (title, account, isGroup) = loadMeta(chatId)
+  fun handleOutgoingReply(account: Long, chatId: Long, replyText: String) {
+    val acct = normalizeAccount(account)
+    val (title, isGroup) = loadMeta(acct, chatId)
     val history = appendMessage(
+      acct,
       chatId,
       NotificationMessage(
         text = replyText,
@@ -327,16 +414,66 @@ class NotificationHelper(private val ctx: Context) {
         isDeleted = false
       )
     )
-    render(chatId, title, account, isGroup, history, alertOnce = true)
+    render(chatId, title, acct, isGroup, history, alertOnce = true)
   }
 
-  private fun updateConversationShortcut(chatId: Long, chatTitle: String, conversationPerson: Person) {
-    val shortcutKey = "dialog_$chatId"
+  fun handleNotificationDismissed(account: Long, chatId: Long) {
+    val acct = normalizeAccount(account)
+    clearDialogCache(acct, chatId)
+    updateGroupSummary(acct)
+  }
+
+  private fun getAccountLabel(account: Long): String {
+    if (account <= 0L) return ""
+    return try {
+      getAccountLabelNative(account, ctx.applicationInfo.dataDir)?.trim() ?: ""
+    } catch (_: Throwable) {
+      ""
+    }
+  }
+
+  internal fun normalizeAccount(account: Long): Long {
+    if (account <= 0L) return 0L
+    return try {
+      resolveLocalAccountNative(account, ctx.applicationInfo.dataDir)
+    } catch (_: Throwable) {
+      account
+    }
+  }
+
+  private fun isEncryptedAccount(account: Long): Boolean {
+    if (account <= 0L) return false
+    return try {
+      isAccountEncryptedNative(account, ctx.applicationInfo.dataDir)
+    } catch (_: Throwable) {
+      false
+    }
+  }
+
+  private fun resolveAccount(data: Map<String, String>, chatId: Long): Long {
+    val explicitAccount = (data["account_id"] ?: data["explicit_account"])?.toLongOrNull()
+    val raw = if (explicitAccount != null && explicitAccount > 0L) {
+      explicitAccount
+    } else {
+      try {
+        resolveAccountForChatNative(chatId, ctx.applicationInfo.dataDir)
+      } catch (_: Throwable) {
+        0L
+      }
+    }
+    return normalizeAccount(raw)
+  }
+
+  private fun updateConversationShortcut(account: Long, chatId: Long, chatTitle: String, conversationPerson: Person) {
+    val shortcutKey = shortcutKey(account, chatId)
     try {
       val openIntent = (ctx.packageManager.getLaunchIntentForPackage(ctx.packageName) ?: Intent(ctx, MainActivity::class.java)).apply {
         action = Intent.ACTION_VIEW
         flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
         putExtra("chatId", chatId)
+        if (account != 0L) {
+          putExtra("account", account)
+        }
       }
       val shortcut = ShortcutInfoCompat.Builder(ctx, shortcutKey)
         .setShortLabel(chatTitle)
@@ -355,7 +492,7 @@ class NotificationHelper(private val ctx: Context) {
 
   private fun render(chatId: Long, title: String, account: Long, isGroup: Boolean, history: List<NotificationMessage>, alertOnce: Boolean) {
     if (history.isEmpty()) return
-    val notifId = (chatId and 0x7fffffff).toInt()
+    val notifId = notifIdFor(account, chatId)
     Log.d("MaxPlus", "render: chatId=$chatId, notifId=$notifId, account=$account, isGroup=$isGroup, count=${history.size}")
     val newest = history.last()
     
@@ -406,13 +543,13 @@ class NotificationHelper(private val ctx: Context) {
     }
     
     val chatAvatar = AvatarHelper.getAvatar(ctx, chatId, title, null, account)
-    val shortcutKey = "dialog_$chatId"
+    val shortcutKey = shortcutKey(account, chatId)
     val conversationPerson = newestPerson ?: Person.Builder()
       .setName(title)
       .setKey(chatId.toString())
       .setIcon(IconCompat.createWithBitmap(chatAvatar))
       .build()
-    updateConversationShortcut(chatId, title, conversationPerson)
+    updateConversationShortcut(account, chatId, title, conversationPerson)
     
     val launchIntent = ctx.packageManager.getLaunchIntentForPackage(ctx.packageName) ?: Intent(ctx, MainActivity::class.java)
     launchIntent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
@@ -427,6 +564,9 @@ class NotificationHelper(private val ctx: Context) {
       PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
     )
 
+    val accountLabel = getAccountLabel(account)
+    val groupKey = groupKeyFor(account)
+
     val builder = NotificationCompat.Builder(ctx, CHANNEL_ID)
       .setSmallIcon(R.drawable.ic_notification)
       .setLargeIcon(chatAvatar)
@@ -438,8 +578,11 @@ class NotificationHelper(private val ctx: Context) {
       .setCategory(NotificationCompat.CATEGORY_MESSAGE)
       .setShortcutId(shortcutKey)
       .setLocusId(LocusIdCompat(shortcutKey))
-      .setGroup(GROUP_KEY)
+      .setGroup(groupKey)
       .setAllowSystemGeneratedContextualActions(false)
+    if (accountLabel.isNotEmpty()) {
+      builder.setSubText(accountLabel)
+    }
     
     if (account != 0L) {
       val replyIntent = Intent(ctx, ReplyReceiver::class.java).apply {
@@ -472,18 +615,33 @@ class NotificationHelper(private val ctx: Context) {
       builder.addAction(action)
     }
     
-    manager().notify(notifId, builder.build())
-    updateGroupSummary()
+    val dismissIntent = Intent(ctx, ReplyReceiver::class.java).apply {
+      action = "${ctx.packageName}.ACTION_DISMISS"
+      putExtra("account", account)
+      putExtra("chatId", chatId)
+    }
+    val deletePendingIntent = PendingIntent.getBroadcast(
+      ctx,
+      notifId xor 0x40000000,
+      dismissIntent,
+      PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+    )
+    builder.setDeleteIntent(deletePendingIntent)
+
+    manager().notify(tagFor(account, chatId), notifId, builder.build())
+    updateGroupSummary(account, accountLabel)
   }
 
-  private fun updateGroupSummary() {
+  internal fun updateGroupSummary(account: Long, accountLabel: String = getAccountLabel(account)) {
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) return
     val mgr = manager()
+    val groupKey = groupKeyFor(account)
+    val summaryId = summaryIdFor(account)
     val active = mgr.activeNotifications.filter {
-      it.id != SUMMARY_ID && it.notification.group == GROUP_KEY
+      it.id != summaryId && it.notification.group == groupKey
     }
     if (active.size < 2) {
-      mgr.cancel(SUMMARY_ID)
+      mgr.cancel(summaryId)
       return
     }
     val inbox = NotificationCompat.InboxStyle()
@@ -495,23 +653,52 @@ class NotificationHelper(private val ctx: Context) {
       val lineText = extras.getCharSequence(NotificationCompat.EXTRA_TEXT) ?: ""
       inbox.addLine("$lineTitle: $lineText")
     }
-    val summary = NotificationCompat.Builder(ctx, CHANNEL_ID)
+    val summaryBuilder = NotificationCompat.Builder(ctx, CHANNEL_ID)
       .setSmallIcon(R.drawable.ic_notification)
       .setContentTitle("Max+")
       .setContentText("Новые сообщения (${active.size})")
       .setStyle(inbox)
-      .setGroup(GROUP_KEY)
+      .setGroup(groupKey)
       .setGroupSummary(true)
       .setAutoCancel(true)
       .setOnlyAlertOnce(true)
-      .build()
-    mgr.notify(SUMMARY_ID, summary)
+    if (accountLabel.isNotEmpty()) {
+      summaryBuilder.setSubText(accountLabel)
+    }
+    mgr.notify(summaryId, summaryBuilder.build())
   }
   
   private fun prefs() = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+
+  private fun cacheKey(account: Long, chatId: Long) = "dialog_cache_${account}_${chatId}"
+
+  private fun metaKey(account: Long, chatId: Long) = "dialog_meta_${account}_${chatId}"
+
+  private fun shortcutKey(account: Long, chatId: Long) = "dialog_${account}_${chatId}"
   
-  private fun loadMessages(chatId: Long): List<NotificationMessage> {
-    val raw = prefs().getString("dialog_cache_$chatId", "[]") ?: "[]"
+  private fun isNotificationActive(account: Long, chatId: Long): Boolean {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return true
+    val notifId = notifIdFor(account, chatId)
+    val tag = tagFor(account, chatId)
+    return manager().activeNotifications.any {
+      (it.tag == tag && it.id == notifId) || (it.tag == null && it.id == notifId)
+    }
+  }
+
+  private fun clearDialogCache(account: Long, chatId: Long) {
+    val cKey = cacheKey(account, chatId)
+    val mKey = metaKey(account, chatId)
+    inMemoryHistory.remove(cKey)
+    inMemoryMeta.remove(mKey)
+    prefs().edit().remove(cKey).remove(mKey).apply()
+  }
+
+  private fun loadMessages(account: Long, chatId: Long): List<NotificationMessage> {
+    val cKey = cacheKey(account, chatId)
+    if (isEncryptedAccount(account)) {
+      return inMemoryHistory[cKey] ?: emptyList()
+    }
+    val raw = prefs().getString(cKey, "[]") ?: "[]"
 
     val arr = JSONArray(raw)
     val list = mutableListOf<NotificationMessage>()
@@ -529,7 +716,13 @@ class NotificationHelper(private val ctx: Context) {
     return list
   }
   
-  private fun saveMessages(chatId: Long, items: List<NotificationMessage>) {
+  private fun saveMessages(account: Long, chatId: Long, items: List<NotificationMessage>) {
+    val cKey = cacheKey(account, chatId)
+    if (isEncryptedAccount(account)) {
+      inMemoryHistory[cKey] = items
+      prefs().edit().remove(cKey).apply()
+      return
+    }
     val arr = JSONArray()
     for (m in items) {
       arr.put(JSONObject().apply {
@@ -541,34 +734,46 @@ class NotificationHelper(private val ctx: Context) {
         put("is_deleted", m.isDeleted)
       })
     }
-    prefs().edit().putString("dialog_cache_$chatId", arr.toString()).apply()
+    prefs().edit().putString(cKey, arr.toString()).apply()
   }
   
-  private fun appendMessage(chatId: Long, item: NotificationMessage): List<NotificationMessage> {
-    val queue = ArrayDeque(loadMessages(chatId))
+  private fun appendMessage(account: Long, chatId: Long, item: NotificationMessage): List<NotificationMessage> {
+    if (!isNotificationActive(account, chatId)) {
+      clearDialogCache(account, chatId)
+    }
+    val queue = ArrayDeque(loadMessages(account, chatId))
     queue.addLast(item)
     while (queue.size > HISTORY_LIMIT) {
       queue.removeFirst()
     }
     val result = queue.toList()
-    saveMessages(chatId, result)
+    saveMessages(account, chatId, result)
     return result
   }
   
-  private fun saveMeta(chatId: Long, title: String, account: Long, isGroup: Boolean) {
-    prefs().edit().putString("dialog_meta_$chatId", JSONObject().apply {
+  private fun saveMeta(account: Long, chatId: Long, title: String, isGroup: Boolean) {
+    val mKey = metaKey(account, chatId)
+    if (isEncryptedAccount(account)) {
+      inMemoryMeta[mKey] = Pair(title, isGroup)
+      prefs().edit().remove(mKey).apply()
+      return
+    }
+    prefs().edit().putString(mKey, JSONObject().apply {
       put("title", title)
       put("account", account)
       put("isGroup", isGroup)
     }.toString()).apply()
   }
   
-  private fun loadMeta(chatId: Long): Triple<String, Long, Boolean> {
-    val raw = prefs().getString("dialog_meta_$chatId", null) ?: return Triple("Чат", 0L, false)
+  private fun loadMeta(account: Long, chatId: Long): Pair<String, Boolean> {
+    val mKey = metaKey(account, chatId)
+    if (isEncryptedAccount(account)) {
+      return inMemoryMeta[mKey] ?: Pair("Чат", false)
+    }
+    val raw = prefs().getString(mKey, null) ?: return Pair("Чат", false)
     val obj = JSONObject(raw)
-    return Triple(
+    return Pair(
       obj.optString("title", "Чат"),
-      obj.optLong("account", 0L),
       obj.optBoolean("isGroup", false)
     )
   }

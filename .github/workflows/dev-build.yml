@@ -277,12 +277,11 @@ jobs:
 
       - name: Build Windows Debug Binary
         run: |
-          $ver = (Get-Content src-tauri/tauri.conf.json -Raw | ConvertFrom-Json).version
-          if ($ver -match '-') {
-            bunx tauri build --debug --bundles nsis
-          } else {
-            bunx tauri build --debug
-          }
+          $confPath = (Resolve-Path "src-tauri/tauri.conf.json").Path
+          $conf = Get-Content $confPath -Raw | ConvertFrom-Json
+          $conf.bundle.targets = @("nsis")
+          [System.IO.File]::WriteAllText($confPath, ($conf | ConvertTo-Json -Depth 20))
+          bunx tauri build --debug --bundles nsis
 
       - uses: actions/upload-artifact@v6
         with:

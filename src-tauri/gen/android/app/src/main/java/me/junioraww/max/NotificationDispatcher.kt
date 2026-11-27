@@ -57,7 +57,7 @@ object NotificationDispatcher {
         chatTitle: String,
         isGroup: Boolean
     ) {
-        val ledgerKey = "msg_${chatId}_$mid"
+        val ledgerKey = "msg_${account}_${chatId}_$mid"
         if (mid.isNotEmpty() && isDaemonDuplicate(ledgerKey)) {
             return
         }
@@ -119,14 +119,14 @@ object NotificationDispatcher {
     }
 
     @JvmStatic
-    fun dispatchMessageRemoved(ctx: Context, chatId: Long, mid: String) {
+    fun dispatchMessageRemoved(ctx: Context, account: Long, chatId: Long, mid: String) {
         val notifier = NotificationHelper(ctx)
-        notifier.handleRemoveMessage(mapOf("mc" to chatId.toString(), "msgid" to mid))
+        notifier.handleRemoveMessage(mapOf("account_id" to account.toString(), "mc" to chatId.toString(), "msgid" to mid))
     }
 
     @JvmStatic
-    fun dispatchMessageEdited(ctx: Context, chatId: Long, mid: String, newText: String) {
+    fun dispatchMessageEdited(ctx: Context, account: Long, chatId: Long, mid: String, newText: String) {
         val notifier = NotificationHelper(ctx)
-        notifier.handleEditMessage(mapOf("mc" to chatId.toString(), "msgid" to mid, "msg" to newText))
+        notifier.handleEditMessage(mapOf("account_id" to account.toString(), "mc" to chatId.toString(), "msgid" to mid, "msg" to newText))
     }
 }

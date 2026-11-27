@@ -555,37 +555,6 @@
     width: 44px;
   }
 
-  .camera-access-card {
-    background: var(--bg-app, #121318);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 16px;
-    padding: 24px 16px;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 12px;
-    cursor: pointer;
-    transition: background-color 0.15s ease;
-    margin-bottom: 24px;
-    width: 100%;
-    box-sizing: border-box;
-  }
-
-  .camera-access-card:hover {
-    background: rgba(255, 255, 255, 0.05);
-  }
-
-  .camera-icon {
-    background-color: var(--primary, #38bdf8);
-  }
-
-  .camera-access-text {
-    font-size: 15px;
-    font-weight: 500;
-    color: #ffffff;
-  }
-
   .media-permission-section {
     display: flex;
     flex-direction: column;

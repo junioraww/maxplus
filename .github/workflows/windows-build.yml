@@ -53,8 +53,11 @@ jobs:
       - run: bun run tauri icon static/favicon.png
 
       - run: |
-          $ver = (Get-Content src-tauri/tauri.conf.json -Raw | ConvertFrom-Json).version
-          if ($ver -match '-') {
+          $confPath = (Resolve-Path "src-tauri/tauri.conf.json").Path
+          $conf = Get-Content $confPath -Raw | ConvertFrom-Json
+          if ($conf.version -match '-') {
+            $conf.bundle.targets = @("nsis")
+            [System.IO.File]::WriteAllText($confPath, ($conf | ConvertTo-Json -Depth 20))
             bunx tauri build --bundles nsis
           } else {
             bunx tauri build

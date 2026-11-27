@@ -88,6 +88,7 @@
   let cleanupAutoLock = null;
   let unlistenBackButton = null;
   let unlistenCallAction = null;
+  let unlistenBgNotify = null;
   let handleKeydown = null;
   let handleSafeAreaChanged = null;
 
@@ -169,6 +170,49 @@
       }
     }
 
+    if (system !== "android") {
+      unlistenBgNotify = await listen("session:background-notify", async (event) => {
+        try {
+          const p = event?.payload;
+          if (!p) return;
+          const [{ isPermissionGranted, sendNotification }, { isClientNotificationsEnabled }, { getLocalFilePath, getFallbackAvatarLocalPath }] = await Promise.all([
+            import("@tauri-apps/plugin-notification"),
+            import("$lib/utils/notifications.js"),
+            import("$lib/utils/images.js"),
+          ]);
+          if (!isClientNotificationsEnabled()) return;
+          const granted = await isPermissionGranted().catch(() => false);
+          if (!granted) return;
+          const title = p.title || p.chatTitle || p.senderName || "Новое сообщение";
+          const rawBody = p.previewText || p.payload?.message?.text || "Новое сообщение";
+          const body = p.isGroup && p.senderName && !rawBody.startsWith(`${p.senderName}:`)
+            ? `${p.senderName}: ${rawBody}`
+            : rawBody;
+          let iconPath = p.avatarPath || null;
+          if (!iconPath && !p.isEncrypted) {
+            if (p.avatarUrl) {
+              iconPath = await getLocalFilePath(p.avatarUrl, p.accountId).catch(() => null);
+            }
+            if (!iconPath) {
+              iconPath = await getFallbackAvatarLocalPath(
+                p.chatId || p.senderId || 0,
+                title,
+                p.isGroup ? "CHAT" : "USER",
+                p.accountId
+              ).catch(() => null);
+            }
+          }
+          const notifId = Number(((BigInt(p.accountId || 0) * 31n) ^ BigInt(p.chatId || 0)) & 0x7fffffffn) || 1;
+          await sendNotification({
+            id: notifId,
+            title,
+            body,
+            ...(iconPath ? { icon: iconPath } : {}),
+          });
+        } catch {}
+      }).catch(() => null);
+    }
+
     async function dispatchCallAction(action, payload) {
       try {
         const payloadObj = typeof payload === 'string'
@@ -232,6 +276,7 @@
     if (handleSafeAreaChanged) window.removeEventListener("safe-area-changed", handleSafeAreaChanged);
     if (unlistenBackButton) unlistenBackButton();
     if (unlistenCallAction) unlistenCallAction();
+    if (unlistenBgNotify) unlistenBgNotify();
     if (cleanupDeepLink) cleanupDeepLink();
     $API.unlisten();
   });

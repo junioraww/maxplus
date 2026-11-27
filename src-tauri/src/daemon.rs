@@ -35,7 +35,7 @@ pub fn set_app_foreground(in_foreground: bool) {
     }
 
     let spawn_update = || {
-        let client = crate::state::shared_client().clone();
+        let client = crate::session::manager().active_client();
         async move {
             client.set_presence(in_foreground).await;
             if client.is_connected().await && client.is_synced().await {
@@ -223,7 +223,7 @@ fn dispatch_incoming_call_to_jni(
 }
 
 #[cfg(target_os = "android")]
-fn dispatch_message_removed_to_jni(chat_id: i64, mid: &str) {
+fn dispatch_message_removed_to_jni(account: i64, chat_id: i64, mid: &str) {
     if let Some(vm) = crate::notifications::GLOBAL_JVM.get() {
         let _ = vm.attach_current_thread(|env| -> Result<(), jni::errors::Error> {
             let dispatcher_class = env.find_class(jni_str!("me/junioraww/max/NotificationDispatcher"))?;
@@ -239,9 +239,10 @@ fn dispatch_message_removed_to_jni(chat_id: i64, mid: &str) {
             env.call_static_method(
                 dispatcher_class,
                 jni_str!("dispatchMessageRemoved"),
-                jni_sig!("(Landroid/content/Context;JLjava/lang/String;)V"),
+                jni_sig!("(Landroid/content/Context;JJLjava/lang/String;)V"),
                 &[
                     jni::objects::JValue::Object(&app_ctx),
+                    jni::objects::JValue::Long(account),
                     jni::objects::JValue::Long(chat_id),
                     jni::objects::JValue::Object(&j_mid_obj),
                 ],
@@ -252,7 +253,7 @@ fn dispatch_message_removed_to_jni(chat_id: i64, mid: &str) {
 }
 
 #[cfg(target_os = "android")]
-fn dispatch_message_edited_to_jni(chat_id: i64, mid: &str, new_text: &str) {
+fn dispatch_message_edited_to_jni(account: i64, chat_id: i64, mid: &str, new_text: &str) {
     if let Some(vm) = crate::notifications::GLOBAL_JVM.get() {
         let _ = vm.attach_current_thread(|env| -> Result<(), jni::errors::Error> {
             let dispatcher_class = env.find_class(jni_str!("me/junioraww/max/NotificationDispatcher"))?;
@@ -270,9 +271,10 @@ fn dispatch_message_edited_to_jni(chat_id: i64, mid: &str, new_text: &str) {
             env.call_static_method(
                 dispatcher_class,
                 jni_str!("dispatchMessageEdited"),
-                jni_sig!("(Landroid/content/Context;JLjava/lang/String;Ljava/lang/String;)V"),
+                jni_sig!("(Landroid/content/Context;JJLjava/lang/String;Ljava/lang/String;)V"),
                 &[
                     jni::objects::JValue::Object(&app_ctx),
+                    jni::objects::JValue::Long(account),
                     jni::objects::JValue::Long(chat_id),
                     jni::objects::JValue::Object(&j_mid_obj),
                     jni::objects::JValue::Object(&j_text_obj),
@@ -283,8 +285,7 @@ fn dispatch_message_edited_to_jni(chat_id: i64, mid: &str, new_text: &str) {
     }
 }
 
-#[cfg(target_os = "android")]
-fn format_message_preview(msg: &Value, sender_name: &str) -> String {
+pub(crate) fn format_message_preview(msg: &Value, sender_name: &str) -> String {
     let text = msg.get("text").and_then(|v| v.as_str()).unwrap_or("").trim();
     let attaches = msg.get("attaches").and_then(|v| v.as_array());
 
@@ -445,14 +446,14 @@ pub async fn handle_daemon_packet(val: &Value, account: i64, app_dir: &str, clie
             let status = msg.get("status").and_then(|v| v.as_str()).unwrap_or("");
             if status == "REMOVED" {
                 #[cfg(target_os = "android")]
-                dispatch_message_removed_to_jni(chat_id, &mid);
+                dispatch_message_removed_to_jni(account, chat_id, &mid);
                 return;
             }
             if status == "EDITED" || msg.get("edited").and_then(|v| v.as_bool()) == Some(true) {
                 #[cfg(target_os = "android")]
                 {
                     let new_text = format_message_preview(msg, "");
-                    dispatch_message_edited_to_jni(chat_id, &mid, &new_text);
+                    dispatch_message_edited_to_jni(account, chat_id, &mid, &new_text);
                 }
                 return;
             }
@@ -590,7 +591,7 @@ pub async fn handle_daemon_packet(val: &Value, account: i64, app_dir: &str, clie
                 for id_val in ids {
                     let mid = id_val.as_i64().map(|i| i.to_string()).or_else(|| id_val.as_str().map(|s| s.to_string())).unwrap_or_default();
                     if !mid.is_empty() {
-                        dispatch_message_removed_to_jni(chat_id, &mid);
+                        dispatch_message_removed_to_jni(account, chat_id, &mid);
                     }
                 }
             }
@@ -617,10 +618,10 @@ pub fn start_daemon(app_dir: String, account_id: i64) {
 
         rt.block_on(async move {
             let reconnect_notify = get_reconnect_notify();
-            let client = crate::state::shared_client().clone();
             let mgr = crate::session::manager();
             mgr.set_app_dir(app_dir.clone());
             let root = crate::stores::resolve_app_root(&app_dir);
+            crate::proxy_manager::load_initial_settings_at(&root);
 
             while DAEMON_RUNNING.load(Ordering::SeqCst) {
                 if mgr.is_suppress_reconnect().await || mgr.is_token_invalid().await {
@@ -635,7 +636,11 @@ pub fn start_daemon(app_dir: String, account_id: i64) {
                 }
 
                 let target_id = if account_id != 0 { Some(account_id as u64) } else { None };
-                if !client.is_connected().await || !client.is_synced().await {
+                let primary_ok = {
+                    let c = mgr.active_client();
+                    c.is_connected().await && c.is_synced().await
+                };
+                if !primary_ok {
                     if let Err(err) = mgr
                         .ensure_session_for_account(&root, target_id, is_app_foreground())
                         .await
@@ -657,6 +662,8 @@ pub fn start_daemon(app_dir: String, account_id: i64) {
                     }
                 }
 
+                mgr.sync_background_accounts(&root).await;
+
                 #[cfg(target_os = "android")]
                 notify_daemon_connected(true);
 
@@ -664,22 +671,21 @@ pub fn start_daemon(app_dir: String, account_id: i64) {
                     if !DAEMON_RUNNING.load(Ordering::SeqCst) {
                         break;
                     }
+                    let client = mgr.active_client();
                     if !client.is_connected().await || !client.is_synced().await {
                         break;
                     }
 
                     tokio::select! {
                         _ = reconnect_notify.notified() => {
-                            if !client.probe_liveness().await {
-                                break;
-                            }
+                            mgr.probe_and_repair_all(&root).await;
                         }
                         _ = mgr.wait_for_reconnect_signal() => {
-                            if !client.is_connected().await || !client.is_synced().await {
-                                break;
-                            }
+                            mgr.probe_and_repair_all(&root).await;
                         }
-                        _ = tokio::time::sleep(Duration::from_secs(45)) => {}
+                        _ = tokio::time::sleep(Duration::from_secs(45)) => {
+                            mgr.probe_and_repair_all(&root).await;
+                        }
                     }
                 }
 
@@ -706,9 +712,7 @@ pub extern "system" fn Java_me_junioraww_max_MaxBackgroundService_startDaemonNat
 ) {
     let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         let _ = unowned_env.with_env(|env| -> Result<(), jni::errors::Error> {
-            let vm = env.get_java_vm()?;
-            let _ = crate::notifications::GLOBAL_JVM.set(vm);
-            Ok(())
+            crate::notifications::init_jni_globals(env)
         });
 
         let rust_app_dir: String = match unowned_env.with_env(|env| {

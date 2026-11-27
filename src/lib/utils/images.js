@@ -288,16 +288,17 @@ async function generateInitialsImageBuffer(id, name, type = "USER") {
     return await blob.arrayBuffer();
 }
 
-export async function getFallbackAvatarLocalPath(id, name, type = "USER") {
+export async function getFallbackAvatarLocalPath(id, name, type = "USER", accountId = null) {
     try {
-        const account = await getCurrentAccount();
+        const accId = accountId || (await getCurrentAccount())?.id;
+        if (!accId) return null;
         const cacheKey = `generated_avatar_${type}_${id}_${name}`;
 
-        let path = await getCachedFile(account.id, cacheKey);
+        let path = await getCachedFile(accId, cacheKey);
 
         if (!path) {
             const buffer = await generateInitialsImageBuffer(id, name, type);
-            path = await setCachedFile(account.id, cacheKey, new Uint8Array(buffer));
+            path = await setCachedFile(accId, cacheKey, new Uint8Array(buffer));
         }
 
         return path;

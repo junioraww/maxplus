@@ -160,15 +160,10 @@ pub fn run() {
                 use tauri_plugin_deep_link::DeepLinkExt;
                 let _ = app.deep_link().register_all();
             }
-            let client = tauri::async_runtime::block_on(async {
-                state::shared_client().clone()
-            });
-
             app.manage(AppState {
                 crypto: Arc::new(
                     std::sync::RwLock::new(None::<state::CryptoSession>)
                 ),
-                client,
             });
 
             let handle = app.handle().clone();
@@ -269,6 +264,7 @@ pub fn run() {
             commands::auth_by_track,
             commands::attach_ui_session,
             commands::detach_ui_session,
+            commands::refresh_background_sessions,
             commands::register_plugin_opcode_hooks,
             commands::resolve_opcode_hook,
             commands::call_opcode,
@@ -467,6 +463,7 @@ pub fn run() {
             stores::generic::plugin_vault_clear,
             notifications::show_notification,
             notifications::cancel_notification,
+            notifications::reset_privacy_notifications,
             notifications::update_call_notification_config,
             notifications::cancel_call_notification,
             notifications::reject_call,

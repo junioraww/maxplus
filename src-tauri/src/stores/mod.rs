@@ -18,7 +18,7 @@ pub use chats::{
     archive_session_into_keys, get_chat_settings_sync, get_contacts_at, load_chats_at,
     save_chats_at, save_chat_settings_raw_locked, save_contact_at, with_chat_settings_lock,
 };
-pub use messages::{mark_message_deleted_at, update_messages_at};
+pub use messages::{has_message_at, mark_message_deleted_at, update_messages_at};
 
 pub fn load_sync_state_at<T: serde::de::DeserializeOwned>(
     paths: &Paths,

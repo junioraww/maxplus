@@ -124,7 +124,7 @@ pub async fn get_contact(
         return Ok(None);
     }
 
-    if let Ok(resp) = state.client.fetch_contacts(vec![contact_id]).await {
+    if let Ok(resp) = state.client().fetch_contacts(vec![contact_id]).await {
         if let Some(contacts) = resp.payload.get("contacts").and_then(|c| c.as_array()) {
             if let Some(first) = contacts.first().cloned() {
                 let app_save = app.clone();

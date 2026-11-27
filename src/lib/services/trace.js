@@ -456,6 +456,15 @@ export async function startTrace() {
   } catch {}
 
   try {
+    const unlistenBgTrace = await listen("session:trace", (e) => {
+      if (get(isTracing) && e.payload) {
+        addTraceEvent("Max_Bg_Event", e.payload);
+      }
+    });
+    unlisteners.push(unlistenBgTrace);
+  } catch {}
+
+  try {
     const unlistenWebapp = await listen("webapp_network_log", (e) => {
       if (get(isTracing) && e.payload) {
         addTraceEvent("Webapp_Net", e.payload);

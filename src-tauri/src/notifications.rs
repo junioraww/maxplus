@@ -95,10 +95,15 @@ pub extern "system" fn Java_me_junioraww_max_ReplyReceiver_sendReplyNative<'loca
                     );
 
                     let network_task = async {
-                        let shared = crate::state::shared_client();
-                        let reuse_shared = shared.is_connected().await
-                            && shared.is_synced().await
-                            && shared.get_user_id().await == Some(server_user_id);
+                        let shared_opt = crate::session::manager().client_for(local_id);
+                        let reuse_shared = match shared_opt {
+                            Some(ref shared) => {
+                                shared.is_connected().await
+                                    && shared.is_synced().await
+                                    && shared.get_user_id().await == Some(server_user_id)
+                            }
+                            None => false,
+                        };
 
                         let mut params = None;
                         if mid != 0 {
@@ -108,16 +113,18 @@ pub extern "system" fn Java_me_junioraww_max_ReplyReceiver_sendReplyNative<'loca
                         }
 
                         if reuse_shared {
-                            return match shared.send_message(chat_id, rust_text, params).await {
-                                Ok(_) => {
-                                    android_log(4, "MaxPlusJNI", "sendReplyNative: message sent via shared session!");
-                                    true
-                                }
-                                Err(e) => {
-                                    android_log(6, "MaxPlusJNI", &format!("sendReplyNative: send_message failed: {:?}", e));
-                                    false
-                                }
-                            };
+                            if let Some(shared) = shared_opt {
+                                return match shared.send_message(chat_id, rust_text, params).await {
+                                    Ok(_) => {
+                                        android_log(4, "MaxPlusJNI", "sendReplyNative: message sent via shared session!");
+                                        true
+                                    }
+                                    Err(e) => {
+                                        android_log(6, "MaxPlusJNI", &format!("sendReplyNative: send_message failed: {:?}", e));
+                                        false
+                                    }
+                                };
+                            }
                         }
 
                         let _guard = get_background_sync_mutex().lock().await;
@@ -186,6 +193,9 @@ pub fn extract_contact_name(val: &serde_json::Value) -> Option<String> {
             let full = format!("{} {}", fn_str, ln_str).trim().to_string();
             if !full.is_empty() {
                 return Some(full);
+            }
+            if let Some(n) = first.get("name").and_then(|v| v.as_str()).map(str::trim).filter(|s| !s.is_empty()) {
+                return Some(n.to_string());
             }
         }
     }
@@ -318,7 +328,7 @@ pub fn resolve_contact_info_internal(
     }
 
     if (resolved_name.is_none() || avatar_url.is_none()) && id != 0 {
-        if let Some((_, server_user_id, token, identity)) = creds {
+        if let Some((local_id, server_user_id, token, identity)) = creds {
             let data_dir_clone = data_dir.clone();
             let contact_path_clone = contact_path.clone();
             let fetched = std::thread::spawn(move || {
@@ -328,14 +338,19 @@ pub fn resolve_contact_info_internal(
                     .ok()?;
                 rt.block_on(async {
                     tokio::time::timeout(std::time::Duration::from_secs(3), async {
-                        let shared = crate::state::shared_client();
-                        let reuse_shared = shared.is_connected().await
-                            && shared.is_synced().await
-                            && shared.get_user_id().await == Some(server_user_id);
+                        let shared_opt = crate::session::manager().client_for(local_id);
+                        let reuse_shared = match shared_opt {
+                            Some(ref shared) => {
+                                shared.is_connected().await
+                                    && shared.is_synced().await
+                                    && shared.get_user_id().await == Some(server_user_id)
+                            }
+                            None => false,
+                        };
 
                         let temp_client;
                         let active_client: &rumax::MaxClient = if reuse_shared {
-                            shared
+                            shared_opt.as_ref().unwrap()
                         } else {
                             temp_client = rumax::MaxClient::new();
                             temp_client.set_user_id(server_user_id).await;
@@ -695,6 +710,87 @@ pub extern "system" fn Java_me_junioraww_max_NotificationHelper_resolveAccountFo
 
 #[cfg(target_os = "android")]
 #[no_mangle]
+pub extern "system" fn Java_me_junioraww_max_NotificationHelper_resolveLocalAccountNative<'local>(
+    mut unowned_env: EnvUnowned<'local>,
+    _this: JObject<'local>,
+    account: i64,
+    app_dir: JString<'local>,
+) -> jlong {
+    if account <= 0 {
+        return 0;
+    }
+    let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let rust_app_dir: String = match unowned_env.with_env(|_env| -> Result<_, jni::errors::Error> {
+            let a = app_dir.try_to_string(_env)?;
+            Ok(a)
+        }).into_outcome() {
+            jni::Outcome::Ok(v) => v,
+            _ => return account,
+        };
+
+        crate::stores::get_background_creds(&rust_app_dir, account as u64)
+            .map(|c| c.0 as i64)
+            .unwrap_or(account)
+    }));
+
+    res.unwrap_or(account)
+}
+
+#[cfg(target_os = "android")]
+#[no_mangle]
+pub extern "system" fn Java_me_junioraww_max_NotificationHelper_isAccountEncryptedNative<'local>(
+    mut unowned_env: EnvUnowned<'local>,
+    _this: JObject<'local>,
+    account: i64,
+    app_dir: JString<'local>,
+) -> jboolean {
+    if account <= 0 {
+        return false;
+    }
+    let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let rust_app_dir: String = match unowned_env.with_env(|_env| -> Result<_, jni::errors::Error> {
+            let a = app_dir.try_to_string(_env)?;
+            Ok(a)
+        }).into_outcome() {
+            jni::Outcome::Ok(v) => v,
+            _ => return false,
+        };
+
+        let local_id = crate::stores::get_background_creds(&rust_app_dir, account as u64)
+            .map(|c| c.0)
+            .unwrap_or(account as u64);
+        crate::stores::is_account_encrypted_disk(&rust_app_dir, local_id)
+    }));
+
+    res.unwrap_or(false)
+}
+
+#[cfg(target_os = "android")]
+#[no_mangle]
+pub extern "system" fn Java_me_junioraww_max_NotificationHelper_getAccountLabelNative<'local>(
+    mut unowned_env: EnvUnowned<'local>,
+    _this: JObject<'local>,
+    account: i64,
+    app_dir: JString<'local>,
+) -> jni::sys::jstring {
+    let mut label = String::new();
+    if account > 0 {
+        if let jni::Outcome::Ok(rust_app_dir) = unowned_env.with_env(|env| -> Result<String, jni::errors::Error> {
+            app_dir.try_to_string(env)
+        }).into_outcome() {
+            label = crate::stores::accounts::get_account_label_disk(&rust_app_dir, account as u64);
+        }
+    }
+    match unowned_env.with_env(|env| -> Result<jni::sys::jstring, jni::errors::Error> {
+        Ok(env.new_string(&label)?.into_raw())
+    }).into_outcome() {
+        jni::Outcome::Ok(s) => s,
+        _ => std::ptr::null_mut(),
+    }
+}
+
+#[cfg(target_os = "android")]
+#[no_mangle]
 pub extern "system" fn Java_me_junioraww_max_CallNotificationManager_isAccountPrivacyActiveNative<'local>(
     unowned_env: EnvUnowned<'local>,
     this: JObject<'local>,
@@ -1007,6 +1103,36 @@ pub static GLOBAL_MAIN_ACTIVITY_CLASS: std::sync::OnceLock<jni::refs::Global<jni
 static GLOBAL_CALL_MGR_CLASS: std::sync::OnceLock<jni::refs::Global<jni::objects::JClass<'static>>> = std::sync::OnceLock::new();
 
 #[cfg(target_os = "android")]
+pub fn init_jni_globals(env: &mut jni::Env<'_>) -> Result<(), jni::errors::Error> {
+    if GLOBAL_JVM.get().is_none() {
+        let vm = env.get_java_vm()?;
+        let _ = GLOBAL_JVM.set(vm);
+    }
+    if GLOBAL_NOTIFICATION_CLASS.get().is_none() {
+        if let Ok(helper_class) = env.find_class(jni_str!("me/junioraww/max/NotificationHelper")) {
+            if let Ok(global_helper) = env.new_global_ref(helper_class) {
+                let _ = GLOBAL_NOTIFICATION_CLASS.set(global_helper);
+            }
+        }
+    }
+    if GLOBAL_MAIN_ACTIVITY_CLASS.get().is_none() {
+        if let Ok(main_activity_class) = env.find_class(jni_str!("me/junioraww/max/MainActivity")) {
+            if let Ok(global_main) = env.new_global_ref(main_activity_class) {
+                let _ = GLOBAL_MAIN_ACTIVITY_CLASS.set(global_main);
+            }
+        }
+    }
+    if GLOBAL_CALL_MGR_CLASS.get().is_none() {
+        if let Ok(call_mgr_class) = env.find_class(jni_str!("me/junioraww/max/CallNotificationManager")) {
+            if let Ok(global_call_mgr) = env.new_global_ref(call_mgr_class) {
+                let _ = GLOBAL_CALL_MGR_CLASS.set(global_call_mgr);
+            }
+        }
+    }
+    Ok(())
+}
+
+#[cfg(target_os = "android")]
 #[no_mangle]
 pub extern "system" fn Java_me_junioraww_max_MainActivity_initJni<'local>(
     mut unowned_env: EnvUnowned<'local>,
@@ -1014,27 +1140,8 @@ pub extern "system" fn Java_me_junioraww_max_MainActivity_initJni<'local>(
 ) {
     let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         let _ = unowned_env.with_env(|env| -> Result<(), jni::errors::Error> {
-            let vm = env.get_java_vm()?;
-            let _ = GLOBAL_JVM.set(vm);
-            android_log(4, "MaxPlusJNI", "initJni: JVM saved");
-
-            let helper_class = env.find_class(jni_str!("me/junioraww/max/NotificationHelper"))?;
-            let global_helper = env.new_global_ref(helper_class)?;
-            let _ = GLOBAL_NOTIFICATION_CLASS.set(global_helper);
-
-            if let Ok(main_activity_class) = env.find_class(jni_str!("me/junioraww/max/MainActivity")) {
-                if let Ok(global_main) = env.new_global_ref(main_activity_class) {
-                    let _ = GLOBAL_MAIN_ACTIVITY_CLASS.set(global_main);
-                }
-            }
-
-            if let Ok(call_mgr_class) = env.find_class(jni_str!("me/junioraww/max/CallNotificationManager")) {
-                if let Ok(global_call_mgr) = env.new_global_ref(call_mgr_class) {
-                    let _ = GLOBAL_CALL_MGR_CLASS.set(global_call_mgr);
-                }
-            }
-
-            android_log(4, "MaxPlusJNI", "initJni: NotificationHelper class cached successfully");
+            init_jni_globals(env)?;
+            android_log(4, "MaxPlusJNI", "initJni: globals initialized");
             Ok(())
         });
     }));
@@ -1148,15 +1255,19 @@ pub async fn show_notification(
 
 #[cfg(target_os = "android")]
 #[tauri::command]
-pub async fn cancel_notification(chat_id: i64) -> Result<(), String> {
-    android_log(3, "MaxPlusJNI", &format!("cancel_notification: chat_id={}", chat_id));
+pub async fn cancel_notification(chat_id: i64, account_id: Option<i64>) -> Result<(), String> {
+    let account = account_id.unwrap_or(0);
+    android_log(3, "MaxPlusJNI", &format!("cancel_notification: account={}, chat_id={}", account, chat_id));
     if let (Some(vm), Some(global_class)) = (GLOBAL_JVM.get(), GLOBAL_NOTIFICATION_CLASS.get()) {
         let res = vm.attach_current_thread(|env| -> Result<(), jni::errors::Error> {
             env.call_static_method(
                 global_class,
                 jni_str!("cancelNotificationDirect"),
-                jni_sig!("(J)V"),
-                &[jni::objects::JValue::Long(chat_id)],
+                jni_sig!("(JJ)V"),
+                &[
+                    jni::objects::JValue::Long(account),
+                    jni::objects::JValue::Long(chat_id),
+                ],
             )?;
             Ok(())
         });
@@ -1176,7 +1287,31 @@ pub async fn cancel_notification(chat_id: i64) -> Result<(), String> {
 
 #[cfg(not(target_os = "android"))]
 #[tauri::command]
-pub async fn cancel_notification(_chat_id: i64) -> Result<(), String> {
+pub async fn cancel_notification(_chat_id: i64, _account_id: Option<i64>) -> Result<(), String> {
+    Ok(())
+}
+
+#[cfg(target_os = "android")]
+#[tauri::command]
+pub async fn reset_privacy_notifications(account_id: Option<i64>) -> Result<(), String> {
+    let account = account_id.unwrap_or(0);
+    if let (Some(vm), Some(global_class)) = (GLOBAL_JVM.get(), GLOBAL_NOTIFICATION_CLASS.get()) {
+        let _ = vm.attach_current_thread(|env| -> Result<(), jni::errors::Error> {
+            env.call_static_method(
+                global_class,
+                jni_str!("resetPrivacyNotificationsDirect"),
+                jni_sig!("(J)V"),
+                &[jni::objects::JValue::Long(account)],
+            )?;
+            Ok(())
+        });
+    }
+    Ok(())
+}
+
+#[cfg(not(target_os = "android"))]
+#[tauri::command]
+pub async fn reset_privacy_notifications(_account_id: Option<i64>) -> Result<(), String> {
     Ok(())
 }
 

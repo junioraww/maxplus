@@ -345,15 +345,15 @@ pub async fn upload(
     });
 
     match attach_type.as_str() {
-        "PHOTO" => Ok(state.client.upload_photo(upload_url, file, upload_name, mime).await),
+        "PHOTO" => Ok(state.client().upload_photo(upload_url, file, upload_name, mime).await),
         "VIDEO" | "AUDIO" => {
             let video_id = video_id.ok_or("No video_id")?;
             let token = token.ok_or("No token")?;
-            Ok(state.client.upload_video(upload_url, video_id, token, file, upload_name).await)
+            Ok(state.client().upload_video(upload_url, video_id, token, file, upload_name).await)
         }
         "FILE" => {
             let file_id = file_id.ok_or("No file_id")?;
-            Ok(state.client.upload_file(upload_url, file_id, file, upload_name).await)
+            Ok(state.client().upload_file(upload_url, file_id, file, upload_name).await)
         }
         _ => Err("Wrong type".into()),
     }
@@ -399,15 +399,15 @@ pub async fn upload(
     });
 
     match attach_type.as_str() {
-        "PHOTO" => Ok(state.client.upload_photo(upload_url, file, upload_name, mime).await),
+        "PHOTO" => Ok(state.client().upload_photo(upload_url, file, upload_name, mime).await),
         "VIDEO" | "AUDIO" => {
             let video_id = video_id.ok_or("No video_id")?;
             let token = token.ok_or("No token")?;
-            Ok(state.client.upload_video(upload_url, video_id, token, file, upload_name).await)
+            Ok(state.client().upload_video(upload_url, video_id, token, file, upload_name).await)
         }
         "FILE" => {
             let file_id = file_id.ok_or("No file_id")?;
-            Ok(state.client.upload_file(upload_url, file_id, file, upload_name).await)
+            Ok(state.client().upload_file(upload_url, file_id, file, upload_name).await)
         }
         _ => Err("Wrong type".into()),
     }

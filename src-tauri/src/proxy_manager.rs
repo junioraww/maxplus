@@ -65,11 +65,7 @@ pub struct VpnStatusResult {
 static CURRENT_SETTINGS: std::sync::RwLock<Option<AppNetworkSettings>> =
     std::sync::RwLock::new(None);
 
-pub fn load_initial_settings(app: &AppHandle) {
-    let app_dir = match app.path().app_data_dir() {
-        Ok(dir) => dir,
-        Err(_) => return,
-    };
+pub fn load_initial_settings_at(app_dir: &std::path::Path) {
     let path = app_dir.join("data").join("common").join("proxy_settings");
     let storage = crate::stores::storage::Storage::new(None);
     if let Some(val) = storage.load(&path) {
@@ -80,6 +76,12 @@ pub fn load_initial_settings(app: &AppHandle) {
                 *lock = Some(settings);
             }
         }
+    }
+}
+
+pub fn load_initial_settings(app: &AppHandle) {
+    if let Ok(dir) = app.path().app_data_dir() {
+        load_initial_settings_at(&dir);
     }
 }
 
@@ -115,7 +117,7 @@ pub async fn get_proxy_settings() -> Result<AppNetworkSettings, String> {
 #[tauri::command]
 pub async fn update_proxy_config(
     app: AppHandle,
-    state: State<'_, AppState>,
+    _state: State<'_, AppState>,
     settings: AppNetworkSettings,
 ) -> Result<(), String> {
     let mut settings = settings;
@@ -123,9 +125,9 @@ pub async fn update_proxy_config(
     apply_network_settings(&settings);
 
     if settings.proxy.is_enabled() {
-        state.client.set_proxy(Some(settings.proxy.clone())).await;
+        crate::session::manager().set_proxy_all(Some(settings.proxy.clone())).await;
     } else {
-        state.client.set_proxy(None).await;
+        crate::session::manager().set_proxy_all(None).await;
     }
 
     if let Ok(mut lock) = CURRENT_SETTINGS.write() {
@@ -189,7 +191,7 @@ pub async fn test_proxy_connection(settings: ProxyConfig) -> Result<ProxyTestRes
 
 #[tauri::command]
 pub async fn query_vpn_condition(state: State<'_, AppState>) -> Result<VpnStatusResult, String> {
-    let server_detected = state.client.is_vpn().await;
+    let server_detected = state.client().is_vpn().await;
     let local_detected = vpn_bypass::is_vpn_detected();
     let vpn_bypass_supported = cfg!(target_os = "android");
 

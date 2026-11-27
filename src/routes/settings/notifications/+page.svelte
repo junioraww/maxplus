@@ -1,5 +1,8 @@
 <script>
+  import { onMount } from "svelte";
   import { page } from "$app/stores";
+  import { invoke } from "$lib/utils/invoke";
+  import { getCurrentAccount, setAccountMeta } from "$lib/stores/accounts";
   import SettingsPageWrapper from "$components/settings/SettingsPageWrapper.svelte";
   import SettingsSection from "$components/settings/SettingsSection.svelte";
   import SettingsRow from "$components/settings/SettingsRow.svelte";
@@ -34,6 +37,28 @@
 
   let activeTab = "all";
   let unmutingIds = new Set();
+  let notifyWhenInactive = true;
+  let currentAccId = null;
+
+  onMount(async () => {
+    try {
+      const acc = await getCurrentAccount();
+      if (acc?.id) {
+        currentAccId = acc.id;
+        notifyWhenInactive = acc?.meta?.notify_when_inactive !== false;
+      }
+    } catch {}
+  });
+
+  async function toggleNotifyWhenInactive() {
+    if (!currentAccId) return;
+    const next = !notifyWhenInactive;
+    notifyWhenInactive = next;
+    try {
+      await setAccountMeta(currentAccId, "notify_when_inactive", next);
+      await invoke("refresh_background_sessions").catch(() => {});
+    } catch {}
+  }
 
   $: allChats = ($currentRealChats || []).map((id) => getChat(id).getInfo()).filter(Boolean);
   $: mutedItems = allChats.filter((c) => isChatMuted(c));
@@ -113,6 +138,13 @@
         isToggle={true}
         checked={$clientNotificationsEnabled}
         on:change={() => toggleClientNotifications()}
+      />
+      <SettingsRow
+        title="Уведомления, когда активен другой аккаунт"
+        subtitle="Получать уведомления для этого аккаунта в фоне, пока выбран другой"
+        isToggle={true}
+        checked={notifyWhenInactive}
+        on:change={toggleNotifyWhenInactive}
       />
     </SettingsSection>
 
