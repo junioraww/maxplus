@@ -488,7 +488,7 @@
     background: var(--bg-surface, #1e2029);
     border-top-left-radius: 20px;
     border-top-right-radius: 20px;
-    padding: 0 16px 12px;
+    padding: 0 calc(16px + var(--safe-right, 0px)) calc(12px + var(--safe-bottom, 0px)) calc(16px + var(--safe-left, 0px));
     display: flex;
     flex-direction: column;
     box-sizing: border-box;

@@ -1,7 +1,8 @@
 <script>
   import { createEventDispatcher } from "svelte";
   import BottomSheet from "$components/main/BottomSheet.svelte";
-  import API from "$lib/stores/api";
+  import API, { currentUser } from "$lib/stores/api";
+  import { openChat } from "$lib/stores/session";
   import { showAlert } from "$lib/utils/alert";
   import { normalizePhone } from "$lib/utils/text";
 
@@ -62,7 +63,12 @@
       }
       showAlert("Контакт добавлен");
       dispatch("saved", res.contact);
+      if (res?.contact?.id && $currentUser) {
+        const dialogId = Number(BigInt($currentUser) ^ BigInt(res.contact.id));
+        openChat(dialogId);
+      }
       dispatch("close");
+      if (typeof close === "function") close({ saved: true, contact: res?.contact });
     } catch (e) {
       phoneError = "Не удалось сохранить контакт";
       showAlert(phoneError);
@@ -175,9 +181,9 @@
     width: 100%;
     height: 48px;
     border-radius: 14px;
-    border: 1px solid #333642;
-    background: #1e2027;
-    color: #ffffff;
+    border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.1));
+    background: var(--bg-input, #1e2027);
+    color: var(--text-primary, #ffffff);
     font-size: 15px;
     padding: 0 14px;
     outline: none;
@@ -186,21 +192,21 @@
   }
 
   .input-field input:focus {
-    border-color: #0077ff;
-    background: #232530;
+    border-color: var(--accent-primary, #248bfe);
+    background: var(--bg-surface-secondary, #232530);
   }
 
   .input-field input::placeholder {
-    color: #6d7380;
+    color: var(--text-muted, #6d7380);
   }
 
   .input-field.error input {
-    border-color: #ff4d4f;
+    border-color: var(--status-danger, #ef4444);
   }
 
   .error-text {
     font-size: 12px;
-    color: #ff4d4f;
+    color: var(--status-danger, #ef4444);
     padding-left: 6px;
   }
 
@@ -214,7 +220,7 @@
     height: 48px;
     border-radius: 14px;
     border: none;
-    background: #0077ff;
+    background: var(--accent-primary, #248bfe);
     color: #ffffff;
     font-size: 15px;
     font-weight: 600;
@@ -226,7 +232,7 @@
   }
 
   .save-btn:hover:not(:disabled) {
-    background: #0066dd;
+    background: var(--accent-primary-hover, #1b74d9);
   }
 
   .save-btn:disabled {

@@ -332,6 +332,12 @@
         </button>
 
         {#if showMoreMenu}
+          <div
+            class="more-menu-backdrop"
+            on:click|stopPropagation|preventDefault={() => (showMoreMenu = false)}
+            on:pointerdown|stopPropagation
+            role="presentation"
+          ></div>
           <div class="more-dropdown" on:click|stopPropagation>
             <button class="more-menu-item" on:click={() => { showMoreMenu = false; handleProfileClick(); }}>
               <span class="mask-icon" style="-webkit-mask-image: url('/icons/user.svg'); mask-image: url('/icons/user.svg'); width: 18px; height: 18px;"></span>
@@ -581,6 +587,13 @@
     justify-content: center;
   }
 
+  .more-menu-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: calc(var(--z-dropdown, 50) - 1);
+    background: transparent;
+  }
+
   .more-dropdown {
     position: absolute;
     top: calc(100% + 6px);
@@ -590,6 +603,7 @@
     border-radius: 12px;
     padding: 4px;
     min-width: 180px;
+    max-width: calc(100vw - 16px - var(--safe-left, 0px) - var(--safe-right, 0px));
     z-index: var(--z-dropdown, 50);
     display: flex;
     flex-direction: column;

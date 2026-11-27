@@ -47,9 +47,9 @@
 <style>
   .alerts-container {
     position: fixed;
-    bottom: 24px;
-    left: 16px;
-    right: 16px;
+    bottom: calc(24px + var(--safe-bottom, 0px));
+    left: calc(16px + var(--safe-left, 0px));
+    right: calc(16px + var(--safe-right, 0px));
     z-index: var(--z-toast, 10);
 
     display: flex;

@@ -901,8 +901,7 @@
   .sheet-header {
     position: relative;
     flex-shrink: 0;
-    height: calc(48px + var(--safe-top, 0px));
-    padding-top: var(--safe-top, 0px);
+    height: 48px;
     box-sizing: border-box;
     width: 100%;
     background: var(--bg-topbar, var(--bg-surface));
@@ -913,7 +912,7 @@
 
   .drag-pill {
     position: absolute;
-    top: calc(6px + var(--safe-top, 0px));
+    top: 6px;
     left: 50%;
     transform: translateX(-50%);
     width: 36px;

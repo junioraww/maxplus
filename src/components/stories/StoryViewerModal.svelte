@@ -335,8 +335,11 @@
     }
   }
 
+  let isAnimatingDrag = false;
+  let dragOpacity = 1;
+
   function handlePointerDown(e) {
-    if (statsModalOpen) return;
+    if (statsModalOpen || isAnimatingDrag) return;
     if (e.target.closest(".interactive-ctrl")) return;
     isDragging = false;
     wasLongPress = false;
@@ -352,11 +355,17 @@
   }
 
   function handlePointerMove(e) {
-    if (statsModalOpen || !dragStartY) return;
+    if (statsModalOpen || !dragStartY || isAnimatingDrag) return;
     const dy = e.clientY - dragStartY;
     if (dy > 8) {
-      isDragging = true;
+      if (!isDragging) {
+        isDragging = true;
+        try {
+          e.currentTarget.setPointerCapture(e.pointerId);
+        } catch {}
+      }
       currentDragDy = dy;
+      dragOpacity = Math.max(0.25, 1 - dy / 420);
       if (holdTimer) {
         clearTimeout(holdTimer);
         holdTimer = null;
@@ -365,22 +374,44 @@
   }
 
   function handlePointerUp(e) {
-    if (statsModalOpen) return;
+    if (statsModalOpen || isAnimatingDrag) return;
+    try {
+      if (e.currentTarget?.hasPointerCapture?.(e.pointerId)) {
+        e.currentTarget.releasePointerCapture(e.pointerId);
+      }
+    } catch {}
     if (holdTimer) {
       clearTimeout(holdTimer);
       holdTimer = null;
     }
+
+    const dt = Math.max(1, performance.now() - pointerDownTime);
+    const velocity = currentDragDy / dt;
     pointerDownTime = 0;
 
     if (isDragging) {
-      if (currentDragDy > 100) {
-        handleClose();
-      } else {
-        currentDragDy = 0;
-        resumePlayback();
-      }
+      const winH = typeof window !== "undefined" ? window.innerHeight : 640;
+      const shouldClose = currentDragDy > winH * 0.2 || (velocity > 1.2 && currentDragDy > 28);
       isDragging = false;
       dragStartY = 0;
+      isAnimatingDrag = true;
+      if (shouldClose) {
+        currentDragDy = winH;
+        dragOpacity = 0;
+        setTimeout(() => {
+          isAnimatingDrag = false;
+          currentDragDy = 0;
+          dragOpacity = 1;
+          handleClose();
+        }, 160);
+      } else {
+        currentDragDy = 0;
+        dragOpacity = 1;
+        setTimeout(() => {
+          isAnimatingDrag = false;
+          resumePlayback();
+        }, 160);
+      }
       return;
     }
 
@@ -498,11 +529,12 @@
 {#if active}
   <div
     class="viewer-backdrop"
-    transition:fade={{ duration: 180 }}
-    style="transform: translateY({currentDragDy}px); opacity: {1 - currentDragDy / 400};"
+    transition:fade={{ duration: 150 }}
+    style="transform: translate3d(0, {currentDragDy}px, 0); opacity: {dragOpacity}; will-change: transform, opacity; {isAnimatingDrag ? 'transition: transform 160ms cubic-bezier(0.2, 0.8, 0.3, 1), opacity 160ms ease;' : 'transition: none;'}"
     on:pointerdown={handlePointerDown}
     on:pointermove={handlePointerMove}
     on:pointerup={handlePointerUp}
+    on:pointercancel={handlePointerUp}
     on:click={handleScreenTap}
     role="presentation"
   >

@@ -1,9 +1,7 @@
 <script>
   import { createEventDispatcher, onMount, onDestroy } from "svelte";
-  import { fade } from "svelte/transition";
   import CircleCheckbox from "$components/common/CircleCheckbox.svelte";
   import { currentUser } from "$lib/stores/api";
-  import { showAlert } from "$lib/utils/alert";
   import { registerBackHandler } from "$lib/utils/backButton";
   import {
     checkAddressBookPermission,
@@ -19,12 +17,14 @@
 
   const dispatch = createEventDispatcher();
 
-  let stage = "loading"; // "loading" | "rationale" | "denied" | "preview" | "empty"
+  let stage = "loading"; // "loading" | "rationale" | "denied" | "preview" | "empty" | "done"
   let contacts = [];
   let selectedPhones = new Set();
   let searchQuery = "";
   let isSubmitting = false;
   let errorText = "";
+  let importedCount = 0;
+  let closeTimer = null;
   let unregisterBack = null;
 
   const AVATAR_PALETTE = [
@@ -53,9 +53,16 @@
   }
 
   function finishClose(result = { imported: false }) {
+    if (closeTimer) {
+      clearTimeout(closeTimer);
+      closeTimer = null;
+    }
     markAddressBookPrompted($currentUser).catch(() => {});
-    dispatch("close", result);
-    if (close) close(result);
+    if (typeof close === "function") {
+      close(result);
+    } else {
+      dispatch("close", result);
+    }
   }
 
   function handleBack() {
@@ -76,6 +83,7 @@
   });
 
   onDestroy(() => {
+    if (closeTimer) clearTimeout(closeTimer);
     if (unregisterBack) unregisterBack();
   });
 
@@ -159,18 +167,18 @@
   async function handleConfirm() {
     if (isSubmitting || selectedPhones.size === 0) return;
     isSubmitting = true;
+    errorText = "";
     try {
       const chosen = contacts.filter((c) => selectedPhones.has(c.phone));
       const res = await importPhonebookContacts(chosen);
       await markAddressBookPrompted($currentUser);
-      if (res.importedCount > 0) {
-        showAlert(`Импортировано контактов: ${res.importedCount}`);
-      } else {
-        showAlert("Контакты синхронизированы");
-      }
-      finishClose({ imported: true, count: res.importedCount });
+      importedCount = res.importedCount || 0;
+      stage = "done";
+      closeTimer = setTimeout(() => {
+        finishClose({ imported: true, count: importedCount });
+      }, 900);
     } catch (e) {
-      showAlert("Не удалось импортировать контакты");
+      errorText = e?.message || "Не удалось импортировать контакты";
     } finally {
       isSubmitting = false;
     }
@@ -189,7 +197,7 @@
   })();
 </script>
 
-<div class="import-screen" in:fade={{ duration: 150 }}>
+<div class="import-screen">
   <div class="toolbar">
     <button
       class="icon-btn"
@@ -273,6 +281,28 @@
         </button>
       </div>
     </div>
+  {:else if stage === "done"}
+    <div class="state-center">
+      <div class="hero-icon-wrap hero-icon-wrap--success">
+        <img src="/icons/check.svg" alt="" class="hero-icon" />
+      </div>
+      <div class="state-title">
+        {importedCount > 0 ? `Добавлено контактов: ${importedCount}` : "Контакты синхронизированы"}
+      </div>
+      <div class="state-desc">
+        {importedCount > 0
+          ? "Новые собеседники уже доступны в списке контактов."
+          : "Все доступные аккаунты Max из выбранных номеров уже синхронизированы."}
+      </div>
+      <div class="state-actions">
+        <button
+          class="main-action-btn"
+          on:click={() => finishClose({ imported: true, count: importedCount })}
+        >
+          Готово
+        </button>
+      </div>
+    </div>
   {:else if stage === "preview"}
     <div class="search-wrap">
       <div class="search-box">
@@ -334,6 +364,9 @@
     </div>
 
     <div class="bottom-action-bar">
+      {#if errorText}
+        <div class="inline-error">{errorText}</div>
+      {/if}
       <button
         class="main-action-btn"
         disabled={selectedCount === 0 || isSubmitting}
@@ -353,14 +386,11 @@
 
 <style>
   .import-screen {
-    position: fixed;
-    inset: 0;
     width: 100%;
     height: 100%;
     max-height: 100dvh;
     background: var(--bg-app, #17181c);
     color: var(--text-primary, #ffffff);
-    z-index: var(--z-modal, 7);
     display: flex;
     flex-direction: column;
     overflow: hidden;
@@ -635,6 +665,17 @@
 
   .hero-icon-wrap--muted {
     background: var(--bg-surface-secondary, #26262e);
+  }
+
+  .hero-icon-wrap--success {
+    background: rgba(74, 222, 128, 0.16);
+  }
+
+  .inline-error {
+    margin-bottom: 8px;
+    font-size: 13px;
+    color: var(--status-danger, #ef4444);
+    text-align: center;
   }
 
   .hero-icon {

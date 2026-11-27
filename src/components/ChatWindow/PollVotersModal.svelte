@@ -110,11 +110,11 @@
 </div>
 
 <style>
-  .modal-backdrop { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.72); display: flex; align-items: center; justify-content: center; z-index: var(--z-modal, 7); padding: 16px; box-sizing: border-box; }
+  .modal-backdrop { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.72); display: flex; align-items: center; justify-content: center; z-index: var(--z-modal, 7); padding: calc(16px + var(--safe-top, 0px)) calc(16px + var(--safe-right, 0px)) calc(16px + var(--safe-bottom, 0px)) calc(16px + var(--safe-left, 0px)); box-sizing: border-box; }
   .modal-backdrop.is-portal-child { position: relative; inset: auto; background: transparent; z-index: auto; padding: 0; }
-  .modal-box { background: #1e2025; border-radius: 14px; width: 100%; max-width: 380px; max-height: 80vh; display: flex; flex-direction: column; overflow: hidden; }
-  .modal-header { display: flex; align-items: center; justify-content: space-between; padding: 14px 18px; border-bottom: 1px solid rgba(255, 255, 255, 0.08); }
-  .header-titles h3 { margin: 0; font-size: 15px; font-weight: 600; color: #f3f4f6; }
+  .modal-box { background: var(--bg-surface, #1e2025); color: var(--text-primary, #f3f4f6); border-radius: 14px; width: 100%; max-width: 380px; max-height: calc(80dvh - var(--safe-top, 0px) - var(--safe-bottom, 0px)); display: flex; flex-direction: column; overflow: hidden; }
+  .modal-header { display: flex; align-items: center; justify-content: space-between; padding: 14px 18px; border-bottom: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08)); }
+  .header-titles h3 { margin: 0; font-size: 15px; font-weight: 600; color: var(--text-primary, #f3f4f6); }
   .header-subtitle { font-size: 12px; color: var(--text-secondary, #9ca3af); display: block; margin-top: 2px; max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .close-btn { background: none; border: none; color: var(--text-secondary, #9ca3af); cursor: pointer; padding: 4px; border-radius: 6px; display: flex; align-items: center; justify-content: center; transition: color 0.15s, background 0.15s; }
   .close-btn:hover { color: #fff; background: rgba(255, 255, 255, 0.08); }

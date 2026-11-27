@@ -6,6 +6,7 @@
     finalizeLayer,
   } from "$lib/services/layerManager";
   import { registerBackHandler } from "$lib/utils/backButton";
+  import { getSafeAreaInsets } from "$lib/utils/safeArea";
 
   setContext("appPortalHost", true);
 
@@ -165,7 +166,7 @@
 
     const winWidth = typeof window !== "undefined" ? window.innerWidth : 380;
     const targetRect = e.currentTarget.getBoundingClientRect();
-    const edgeThreshold = Math.max(88, winWidth * 0.22);
+    const edgeThreshold = Math.max(120, winWidth * 0.35);
     const isEdge = (e.clientX - targetRect.left) <= edgeThreshold;
     const isHeader = Boolean(e.target.closest("header, [class*='topbar'], [class*='toolbar'], [class*='header'], .nav-bar, .settings-topbar, .toolbar, .top-nav, .tg-topbar, .settings-header"));
 
@@ -186,6 +187,17 @@
     isSwiping = false;
     isFinishingSwipe = false;
     activeSwipeLayerId = layer.id;
+  }
+
+  function onScreenTouchMove(e, layer) {
+    if (activeSwipeLayerId !== layer.id || isFinishingSwipe) return;
+    const touch = e.touches?.[0];
+    if (!touch) return;
+    const dx = touch.clientX - swipeStartX;
+    const dy = touch.clientY - swipeStartY;
+    if ((isSwiping || (dx > 6 && dx > Math.abs(dy) * 0.75)) && e.cancelable) {
+      e.preventDefault();
+    }
   }
 
   function onScreenPointerMove(e, layer) {
@@ -237,7 +249,7 @@
       swipeOffsetX = targetX;
       setTimeout(() => {
         if (shouldClose) {
-          finalizeLayer(layer.id);
+          finalizeLayer(layer.id, layer.result);
         }
         activeSwipeLayerId = null;
         isSwiping = false;
@@ -339,12 +351,17 @@
   }
 
   function computeDropoutPosition(coords) {
-    if (!coords) return "top: 60px; left: 16px;";
-    const maxX = (typeof window !== "undefined" ? window.innerWidth : 360) - 220;
-    const maxY = (typeof window !== "undefined" ? window.innerHeight : 640) - 260;
-    const x = Math.max(8, Math.min(maxX, coords.x || 16));
-    const y = Math.max(8, Math.min(maxY, coords.y || 16));
-    return `top: ${y}px; left: ${x}px;`;
+    const safe = getSafeAreaInsets();
+    const minX = safe.left + 8;
+    const minY = safe.top + 8;
+    if (!coords) return `top: ${minY + 52}px; left: ${minX + 8}px;`;
+    const w = typeof window !== "undefined" ? window.innerWidth : 360;
+    const h = typeof window !== "undefined" ? window.innerHeight : 640;
+    const maxX = Math.max(minX, w - safe.right - 228);
+    const maxY = Math.max(minY, h - safe.bottom - 268);
+    const x = Math.max(minX, Math.min(maxX, coords.x ?? minX + 8));
+    const y = Math.max(minY, Math.min(maxY, coords.y ?? minY + 8));
+    return `top: ${y}px; left: ${x}px; max-width: calc(100vw - ${safe.left + safe.right + 16}px); max-height: calc(100dvh - ${safe.top + safe.bottom + 16}px);`;
   }
 </script>
 
@@ -378,6 +395,7 @@
           inert={isDormant || layer.isClosing ? true : null}
           style="z-index: {getLayerZIndex(layer, idx)}; {activeSwipeLayerId === layer.id && isSwiping ? `transform: translate3d(${swipeOffsetX}px, 0, 0); opacity: ${isFinishingSwipe && swipeOffsetX > 0 ? 0 : Math.max(0, 1 - (swipeOffsetX / (typeof window !== 'undefined' ? window.innerWidth : 380)) * 0.9)}; ${isFinishingSwipe ? 'transition: transform 210ms cubic-bezier(0.15, 0.9, 0.25, 1), opacity 210ms ease;' : 'transition: none;'}` : isDirectlyUnderSwiping ? `transform: translate3d(${-14 + (swipeOffsetX / (typeof window !== 'undefined' ? window.innerWidth : 380)) * 14}px, 0, 0); opacity: 1; visibility: visible; ${isFinishingSwipe ? 'transition: transform 210ms cubic-bezier(0.15, 0.9, 0.25, 1);' : 'transition: none;'}` : ''}"
           on:pointerdown={(e) => onScreenPointerDown(e, layer)}
+          on:touchmove={(e) => onScreenTouchMove(e, layer)}
           on:pointermove={(e) => onScreenPointerMove(e, layer)}
           on:pointerup={(e) => onScreenPointerUp(e, layer)}
           on:pointercancel={(e) => onScreenPointerUp(e, layer)}
@@ -596,6 +614,7 @@
   .portal-layer-screen.swiping {
     animation: none !important;
     transition: none !important;
+    touch-action: none !important;
   }
 
   .portal-layer-screen.layer-transparent {
@@ -654,6 +673,8 @@
     flex-direction: column;
     justify-content: flex-end;
     align-items: center;
+    padding-top: var(--safe-top, 0px);
+    box-sizing: border-box;
     pointer-events: none;
   }
 
@@ -704,7 +725,7 @@
     align-items: center;
     justify-content: center;
     pointer-events: none;
-    padding: 20px;
+    padding: calc(20px + var(--safe-top, 0px)) calc(20px + var(--safe-right, 0px)) calc(20px + var(--safe-bottom, 0px)) calc(20px + var(--safe-left, 0px));
     box-sizing: border-box;
   }
 

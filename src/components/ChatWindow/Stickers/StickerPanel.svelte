@@ -752,7 +752,7 @@
   .sticker-panel-wrapper {
     display: flex;
     flex-direction: column;
-    height: var(--keyboard-height, 290px);
+    height: calc(var(--keyboard-height, 290px) + var(--safe-bottom, 0px));
     background: var(--bg-app);
     border-top: 1px solid var(--border-subtle);
     user-select: none;
@@ -764,7 +764,7 @@
 
   @media (min-width: 601px) {
     .sticker-panel-wrapper {
-      height: 340px;
+      height: calc(340px + var(--safe-bottom, 0px));
     }
   }
 
@@ -785,9 +785,9 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    height: 48px;
-    min-height: 48px;
-    padding: 0 12px;
+    height: calc(48px + var(--safe-bottom, 0px));
+    min-height: calc(48px + var(--safe-bottom, 0px));
+    padding: 0 12px var(--safe-bottom, 0px);
     background: var(--bg-topbar, var(--bg-surface, #1e2025));
     border-top: 0.5px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
     width: 100%;
