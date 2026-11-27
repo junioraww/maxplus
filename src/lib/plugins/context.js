@@ -26,6 +26,11 @@ import {
   stickersById, recentStickerIds, stickersLoading,
 } from '$lib/stores/stickers';
 import { CryptoPluginRegistry } from '$lib/crypto/plugins';
+import {
+  registerIncomingOpcodeHook,
+  registerOutgoingCommandHook,
+  unregisterPluginOpcodeHooks,
+} from './opcodeMiddleware';
 import { showAlert } from '$lib/utils/alert';
 import { mediaPipeline } from '$lib/services/MediaPipelineHost';
 import { composerSelection } from '$lib/stores/composerSelection';
@@ -262,7 +267,35 @@ export function buildPluginContext(manifest, pluginId) {
 
     get api() {
       check('api:call', 'ctx.api');
-      return get(API);
+      const base = get(API);
+      return new Proxy(base, {
+        get(target, prop) {
+          if (prop === 'intercept') {
+            return (opcodeOrList, handler) => {
+              if (!granted.has('api:intercept') && !granted.has('api:call')) {
+                check('api:intercept', 'ctx.api.intercept()');
+              }
+              registerIncomingOpcodeHook(pluginId, opcodeOrList, handler);
+            };
+          }
+          if (prop === 'interceptOutgoing') {
+            return (targetCmdOrOpcode, handler) => {
+              if (!granted.has('api:intercept') && !granted.has('api:call')) {
+                check('api:intercept', 'ctx.api.interceptOutgoing()');
+              }
+              registerOutgoingCommandHook(pluginId, targetCmdOrOpcode, handler);
+            };
+          }
+          if (prop === 'callOpcode') {
+            return (opcode, payload = {}) => {
+              check('api:call', 'ctx.api.callOpcode()');
+              return invoke('call_opcode', { opcode: Number(opcode), payload });
+            };
+          }
+          const value = Reflect.get(target, prop, target);
+          return typeof value === 'function' ? value.bind(target) : value;
+        },
+      });
     },
 
     getStore(store) {
@@ -671,6 +704,7 @@ export function buildPluginContext(manifest, pluginId) {
         unregisterPluginPanelItem(tabId);
       }
       panelTabIds.clear();
+      unregisterPluginOpcodeHooks(pluginId);
       mediaPipeline.removeVideoPlugin(pluginId).catch(() => {});
       mediaPipeline.removeAudioPlugin(pluginId).catch(() => {});
       try {

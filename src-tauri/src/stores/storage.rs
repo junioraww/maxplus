@@ -231,11 +231,16 @@ pub struct Paths {
 }
 
 impl Paths {
-    pub fn new(app: &AppHandle, account: u64) -> Self {
+    pub fn from_root(app_root: &Path, account: u64) -> Self {
         Self {
-            root: app.path().app_data_dir().unwrap().join("data").join(account.to_string()),
-            cache: app.path().app_data_dir().unwrap().join("cache").join(account.to_string()),
+            root: app_root.join("data").join(account.to_string()),
+            cache: app_root.join("cache").join(account.to_string()),
         }
+    }
+
+    pub fn new(app: &AppHandle, account: u64) -> Self {
+        let base = app.path().app_data_dir().unwrap();
+        Self::from_root(&base, account)
     }
 
     pub fn contacts(&self) -> PathBuf {
@@ -284,6 +289,18 @@ impl Paths {
 
     pub fn user_settings(&self) -> PathBuf {
         self.root.join("user_settings")
+    }
+
+    pub fn folders(&self) -> PathBuf {
+        self.root.join("folders")
+    }
+
+    pub fn server_config(&self) -> PathBuf {
+        self.root.join("server_config")
+    }
+
+    pub fn self_contact(&self) -> PathBuf {
+        self.root.join("self")
     }
 
     pub fn webapps(&self) -> PathBuf {

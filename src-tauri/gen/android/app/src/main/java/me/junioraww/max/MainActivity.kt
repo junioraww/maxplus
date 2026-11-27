@@ -616,6 +616,10 @@ class MainActivity : TauriActivity() {
     webView.settings.cacheMode = android.webkit.WebSettings.LOAD_NO_CACHE
     webView.clearCache(true)
     webView.webChromeClient = object : android.webkit.WebChromeClient() {
+      override fun getDefaultVideoPoster(): android.graphics.Bitmap {
+        return android.graphics.Bitmap.createBitmap(1, 1, android.graphics.Bitmap.Config.ARGB_8888)
+      }
+
       override fun onPermissionRequest(request: android.webkit.PermissionRequest) {
         runOnUiThread {
           request.grant(request.resources)

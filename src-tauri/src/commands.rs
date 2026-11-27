@@ -1,11 +1,9 @@
-use crate::stores::{
-    accounts::account_get, load_sync_state, load_user_settings, save_sync_state, save_user_settings, update_account_token,
-};
+use crate::stores::{load_user_settings, save_user_settings};
 use crate::state::AppState;
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use rumax::{Error, TelemetryChat, models::{Identity, FetchHistoryOptions}};
-use tauri::{AppHandle, State, Window};
+use tauri::{AppHandle, Manager, State, Window};
 
 fn p(s: String) -> Result<u64, Value> {
     s.parse().map_err(|_| Error::Other("Invalid ID".into()).to_json())
@@ -29,7 +27,6 @@ delegate_cmd!(register(first_name: String, last_name: Option<String>) => submit_
 delegate_cmd!(register_full(first_name: String, last_name: Option<String>, photo_id: Option<i64>, avatar_type: Option<String>) => submit_register_with_avatar(first_name, last_name, photo_id, avatar_type));
 delegate_cmd!(check_call_status(track_id: String) => check_call_status(track_id));
 delegate_cmd!(auth_by_track(track_id: String) => auth_by_track(track_id));
-delegate_cmd!(logout() => logout());
 delegate_cmd!(fetch_contacts(user_ids: Vec<u64>) => fetch_contacts(user_ids));
 delegate_cmd!(fetch_presence(user_ids: Vec<u64>) => fetch_presence(user_ids));
 delegate_cmd!(get_by_phone(phone: String) => get_by_phone(phone));
@@ -45,7 +42,6 @@ pub struct PhonebookImportItem {
     pub last_name: Option<String>,
 }
 
-/// Uploads user-approved phonebook contacts to the server in batches of 100 (opcode 21).
 #[tauri::command]
 pub async fn import_phonebook_contacts(
     app: AppHandle,
@@ -317,21 +313,101 @@ pub async fn set_presence(state: State<'_, AppState>, online: bool) -> Result<()
 }
 
 #[tauri::command]
+pub async fn attach_ui_session(
+    app: AppHandle,
+    account_id: Option<u64>,
+) -> Result<Value, Value> {
+    let mgr = crate::session::manager();
+    mgr.set_app_handle(app.clone());
+    mgr.set_ui_attached(true);
+    mgr.set_suppress_reconnect(false).await;
+    mgr.clear_token_invalid().await;
+
+    let root = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| json!({ "error": e.to_string() }))?;
+    let (reused, snapshot) = mgr
+        .ensure_session_for_account(&root, account_id, true)
+        .await?;
+
+    Ok(json!({
+        "reused": reused,
+        "snapshot": snapshot,
+    }))
+}
+
+#[tauri::command]
+pub async fn detach_ui_session() -> Result<(), String> {
+    crate::session::manager().set_ui_attached(false);
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn register_plugin_opcode_hooks(opcodes: Vec<u16>) -> Result<(), String> {
+    crate::session::manager().set_hooked_opcodes(opcodes);
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn resolve_opcode_hook(
+    hook_id: u64,
+    action: String,
+    payload: Option<Value>,
+) -> Result<(), String> {
+    crate::session::manager().resolve_hook(hook_id, action, payload);
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn call_opcode(
+    state: State<'_, AppState>,
+    opcode: u16,
+    payload: Value,
+) -> Result<Value, Value> {
+    let r = state
+        .client
+        .call(opcode, payload)
+        .await
+        .map_err(|e| e.to_json())?;
+    Ok(r.payload)
+}
+
+#[tauri::command]
+pub async fn logout(state: State<'_, AppState>) -> Result<Value, Value> {
+    let _session_guard = crate::state::shared_session_lock().lock().await;
+    let mgr = crate::session::manager();
+    mgr.set_suppress_reconnect(true).await;
+    mgr.reset_session_state().await;
+    let res = state.client.logout().await.map_err(|e| e.to_json())?;
+    state.client.disconnect().await;
+    Ok(res.payload)
+}
+
+#[tauri::command]
 pub async fn init(
+    app: AppHandle,
     state: State<'_, AppState>,
     identity: Identity,
     user_id: Option<u64>,
     token: Option<String>,
 ) -> Result<Value, Value> {
-    // Reuse the existing live connection (e.g., maintained by MaxBackgroundService)
-    // if it belongs to the same account and responds to a liveness ping.
+    let mgr = crate::session::manager();
+    mgr.set_app_handle(app);
+    mgr.set_ui_attached(true);
+    mgr.set_suppress_reconnect(false).await;
+    let _session_guard = crate::state::shared_session_lock().lock().await;
+
     if user_id.is_some()
         && token.is_some()
         && state.client.get_user_id().await == user_id
         && state.client.get_token().await == token
         && state.client.probe_liveness().await
     {
-        return Ok(json!({ "reused": true }));
+        return Ok(json!({
+            "reused": true,
+            "alreadySynced": state.client.is_synced().await,
+        }));
     }
 
     state.client.disconnect().await;
@@ -360,87 +436,11 @@ pub async fn init(
 }
 
 #[tauri::command]
-pub async fn sync_client(
-    app: AppHandle,
-    state: State<'_, AppState>,
-    account_id: u64,
-) -> Result<Value, Value> {
-    let initial_sync_state = load_sync_state(&app, account_id).unwrap_or_default();
-
-    let (sync_resp, sync2_opt, new_sync_state) = match state.client.sync(initial_sync_state).await {
-        Ok(res) => res,
-        Err(e) => return Err(e.to_json()),
-    };
-
-    let user_id = sync2_opt
-    .as_ref()
-    .and_then(|r| r.payload.pointer("/profile/contact/id"))
-    .or_else(|| sync_resp.payload.pointer("/profile/contact/id"))
-    .and_then(|id| id.as_u64());
-
-    let user_id = match user_id {
-        Some(id) => id,
-        None => return Err(json!({ "error": "User ID not found in sync response" })),
-    };
-
-    state.client.set_user_id(user_id).await;
-
-    if let Ok(meta) = account_get(app.clone(), account_id).await {
-        let telemetry_mode = meta
-            .pointer("/meta/telemetry")
-            .and_then(|v| v.as_str())
-            .unwrap_or_else(|| {
-                if meta.pointer("/meta/sendTelemetry").and_then(|v| v.as_bool()) == Some(false) {
-                    "disabled"
-                } else {
-                    "fake"
-                }
-            });
-        state.client.set_telemetry_mode(telemetry_mode.to_string()).await;
-
-        let presence_enabled = meta
-            .pointer("/meta/presence")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(true);
-        state.client.set_presence(presence_enabled).await;
-    }
-
-    state.client.spawn_telemetry_task().await;
-
-    if let Err(e) = save_sync_state(&app, account_id, &new_sync_state) {
-        return Err(json!({ "error": format!("Failed to save sync state: {}", e) }));
-    }
-
-    let mut final_payload = sync_resp.payload;
-
-    if let Some(sync2) = sync2_opt {
-        if let (Value::Object(ref mut map1), Value::Object(map2)) = (&mut final_payload, sync2.payload) {
-            map1.extend(map2);
-        }
-    }
-
-    if let Some(user_config) = final_payload.get("config").and_then(|c| c.get("user")) {
-        let _ = save_user_settings(&app, account_id, user_config);
-    }
-
-    let updated_token = final_payload
-        .get("token")
-        .and_then(|t| t.as_str())
-        .or_else(|| {
-            final_payload
-                .pointer("/tokenAttrs/LOGIN/token")
-                .and_then(|t| t.as_str())
-        });
-
-    if let Some(new_token) = updated_token {
-        let _ = update_account_token(&app, account_id, new_token);
-    }
-
-    Ok(final_payload)
-}
-
-#[tauri::command]
 pub async fn disconnect(state: State<'_, AppState>) -> Result<(), String> {
+    let _session_guard = crate::state::shared_session_lock().lock().await;
+    let mgr = crate::session::manager();
+    mgr.set_suppress_reconnect(true).await;
+    mgr.reset_session_state().await;
     state.client.disconnect().await;
     Ok(())
 }

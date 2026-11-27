@@ -5,6 +5,7 @@ const KNOWN_PERMISSIONS = new Set([
   'stores:read',
   'stores:write',
   'api:call',
+  'api:intercept',
   'network',
   'crypto',
   'vault',

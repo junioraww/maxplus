@@ -9,9 +9,6 @@ import { clientSettings, initClientSettings, updateClientSetting } from "$lib/st
 
 let cachedSupported = null;
 
-/**
- * Returns true on Android and iOS where the OS address book plugin is available.
- */
 export async function isMobileAddressBookSupported() {
   if (!browser) return false;
   if (cachedSupported !== null) return cachedSupported;
@@ -32,9 +29,6 @@ export async function requestAddressBookPermission() {
   return await invoke("plugin:addressbook|request_permission");
 }
 
-/**
- * Reads device contacts, normalizes phone numbers, and deduplicates by normalized phone.
- */
 export async function readDeviceContacts() {
   const res = await invoke("plugin:addressbook|read_contacts");
   const rawList = Array.isArray(res?.contacts) ? res.contacts : [];
@@ -64,9 +58,6 @@ export async function readDeviceContacts() {
   return normalized;
 }
 
-/**
- * Uploads selected contacts to the Max server (opcode 21) and updates local contact stores.
- */
 export async function importPhonebookContacts(selectedContacts) {
   const payload = selectedContacts.map((c) => ({
     phone: c.phone,
@@ -95,9 +86,6 @@ export async function importPhonebookContacts(selectedContacts) {
   };
 }
 
-/**
- * Checks whether the one-time first-login contacts import prompt was already shown for this account.
- */
 export async function hasPromptedAddressBook(accountId) {
   await initClientSettings();
   const settings = get(clientSettings);
@@ -106,9 +94,6 @@ export async function hasPromptedAddressBook(accountId) {
   return Boolean(map[key]);
 }
 
-/**
- * Persists that the one-time contacts import prompt has been handled for this account (via store.rs).
- */
 export async function markAddressBookPrompted(accountId) {
   await initClientSettings();
   const settings = get(clientSettings);

@@ -12,7 +12,7 @@ use std::time::Duration;
 use tokio::sync::Notify;
 
 static DAEMON_RUNNING: AtomicBool = AtomicBool::new(false);
-static APP_IN_FOREGROUND: AtomicBool = AtomicBool::new(true);
+static APP_IN_FOREGROUND: AtomicBool = AtomicBool::new(false);
 static DAEMON_RECONNECT_NOTIFY: OnceLock<Arc<Notify>> = OnceLock::new();
 static DAEMON_RT_HANDLE: OnceLock<tokio::runtime::Handle> = OnceLock::new();
 
@@ -38,7 +38,19 @@ pub fn set_app_foreground(in_foreground: bool) {
         let client = crate::state::shared_client().clone();
         async move {
             client.set_presence(in_foreground).await;
-            if in_foreground && !client.probe_liveness().await {
+            if client.is_connected().await && client.is_synced().await {
+                if client
+                    .call(1, serde_json::json!({ "interactive": in_foreground }))
+                    .await
+                    .is_err()
+                {
+                    if in_foreground && !client.probe_liveness().await {
+                        trigger_daemon_reconnect();
+                    }
+                } else if in_foreground {
+                    crate::session::manager().emit_to_ui("session:foreground", serde_json::json!({}));
+                }
+            } else if in_foreground {
                 trigger_daemon_reconnect();
             }
         }
@@ -53,6 +65,7 @@ pub fn set_app_foreground(in_foreground: bool) {
 
 pub fn trigger_daemon_reconnect() {
     get_reconnect_notify().notify_waiters();
+    crate::session::manager().notify_reconnect();
 }
 
 #[cfg(target_os = "android")]
@@ -390,8 +403,8 @@ fn format_message_preview(msg: &Value, sender_name: &str) -> String {
     "Новое сообщение".to_string()
 }
 
-async fn handle_daemon_packet(val: &Value, account: i64, app_dir: &str, client: &rumax::MaxClient) {
-    // When the app is in foreground, WebView/MobileApi handles incoming events.
+#[cfg_attr(not(target_os = "android"), allow(dead_code))]
+pub async fn handle_daemon_packet(val: &Value, account: i64, app_dir: &str, client: &rumax::MaxClient) {
     if is_app_foreground() {
         return;
     }
@@ -605,63 +618,53 @@ pub fn start_daemon(app_dir: String, account_id: i64) {
         rt.block_on(async move {
             let reconnect_notify = get_reconnect_notify();
             let client = crate::state::shared_client().clone();
+            let mgr = crate::session::manager();
+            mgr.set_app_dir(app_dir.clone());
+            let root = crate::stores::resolve_app_root(&app_dir);
 
             while DAEMON_RUNNING.load(Ordering::SeqCst) {
-                let target_id = if account_id != 0 { account_id as u64 } else { 0 };
-                let creds = crate::stores::get_background_creds(&app_dir, target_id);
-                let (local_id, server_user_id, token, identity) = match creds {
-                    Some(c) => c,
-                    None => {
-                        // Credentials unavailable (e.g., encrypted account locked after process death).
-                        // Wait for unlock/reconnect signal rather than spinning tightly.
-                        tokio::select! {
-                            _ = reconnect_notify.notified() => {}
-                            _ = tokio::time::sleep(Duration::from_secs(30)) => {}
-                        }
-                        continue;
+                if mgr.is_suppress_reconnect().await || mgr.is_token_invalid().await {
+                    #[cfg(target_os = "android")]
+                    notify_daemon_connected(false);
+                    tokio::select! {
+                        _ = reconnect_notify.notified() => {}
+                        _ = mgr.wait_for_reconnect_signal() => {}
+                        _ = tokio::time::sleep(Duration::from_secs(30)) => {}
                     }
-                };
+                    continue;
+                }
 
-                if !client.is_connected().await {
-                    client.set_user_id(server_user_id).await;
-                    client.set_token(token).await;
-                    client.set_presence(is_app_foreground()).await;
-
-                    if client.connect(identity, true).await.is_err() {
+                let target_id = if account_id != 0 { Some(account_id as u64) } else { None };
+                if !client.is_connected().await || !client.is_synced().await {
+                    if let Err(err) = mgr
+                        .ensure_session_for_account(&root, target_id, is_app_foreground())
+                        .await
+                    {
                         #[cfg(target_os = "android")]
                         notify_daemon_connected(false);
+                        let err_msg = err.get("error").and_then(|v| v.as_str()).unwrap_or("");
+                        let wait_secs = if err_msg.contains("locked") || mgr.is_token_invalid().await {
+                            30
+                        } else {
+                            5
+                        };
                         tokio::select! {
                             _ = reconnect_notify.notified() => {}
-                            _ = tokio::time::sleep(Duration::from_secs(5)) => {}
+                            _ = mgr.wait_for_reconnect_signal() => {}
+                            _ = tokio::time::sleep(Duration::from_secs(wait_secs)) => {}
                         }
                         continue;
-                    }
-
-                    let initial_sync_state = crate::stores::load_sync_state_disk(&app_dir, local_id).unwrap_or_default();
-                    match client.sync(initial_sync_state).await {
-                        Ok((_, _, new_sync_state)) => {
-                            let _ = crate::stores::save_sync_state_disk(&app_dir, local_id, &new_sync_state);
-                        }
-                        Err(_) => {
-                            #[cfg(target_os = "android")]
-                            notify_daemon_connected(false);
-                            client.disconnect().await;
-                            tokio::select! {
-                                _ = reconnect_notify.notified() => {}
-                                _ = tokio::time::sleep(Duration::from_secs(5)) => {}
-                            }
-                            continue;
-                        }
                     }
                 }
 
                 #[cfg(target_os = "android")]
                 notify_daemon_connected(true);
 
-                let mut rx = client.subscribe();
-
                 loop {
                     if !DAEMON_RUNNING.load(Ordering::SeqCst) {
+                        break;
+                    }
+                    if !client.is_connected().await || !client.is_synced().await {
                         break;
                     }
 
@@ -671,24 +674,12 @@ pub fn start_daemon(app_dir: String, account_id: i64) {
                                 break;
                             }
                         }
-                        event = rx.recv() => {
-                            match event {
-                                Ok(val) => {
-                                    if val.get("type").and_then(|v| v.as_str()) == Some("log")
-                                        && val.get("response").and_then(|v| v.as_str()) == Some("closed")
-                                    {
-                                        break;
-                                    }
-                                    handle_daemon_packet(&val, server_user_id as i64, &app_dir, &client).await;
-                                }
-                                Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {
-                                    continue;
-                                }
-                                Err(tokio::sync::broadcast::error::RecvError::Closed) => {
-                                    break;
-                                }
+                        _ = mgr.wait_for_reconnect_signal() => {
+                            if !client.is_connected().await || !client.is_synced().await {
+                                break;
                             }
                         }
+                        _ = tokio::time::sleep(Duration::from_secs(45)) => {}
                     }
                 }
 

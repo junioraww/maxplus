@@ -1,6 +1,3 @@
-/**
- * Reads resolved CSS safe-area inset variables (in pixels) from documentElement.
- */
 export function getSafeAreaInsets() {
   if (typeof window === "undefined" || typeof document === "undefined") {
     return { top: 0, bottom: 0, left: 0, right: 0 };

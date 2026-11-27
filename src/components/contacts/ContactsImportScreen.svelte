@@ -17,7 +17,7 @@
 
   const dispatch = createEventDispatcher();
 
-  let stage = "loading"; // "loading" | "rationale" | "denied" | "preview" | "empty" | "done"
+  let stage = "loading";
   let contacts = [];
   let selectedPhones = new Set();
   let searchQuery = "";

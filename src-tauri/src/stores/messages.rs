@@ -336,15 +336,14 @@ pub async fn load_messages(
     .map_err(|e| e.to_string())?
 }
 
-pub fn update_messages_sync(
-    app: &AppHandle,
-    account: u64,
+pub fn update_messages_at(
+    paths: &Paths,
+    key: Option<[u8; 32]>,
     chat_id: i64,
     messages: Vec<Value>,
 ) -> Result<(), String> {
-    let key = crypto_key(app, account);
     let storage = Storage::new(key);
-    let dir = Paths::new(app, account).messages(chat_id);
+    let dir = paths.messages(chat_id);
 
     let mut bulks: std::collections::HashMap<String, Vec<Value>> = std::collections::HashMap::new();
 
@@ -498,6 +497,17 @@ pub fn update_messages_sync(
     Ok(())
 }
 
+pub fn update_messages_sync(
+    app: &AppHandle,
+    account: u64,
+    chat_id: i64,
+    messages: Vec<Value>,
+) -> Result<(), String> {
+    let key = crypto_key(app, account);
+    let paths = Paths::new(app, account);
+    update_messages_at(&paths, key, chat_id, messages)
+}
+
 #[tauri::command]
 pub async fn update_messages(
     app: AppHandle,
@@ -512,18 +522,17 @@ pub async fn update_messages(
     .map_err(|e| e.to_string())?
 }
 
-fn modify_message_file<F>(
-    app: &AppHandle,
-    account: u64,
+fn modify_message_file_at<F>(
+    paths: &Paths,
+    key: Option<[u8; 32]>,
     chat_id: i64,
     mut modify: F,
 ) -> Result<(), String>
 where
     F: FnMut(&mut Vec<Value>) -> bool,
 {
-    let key = crypto_key(app, account);
     let storage = Storage::new(key);
-    let dir = Paths::new(app, account).messages(chat_id);
+    let dir = paths.messages(chat_id);
 
     let mut files = Storage::list(&dir);
     files.retain(|x| {
@@ -548,13 +557,27 @@ where
     Ok(())
 }
 
-pub fn mark_message_deleted_sync(
+fn modify_message_file<F>(
     app: &AppHandle,
     account: u64,
     chat_id: i64,
+    modify: F,
+) -> Result<(), String>
+where
+    F: FnMut(&mut Vec<Value>) -> bool,
+{
+    let key = crypto_key(app, account);
+    let paths = Paths::new(app, account);
+    modify_message_file_at(&paths, key, chat_id, modify)
+}
+
+pub fn mark_message_deleted_at(
+    paths: &Paths,
+    key: Option<[u8; 32]>,
+    chat_id: i64,
     message_id: &str,
 ) -> Result<(), String> {
-    modify_message_file(app, account, chat_id, |saved| {
+    modify_message_file_at(paths, key, chat_id, |saved| {
         for msg in saved.iter_mut() {
             let mid = msg.get("id").map(|x| x.to_string().replace('"', ""));
             if mid.as_deref() == Some(message_id) {
@@ -567,6 +590,17 @@ pub fn mark_message_deleted_sync(
         }
         false
     })
+}
+
+pub fn mark_message_deleted_sync(
+    app: &AppHandle,
+    account: u64,
+    chat_id: i64,
+    message_id: &str,
+) -> Result<(), String> {
+    let key = crypto_key(app, account);
+    let paths = Paths::new(app, account);
+    mark_message_deleted_at(&paths, key, chat_id, message_id)
 }
 
 #[tauri::command]
