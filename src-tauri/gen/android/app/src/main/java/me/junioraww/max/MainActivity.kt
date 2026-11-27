@@ -3,6 +3,7 @@ package me.junioraww.max
 import android.app.Activity
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.media.projection.MediaProjectionManager
 import android.net.ConnectivityManager
 import android.net.Network
@@ -10,15 +11,23 @@ import android.net.NetworkCapabilities
 import android.net.NetworkRequest
 import android.os.Build
 import android.os.Bundle
+import android.provider.MediaStore
 import android.util.Log
 import android.view.WindowManager
+import android.webkit.GeolocationPermissions
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsAnimationCompat
 import androidx.core.view.WindowInsetsCompat
+import org.json.JSONArray
+import org.json.JSONObject
+import java.io.File
 import java.net.NetworkInterface
 import java.util.Collections
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 
 class MainActivity : TauriActivity() {
   companion object {
@@ -144,6 +153,98 @@ class MainActivity : TauriActivity() {
     @JvmStatic
     fun notifyScreenCaptureResultStatic(success: Boolean, port: Int, width: Int, height: Int) {
       instance?.notifyScreenCaptureResultNative(success, port, width, height)
+    }
+
+    @JvmStatic
+    fun hasMediaPermissionStatic(): Boolean {
+      val ctx = getApplicationContextStatic() ?: return false
+      return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        ContextCompat.checkSelfPermission(ctx, android.Manifest.permission.READ_MEDIA_IMAGES) == PackageManager.PERMISSION_GRANTED ||
+          ContextCompat.checkSelfPermission(ctx, android.Manifest.permission.READ_MEDIA_VIDEO) == PackageManager.PERMISSION_GRANTED
+      } else {
+        ContextCompat.checkSelfPermission(ctx, android.Manifest.permission.READ_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED
+      }
+    }
+
+    @JvmStatic
+    fun requestMediaPermissionStatic(): Boolean {
+      if (hasMediaPermissionStatic()) return true
+      val inst = instance ?: return false
+      val latch = CountDownLatch(1)
+      inst.pendingMediaPermLatch = latch
+      val perms = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        arrayOf(
+          android.Manifest.permission.READ_MEDIA_IMAGES,
+          android.Manifest.permission.READ_MEDIA_VIDEO
+        )
+      } else {
+        arrayOf(android.Manifest.permission.READ_EXTERNAL_STORAGE)
+      }
+      inst.runOnUiThread {
+        try {
+          inst.mediaPermissionLauncher.launch(perms)
+        } catch (_: Throwable) {
+          inst.pendingMediaPermLatch = null
+          latch.countDown()
+        }
+      }
+      try {
+        latch.await(60, TimeUnit.SECONDS)
+      } catch (_: InterruptedException) {}
+      return hasMediaPermissionStatic()
+    }
+
+    @JvmStatic
+    fun getRecentMediaJsonStatic(limit: Int): String {
+      val ctx = getApplicationContextStatic() ?: return "[]"
+      if (!hasMediaPermissionStatic()) return "[]"
+      val result = JSONArray()
+      val projection = arrayOf(
+        MediaStore.Files.FileColumns.DATA,
+        MediaStore.Files.FileColumns.DISPLAY_NAME,
+        MediaStore.Files.FileColumns.SIZE,
+        MediaStore.Files.FileColumns.DATE_MODIFIED,
+        MediaStore.Files.FileColumns.MEDIA_TYPE,
+        MediaStore.Files.FileColumns.MIME_TYPE
+      )
+      val selection = "${MediaStore.Files.FileColumns.MEDIA_TYPE}=? OR ${MediaStore.Files.FileColumns.MEDIA_TYPE}=?"
+      val selectionArgs = arrayOf(
+        MediaStore.Files.FileColumns.MEDIA_TYPE_IMAGE.toString(),
+        MediaStore.Files.FileColumns.MEDIA_TYPE_VIDEO.toString()
+      )
+      val sortOrder = "${MediaStore.Files.FileColumns.DATE_MODIFIED} DESC"
+      try {
+        ctx.contentResolver.query(
+          MediaStore.Files.getContentUri("external"),
+          projection,
+          selection,
+          selectionArgs,
+          sortOrder
+        )?.use { cursor ->
+          val dataCol = cursor.getColumnIndex(MediaStore.Files.FileColumns.DATA)
+          val nameCol = cursor.getColumnIndex(MediaStore.Files.FileColumns.DISPLAY_NAME)
+          val sizeCol = cursor.getColumnIndex(MediaStore.Files.FileColumns.SIZE)
+          val modCol = cursor.getColumnIndex(MediaStore.Files.FileColumns.DATE_MODIFIED)
+          val typeCol = cursor.getColumnIndex(MediaStore.Files.FileColumns.MEDIA_TYPE)
+          val mimeCol = cursor.getColumnIndex(MediaStore.Files.FileColumns.MIME_TYPE)
+          while (cursor.moveToNext() && result.length() < limit) {
+            val path = if (dataCol >= 0) cursor.getString(dataCol) else null
+            if (path.isNullOrEmpty() || !File(path).exists()) continue
+            val isVideo = typeCol >= 0 && cursor.getInt(typeCol) == MediaStore.Files.FileColumns.MEDIA_TYPE_VIDEO
+            val obj = JSONObject()
+            obj.put("path", path)
+            obj.put("name", (if (nameCol >= 0) cursor.getString(nameCol) else null) ?: File(path).name)
+            obj.put("size", if (sizeCol >= 0) cursor.getLong(sizeCol) else 0L)
+            obj.put("modified", if (modCol >= 0) cursor.getLong(modCol) else 0L)
+            obj.put("is_video", isVideo)
+            obj.put("mime_type", (if (mimeCol >= 0) cursor.getString(mimeCol) else null) ?: if (isVideo) "video/mp4" else "image/jpeg")
+            result.put(obj)
+          }
+        }
+      } catch (e: Throwable) {
+        Log.e("MaxPlus", "getRecentMediaJsonStatic error", e)
+      }
+      return result.toString()
     }
 
     @JvmStatic
@@ -273,6 +374,15 @@ class MainActivity : TauriActivity() {
   private external fun notifyCallActionNative(action: String, payload: String)
   external fun notifyScreenCaptureResultNative(success: Boolean, port: Int, width: Int, height: Int)
   external fun notifyScreenCaptureStoppedNative()
+
+  @Volatile private var pendingMediaPermLatch: CountDownLatch? = null
+
+  private val mediaPermissionLauncher = registerForActivityResult(
+    ActivityResultContracts.RequestMultiplePermissions()
+  ) {
+    pendingMediaPermLatch?.countDown()
+    pendingMediaPermLatch = null
+  }
 
   private val screenCaptureLauncher = registerForActivityResult(
     ActivityResultContracts.StartActivityForResult()
@@ -623,6 +733,15 @@ class MainActivity : TauriActivity() {
       override fun onPermissionRequest(request: android.webkit.PermissionRequest) {
         runOnUiThread {
           request.grant(request.resources)
+        }
+      }
+
+      override fun onGeolocationPermissionsShowPrompt(
+        origin: String,
+        callback: GeolocationPermissions.Callback
+      ) {
+        runOnUiThread {
+          callback.invoke(origin, true, false)
         }
       }
     }

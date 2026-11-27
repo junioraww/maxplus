@@ -155,7 +155,7 @@
     flex-direction: column;
     height: 100%;
     overflow: hidden;
-    background: #16171b;
+    background: var(--bg-app);
   }
 
   .contacts-header {
@@ -323,7 +323,7 @@
   .empty-msg {
     padding: 32px 16px;
     text-align: center;
-    color: #6d7380;
+    color: var(--text-muted);
     font-size: 14px;
   }
 </style>

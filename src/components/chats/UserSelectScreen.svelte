@@ -290,8 +290,8 @@
     height: 100%;
     display: flex;
     flex-direction: column;
-    background: var(--bg-primary, #ffffff);
-    color: var(--text-primary, #111827);
+    background: var(--bg-surface);
+    color: var(--text-primary);
     overflow: hidden;
   }
 
@@ -300,8 +300,8 @@
     align-items: center;
     gap: 10px;
     padding: 12px 16px;
-    border-bottom: 1px solid var(--border-color, #e5e7eb);
-    background: var(--bg-primary, #ffffff);
+    border-bottom: 1px solid var(--border-subtle);
+    background: var(--bg-topbar, var(--bg-surface));
     flex-shrink: 0;
   }
 
@@ -311,7 +311,7 @@
     border: none;
     border-radius: 50%;
     background: transparent;
-    color: var(--text-primary, #111827);
+    color: var(--text-primary);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -561,7 +561,7 @@
     width: 22px;
     height: 22px;
     border-radius: 50%;
-    border: 2px solid var(--border-color, #cbd5e1);
+    border: 2px solid var(--border-strong, var(--border-subtle));
     display: flex;
     align-items: center;
     justify-content: center;
@@ -570,15 +570,15 @@
   }
 
   .select-circle.checked {
-    background: var(--accent-color, #2563eb);
-    border-color: var(--accent-color, #2563eb);
-    color: #ffffff;
+    background: var(--accent-primary);
+    border-color: var(--accent-primary);
+    color: var(--accent-contrast, #ffffff);
   }
 
   .bottom-action-bar {
     padding: 12px 16px;
-    border-top: 1px solid var(--border-color, #e5e7eb);
-    background: var(--bg-primary, #ffffff);
+    border-top: 1px solid var(--border-subtle);
+    background: var(--bg-surface);
     flex-shrink: 0;
   }
 
@@ -587,8 +587,8 @@
     height: 44px;
     border: none;
     border-radius: 12px;
-    background: var(--accent-color, #2563eb);
-    color: #ffffff;
+    background: var(--accent-primary);
+    color: var(--accent-contrast, #ffffff);
     font-size: 15px;
     font-weight: 600;
     cursor: pointer;

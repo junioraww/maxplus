@@ -105,8 +105,8 @@
         const top = Math.round(ty * 256 - minY);
         tiles.push({
           key: `${zoom}-${normTx}-${ty}`,
-          url: `https://basemaps.cartocdn.com/rastertiles/dark_all/${zoom}/${normTx}/${ty}.png`,
-          fallbackUrl: `https://tile.openstreetmap.org/${zoom}/${normTx}/${ty}.png`,
+          url: `https://tile.openstreetmap.org/${zoom}/${normTx}/${ty}.png`,
+          fallbackUrl: `https://a.tile.openstreetmap.fr/hot/${zoom}/${normTx}/${ty}.png`,
           left,
           top,
         });
@@ -511,6 +511,10 @@
     user-select: none;
     pointer-events: none;
     image-rendering: auto;
+  }
+
+  :global([data-theme="dark"]) .map-tile {
+    filter: invert(92%) hue-rotate(180deg) brightness(95%) contrast(90%);
   }
 
   .center-pin-wrap {

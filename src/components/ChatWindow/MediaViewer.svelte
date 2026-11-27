@@ -733,7 +733,11 @@
   $: effectiveBackdropOpacity = isClosing ? backdropOpacity : (1 - dismissProgress * 0.58);
   $: effectiveUiOpacity = isClosing ? uiOpacity : (1 - dismissProgress * 0.85);
   $: dragDismissScale = scale <= 1.02 && slideOffset === 0 && y !== 0 ? Math.max(0.84, 1 - dismissProgress * 0.16) : scale;
-  $: transformStyle = `translate3d(calc(-50% + ${x + slideOffset}px), calc(-50% + ${y}px), 0) scale(${dragDismissScale})`;
+  let rotationDeg = 0;
+  $: if (index !== undefined) {
+    rotationDeg = 0;
+  }
+  $: transformStyle = `translate3d(calc(-50% + ${x + slideOffset}px), calc(-50% + ${y}px), 0) scale(${dragDismissScale}) rotate(${rotationDeg}deg)`;
 
   let activePointers = new Map();
   let isDragging = false;
@@ -1155,23 +1159,28 @@
 >
   <div class="viewer-header" style="opacity: {effectiveUiOpacity};">
     <div class="header-left">
+      <button class="viewer-icon-btn back" on:click={() => requestClose()} title="Назад">
+        <svg viewBox="0 0 24 24"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z" /></svg>
+      </button>
       <div class="header-titles">
         <div class="header-title-line">
+          <span class="counter-pill">{index + 1} из {allMedia.length}</span>
           <span class="media-type-badge">{getMediaTypeName(currentMedia)}</span>
-          {#if currentSenderName}
-            <span class="sender-name">{currentSenderName === 'Вы' ? 'от вас' : `от ${currentSenderName}`}</span>
-          {/if}
-        </div>
-        <div class="header-subtitle-line">
-          {#if currentMedia?.time}
-            <span class="media-date">{formatMediaDate(currentMedia.time)}</span>
-            <span class="header-dot">·</span>
-          {/if}
-          <span class="counter">{index + 1} из {allMedia.length}</span>
         </div>
       </div>
     </div>
     <div class="header-actions">
+      {#if currentMedia?._type === "PHOTO"}
+        <button
+          class="viewer-icon-btn rotate"
+          on:click|stopPropagation={() => { rotationDeg = (rotationDeg + 90) % 360; }}
+          title="Повернуть"
+        >
+          <svg viewBox="0 0 24 24">
+            <path d="M15.55 5.55L11 1v3.07C7.06 4.56 4 7.92 4 12s3.05 7.44 7 7.93v-2.02c-2.84-.48-5-2.94-5-5.91s2.16-5.43 5-5.91V10l4.55-4.45zM19.93 11c-.17-1.39-.72-2.73-1.62-3.89l-1.42 1.42c.54.75.88 1.6 1.02 2.47h2.02zM13 17.9v2.02c1.39-.17 2.74-.71 3.9-1.61l-1.44-1.44c-.75.54-1.59.89-2.46 1.03zm3.89-2.42l1.42 1.41c.9-1.16 1.45-2.5 1.62-3.89h-2.02c-.14.87-.48 1.72-1.02 2.48z" />
+          </svg>
+        </button>
+      {/if}
       <button
         class="viewer-icon-btn download"
         on:click|stopPropagation={downloadCurrentMedia}
@@ -1465,6 +1474,25 @@
       >
     </button>
   </div>
+
+  {#if currentMedia?._type !== "VIDEO" && (currentSenderName || currentMedia?.time || currentMedia?.text || currentMedia?.caption)}
+    <div class="viewer-info-panel" style="opacity: {effectiveUiOpacity};">
+      {#if currentMedia?.text || currentMedia?.caption}
+        <div class="viewer-caption">{currentMedia.text || currentMedia.caption}</div>
+      {/if}
+      <div class="viewer-info-meta">
+        {#if currentSenderName}
+          <span class="sender-name">{currentSenderName}</span>
+        {/if}
+        {#if currentSenderName && currentMedia?.time}
+          <span class="header-dot">·</span>
+        {/if}
+        {#if currentMedia?.time}
+          <span class="media-date">{formatMediaDate(currentMedia.time)}</span>
+        {/if}
+      </div>
+    </div>
+  {/if}
 </div>
 
 <style>
@@ -1536,6 +1564,47 @@
     overflow: hidden;
     text-overflow: ellipsis;
     opacity: 0.95;
+  }
+
+  .counter-pill {
+    background: rgba(255, 255, 255, 0.14);
+    padding: 4px 10px;
+    border-radius: 999px;
+    font-size: 13px;
+    font-weight: 600;
+  }
+
+  .viewer-info-panel {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    padding: 12px 18px calc(14px + var(--safe-bottom, 0px));
+    background: rgba(0, 0, 0, 0.84);
+    color: #ffffff;
+    z-index: var(--z-header, 4);
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    transition: opacity 200ms ease;
+    pointer-events: auto;
+  }
+
+  .viewer-caption {
+    font-size: 14px;
+    line-height: 1.35;
+    color: #ffffff;
+    max-height: 96px;
+    overflow-y: auto;
+    word-break: break-word;
+  }
+
+  .viewer-info-meta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    color: rgba(255, 255, 255, 0.72);
   }
 
   .header-subtitle-line {

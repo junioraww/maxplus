@@ -1249,11 +1249,101 @@ pub struct RecentMediaItem {
 }
 
 #[tauri::command]
+pub async fn check_media_permission() -> Result<bool, String> {
+    #[cfg(target_os = "android")]
+    {
+        return tokio::task::spawn_blocking(|| {
+            if let (Some(vm), Some(main_class)) = (
+                crate::notifications::GLOBAL_JVM.get(),
+                crate::notifications::GLOBAL_MAIN_ACTIVITY_CLASS.get(),
+            ) {
+                if let Ok(granted) = vm.attach_current_thread(|env| -> Result<bool, jni::errors::Error> {
+                    env.call_static_method(
+                        main_class,
+                        jni::jni_str!("hasMediaPermissionStatic"),
+                        jni::jni_sig!("()Z"),
+                        &[],
+                    )?
+                    .z()
+                }) {
+                    return granted;
+                }
+            }
+            false
+        })
+        .await
+        .map_err(|e| e.to_string());
+    }
+    #[cfg(not(target_os = "android"))]
+    Ok(true)
+}
+
+#[tauri::command]
+pub async fn request_media_permission() -> Result<bool, String> {
+    #[cfg(target_os = "android")]
+    {
+        return tokio::task::spawn_blocking(|| {
+            if let (Some(vm), Some(main_class)) = (
+                crate::notifications::GLOBAL_JVM.get(),
+                crate::notifications::GLOBAL_MAIN_ACTIVITY_CLASS.get(),
+            ) {
+                if let Ok(granted) = vm.attach_current_thread(|env| -> Result<bool, jni::errors::Error> {
+                    env.call_static_method(
+                        main_class,
+                        jni::jni_str!("requestMediaPermissionStatic"),
+                        jni::jni_sig!("()Z"),
+                        &[],
+                    )?
+                    .z()
+                }) {
+                    return granted;
+                }
+            }
+            false
+        })
+        .await
+        .map_err(|e| e.to_string());
+    }
+    #[cfg(not(target_os = "android"))]
+    Ok(true)
+}
+
+#[tauri::command]
 pub async fn get_recent_media(
     limit: Option<usize>,
 ) -> Result<Vec<RecentMediaItem>, String> {
     tokio::task::spawn_blocking(move || {
         let max_items = limit.unwrap_or(36);
+        #[cfg(target_os = "android")]
+        {
+            if let (Some(vm), Some(main_class)) = (
+                crate::notifications::GLOBAL_JVM.get(),
+                crate::notifications::GLOBAL_MAIN_ACTIVITY_CLASS.get(),
+            ) {
+                if let Ok(Some(json_str)) = vm.attach_current_thread(|env| -> Result<Option<String>, jni::errors::Error> {
+                    let obj = env
+                        .call_static_method(
+                            main_class,
+                            jni::jni_str!("getRecentMediaJsonStatic"),
+                            jni::jni_sig!("(I)Ljava/lang/String;"),
+                            &[jni::objects::JValue::Int(max_items as i32)],
+                        )?
+                        .l()?;
+                    if obj.is_null() {
+                        return Ok(None);
+                    }
+                    let jstr = env.cast_local::<jni::objects::JString>(obj)?;
+                    Ok(jstr.try_to_string(env).ok())
+                }) {
+                    if let Ok(items) = serde_json::from_str::<Vec<RecentMediaItem>>(&json_str) {
+                        return Ok(items);
+                    }
+                }
+            }
+            return Ok(Vec::new());
+        }
+        #[cfg(not(target_os = "android"))]
+        {
         let mut candidates = Vec::new();
 
         if let Some(p) = dirs::picture_dir() {
@@ -1369,6 +1459,7 @@ pub async fn get_recent_media(
         results.truncate(max_items);
 
         Ok(results)
+        }
     })
     .await
     .map_err(|e| e.to_string())?

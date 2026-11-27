@@ -535,6 +535,8 @@ class MaxCallSession {
   #controlChannel = null;
   #pendingCallPqHandleId = null;
   #activeChatAuthSecret = null;
+  #wantVideo = false;
+  #mediaCaptured = false;
 
   constructor() {
     if (isLinuxClient) {
@@ -633,6 +635,8 @@ class MaxCallSession {
     this.#conversationId = conversationId;
     this.#role = role;
     this.#contactPeerId = peerId;
+    this.#wantVideo = Boolean(isVideo);
+    this.#mediaCaptured = false;
     this.#pendingOffer = role === 'originator';
     this.#pendingLocalCandidates = [];
     this.#allLocalCandidates = [];
@@ -676,16 +680,19 @@ class MaxCallSession {
     } catch {}
 
     await this.#encryption.initPlain();
+    if (this.#destroyed) return;
 
     let isAutoSecure = false;
     const targetPeerId = peerId || this.#contactPeerId;
     const isGroupCall = Boolean(get(activeCall).isGroup || (get(activeCall).participants && get(activeCall).participants.length > 1));
     if (targetPeerId && !isGroupCall) {
       const resolved = await this.#resolveSharedSecret(targetPeerId);
+      if (this.#destroyed) return;
       if (resolved?.secret) {
         clearCallE2eDisabled(targetPeerId);
         this.#activeChatAuthSecret = resolved.secret;
         await this.#encryption.initFromChatSecret(resolved.secret, conversationId, role === 'originator');
+        if (this.#destroyed) return;
         isAutoSecure = true;
         const displayFp = resolved.fingerprint || this.#encryption.fingerprint;
         patchCallState({
@@ -695,6 +702,7 @@ class MaxCallSession {
           secureIncludesPassword: Boolean(resolved?.hasPassword),
         });
         await this.#syncEncryptionToMedia();
+        if (this.#destroyed) return;
       }
     }
 
@@ -712,7 +720,6 @@ class MaxCallSession {
       });
     }
 
-    await this.#captureMedia(isVideo);
     await this.#openVoiceChannel(endpoint);
   }
 
@@ -1540,6 +1547,8 @@ class MaxCallSession {
   }
 
   async #captureMedia(isVideo) {
+    if (this.#destroyed) return;
+    this.#mediaCaptured = true;
     if (this.#useStubs || get(callUseStubs)) {
       this.#syntheticAudio = createSyntheticAudioStream();
       this.#localStream = this.#syntheticAudio.stream;
@@ -1549,6 +1558,7 @@ class MaxCallSession {
         let audioConstraint = { echoCancellation: true, noiseSuppression: true, autoGainControl: true };
         if (typeof navigator !== 'undefined' && navigator.mediaDevices?.enumerateDevices) {
           const devices = await navigator.mediaDevices.enumerateDevices().catch(() => []);
+          if (this.#destroyed) return;
           const physicalMic = devices.find(d => d.kind === 'audioinput' && !/virtual|audiorelay/i.test(d.label || ''));
           if (physicalMic?.deviceId) {
             audioConstraint = { ...audioConstraint, deviceId: { exact: physicalMic.deviceId } };
@@ -1558,6 +1568,11 @@ class MaxCallSession {
           this.#localStream = await navigator.mediaDevices.getUserMedia({ audio: audioConstraint });
         } catch {
           this.#localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        }
+        if (this.#destroyed) {
+          this.#localStream?.getTracks().forEach(t => t.stop());
+          this.#localStream = null;
+          return;
         }
         patchCallState({ localStream: this.#localStream });
       } catch (e) {
@@ -1579,8 +1594,13 @@ class MaxCallSession {
 
     mediaPipeline.setSourceTracks(this.#cameraStream?.getVideoTracks()[0] || null, this.#localStream?.getAudioTracks()[0] || null);
 
-    if (isVideo) {
-      await this.enableCamera(true);
+    if (isVideo && !this.#destroyed) {
+      try {
+        await this.enableCamera(true);
+      } catch (camErr) {
+        log('[call:media] video capture failed, continuing audio-only:', camErr?.name || camErr);
+        patchCallState({ videoOn: false, cameraLoading: false });
+      }
     }
   }
 
@@ -1821,6 +1841,7 @@ class MaxCallSession {
   }
 
   async #onConnection(msg) {
+    if (this.#destroyed || _activeSession !== this) return;
     try {
       log('Processing ws2 connection message');
       const conversation = msg.conversation || {};
@@ -1886,7 +1907,13 @@ class MaxCallSession {
 
       patchCallState({ serverTopology: this.#topology });
 
+      if (!this.#mediaCaptured) {
+        await this.#captureMedia(this.#wantVideo);
+        if (this.#destroyed || _activeSession !== this) return;
+      }
+
       const pc = await this.#buildPeerConnection();
+      if (this.#destroyed || _activeSession !== this) return;
 
       await this.#voiceChannel.send('accept-call', {
         mediaSettings: {
@@ -1924,8 +1951,10 @@ class MaxCallSession {
       const targetPeerId = this.#ws2PeerId || this.#contactPeerId;
 
       if (this.#role === 'originator' || this.#role === 'joiner') {
+        if (this.#destroyed || _activeSession !== this) return;
         patchCallState({ phase: this.#role === 'originator' ? CALL_PHASE.OUTGOING : CALL_PHASE.ACTIVE });
         const offer = await pc.createOffer(OFFER_CONSTRAINTS);
+        if (this.#destroyed || _activeSession !== this) return;
         await pc.setLocalDescription(offer);
         const localSdp = this.#applyTrackLabels(pc.localDescription?.sdp || offer.sdp);
         log(`[call:sdp:local-offer] role=${this.#role}`, localSdp);
@@ -3137,6 +3166,8 @@ function _genConversationId() {
 }
 
 let _isStartingCall = false;
+let _callAttemptSeq = 0;
+let _cancelledAttemptSeq = 0;
 
 export const CallService = {
   async placeAudioCall(peerId, peerName, peerAvatar, mode = CALL_MODE.PLAIN) {
@@ -3150,10 +3181,12 @@ export const CallService = {
       showAlert('Групповые звонки временно недоступны');
       return;
     }
+    const attemptSeq = ++_callAttemptSeq;
     _isStartingCall = true;
     _closeMatchingChat(peerId);
     try {
       await this._endActive();
+      if (_cancelledAttemptSeq >= attemptSeq) return;
       patchCallState({
         phase: CALL_PHASE.CONNECTING,
         callType: 'audio',
@@ -3165,12 +3198,14 @@ export const CallService = {
       });
       const convId = _genConversationId();
       const internalParams = await _buildInternalParams();
+      if (_cancelledAttemptSeq >= attemptSeq) return;
       const resp = await invoke('begin_call', {
         calleeId: Number(peerId),
         isVideo: false,
         conversationId: convId,
         internalParams,
       });
+      if (_cancelledAttemptSeq >= attemptSeq) return;
       log('begin_call response:', resp);
       const endpoint = this._extractEndpoint(resp);
       if (!endpoint) throw new Error('No ws2 endpoint in response');
@@ -3183,7 +3218,9 @@ export const CallService = {
       stopCallAudio();
       try { if (_activeSession) await _activeSession.hangup(); } catch {}
       _activeSession = null;
-      showAlert('Не удалось начать звонок: ' + (e?.message || e));
+      if (_cancelledAttemptSeq < attemptSeq) {
+        showAlert('Не удалось начать звонок: ' + (e?.message || e));
+      }
       resetCallState();
     } finally {
       _isStartingCall = false;
@@ -3264,10 +3301,12 @@ export const CallService = {
       showAlert('Групповые видеозвонки временно недоступны');
       return;
     }
+    const attemptSeq = ++_callAttemptSeq;
     _isStartingCall = true;
     _closeMatchingChat(peerId);
     try {
       await this._endActive();
+      if (_cancelledAttemptSeq >= attemptSeq) return;
       patchCallState({
         phase: CALL_PHASE.CONNECTING,
         callType: 'video',
@@ -3279,12 +3318,14 @@ export const CallService = {
       });
       const convId = _genConversationId();
       const internalParams = await _buildInternalParams();
+      if (_cancelledAttemptSeq >= attemptSeq) return;
       const resp = await invoke('begin_call', {
         calleeId: Number(peerId),
         isVideo: true,
         conversationId: convId,
         internalParams,
       });
+      if (_cancelledAttemptSeq >= attemptSeq) return;
       log('begin_call response:', resp);
       const endpoint = this._extractEndpoint(resp);
       if (!endpoint) throw new Error('No ws2 endpoint in response');
@@ -3297,7 +3338,9 @@ export const CallService = {
       stopCallAudio();
       try { if (_activeSession) await _activeSession.hangup(); } catch {}
       _activeSession = null;
-      showAlert('Не удалось начать видеозвонок: ' + (e?.message || e));
+      if (_cancelledAttemptSeq < attemptSeq) {
+        showAlert('Не удалось начать видеозвонок: ' + (e?.message || e));
+      }
       resetCallState();
     } finally {
       _isStartingCall = false;
@@ -3609,6 +3652,8 @@ export const CallService = {
   },
 
   async hangup() {
+    _cancelledAttemptSeq = _callAttemptSeq;
+    const seqSnapshot = _callAttemptSeq;
     stopCallAudio();
     invoke('cancel_call_notification').catch(() => {});
     cancelDesktopCallNotification().catch(() => {});
@@ -3625,7 +3670,9 @@ export const CallService = {
       }
     } else {
       setTimeout(() => {
-        resetCallState();
+        if (_callAttemptSeq === seqSnapshot && !_activeSession) {
+          resetCallState();
+        }
       }, 320);
     }
   },

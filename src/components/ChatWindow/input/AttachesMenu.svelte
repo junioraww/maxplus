@@ -19,6 +19,7 @@
   let activeTab = "gallery";
   let recentMedia = [];
   let loadingRecent = false;
+  let hasMediaPermission = true;
 
   // Check if we are in a mobile environment (Android / iOS)
   const isMobile =
@@ -157,13 +158,19 @@
   }
 
   async function loadRecentMedia() {
-    if (isMobile) return;
     loadingRecent = true;
     try {
       const invokeFn =
         typeof invoke === "function"
           ? invoke
           : window?.__TAURI_INTERNALS__?.invoke || (async () => []);
+      if (isMobile) {
+        hasMediaPermission = await invokeFn("check_media_permission").catch(() => false);
+        if (!hasMediaPermission) {
+          recentMedia = [];
+          return;
+        }
+      }
       const res = await invokeFn("get_recent_media", { limit: 40 }).catch(
         () => []
       );
@@ -173,6 +180,20 @@
     } finally {
       loadingRecent = false;
     }
+  }
+
+  async function handleRequestMediaPermission() {
+    try {
+      const invokeFn =
+        typeof invoke === "function"
+          ? invoke
+          : window?.__TAURI_INTERNALS__?.invoke || (async () => false);
+      const granted = await invokeFn("request_media_permission").catch(() => false);
+      hasMediaPermission = Boolean(granted);
+      if (hasMediaPermission) {
+        await loadRecentMedia();
+      }
+    } catch {}
   }
 
   onMount(() => {
@@ -250,24 +271,46 @@
       ></div>
     </div>
 
-    {#if isMobile}
-      <!-- Mobile Only: Android / iOS camera & runtime permissions -->
-      <button type="button" class="camera-access-card" on:click={() => handleSelect("PHOTO")}>
-        <span class="mask-icon camera-icon" style="-webkit-mask-image: url('/icons/camera-plus.svg'); mask-image: url('/icons/camera-plus.svg'); width: 34px; height: 34px;"></span>
-        <span class="camera-access-text">Разрешить доступ к камере</span>
-      </button>
+    {#if activeTab === "file"}
+      <div class="desktop-media-section" transition:fade={{ duration: 120 }}>
+        <div class="desktop-media-header">
+          <div class="desktop-media-icon-wrap">
+            <span class="mask-icon" style="-webkit-mask-image: url('/icons/file.svg'); mask-image: url('/icons/file.svg'); width: 30px; height: 30px; background-color: #38bdf8;"></span>
+          </div>
+          <div class="desktop-media-texts">
+            <div class="desktop-media-title">Отправка файлов</div>
+            <div class="desktop-media-subtitle">
+              Документы, архивы, аудио и другие файлы любого формата без сжатия
+            </div>
+          </div>
+        </div>
 
+        <div class="desktop-actions-grid">
+          <button
+            type="button"
+            class="desktop-main-action-btn primary"
+            on:click={() => handleSelect("FILE")}
+          >
+            <span class="mask-icon action-btn-icon" style="-webkit-mask-image: url('/icons/file.svg'); mask-image: url('/icons/file.svg'); width: 20px; height: 20px; background-color: #ffffff;"></span>
+            <span>{isMobile ? "Выбрать файл" : "Выбрать файл на компьютере"}</span>
+          </button>
+        </div>
+      </div>
+    {:else if isMobile && !hasMediaPermission}
       <div class="media-permission-section">
         <div class="permission-title">Нет доступа к файлам и медиа</div>
         <div class="permission-subtitle">
-          Разрешите доступ, чтобы отправлять фотографии и видео с этого устройства
+          Разрешите доступ, чтобы видеть список фотографий и видео с устройства
         </div>
-        <button type="button" class="permission-action-btn" on:click={() => handleSelect("PHOTO")}>
+        <button type="button" class="permission-action-btn" on:click={handleRequestMediaPermission}>
           Разрешить доступ
+        </button>
+        <button type="button" class="desktop-secondary-btn" on:click={() => handleSelect("PHOTO")}>
+          <span class="mask-icon" style="-webkit-mask-image: url('/icons/image-plus.svg'); mask-image: url('/icons/image-plus.svg'); width: 15px; height: 15px; background-color: #8a8d9b;"></span>
+          <span>Выбрать через проводник</span>
         </button>
       </div>
     {:else}
-      <!-- Desktop (Linux / macOS / Windows / Browser): Recent media & file actions -->
       {#if activeTab === "gallery"}
         <div class="desktop-gallery-wrap" transition:fade={{ duration: 120 }}>
           <div class="gallery-top-bar">
@@ -366,31 +409,6 @@
             >
               <span class="mask-icon" style="-webkit-mask-image: url('/icons/file.svg'); mask-image: url('/icons/file.svg'); width: 15px; height: 15px; background-color: #8a8d9b;"></span>
               <span>Отправить без сжатия (как файл)</span>
-            </button>
-          </div>
-        </div>
-      {:else if activeTab === "file"}
-        <div class="desktop-media-section" transition:fade={{ duration: 120 }}>
-          <div class="desktop-media-header">
-            <div class="desktop-media-icon-wrap">
-              <span class="mask-icon" style="-webkit-mask-image: url('/icons/file.svg'); mask-image: url('/icons/file.svg'); width: 30px; height: 30px; background-color: #38bdf8;"></span>
-            </div>
-            <div class="desktop-media-texts">
-              <div class="desktop-media-title">Отправка файлов</div>
-              <div class="desktop-media-subtitle">
-                Документы, архивы, аудио и другие файлы любого формата без сжатия
-              </div>
-            </div>
-          </div>
-
-          <div class="desktop-actions-grid">
-            <button
-              type="button"
-              class="desktop-main-action-btn primary"
-              on:click={() => handleSelect("FILE")}
-            >
-              <span class="mask-icon action-btn-icon" style="-webkit-mask-image: url('/icons/file.svg'); mask-image: url('/icons/file.svg'); width: 20px; height: 20px; background-color: #ffffff;"></span>
-              <span>Выбрать файл на компьютере</span>
             </button>
           </div>
         </div>
