@@ -91,8 +91,12 @@ open class RustPlugin : Plugin<Project> {
 
                     buildTask.dependsOn(targetBuildTask)
                     tasks.matching {
-                        it.name.startsWith("merge") &&
-                        it.name.endsWith("${targetArchCapitalized}${profileCapitalized}JniLibFolders")
+                        val prefix = "merge$targetArchCapitalized"
+                        val suffix = "${profileCapitalized}JniLibFolders"
+                        it.name.startsWith(prefix) &&
+                        it.name.endsWith(suffix) &&
+                        (it.name.length == prefix.length + suffix.length ||
+                         it.name[prefix.length].isUpperCase())
                     }.configureEach {
                         dependsOn(targetBuildTask)
                     }

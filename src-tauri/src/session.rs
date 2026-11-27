@@ -119,6 +119,7 @@ pub fn is_notify_when_inactive_at(root: &Path, local_id: u64) -> bool {
         .unwrap_or(true)
 }
 
+#[cfg(not(target_os = "android"))]
 fn is_chat_muted_at(paths: &Paths, key: Option<[u8; 32]>, chat_id: i64) -> bool {
     let Some(val) = Storage::new(key).load(paths.info(chat_id)) else {
         return false;

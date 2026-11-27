@@ -29,16 +29,17 @@ class MessagingService : FirebaseMessagingService() {
             return
         }
 
+        val account = (data["account_id"] ?: data["c"])?.toLongOrNull() ?: 0L
         val chatId = (data["mc"] ?: data["chat_id"])?.toLongOrNull() ?: return
         val mid = data["msgid"] ?: data["mid"] ?: ""
 
         when {
             type == "edit" || data.containsKey("edit") -> {
                 val text = data["msg"] ?: data["body"] ?: data["text"] ?: ""
-                NotificationDispatcher.dispatchMessageEdited(this, chatId, mid, text)
+                NotificationDispatcher.dispatchMessageEdited(this, account, chatId, mid, text)
             }
             type == "delete" || data.containsKey("delete") -> {
-                NotificationDispatcher.dispatchMessageRemoved(this, chatId, mid)
+                NotificationDispatcher.dispatchMessageRemoved(this, account, chatId, mid)
             }
             else -> {
                 val notifier = NotificationHelper(this)

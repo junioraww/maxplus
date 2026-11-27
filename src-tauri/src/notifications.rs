@@ -432,6 +432,7 @@ pub fn resolve_contact_info_internal(
                 let url_clone = url.clone();
                 let target_file = cached_file.clone();
                 let downloaded = std::thread::spawn(move || {
+                    rumax::ensure_tls_provider();
                     let mut builder = reqwest::blocking::Client::builder()
                         .timeout(Duration::from_secs(4));
                     if let Some(proxy_cfg) = rumax::get_global_proxy_config() {

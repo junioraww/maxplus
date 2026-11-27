@@ -99,6 +99,7 @@ impl<R: tauri::Runtime> tauri::plugin::Plugin<R> for CamouflageBootPlugin {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    rumax::ensure_tls_provider();
     ssl::init_ssl_certificates();
     video::start_video_proxy();
     webapp_proxy::start_webapp_proxy();

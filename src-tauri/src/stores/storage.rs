@@ -31,6 +31,7 @@ static PENDING_WRITES: LazyLock<Mutex<HashMap<PathBuf, (Value, Option<[u8; 32]>)
 static SCHEDULED_PATHS: LazyLock<Mutex<HashSet<PathBuf>>> =
     LazyLock::new(|| Mutex::new(HashSet::new()));
 
+#[cfg(not(target_os = "android"))]
 pub fn flush_pending_writes() {
     let items: Vec<(PathBuf, (Value, Option<[u8; 32]>))> = {
         let mut pending = PENDING_WRITES.lock().unwrap();
