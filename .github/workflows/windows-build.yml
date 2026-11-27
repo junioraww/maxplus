@@ -52,11 +52,18 @@ jobs:
 
       - run: bun run tauri icon static/favicon.png
 
-      - run: bunx tauri build
+      - run: |
+          $ver = (Get-Content src-tauri/tauri.conf.json -Raw | ConvertFrom-Json).version
+          if ($ver -match '-') {
+            bunx tauri build --bundles nsis
+          } else {
+            bunx tauri build
+          }
 
       - uses: actions/upload-artifact@v6
         with:
             name: maxplus-windows
             path: |
               src-tauri/target/release/*.exe
+              src-tauri/target/release/bundle/**/*.exe
               src-tauri/target/release/bundle/**/*.msi
