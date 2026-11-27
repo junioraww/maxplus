@@ -95,26 +95,42 @@ pub extern "system" fn Java_me_junioraww_max_ReplyReceiver_sendReplyNative<'loca
                     );
 
                     let network_task = async {
+                        let shared = crate::state::shared_client();
+                        let reuse_shared = shared.is_connected().await
+                            && shared.is_synced().await
+                            && shared.get_user_id().await == Some(server_user_id);
+
+                        let mut params = None;
+                        if mid != 0 {
+                            let mut map = HashMap::new();
+                            map.insert("replyTo".to_string(), json!(mid.to_string()));
+                            params = Some(map);
+                        }
+
+                        if reuse_shared {
+                            return match shared.send_message(chat_id, rust_text, params).await {
+                                Ok(_) => {
+                                    android_log(4, "MaxPlusJNI", "sendReplyNative: message sent via shared session!");
+                                    true
+                                }
+                                Err(e) => {
+                                    android_log(6, "MaxPlusJNI", &format!("sendReplyNative: send_message failed: {:?}", e));
+                                    false
+                                }
+                            };
+                        }
+
                         let _guard = get_background_sync_mutex().lock().await;
                         let client = rumax::MaxClient::new();
                         client.set_user_id(server_user_id).await;
                         client.set_token(token).await;
 
-                        android_log(3, "MaxPlusJNI", "sendReplyNative: connecting via mobile transport...");
+                        android_log(3, "MaxPlusJNI", "sendReplyNative: connecting ephemeral client...");
                         let connected = client.connect(identity, true).await.is_ok();
 
                         if connected {
-                            android_log(3, "MaxPlusJNI", "sendReplyNative: connected, starting sync...");
                             match client.sync(None).await {
                                 Ok(_) => {
-                                    android_log(3, "MaxPlusJNI", "sendReplyNative: sync succeeded, preparing message...");
-                                    let mut params = None;
-                                    if mid != 0 {
-                                        let mut map = HashMap::new();
-                                        map.insert("replyTo".to_string(), json!(mid.to_string()));
-                                        params = Some(map);
-                                    }
-
                                     let send_result = client.send_message(chat_id, rust_text, params).await;
                                     client.disconnect().await;
                                     match send_result {
@@ -312,46 +328,58 @@ pub fn resolve_contact_info_internal(
                     .ok()?;
                 rt.block_on(async {
                     tokio::time::timeout(std::time::Duration::from_secs(3), async {
-                        let client = rumax::MaxClient::new();
-                        client.set_user_id(server_user_id).await;
-                        client.set_token(token).await;
+                        let shared = crate::state::shared_client();
+                        let reuse_shared = shared.is_connected().await
+                            && shared.is_synced().await
+                            && shared.get_user_id().await == Some(server_user_id);
 
-                        if client.connect(identity, true).await.is_ok() {
-                            if client.sync(None).await.is_ok() {
-                                let mut found_name = None;
-                                let mut found_url = None;
-                                if id > 0 {
-                                    if let Ok(resp) = client.fetch_contacts(vec![id as u64]).await {
-                                        if let Some(contacts) = resp.payload.get("contacts").and_then(|c| c.as_array()) {
-                                            if let Some(c) = contacts.first() {
-                                                let storage = crate::stores::Storage::new(None);
-                                                let _ = fs::create_dir_all(data_dir_clone.join("contacts"));
-                                                let _ = storage.save(&contact_path_clone, c);
-                                                found_name = extract_contact_name(c);
-                                                found_url = extract_avatar_url(c);
-                                            }
-                                        }
-                                    }
-                                } else {
-                                    if let Ok(resp) = client.get_chats(vec![id]).await {
-                                        if let Some(chats) = resp.payload.get("chats").and_then(|c| c.as_array()) {
-                                            if let Some(c) = chats.first() {
-                                                let storage = crate::stores::Storage::new(None);
-                                                let chat_dir = data_dir_clone.join("chats").join(id.to_string());
-                                                let _ = fs::create_dir_all(&chat_dir);
-                                                let _ = storage.save(chat_dir.join("info"), c);
-                                                found_name = extract_contact_name(c);
-                                                found_url = extract_avatar_url(c);
-                                            }
-                                        }
+                        let temp_client;
+                        let active_client: &rumax::MaxClient = if reuse_shared {
+                            shared
+                        } else {
+                            temp_client = rumax::MaxClient::new();
+                            temp_client.set_user_id(server_user_id).await;
+                            temp_client.set_token(token).await;
+                            if temp_client.connect(identity, true).await.is_err() {
+                                return None;
+                            }
+                            if temp_client.sync(None).await.is_err() {
+                                temp_client.disconnect().await;
+                                return None;
+                            }
+                            &temp_client
+                        };
+
+                        let mut found_name = None;
+                        let mut found_url = None;
+                        if id > 0 {
+                            if let Ok(resp) = active_client.fetch_contacts(vec![id as u64]).await {
+                                if let Some(contacts) = resp.payload.get("contacts").and_then(|c| c.as_array()) {
+                                    if let Some(c) = contacts.first() {
+                                        let storage = crate::stores::Storage::new(key);
+                                        let _ = fs::create_dir_all(data_dir_clone.join("contacts"));
+                                        let _ = storage.save(&contact_path_clone, c);
+                                        found_name = extract_contact_name(c);
+                                        found_url = extract_avatar_url(c);
                                     }
                                 }
-                                client.disconnect().await;
-                                return Some((found_name, found_url));
                             }
-                            client.disconnect().await;
+                        } else if let Ok(resp) = active_client.get_chats(vec![id]).await {
+                            if let Some(chats) = resp.payload.get("chats").and_then(|c| c.as_array()) {
+                                if let Some(c) = chats.first() {
+                                    let storage = crate::stores::Storage::new(key);
+                                    let chat_dir = data_dir_clone.join("chats").join(id.to_string());
+                                    let _ = fs::create_dir_all(&chat_dir);
+                                    let _ = storage.save(chat_dir.join("info"), c);
+                                    found_name = extract_contact_name(c);
+                                    found_url = extract_avatar_url(c);
+                                }
+                            }
                         }
-                        None
+                        if !reuse_shared {
+                            active_client.disconnect().await;
+                        }
+                        Some((found_name, found_url))
                     }).await.ok().flatten()
                 })
             }).join().ok().flatten();

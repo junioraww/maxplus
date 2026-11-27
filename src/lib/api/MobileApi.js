@@ -2,6 +2,7 @@ import { listen } from "@tauri-apps/api/event";
 import { goto } from "$app/navigation";
 import { get } from "svelte/store";
 import { pluginEmit } from "$lib/plugins/events";
+import { ensureOpcodeHookListener } from "$lib/plugins/opcodeMiddleware";
 import { dismissRequest } from "$components/ChatWindow/e2e";
 
 import { invoke } from "$lib/utils/invoke";
@@ -96,6 +97,7 @@ export default class MobileApi extends BaseAPI {
   synchronizedPending = true;
   synchronized = new Promise((resolve) => (this.resolve_sync = resolve));
   latest_init = null;
+  latest_init_sync = false;
   unlisten = null;
   notify = {};
   savedMessages = {};
@@ -105,10 +107,6 @@ export default class MobileApi extends BaseAPI {
   constructor(token) {
     super(token);
     if (typeof window !== "undefined") {
-      try {
-        const cachedCfg = JSON.parse(localStorage.getItem("max_server_config") || "{}");
-        if (cachedCfg && Object.keys(cachedCfg).length) serverConfig.set(cachedCfg);
-      } catch {}
       window.addEventListener("online", () => {
         if (!sessionGet("connected") && get(currentUser)) {
           this.reconnectAttempts = 0;
@@ -144,39 +142,15 @@ export default class MobileApi extends BaseAPI {
   }
 
   async reconnect() {
-    sessionSet("connected", false);
-    sessionSet("sync", false);
-    if (!this.synchronizedPending) {
-      this.synchronizedPending = true;
-      this.synchronized = new Promise((resolve) => (this.resolve_sync = resolve));
-    }
     if (this.reconnectPromise) return this.reconnectPromise;
 
     this.reconnectPromise = (async () => {
       try {
-        while (!sessionGet("connected")) {
-          const current = get(currentUser);
-          if (current === null || current === undefined) {
-            break;
-          }
-
-          const delay = this.reconnectAttempts === 0
-            ? 500
-            : Math.min(1000 * Math.pow(1.5, this.reconnectAttempts), 10000);
-          await new Promise((r) => setTimeout(r, delay));
-
-          try {
-            const success = await this.init(true, true);
-            if (success) {
-              this.reconnectAttempts = 0;
-              break;
-            }
-          } catch (err) {
-            console.error(err);
-          }
-
-          this.reconnectAttempts++;
+        const current = get(currentUser);
+        if (current === null || current === undefined) {
+          return false;
         }
+        return await this.init(true, true);
       } finally {
         this.reconnectPromise = null;
       }
@@ -186,13 +160,62 @@ export default class MobileApi extends BaseAPI {
   }
 
   async startListener() {
+    ensureOpcodeHookListener();
+    if (this.unlisten) {
+      this.unlisten();
+      this.unlisten = null;
+    }
+    if (this.unlistenOnline) {
+      this.unlistenOnline();
+      this.unlistenOnline = null;
+    }
+    if (this.unlistenExpired) {
+      this.unlistenExpired();
+      this.unlistenExpired = null;
+    }
+    if (this.unlistenForeground) {
+      this.unlistenForeground();
+      this.unlistenForeground = null;
+    }
+
+    this.unlistenForeground = await listen("session:foreground", async () => {
+      if (!sessionGet("sync")) return;
+      try {
+        const chats = await loadChats();
+        for (const c of chats) {
+          getChat(c.id).chatInfo.set(c);
+        }
+        const myId = get(currentUser);
+        const active = chats.filter((c) => isChatInUserList(c, myId));
+        currentRealChats.set(active.map((x) => x.id));
+      } catch {}
+    });
+
+    this.unlistenOnline = await listen("session:online", async (event) => {
+      const snapshot = event?.payload?.snapshot;
+      sessionSet("connected", true);
+      if (snapshot) {
+        try {
+          const account = await getCurrentAccount();
+          if (account) {
+            await this.hydrateSessionSnapshot(account, snapshot, 0);
+          }
+        } catch (e) {
+          console.error(e);
+        }
+      }
+    });
+
+    this.unlistenExpired = await listen("session:expired", async () => {
+      await this.logout().catch(() => {});
+    });
+
     this.unlisten = await listen("max", async (event) => {
       const { payload } = event;
 
       if (payload.type === "log") {
         if (payload.response === "closed") {
           sessionSet("connected", false);
-          this.reconnect();
         }
         return;
       }
@@ -417,31 +440,16 @@ export default class MobileApi extends BaseAPI {
           updateContact(contact);
           if (Number(contact.id) === Number(get(currentUser))) {
             currentUserDetails.set(contact);
-            const acc = await getCurrentAccount().catch(() => null);
-            if (acc?.id) {
-              await setAccountContact(acc.id, contact).catch(() => {});
-            }
           }
         }
       } else if (opc === 134) {
         const cfg = response.payload?.config || response.payload;
         if (cfg?.chats && typeof cfg.chats === "object") {
-          const updatedList = [];
           for (const [cidKey, chatConf] of Object.entries(cfg.chats)) {
             if (!chatConf || typeof chatConf !== "object") continue;
             const ddu = chatConf.dontDisturbUntil ?? chatConf.chatSettings?.dontDisturbUntil ?? chatConf.options?.sound?.dontDisturbUntil;
             if (ddu === undefined) continue;
-            const chat = getChat(cidKey);
-            let updated = null;
-            chat.chatInfo.update((current) => {
-              if (!current) return current;
-              updated = { ...current, dontDisturbUntil: ddu };
-              return updated;
-            });
-            if (updated) updatedList.push(updated);
-          }
-          if (updatedList.length > 0) {
-            await saveChats(updatedList).catch(() => {});
+            getChat(cidKey).chatInfo.update((current) => (current ? { ...current, dontDisturbUntil: ddu } : current));
           }
         }
         if (cfg?.user) {
@@ -452,19 +460,11 @@ export default class MobileApi extends BaseAPI {
         const chatPayload = response.payload?.chat;
         if (chatPayload && chatPayload.id != null) {
           const ddu = chatPayload.dontDisturbUntil ?? chatPayload.chatSettings?.dontDisturbUntil ?? chatPayload.options?.sound?.dontDisturbUntil;
-          const chat = getChat(chatPayload.id);
-          let mergedChat = null;
-          chat.chatInfo.update((current) => {
-            mergedChat = {
-              ...(current || {}),
-              ...chatPayload,
-              ...(ddu !== undefined ? { dontDisturbUntil: ddu } : {}),
-            };
-            return mergedChat;
-          });
-          if (mergedChat) {
-            await saveChats([mergedChat]).catch(() => {});
-          }
+          getChat(chatPayload.id).chatInfo.update((current) => ({
+            ...(current || {}),
+            ...chatPayload,
+            ...(ddu !== undefined ? { dontDisturbUntil: ddu } : {}),
+          }));
         }
       } else if (opc === 137) {
         if (response.payload) {
@@ -479,10 +479,6 @@ export default class MobileApi extends BaseAPI {
           };
           currentUserDetails.set(fullContact);
           updateContact(fullContact);
-          const acc = await getCurrentAccount().catch(() => null);
-          if (acc?.id) {
-            await setAccountContact(acc.id, fullContact).catch(() => {});
-          }
         }
       } else if (opc === 216) {
         if (response.payload) {
@@ -498,9 +494,7 @@ export default class MobileApi extends BaseAPI {
           const counters = p.counters || rInfo.counters || [];
           const yourReaction = p.yourReaction !== undefined ? p.yourReaction : rInfo.yourReaction;
           const chat = getChat(chatId);
-          const myId = Number(get(currentUser));
 
-          // Notify open chat window immediately
           chat.reactionUpdate?.set?.({
             chatId,
             messageId,
@@ -513,7 +507,6 @@ export default class MobileApi extends BaseAPI {
           const isChatOpen = openedChats.some((id) => String(id) === String(chatId));
           const isSelf = opc === 156 || (yourReaction != null && totalCount > 0);
 
-          let updatedChat = null;
           chat.chatInfo.update((current) => {
             if (!current) return current;
             const prev = { ...current };
@@ -521,32 +514,23 @@ export default class MobileApi extends BaseAPI {
             const lastReactionEmoji = (typeof rawReaction === "object" ? rawReaction?.id : rawReaction) || "❤️";
 
             if (isChatOpen || isSelf) {
-              // If the chat is open, or it was our own action, we don't increment unread badges.
-              // If all reactions removed or user is inside chat viewing it, clear badge.
               if (totalCount === 0 || isChatOpen) {
                 prev.hasReaction = false;
                 prev.unreadReactions = 0;
                 prev.lastReaction = null;
               }
             } else if (totalCount > 0) {
-              // Remote user added/changed reaction on our message while chat is not open
               prev.hasReaction = true;
               prev.lastReaction = lastReactionEmoji;
               prev.unreadReactions = 1;
             } else {
-              // Remote user removed all reactions on this message
               prev.hasReaction = false;
               prev.unreadReactions = 0;
               prev.lastReaction = null;
             }
 
-            updatedChat = prev;
             return prev;
           });
-
-          if (updatedChat) {
-            await saveChats([updatedChat]).catch(() => {});
-          }
 
           pluginEmit("message:reactions", {
             chatId,
@@ -592,7 +576,7 @@ export default class MobileApi extends BaseAPI {
 
     this.initializing = (async () => {
       try {
-        if (!isReconnect && this.latest_init > Date.now() - 3000) {
+        if (!isReconnect && this.latest_init && this.latest_init_sync === forceSync && this.latest_init > Date.now() - 3000) {
           return false;
         }
 
@@ -608,14 +592,40 @@ export default class MobileApi extends BaseAPI {
         loadAccountNotificationSettings(account.id);
 
         if (this.unlisten) await this.unlisten();
-        this.startListener();
+        await this.startListener();
 
         this.latest_init = Date.now();
+        this.latest_init_sync = forceSync;
         sessionSet("connected", false);
         sessionSet("sync", false);
         if (!this.synchronizedPending) {
           this.synchronizedPending = true;
           this.synchronized = new Promise((resolve) => (this.resolve_sync = resolve));
+        }
+
+        if (forceSync) {
+          const t0 = Date.now();
+          const res = await invoke("attach_ui_session", {
+            accountId: account.id,
+          });
+          const rtt = Date.now() - t0;
+          const isError = !res || Boolean(res.error) || !res.snapshot;
+          if (!isError) {
+            sessionSet("connected", true);
+            await this.hydrateSessionSnapshot(account, res.snapshot, rtt);
+            return true;
+          }
+          this.latest_init = 0;
+          sessionSet("connected", false);
+          sessionSet("sync", false);
+          this.synchronizedPending = false;
+          if (this.resolve_sync) {
+            this.resolve_sync();
+          }
+          if (!isReconnect) {
+            alert(res?.message || res?.text || res?.error || "Ошибка подключения");
+          }
+          return false;
         }
 
         const response = await invoke("init", {
@@ -631,11 +641,9 @@ export default class MobileApi extends BaseAPI {
           if (response?.isVpn) {
             vpnStatus.update(s => ({ ...s, is_vpn: true, server_detected: true }));
           }
-          if (forceSync) {
-            await this.sync();
-          }
           return true;
         } else {
+          this.latest_init = 0;
           sessionSet("connected", false);
           sessionSet("sync", false);
           this.synchronizedPending = false;
@@ -647,6 +655,9 @@ export default class MobileApi extends BaseAPI {
           }
           return false;
         }
+      } catch (e) {
+        this.latest_init = 0;
+        throw e;
       } finally {
         this.initializing = null;
       }
@@ -972,69 +983,40 @@ export default class MobileApi extends BaseAPI {
       this.resolve_sync();
     }
     this.synchronized = new Promise((resolve) => (this.resolve_sync = resolve));
+    if (this.unlisten) {
+      this.unlisten();
+      this.unlisten = null;
+    }
+    if (this.unlistenOnline) {
+      this.unlistenOnline();
+      this.unlistenOnline = null;
+    }
+    if (this.unlistenExpired) {
+      this.unlistenExpired();
+      this.unlistenExpired = null;
+    }
+    if (this.unlistenForeground) {
+      this.unlistenForeground();
+      this.unlistenForeground = null;
+    }
+    invoke("detach_ui_session").catch(() => {});
     invoke("disconnect").catch(() => {});
     invoke("lock_crypto_session").catch(() => {});
   }
 
-  async sync() {
-    if (this.syncing) {
-      return this.syncing;
-    }
-    if (sessionGet("sync")) {
-      console.warn("Уже синхронизовано!");
-      return;
-    }
+  async hydrateSessionSnapshot(account, snapshot, rtt = 0) {
+    if (!snapshot) return null;
+    let hasNewCalls = Boolean(snapshot.videoChatHistory);
 
-    this.syncing = (async () => {
-      let hasNewCalls = false;
-      try {
-        console.warn("Синхронизируем!");
+    try {
+      if (snapshot.time) {
+        const offset = Math.ceil(snapshot.time - (Date.now() - rtt / 2));
+        sessionSet("drift", offset);
+      }
 
-        const account = await getCurrentAccount();
-        console.log('Current account', account);
+      const { chats = [], contacts = [], profile, folders, serverConfig: srvCfg, userSettings, presence } = snapshot;
 
-        const t0 = Date.now();
-        let synced = null;
-        for (let attempt = 0; attempt < 3; attempt++) {
-          try {
-            synced = await invoke("sync_client", {
-              accountId: account.id
-            });
-            if (synced && !synced.error && (!synced.type || synced.type === "ApiResponse") && !synced.text) {
-              break;
-            }
-          } catch (err) {
-            const errStr = typeof err === "object" ? (err.text || err.message || JSON.stringify(err)) : String(err);
-            if (attempt < 2 && (errStr.includes("channel closed") || errStr.includes("OneshotRecvError") || errStr.includes("ConnectionClosed") || errStr.includes("Not connected") || errStr.includes("Соединение закрыто"))) {
-              await new Promise(r => setTimeout(r, 600 * (attempt + 1)));
-              continue;
-            }
-            throw err;
-          }
-        }
-        const t1 = Date.now();
-
-        const isError = !synced || Boolean(synced.error) || (synced.type && synced.type !== "ApiResponse") || Boolean(synced.text);
-        if (isError) {
-          sessionSet("sync", false);
-          return null;
-        }
-
-        if (synced?.token && account?.meta) {
-          account.meta.token = synced.token;
-        }
-
-      const rtt = t1 - t0;
-      const offset = Math.ceil(synced.time - (t0 + rtt / 2));
-
-      sessionSet("drift", offset);
-
-      console.log("Ответ sync", synced);
-
-      const { chats, contacts, profile, config } = synced;
-      hasNewCalls = Boolean(synced?.videoChatHistory);
-
-      if (profile.contact) {
+      if (profile?.contact) {
         const fullContact = {
           ...profile.contact,
           profileOptions: profile.profileOptions || profile.contact.profileOptions,
@@ -1053,19 +1035,8 @@ export default class MobileApi extends BaseAPI {
       );
       let requireInfo = new Set();
 
-      if (chats.length) {
-        const configChats = config?.chats || {};
-        const mergedChats = chats.map((chat) => {
-          const chatConfig = configChats[String(chat.id)] || configChats[chat.id];
-          const ddu = chatConfig?.dontDisturbUntil ?? chatConfig?.chatSettings?.dontDisturbUntil ?? chatConfig?.options?.sound?.dontDisturbUntil ?? chat.dontDisturbUntil ?? chat.chatSettings?.dontDisturbUntil ?? chat.options?.sound?.dontDisturbUntil;
-          if (ddu != null) {
-            return { ...chat, dontDisturbUntil: ddu };
-          }
-          return chat;
-        });
-        await saveChats(mergedChats);
-
-        mergedChats.forEach((chat) => {
+      if (Array.isArray(chats) && chats.length) {
+        chats.forEach((chat) => {
           if (chat.type === "DIALOG" && chat.participants) {
             Object.keys(chat.participants).forEach((member) => {
               const memId = Number(member);
@@ -1077,68 +1048,50 @@ export default class MobileApi extends BaseAPI {
         });
       }
 
-      if (Array.isArray(contacts)) {
-        currentRealContacts.set(contacts.map(c => c.id));
-        contacts.forEach(c => updateContact(c));
+      if (Array.isArray(contacts) && contacts.length) {
+        currentRealContacts.set(contacts.map((c) => c.id));
+        contacts.forEach((c) => updateContact(c));
       }
 
       if (requireInfo.size) {
         await syncContacts(contacts, requireInfo);
       }
 
-      const currentChats = await loadChats();
-      const configChats = config?.chats || {};
-      const updatedExisting = [];
-      const updatedCurrentChats = currentChats.map((c) => {
-        const conf = configChats[String(c.id)] || configChats[c.id];
-        const ddu = conf?.dontDisturbUntil ?? conf?.chatSettings?.dontDisturbUntil ?? conf?.options?.sound?.dontDisturbUntil;
-        if (ddu != null && ddu !== c.dontDisturbUntil) {
-          const updated = { ...c, dontDisturbUntil: ddu };
-          updatedExisting.push(updated);
-          return updated;
-        }
-        return c;
-      });
-      if (updatedExisting.length) {
-        await saveChats(updatedExisting);
-      }
-      for (const c of updatedCurrentChats) {
+      const currentChats = Array.isArray(chats) && chats.length ? chats : await loadChats();
+      for (const c of currentChats) {
         getChat(c.id).chatInfo.set(c);
       }
       const myCurrentId = profile?.contact?.id || get(currentUser);
-      const userActiveChats = updatedCurrentChats.filter(c => isChatInUserList(c, myCurrentId));
-      currentRealChats.set(userActiveChats.map(x => x.id));
+      const userActiveChats = currentChats.filter((c) => isChatInUserList(c, myCurrentId));
+      currentRealChats.set(userActiveChats.map((x) => x.id));
 
-      const telemetrySetupResp = await invoke("set_chats_for_telemetry", {
-        chats: currentChats.map(c => ({ chatId: c.id, chatType: c.type }))
-      });
+      invoke("set_chats_for_telemetry", {
+        chats: currentChats.map((c) => ({ chatId: c.id, chatType: c.type })),
+      }).catch(() => {});
 
-      console.log('Set chats for telemetry', telemetrySetupResp);
-
-      if (config?.chatFolders?.FOLDERS) {
-        const sorted = sortFolders(config.chatFolders.FOLDERS, config.chatFolders.foldersOrder || []);
+      if (folders?.FOLDERS) {
+        const sorted = sortFolders(folders.FOLDERS, folders.foldersOrder || []);
         currentFolders.set(sorted);
+      } else if (Array.isArray(folders) && folders.length) {
+        currentFolders.set(folders);
       } else {
         this.getFolders().catch(() => {});
       }
 
-      if (synced.presence && typeof synced.presence === "object") {
-        applyPresenceMap(synced.presence, 0);
+      if (presence && typeof presence === "object") {
+        applyPresenceMap(presence, 0);
       }
 
-      if (config?.server) {
-        serverConfig.set(config.server);
-        try {
-          localStorage.setItem("max_server_config", JSON.stringify(config.server));
-        } catch {}
+      if (srvCfg && typeof srvCfg === "object") {
+        serverConfig.set(srvCfg);
       }
 
-      if (config?.user) {
-        applyUserConfig(config.user, account.id);
-        applyPrivacyConfig(config.user, account.id);
+      if (userSettings && typeof userSettings === "object") {
+        applyUserConfig(userSettings, account.id);
+        applyPrivacyConfig(userSettings, account.id);
       }
 
-      const entryBanners = config?.server?.["settings-entry-banners"];
+      const entryBanners = srvCfg?.["settings-entry-banners"];
       if (Array.isArray(entryBanners)) {
         for (const banner of entryBanners) {
           const items = banner?.items;
@@ -1174,10 +1127,7 @@ export default class MobileApi extends BaseAPI {
       if (this.resolve_sync) {
         this.resolve_sync();
       }
-      this.syncing = null;
       if (sessionGet("sync")) {
-        console.log("Синхронизация завершена!");
-
         ensureReactionsLoaded().catch(() => {});
         loadStoriesCacheFromDisk().then(() => refreshStoriesFeed(this)).catch(() => {});
         if (hasNewCalls) {
@@ -1194,10 +1144,51 @@ export default class MobileApi extends BaseAPI {
         }
       }
     }
-  })();
 
-  return await this.syncing;
-}
+    return snapshot;
+  }
+
+  async sync() {
+    if (this.syncing) {
+      return this.syncing;
+    }
+    if (sessionGet("sync")) {
+      return;
+    }
+
+    this.syncing = (async () => {
+      try {
+        const account = await getCurrentAccount();
+        const t0 = Date.now();
+        const res = await invoke("attach_ui_session", {
+          accountId: account.id,
+        });
+        const rtt = Date.now() - t0;
+        if (!res || res.error || !res.snapshot) {
+          sessionSet("sync", false);
+          return null;
+        }
+        sessionSet("connected", true);
+        return await this.hydrateSessionSnapshot(account, res.snapshot, rtt);
+      } catch (e) {
+        sessionSet("sync", false);
+        const text = e?.toString() || "";
+        if (!text.includes("Account is encrypted and locked")) {
+          console.error(e);
+          if (text.includes("login.token")) await this.logout();
+        }
+        return null;
+      } finally {
+        this.synchronizedPending = false;
+        if (this.resolve_sync) {
+          this.resolve_sync();
+        }
+        this.syncing = null;
+      }
+    })();
+
+    return await this.syncing;
+  }
 
   async fetchContacts(userIds) {
     await this.waitSync();

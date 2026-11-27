@@ -141,6 +141,78 @@ pub async fn get_contact(
     Ok(None)
 }
 
+pub fn save_contact_at(
+    paths: &Paths,
+    key: Option<[u8; 32]>,
+    contact_id: u64,
+    data: &Value,
+) -> Result<(), String> {
+    Storage::new(key).save(paths.contact(contact_id), data)
+}
+
+pub fn save_chats_at(
+    paths: &Paths,
+    key: Option<[u8; 32]>,
+    chats: Vec<Value>,
+) -> Result<(), String> {
+    let storage = Storage::new(key);
+
+    for chat in chats {
+        let chat_id = chat.get("id").and_then(|v| {
+            v.as_i64()
+                .or_else(|| v.as_str().and_then(|s| s.parse::<i64>().ok()))
+        });
+
+        if let Some(id) = chat_id {
+            let path = paths.info(id);
+            let to_save = if let Some(mut existing) = storage.load(&path) {
+                if let Some(existing_obj) = existing.as_object_mut() {
+                    if let Some(new_obj) = chat.as_object() {
+                        for (k, v) in new_obj {
+                            existing_obj.insert(k.clone(), v.clone());
+                        }
+                    }
+                    Value::Object(existing_obj.clone())
+                } else {
+                    chat
+                }
+            } else {
+                chat
+            };
+            storage.save(path, &to_save)?;
+        }
+    }
+
+    Ok(())
+}
+
+pub fn load_chats_at(paths: &Paths, key: Option<[u8; 32]>) -> Vec<Value> {
+    let storage = Storage::new(key);
+    let mut chat_ids: Vec<i64> = Storage::list(paths.chats())
+        .into_iter()
+        .filter(|p| p.is_dir())
+        .filter_map(|p| {
+            p.file_name()?
+                .to_str()?
+                .parse::<i64>()
+                .ok()
+        })
+        .collect();
+    chat_ids.sort();
+    chat_ids
+        .into_iter()
+        .filter_map(|id| storage.load(paths.info(id)))
+        .collect()
+}
+
+pub fn get_contacts_at(paths: &Paths, key: Option<[u8; 32]>) -> Vec<Value> {
+    let storage = Storage::new(key);
+    Storage::list(paths.contacts())
+        .into_iter()
+        .filter_map(|x| storage.load(x))
+        .collect()
+}
+
 #[tauri::command]
 pub async fn set_contact(
     app: AppHandle,
@@ -150,7 +222,7 @@ pub async fn set_contact(
 ) -> Result<(), String> {
     tokio::task::spawn_blocking(move || {
         let key = crypto_key(&app, account);
-        Storage::new(key).save(Paths::new(&app, account).contact(contact_id), &data)
+        save_contact_at(&Paths::new(&app, account), key, contact_id, &data)
     })
     .await
     .map_err(|e| e.to_string())?
@@ -163,11 +235,7 @@ pub async fn get_contacts(
 ) -> Result<Vec<Value>, String> {
     tokio::task::spawn_blocking(move || {
         let key = crate::stores::accounts::check_account_encryption(&app, account)?;
-        let storage = Storage::new(key);
-        Ok(Storage::list(Paths::new(&app, account).contacts())
-            .into_iter()
-            .filter_map(|x| storage.load(x))
-            .collect())
+        Ok(get_contacts_at(&Paths::new(&app, account), key))
     })
     .await
     .map_err(|e| e.to_string())?
@@ -181,36 +249,7 @@ pub async fn save_chats(
 ) -> Result<(), String> {
     tokio::task::spawn_blocking(move || {
         let key = crate::stores::accounts::check_account_encryption(&app, account)?;
-        let storage = Storage::new(key);
-        let paths = Paths::new(&app, account);
-
-        for chat in chats {
-            let chat_id = chat.get("id").and_then(|v| {
-                v.as_i64()
-                    .or_else(|| v.as_str().and_then(|s| s.parse::<i64>().ok()))
-            });
-
-            if let Some(id) = chat_id {
-                let path = paths.info(id);
-                let to_save = if let Some(mut existing) = storage.load(&path) {
-                    if let Some(existing_obj) = existing.as_object_mut() {
-                        if let Some(new_obj) = chat.as_object() {
-                            for (k, v) in new_obj {
-                                existing_obj.insert(k.clone(), v.clone());
-                            }
-                        }
-                        Value::Object(existing_obj.clone())
-                    } else {
-                        chat
-                    }
-                } else {
-                    chat
-                };
-                storage.save(path, &to_save)?;
-            }
-        }
-
-        Ok(())
+        save_chats_at(&Paths::new(&app, account), key, chats)
     })
     .await
     .map_err(|e| e.to_string())?
@@ -223,28 +262,7 @@ pub async fn load_chats(
 ) -> Result<Vec<Value>, String> {
     tokio::task::spawn_blocking(move || {
         let key = crate::stores::accounts::check_account_encryption(&app, account)?;
-        let storage = Storage::new(key);
-        let paths = Paths::new(&app, account);
-
-        let mut chat_ids: Vec<i64> = Storage::list(paths.chats())
-            .into_iter()
-            .filter(|p| p.is_dir())
-            .filter_map(|p| {
-                p.file_name()?
-                    .to_str()?
-                    .parse::<i64>()
-                    .ok()
-            })
-            .collect();
-
-        chat_ids.sort();
-
-        let chats = chat_ids
-            .into_iter()
-            .filter_map(|id| storage.load(paths.info(id)))
-            .collect();
-
-        Ok(chats)
+        Ok(load_chats_at(&Paths::new(&app, account), key))
     })
     .await
     .map_err(|e| e.to_string())?

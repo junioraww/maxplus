@@ -567,18 +567,45 @@ pub async fn read_file(app: tauri::AppHandle, path: String) -> Result<Vec<u8>, S
         .map_err(|e| e.to_string())
 }
 
-#[tauri::command]
-pub async fn write_file_string(path: String, content: String) -> Result<(), String> {
-    tokio::fs::write(path, content)
+async fn write_bytes_to_target(
+    app: &tauri::AppHandle,
+    path: String,
+    bytes: Vec<u8>,
+) -> Result<(), String> {
+    #[cfg(target_os = "android")]
+    if path.starts_with("content://") {
+        use std::io::Write;
+        use tauri_plugin_android_fs::{AndroidFsExt, FsUri};
+        let api = app.android_fs_async();
+        let uri = FsUri::from_uri(&path);
+        let mut file = api.open_file_writable(&uri).await.map_err(|e| e.to_string())?;
+        file.write_all(&bytes).map_err(|e| e.to_string())?;
+        file.flush().map_err(|e| e.to_string())?;
+        return Ok(());
+    }
+
+    let _ = app;
+    tokio::fs::write(path, bytes)
         .await
         .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub async fn write_file_bytes(path: String, content: Vec<u8>) -> Result<(), String> {
-    tokio::fs::write(path, content)
-        .await
-        .map_err(|e| e.to_string())
+pub async fn write_file_string(
+    app: tauri::AppHandle,
+    path: String,
+    content: String,
+) -> Result<(), String> {
+    write_bytes_to_target(&app, path, content.into_bytes()).await
+}
+
+#[tauri::command]
+pub async fn write_file_bytes(
+    app: tauri::AppHandle,
+    path: String,
+    content: Vec<u8>,
+) -> Result<(), String> {
+    write_bytes_to_target(&app, path, content).await
 }
 
 #[tauri::command]
@@ -1150,14 +1177,9 @@ pub async fn download_to_path(
     if let Some(src) = local_src {
         #[cfg(target_os = "android")]
         if path.starts_with("content://") {
-            use tauri_plugin_android_fs::AndroidFsExt;
-            use std::io::Write;
             let bytes = tokio::fs::read(&src).await.map_err(|e| e.to_string())?;
-            let api = app.android_fs_async();
-            let uri = tauri_plugin_android_fs::FsUri::from_uri(&path);
-            let mut file = api.open_file_writable(&uri).await.map_err(|e| e.to_string())?;
-            file.write_all(&bytes).map_err(|e| e.to_string())?;
             let len = bytes.len();
+            write_bytes_to_target(&app, path, bytes).await?;
             let _ = on_progress.send(DownloadProgress { progress: len, total: len });
             return Ok(());
         }

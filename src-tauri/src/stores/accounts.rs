@@ -387,6 +387,7 @@ pub async fn decrypt_account(
             guard.remove(&account);
         }
 
+        crate::daemon::trigger_daemon_reconnect();
         Ok(())
     })
     .await
@@ -537,6 +538,7 @@ pub async fn decrypt_account_hardware(
             guard.remove(&account);
         }
 
+        crate::daemon::trigger_daemon_reconnect();
         Ok(())
     })
     .await
@@ -772,58 +774,88 @@ pub fn is_account_privacy_active_disk(app_dir: &str, account_id: u64) -> bool {
     true
 }
 
+pub fn resolve_account_creds_at(
+    root: &std::path::Path,
+    account_id: Option<u64>,
+) -> Result<(u64, Option<u64>, String, rumax::models::Identity, Value), String> {
+    let accounts_path = root.join("accounts");
+    let storage = Storage::new(None);
+    let store = storage
+        .load(&accounts_path)
+        .ok_or_else(|| "No accounts store".to_string())?;
+    let accounts = store
+        .get("accounts")
+        .and_then(|a| a.as_array())
+        .ok_or_else(|| "No accounts".to_string())?;
+
+    let local_id = if let Some(target) = account_id.filter(|&id| id != 0) {
+        accounts
+            .iter()
+            .find_map(|acc| {
+                let lid = acc.get("id")?.as_u64()?;
+                if lid == target {
+                    return Some(lid);
+                }
+                let self_path = Paths::from_root(root, lid).self_contact();
+                if let Some(self_val) = storage.load(&self_path) {
+                    if self_val.get("id").and_then(|v| v.as_u64()) == Some(target) {
+                        return Some(lid);
+                    }
+                }
+                None
+            })
+            .ok_or_else(|| "Account not found".to_string())?
+    } else {
+        store
+            .get("current")
+            .and_then(|v| v.as_u64())
+            .or_else(|| accounts.first().and_then(|a| a.get("id")?.as_u64()))
+            .ok_or_else(|| "No active account".to_string())?
+    };
+
+    let account_info = accounts
+        .iter()
+        .find(|x| x.get("id").and_then(|id| id.as_u64()) == Some(local_id))
+        .ok_or_else(|| "Account entry not found".to_string())?;
+
+    let is_encrypted = !account_info.get("encryption").unwrap_or(&Value::Null).is_null();
+    let key = crate::stores::get_crypto_key(local_id);
+    if is_encrypted && key.is_none() {
+        return Err("Account is encrypted and locked".to_string());
+    }
+
+    let paths = Paths::from_root(root, local_id);
+    let enc_storage = Storage::new(key);
+    let meta = enc_storage
+        .load(paths.root.join("meta"))
+        .ok_or_else(|| "Account meta missing".to_string())?;
+
+    let token = meta
+        .get("token")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| "Account token missing".to_string())?
+        .to_string();
+    let device = meta
+        .get("device")
+        .cloned()
+        .ok_or_else(|| "Account device missing".to_string())?;
+    let identity: rumax::models::Identity =
+        serde_json::from_value(device).map_err(|e| format!("Invalid device: {e}"))?;
+
+    let server_user_id = enc_storage
+        .load(paths.self_contact())
+        .and_then(|s| s.get("id").and_then(|id| id.as_u64()));
+
+    Ok((local_id, server_user_id, token, identity, meta))
+}
+
 pub fn get_background_creds(
     app_dir: &str,
     account_id: u64,
 ) -> Option<(u64, u64, String, rumax::models::Identity)> {
     let root = resolve_app_root(app_dir);
-    let accounts_path = root.join("accounts");
-
-    let storage = Storage::new(None);
-    let store = storage.load(&accounts_path)?;
-    let accounts = store.get("accounts")?.as_array()?;
-
-    let local_id = accounts
-        .iter()
-        .find_map(|acc| {
-            let lid = acc.get("id")?.as_u64()?;
-            if lid == account_id {
-                return Some(lid);
-            }
-            let self_path = root.join("data").join(lid.to_string()).join("self");
-            if let Some(self_val) = storage.load(&self_path) {
-                if self_val.get("id").and_then(|id| id.as_u64()) == Some(account_id) {
-                    return Some(lid);
-                }
-            }
-            None
-        })
-        .or_else(|| store.get("current").and_then(|c| c.as_u64()))
-        .or_else(|| accounts.first().and_then(|a| a.get("id")?.as_u64()))?;
-
-    let account_info = accounts
-        .iter()
-        .find(|x| x.get("id").and_then(|id| id.as_u64()) == Some(local_id))?;
-
-    let is_encrypted = !account_info.get("encryption").unwrap_or(&Value::Null).is_null();
-    let key = crate::stores::get_crypto_key(local_id);
-    if is_encrypted && key.is_none() {
-        return None;
-    }
-
-    let storage = Storage::new(key);
-    let meta_path = root.join("data").join(local_id.to_string()).join("meta");
-    let meta = storage.load(&meta_path)?;
-
-    let token = meta.get("token")?.as_str()?.to_string();
-    let device = meta.get("device")?.clone();
-    let identity: rumax::models::Identity = serde_json::from_value(device).ok()?;
-
-    let self_path = root.join("data").join(local_id.to_string()).join("self");
-    let server_user_id = storage
-        .load(&self_path)
-        .and_then(|s| s.get("id").and_then(|id| id.as_u64()))
-        .unwrap_or(if account_id != 0 { account_id } else { local_id });
-
-    Some((local_id, server_user_id, token, identity))
+    let target = if account_id != 0 { Some(account_id) } else { None };
+    let (local_id, server_uid, token, identity, _) = resolve_account_creds_at(&root, target).ok()?;
+    let resolved_uid = server_uid.unwrap_or(if account_id != 0 { account_id } else { local_id });
+    Some((local_id, resolved_uid, token, identity))
 }

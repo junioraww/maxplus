@@ -15,6 +15,7 @@ import {
 import { get as sessionGet } from "$lib/stores/session";
 import { showAlert } from "$lib/utils/alert";
 import { parseApiError, isNo2FaError } from "$lib/utils/errors";
+import { runOutgoingMiddleware } from "$lib/plugins/opcodeMiddleware";
 
 const inflightRetries = new Map();
 
@@ -34,7 +35,9 @@ export const invoke = async (command, args) => {
   const reqStart = Date.now();
   recordApiRequest(command, args);
   try {
-    const response = await tauriInvoke(command, args);
+    const response = await runOutgoingMiddleware(command, args, (cmd, finalArgs) =>
+      tauriInvoke(cmd, finalArgs)
+    );
     recordApiResponse(command, response, Date.now() - reqStart);
     if (response && typeof response === "object" && response.error) {
       notifyApiError(command, response);
@@ -59,7 +62,7 @@ export const invoke = async (command, args) => {
     }
 
     if (isConnError) {
-      if (command !== "init" && command !== "sync_client") {
+      if (command !== "init" && command !== "attach_ui_session") {
         return restart(command, args, error);
       }
     }

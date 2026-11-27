@@ -8,9 +8,10 @@ pub mod daemon;
 mod files;
 pub mod media_remux;
 mod media_validator;
-mod notifications;
-mod screen_capture;
-mod ssl;
+pub mod notifications;
+pub mod screen_capture;
+pub mod session;
+pub mod ssl;
 mod state;
 mod stores;
 mod video;
@@ -22,7 +23,7 @@ mod windows_webview;
 
 use state::AppState;
 use std::sync::Arc;
-use tauri::{Emitter, Manager};
+use tauri::Manager;
 #[cfg(desktop)]
 use tauri::{
     menu::{Menu, MenuItem},
@@ -159,10 +160,8 @@ pub fn run() {
                 use tauri_plugin_deep_link::DeepLinkExt;
                 let _ = app.deep_link().register_all();
             }
-            let (client, mut event_stream) = tauri::async_runtime::block_on(async {
-                let client = state::shared_client().clone();
-                let stream = client.subscribe();
-                (client, stream)
+            let client = tauri::async_runtime::block_on(async {
+                state::shared_client().clone()
             });
 
             app.manage(AppState {
@@ -173,6 +172,7 @@ pub fn run() {
             });
 
             let handle = app.handle().clone();
+            session::manager().set_app_handle(handle.clone());
             notifications::set_app_handle(handle.clone());
             webapp_proxy::set_app_handle(handle.clone());
             video::set_app_handle(handle.clone());
@@ -221,12 +221,6 @@ pub fn run() {
                 let _tray = tray_builder.build(app)?;
             }
 
-            tauri::async_runtime::spawn(async move {
-                while let Ok(msg) = event_stream.recv().await {
-                    let _ = handle.emit("max", msg);
-                }
-            });
-
             let p_cfg = proxy_auth::get_proxy_config();
             if let Some(w) = app.get_webview_window("main") {
                 let script = format!(
@@ -273,9 +267,13 @@ pub fn run() {
             commands::register_full,
             commands::check_call_status,
             commands::auth_by_track,
+            commands::attach_ui_session,
+            commands::detach_ui_session,
+            commands::register_plugin_opcode_hooks,
+            commands::resolve_opcode_hook,
+            commands::call_opcode,
             commands::logout,
             commands::disconnect,
-            commands::sync_client,
             commands::send_message,
             commands::add_reaction,
             commands::remove_reaction,
